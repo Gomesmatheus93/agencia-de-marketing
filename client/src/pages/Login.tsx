@@ -57,7 +57,7 @@ export default function Login() {
           <div className="w-10 h-10 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-foreground tracking-tight">AI Marketing</span>
+          <span className="text-xl font-bold text-foreground tracking-tight">KrythosLab</span>
         </div>
 
         <div className="space-y-8">
@@ -84,7 +84,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">© 2025 AI Marketing Agency. Todos os direitos reservados.</p>
+        <p className="text-sm text-muted-foreground">© 2025 KrythosLab. Todos os direitos reservados.</p>
       </div>
 
       {/* Right panel */}
