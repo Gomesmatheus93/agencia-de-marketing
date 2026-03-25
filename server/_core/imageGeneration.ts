@@ -1,0 +1,61 @@
+import fs from "fs";
+import path from "path";
+import { ENV } from "./env";
+
+export type GenerateImageOptions = {
+  prompt: string;
+};
+
+export type GenerateImageResponse = {
+  url?: string;
+};
+
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+
+export async function generateImage(
+  options: GenerateImageOptions
+): Promise<GenerateImageResponse> {
+  if (!ENV.hfToken) {
+    throw new Error("HF_TOKEN is not configured");
+  }
+
+  const response = await fetch(
+    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell/v1/images/generations",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ENV.hfToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: options.prompt,
+        num_inference_steps: 4,
+        width: 1024,
+        height: 1024,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Image generation request failed (${response.status}): ${detail}`);
+  }
+
+  const result = (await response.json()) as {
+    data: Array<{ b64_json: string }>;
+  };
+
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error("No image returned from HuggingFace API");
+
+  const buffer = Buffer.from(b64, "base64");
+  const filename = `${Date.now()}.png`;
+
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+
+  return { url: `/uploads/${filename}` };
+}

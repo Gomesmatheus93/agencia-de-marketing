@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1774356055477,
+      "tag": "0000_hesitant_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1774356214626,
+      "tag": "0001_outstanding_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1774459792582,
+      "tag": "0002_mixed_trauma",
+      "breakpoints": true
+    }
+  ]
+}
