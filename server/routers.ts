@@ -114,7 +114,7 @@ const chatRouter = router({
   }),
 });
 
-// ─── Images Router ────────────────────────────────────────────────────────────
+
 const imagesRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
     return db.getImages(ctx.user.id);
