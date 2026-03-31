@@ -53,6 +53,14 @@ const navItems = [
     color: "from-emerald-500 to-teal-500",
     description: "Gere artigos automáticos",
   },
+    {
+    id: "carousel",
+    label: "Gerar Carrossel",
+    icon: Image,
+    path: "/dashboard/carousel",
+    color: "from-blue-500 to-cyan-500",
+    description: "Crie carrosseis com IA",
+  },
   {
     id: "posts",
     label: "Postagens",
@@ -112,11 +120,14 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       <div className="p-5 border-b border-border/30">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md flex-shrink-0">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
+            <img src="/logo.png" 
+            alt="krythoslab" 
+            className="w-full h-full object-cover"
+            />
+      </div>
           <div className="min-w-0">
-            <div className="font-bold text-sm text-foreground tracking-tight truncate">AI Marketing</div>
-            <div className="text-[11px] text-muted-foreground truncate">Agency Platform</div>
+            <div className="font-bold text-sm text-foreground tracking-tight truncate">KrythosLab</div>
+            <div className="text-[11px] text-muted-foreground truncate">Plataforma de Marketing</div>
           </div>
         </div>
       </div>

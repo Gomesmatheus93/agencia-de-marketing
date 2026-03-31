@@ -39,6 +39,17 @@ const modules = [
     color: "text-emerald-600",
   },
   {
+    id: "Carrossel",
+    title: "Carrossel de Imagens",
+    description: "Crie carrosséis de imagens dinâmicos e atraentes para suas campanhas de marketing.",
+    icon: Image,
+    path: "/dashboard/carousel",
+    gradient: "from-amber-500 to-orange-500",
+    bgLight: "from-emerald-50 to-teal-50",
+    stat: "imagens",
+    color: "text-emerald-600",
+  },
+  {
     id: "posts",
     title: "Automação de Postagens",
     description: "Agende e publique automaticamente no Instagram, LinkedIn e Newsletter.",

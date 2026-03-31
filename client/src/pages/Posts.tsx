@@ -1,6 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,8 @@ import {
   Wand2,
   Eye,
   X,
+  ImagePlus,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -50,6 +52,7 @@ const channelConfig: Record<Channel, {
   gradient: string;
   bg: string;
   maxChars: number;
+  supportsImage: boolean;
 }> = {
   instagram: {
     label: "Instagram",
@@ -58,6 +61,7 @@ const channelConfig: Record<Channel, {
     gradient: "from-pink-500 via-rose-500 to-orange-500",
     bg: "bg-gradient-to-br from-pink-50 to-orange-50 dark:from-pink-950/20 dark:to-orange-950/20",
     maxChars: 2200,
+    supportsImage: true,
   },
   linkedin: {
     label: "LinkedIn",
@@ -66,6 +70,7 @@ const channelConfig: Record<Channel, {
     gradient: "from-blue-600 to-blue-700",
     bg: "bg-blue-50 dark:bg-blue-950/20",
     maxChars: 3000,
+    supportsImage: true,
   },
   newsletter: {
     label: "Newsletter",
@@ -74,6 +79,7 @@ const channelConfig: Record<Channel, {
     gradient: "from-violet-500 to-purple-600",
     bg: "bg-violet-50 dark:bg-violet-950/20",
     maxChars: 10000,
+    supportsImage: false,
   },
 };
 
@@ -83,6 +89,112 @@ const statusConfig: Record<PostStatus, { label: string; color: string; icon: Rea
   published: { label: "Publicado", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 },
   failed: { label: "Falhou", color: "text-red-600 bg-red-50 dark:bg-red-950/30", icon: XCircle },
 };
+
+// Image Upload Component
+function ImageUpload({
+  value,
+  onChange,
+  gradient,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  gradient: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione apenas arquivos de imagem");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 10MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => onChange(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  if (value) {
+    return (
+      <div className="relative rounded-xl overflow-hidden border border-border/50 group">
+        <img
+          src={value}
+          alt="Preview"
+          className="w-full max-h-56 object-cover"
+        />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => inputRef.current?.click()}
+            className="gap-1.5 text-xs"
+          >
+            <ImagePlus className="w-3.5 h-3.5" />
+            Trocar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            onClick={() => onChange("")}
+            className="gap-1.5 text-xs"
+          >
+            <X className="w-3.5 h-3.5" />
+            Remover
+          </Button>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+      className={cn(
+        "border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all duration-200 flex flex-col items-center gap-2 text-center",
+        isDragging
+          ? "border-primary bg-primary/5 scale-[1.01]"
+          : "border-border/50 hover:border-border hover:bg-accent/30"
+      )}
+    >
+      <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-sm", gradient)}>
+        <ImagePlus className="w-5 h-5 text-white" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-foreground">Adicionar imagem</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Clique ou arraste aqui · PNG, JPG, WEBP · max 10MB</p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+      />
+    </div>
+  );
+}
 
 export default function Posts() {
   const utils = trpc.useUtils();
@@ -95,6 +207,7 @@ export default function Posts() {
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formScheduledAt, setFormScheduledAt] = useState("");
+  const [formImageUrl, setFormImageUrl] = useState("");
 
   // AI gen state
   const [aiTopic, setAiTopic] = useState("");
@@ -147,6 +260,7 @@ export default function Posts() {
     setFormTitle("");
     setFormContent("");
     setFormScheduledAt("");
+    setFormImageUrl("");
   };
 
   const handleCreate = () => {
@@ -156,6 +270,7 @@ export default function Posts() {
       title: formTitle || undefined,
       content: formContent,
       scheduledAt: formScheduledAt ? new Date(formScheduledAt) : undefined,
+      imageUrl: formImageUrl || undefined,
     });
   };
 
@@ -270,9 +385,16 @@ export default function Posts() {
                   style={{ animationDelay: `${i * 0.05}s` }}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md", cfg.gradient)}>
-                      <ChannelIcon className="w-5 h-5 text-white" />
-                    </div>
+                    {/* Thumbnail or channel icon */}
+                    {post.imageUrl ? (
+                      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+                        <img src={post.imageUrl} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md", cfg.gradient)}>
+                        <ChannelIcon className="w-5 h-5 text-white" />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0 space-y-1.5">
                       {post.title && (
                         <h3 className="font-semibold text-sm text-foreground truncate">{post.title}</h3>
@@ -283,6 +405,12 @@ export default function Posts() {
                           <StatusIcon className="w-3 h-3" />
                           {statusConfig[post.status].label}
                         </span>
+                        {post.imageUrl && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <ImageIcon className="w-3 h-3" />
+                            Com imagem
+                          </span>
+                        )}
                         {post.scheduledAt && (
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                             <Clock className="w-3 h-3" />
@@ -344,7 +472,7 @@ export default function Posts() {
 
       {/* Create Post Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="glass-card border-border/50 max-w-lg">
+        <DialogContent className="glass-card border-border/50 max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className={cn("w-7 h-7 rounded-lg bg-gradient-to-br flex items-center justify-center", cfg.gradient)}>
@@ -365,6 +493,22 @@ export default function Posts() {
                 />
               </div>
             )}
+
+            {/* Image upload — only for Instagram and LinkedIn */}
+            {cfg.supportsImage && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                  Imagem {activeChannel === "instagram" ? "(recomendado)" : "(opcional)"}
+                </label>
+                <ImageUpload
+                  value={formImageUrl}
+                  onChange={setFormImageUrl}
+                  gradient={cfg.gradient}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-foreground">Conteúdo *</label>
@@ -474,7 +618,7 @@ export default function Posts() {
 
       {/* Preview Dialog */}
       <Dialog open={!!previewPost} onOpenChange={() => setPreviewPost(null)}>
-        <DialogContent className="glass-card border-border/50 max-w-lg">
+        <DialogContent className="glass-card border-border/50 max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-4 h-4" />
@@ -483,20 +627,32 @@ export default function Posts() {
           </DialogHeader>
           {previewPost && (
             <div className="space-y-4">
-              <div className={cn("p-4 rounded-xl", channelConfig[previewPost.channel].bg)}>
-                <div className="flex items-center gap-2 mb-3">
-                  {(() => {
-                    const Icon = channelConfig[previewPost.channel].icon;
-                    return <Icon className={cn("w-5 h-5", channelConfig[previewPost.channel].color)} />;
-                  })()}
-                  <span className={cn("font-semibold text-sm", channelConfig[previewPost.channel].color)}>
-                    {channelConfig[previewPost.channel].label}
-                  </span>
-                </div>
-                {previewPost.title && (
-                  <h3 className="font-bold text-foreground mb-2">{previewPost.title}</h3>
+              <div className={cn("rounded-xl overflow-hidden", channelConfig[previewPost.channel].bg)}>
+                {/* Image preview */}
+                {previewPost.imageUrl && (
+                  <div className="w-full aspect-video overflow-hidden">
+                    <img
+                      src={previewPost.imageUrl}
+                      alt="Imagem do post"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 )}
-                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{previewPost.content}</p>
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    {(() => {
+                      const Icon = channelConfig[previewPost.channel].icon;
+                      return <Icon className={cn("w-5 h-5", channelConfig[previewPost.channel].color)} />;
+                    })()}
+                    <span className={cn("font-semibold text-sm", channelConfig[previewPost.channel].color)}>
+                      {channelConfig[previewPost.channel].label}
+                    </span>
+                  </div>
+                  {previewPost.title && (
+                    <h3 className="font-bold text-foreground mb-2">{previewPost.title}</h3>
+                  )}
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{previewPost.content}</p>
+                </div>
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{previewPost.content.length} caracteres</span>

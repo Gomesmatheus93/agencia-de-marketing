@@ -121,10 +121,12 @@ const imagesRouter = router({
   }),
 
   generate: protectedProcedure
-    .input(z.object({
-      prompt: z.string().min(3).max(1000),
-      useWebhook: z.boolean().optional().default(false),
-    }))
+  .input(z.object({
+  prompt: z.string(),
+  useWebhook: z.boolean(),
+  referenceImageUrl:
+  z.string().optional()
+  }))
     .mutation(async ({ ctx, input }) => {
       let imageUrl = "";
 
@@ -135,8 +137,11 @@ const imagesRouter = router({
           const webhookRes = await axios.post(user.n8nImageWebhookUrl, {
             prompt: input.prompt,
             userId: ctx.user.id,
-          }, { timeout: 60000 });
-          imageUrl = webhookRes.data?.imageUrl || webhookRes.data?.url || "";
+            referenceImageUrl: input.referenceImageUrl,
+          }, { timeout: 300000 });
+
+          console.log("[n8n response]", JSON.stringify(webhookRes.data));
+          imageUrl = webhookRes.data?.imageUrl || webhookRes.data?.url || webhookRes.data?.imagem_url || webhookRes.data?.imagemurl || "";
         } catch (err) {
           console.warn("[Images] n8n webhook failed, falling back to built-in:", err);
         }
@@ -144,7 +149,10 @@ const imagesRouter = router({
 
       // Fallback to built-in image generation
       if (!imageUrl) {
-        const result = await generateImage({ prompt: input.prompt });
+        const result = await generateImage({ 
+          prompt: input.prompt,
+          referenceImageUrl: input.referenceImageUrl,
+          }); 
         imageUrl = result.url || "";
       }
 
@@ -179,32 +187,46 @@ const articlesRouter = router({
     }),
 
   generate: protectedProcedure
-    .input(z.object({
-      topic: z.string().min(3).max(500),
-      sourceUrl: z.string().url().optional(),
-      useWebhook: z.boolean().optional().default(false),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      let title = "";
-      let content = "";
-      let summary = "";
+  .input(z.object({
+    topic: z.string().min(3).max(500),
+    sourceUrl: z.string().url().optional(),
+    useWebhook: z.boolean().optional().default(false),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    let title = "";
+    let content = "";
+    let summary = "";
 
-      // Try n8n webhook first
-      const user = await db.getUserByOpenId(ctx.user.openId);
-      if (input.useWebhook && user?.n8nArticleWebhookUrl) {
-        try {
-          const webhookRes = await axios.post(user.n8nArticleWebhookUrl, {
-            topic: input.topic,
-            sourceUrl: input.sourceUrl,
-            userId: ctx.user.id,
-          }, { timeout: 60000 });
-          title = webhookRes.data?.title || "";
-          content = webhookRes.data?.content || "";
-          summary = webhookRes.data?.summary || "";
-        } catch (err) {
-          console.warn("[Articles] n8n webhook failed, falling back to LLM:", err);
+    // GARANTA QUE ESSA LINHA EXISTE ANTES DO IF:
+    const user = await db.getUserByOpenId(ctx.user.openId);
+
+    if (input.useWebhook && user?.n8nArticleWebhookUrl) {
+      try {
+        const webhookRes = await axios.post(user.n8nArticleWebhookUrl, {
+          topic: input.topic,
+          sourceUrl: input.sourceUrl,
+          userId: ctx.user.id,
+        }, { timeout: 300000 });
+
+        console.log("[n8n articles response]", JSON.stringify(webhookRes.data));
+
+        let webhookData = webhookRes.data;
+        if (webhookData?.resposta_site && typeof webhookData.resposta_site === 'string') {
+          try {
+            webhookData = JSON.parse(webhookData.resposta_site);
+          } catch {
+            webhookData = webhookRes.data;
+          }
         }
+
+        title = webhookData?.title || webhookData?.titulo || "";
+        content = webhookData?.content || webhookData?.article || webhookData?.conteudo || "";
+        summary = webhookData?.summary || webhookData?.resumo || "";
+
+      } catch (err) {
+        console.warn("[Articles] n8n webhook failed, falling back to LLM:", err);
       }
+    }
 
       // Fallback to built-in LLM
       if (!content) {
@@ -212,7 +234,51 @@ const articlesRouter = router({
           messages: [
             {
               role: "system",
-              content: `Você é um redator especializado em marketing digital e SEO. Crie artigos completos, informativos e otimizados para SEO em português brasileiro.
+              content: `Atue como o ESCRITOR LINKEDIN
+
+Seu Papel e Objetivo:
+Você é um redator especialista em mídias sociais, focado na criação de conteúdo para o LinkedIn que gera leads por meio de histórias autênticas. O seu objetivo não é apenas mostrar expertise técnica, mas criar uma conexão genuína por meio de experiências compartilhadas. Você transforma experiências comuns em narrativas envolventes que inspiram ação, atraem clientes ideais e otimizam visitas ao perfil (não apenas curtidas genéricas).
+
+Restrição Absoluta: Posicione o narrador como uma pessoa comum que superou um desafio, não como um "guru" ou especialista intocável.
+
+Princípios de Escrita (Como escrever):
+
+Histórias em vez de conselhos: Nunca dê conselhos de especialistas não solicitados ou conteúdo puramente opinativo. Compartilhe histórias de transformação pessoal que demonstrem lições. Foque na jornada, não apenas no destino, e faça o leitor sentir que pode alcançar o mesmo.
+
+Clareza e Simplicidade: Escreva em um nível de leitura básico (fácil e acessível). Use frases curtas (idealmente 15 palavras ou menos). Divida o texto com quebras de linha a cada 2 ou 3 frases para dar respiro à leitura. Evite jargões, termos técnicos e vocabulário complexo.
+
+Diretrizes de Linguagem:
+
+O que FAZER: Usar tom coloquial, focar nos benefícios, usar linguagem "Eu/Você", ser específico com números e detalhes, compartilhar momentos de vulnerabilidade e comemorar pequenas vitórias.
+
+O que NÃO FAZER: Usar jargão corporativo, fazer generalizações amplas, usar estruturas de frases complexas.
+
+Fórmulas de Gancho (Sempre comece o post com uma variação destas opções):
+
+"Como eu [alcancei um resultado específico] sem [medo/obstáculo comum]..."
+
+"Eu estava em [situação difícil] até que eu percebi [insight-chave]..."
+
+"Esta é a maneira mais simples que encontrei de [atingir a meta]..."
+
+"Há [período de tempo], eu não conseguia [fazer nada]. Hoje, [resultado da transformação]..."
+
+A Estrutura Obrigatória do Post (Framework de Transformação):
+
+Gancho (Hook): 1 frase baseada em curiosidade para prender a atenção (use as fórmulas acima).
+
+Problema (O Estado "Antes"): 2 a 3 frases descrevendo uma luta ou obstáculo que gere identificação.
+
+Jornada (O Processo): 3 a 4 frases descrevendo brevemente o esforço, desafio enfrentado ou a "virada de chave".
+
+Resolução (O Estado "Depois"): 2 a 3 frases compartilhando o resultado, a lição prática ou a vitória alcançada.
+
+Chamada para Ação (CTA): Finalize o post com uma pergunta específica para incentivar o engajamento (Ex: "Qual é a sua maior dificuldade com [tópico] no momento?", "Qual é o pequeno passo que você poderia dar esta semana?").
+
+Estratégia Visual (Sempre que sugerir imagens ao usuário):
+Recomende o uso de fotos que mostrem rostos humanos autênticos (de preferência o do autor), exemplos de antes/depois, cores vibrantes que se destaquem no feed ou gráficos muito simples que ilustrem o ponto principal.
+
+Sempre que eu te passar um tema ou uma ideia, aplique todas essas regras e escreva o post perfeito para o LinkedIn. Responda apenas "Entendido. Estou pronto para escrever como o ESCRITOR LINKEDIN! Qual é o seu primeiro tema?" para confirmar.
               
 Formato de resposta JSON:
 {

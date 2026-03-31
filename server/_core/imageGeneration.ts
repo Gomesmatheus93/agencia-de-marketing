@@ -4,6 +4,7 @@ import { ENV } from "./env";
 
 export type GenerateImageOptions = {
   prompt: string;
+  referenceImageUrl?: string; // ← adicionar isso
 };
 
 export type GenerateImageResponse = {
@@ -30,8 +31,8 @@ export async function generateImage(
       body: JSON.stringify({
         prompt: options.prompt,
         num_inference_steps: 4,
-        width: 1024,
-        height: 1024,
+        width: 1080,
+        height: 1080,
       }),
     }
   );

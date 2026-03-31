@@ -53,11 +53,11 @@ export default function Login() {
 
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold text-foreground tracking-tight">KrythosLab</span>
+        <div className="flex items-center justify-center lg:justify-start">
+            <img src="/logo_completa.png" 
+            alt="logokrythos"
+            className="w-50 h-auto object-contain"
+            />
         </div>
 
         <div className="space-y-8">
@@ -94,7 +94,7 @@ export default function Login() {
             <div className="w-10 h-10 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-foreground tracking-tight">AI Marketing</span>
+            <span className="text-xl font-bold text-foreground tracking-tight">KrythosLab</span>
           </div>
 
           <div className="glass-card p-8 space-y-6">

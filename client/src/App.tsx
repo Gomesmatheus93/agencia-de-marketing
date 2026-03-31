@@ -11,6 +11,9 @@ import Images from "./pages/Images";
 import Articles from "./pages/Articles";
 import Posts from "./pages/Posts";
 import Settings from "./pages/Settings";
+import Carousel from "./pages/Carousel";
+
+const CarouselPage = () => <Carousel />;
 
 function Router() {
   return (
@@ -21,6 +24,7 @@ function Router() {
       <Route path="/dashboard/chat" component={Chat} />
       <Route path="/dashboard/images" component={Images} />
       <Route path="/dashboard/articles" component={Articles} />
+      <Route path="/dashboard/carousel" component={CarouselPage} />
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/settings" component={Settings} />
       <Route path="/404" component={NotFound} />

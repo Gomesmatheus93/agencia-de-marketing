@@ -1,6 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -15,9 +15,11 @@ import {
   ZoomIn,
   Copy,
   ImagePlus,
+  Upload,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-
+import { cn } from "@/lib/utils";
+ 
 const promptSuggestions = [
   "Logo minimalista para agência de marketing digital, estilo Apple",
   "Banner profissional para LinkedIn com gradiente azul e roxo",
@@ -26,27 +28,137 @@ const promptSuggestions = [
   "Foto de produto em fundo branco, iluminação profissional",
   "Infográfico moderno sobre marketing digital",
 ];
-
+ 
+// Reference Image Upload Component
+function ReferenceImageUpload({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+ 
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione apenas arquivos de imagem");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 10MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => onChange(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+ 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+ 
+  if (value) {
+    return (
+      <div className="flex items-center gap-3 p-2 rounded-xl border border-border/50 glass group">
+        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
+          <img src={value} alt="Referência" className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-foreground">Imagem de referência adicionada</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">A IA usará esta imagem como base</p>
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => inputRef.current?.click()}
+            className="w-7 h-7 rounded-lg"
+            title="Trocar imagem"
+          >
+            <Upload className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onChange("")}
+            className="w-7 h-7 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/5"
+            title="Remover imagem"
+          >
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+        />
+      </div>
+    );
+  }
+ 
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+      className={cn(
+        "flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200",
+        isDragging
+          ? "border-primary bg-primary/5 scale-[1.01]"
+          : "border-border/40 hover:border-border hover:bg-accent/20"
+      )}
+    >
+      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+        <Upload className="w-4 h-4 text-white" />
+      </div>
+      <div>
+        <p className="text-xs font-medium text-foreground">Adicionar imagem de referência</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          Opcional · Clique ou arraste · PNG, JPG, WEBP · max 10MB
+        </p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+      />
+    </div>
+  );
+}
+ 
 export default function Images() {
   const utils = trpc.useUtils();
   const [prompt, setPrompt] = useState("");
+  const [referenceImageUrl, setReferenceImageUrl] = useState("");
   const [selectedImage, setSelectedImage] = useState<{ id: number; imageUrl: string; prompt: string } | null>(null);
-
+ 
   const { data: images = [], isLoading } = trpc.images.getAll.useQuery();
   const { data: webhookSettings } = trpc.settings.getWebhooks.useQuery();
-
+ 
   const generateMutation = trpc.images.generate.useMutation({
     onSuccess: () => {
       utils.images.getAll.invalidate();
       utils.images.getStats.invalidate();
       toast.success("Imagem gerada com sucesso!");
       setPrompt("");
+      setReferenceImageUrl("");
     },
     onError: (err) => {
       toast.error("Erro ao gerar imagem: " + err.message);
     },
   });
-
+ 
   const deleteMutation = trpc.images.delete.useMutation({
     onSuccess: () => {
       utils.images.getAll.invalidate();
@@ -56,15 +168,16 @@ export default function Images() {
     },
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
   });
-
+ 
   const handleGenerate = () => {
     if (!prompt.trim()) { toast.error("Digite um prompt para gerar a imagem"); return; }
     generateMutation.mutate({
       prompt: prompt.trim(),
       useWebhook: !!webhookSettings?.n8nImageWebhookUrl,
+      referenceImageUrl: referenceImageUrl || undefined,
     });
   };
-
+ 
   const handleDownload = async (url: string, promptText: string) => {
     try {
       const response = await fetch(url);
@@ -80,12 +193,12 @@ export default function Images() {
       window.open(url, "_blank");
     }
   };
-
+ 
   const handleCopyPrompt = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Prompt copiado!");
   };
-
+ 
   return (
     <AppLayout activeModule="images">
       <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
@@ -104,14 +217,14 @@ export default function Images() {
             Descreva a imagem que deseja criar e a IA irá gerá-la para você.
           </p>
         </div>
-
+ 
         {/* Generator */}
         <div className="glass-card p-6 space-y-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           <div className="flex items-center gap-2">
             <Wand2 className="w-4 h-4 text-primary" />
             <h2 className="font-semibold text-sm text-foreground">Novo prompt</h2>
           </div>
-
+ 
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -119,7 +232,13 @@ export default function Images() {
             className="resize-none min-h-[100px] glass border-border/50 focus:border-primary/50 rounded-xl text-sm"
             disabled={generateMutation.isPending}
           />
-
+ 
+          {/* Reference image upload */}
+          <ReferenceImageUpload
+            value={referenceImageUrl}
+            onChange={setReferenceImageUrl}
+          />
+ 
           {/* Suggestions */}
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground font-medium">Sugestões de prompts:</p>
@@ -135,7 +254,7 @@ export default function Images() {
               ))}
             </div>
           </div>
-
+ 
           <div className="flex items-center justify-between">
             {webhookSettings?.n8nImageWebhookUrl && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
@@ -156,12 +275,12 @@ export default function Images() {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  Gerar Imagem
+                  {referenceImageUrl ? "Gerar com Referência" : "Gerar Imagem"}
                 </>
               )}
             </Button>
           </div>
-
+ 
           {/* Loading preview */}
           {generateMutation.isPending && (
             <div className="rounded-xl overflow-hidden border border-border/30">
@@ -174,7 +293,7 @@ export default function Images() {
             </div>
           )}
         </div>
-
+ 
         {/* Gallery */}
         <div className="space-y-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
           <div className="flex items-center justify-between">
@@ -185,7 +304,7 @@ export default function Images() {
               </h2>
             </div>
           </div>
-
+ 
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -227,7 +346,7 @@ export default function Images() {
           )}
         </div>
       </div>
-
+ 
       {/* Image modal */}
       <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
         <DialogContent className="max-w-3xl glass-card border-border/50 p-0 overflow-hidden">
