@@ -113,7 +113,7 @@ export default function Chat() {
     sendMsg.mutate({
       conversationId: convId,
       content: msg,
-      useWebhook: !!webhookSettings?.n8nWebhookUrl,
+      useWebhook: webhookSettings?.hasChat ?? false,
     });
   };
 
@@ -257,11 +257,11 @@ export default function Chat() {
                 </div>
                 <div className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {webhookSettings?.n8nWebhookUrl ? "n8n conectado" : "IA integrada"}
+                  {webhookSettings?.hasChat ? "n8n conectado" : "IA integrada"}
                 </div>
               </div>
             </div>
-            {webhookSettings?.n8nWebhookUrl && (
+            {webhookSettings?.hasChat && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
                 <Zap className="w-3 h-3" />
                 n8n ativo

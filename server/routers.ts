@@ -7,6 +7,7 @@ import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { storagePut } from "./storage";
 import * as db from "./db";
+import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { hashPassword, verifyPassword } from "./_core/password";
 import { nanoid } from "nanoid";
@@ -66,9 +67,10 @@ const chatRouter = router({
 
       // Try n8n webhook first if configured
       const user = await db.getUserByOpenId(ctx.user.openId);
-      if (input.useWebhook && user?.n8nWebhookUrl) {
+      const chatWebhookUrl = user?.n8nWebhookUrl || ENV.n8nChatWebhookUrl;
+      if (input.useWebhook && chatWebhookUrl) {
         try {
-          const webhookRes = await axios.post(user.n8nWebhookUrl, {
+          const webhookRes = await axios.post(chatWebhookUrl, {
             message: input.content,
             conversationId: input.conversationId,
             userId: ctx.user.id,
@@ -132,9 +134,10 @@ const imagesRouter = router({
 
       // Try n8n webhook first
       const user = await db.getUserByOpenId(ctx.user.openId);
-      if (input.useWebhook && user?.n8nImageWebhookUrl) {
+      const imageWebhookUrl = user?.n8nImageWebhookUrl || ENV.n8nImageWebhookUrl;
+      if (input.useWebhook && imageWebhookUrl) {
         try {
-          const webhookRes = await axios.post(user.n8nImageWebhookUrl, {
+          const webhookRes = await axios.post(imageWebhookUrl, {
             prompt: input.prompt,
             userId: ctx.user.id,
             referenceImageUrl: input.referenceImageUrl,
@@ -199,23 +202,26 @@ const articlesRouter = router({
 
     // GARANTA QUE ESSA LINHA EXISTE ANTES DO IF:
     const user = await db.getUserByOpenId(ctx.user.openId);
+    const articleWebhookUrl = user?.n8nArticleWebhookUrl || ENV.n8nArticleWebhookUrl;
 
-    if (input.useWebhook && user?.n8nArticleWebhookUrl) {
+    if (input.useWebhook && articleWebhookUrl) {
       try {
-        const webhookRes = await axios.post(user.n8nArticleWebhookUrl, {
-          topic: input.topic,
-          sourceUrl: input.sourceUrl,
-          userId: ctx.user.id,
-        }, { timeout: 300000 });
+        const webhookRes = await axios.get(articleWebhookUrl, {
+          data: {
+            topic: input.topic,
+            sourceUrl: input.sourceUrl,
+            userId: ctx.user.id,
+          },
+          timeout: 300000,
+        });
 
-        console.log("[n8n articles response]", JSON.stringify(webhookRes.data));
-
-        let webhookData = webhookRes.data;
+        const rawData = webhookRes.data;
+        let webhookData = Array.isArray(rawData) ? rawData[0] : rawData;
         if (webhookData?.resposta_site && typeof webhookData.resposta_site === 'string') {
           try {
             webhookData = JSON.parse(webhookData.resposta_site);
           } catch {
-            webhookData = webhookRes.data;
+            webhookData = Array.isArray(rawData) ? rawData[0] : rawData;
           }
         }
 
@@ -224,7 +230,7 @@ const articlesRouter = router({
         summary = webhookData?.summary || webhookData?.resumo || "";
 
       } catch (err) {
-        console.warn("[Articles] n8n webhook failed, falling back to LLM:", err);
+        console.warn("[Articles] n8n webhook falhou:", err);
       }
     }
 
@@ -445,12 +451,13 @@ Responda em JSON:
       if (!post) throw new Error("Post não encontrado");
 
       const user = await db.getUserByOpenId(ctx.user.openId);
+      const postWebhookUrl = user?.n8nPostWebhookUrl || ENV.n8nPostWebhookUrl;
       let webhookResponse = "";
       let status: "published" | "failed" = "published";
 
-      if (user?.n8nPostWebhookUrl) {
+      if (postWebhookUrl) {
         try {
-          const res = await axios.post(user.n8nPostWebhookUrl, {
+          const res = await axios.post(postWebhookUrl, {
             postId: post.id,
             channel: post.channel,
             title: post.title,
@@ -510,6 +517,10 @@ const settingsRouter = router({
       n8nImageWebhookUrl: user?.n8nImageWebhookUrl || "",
       n8nArticleWebhookUrl: user?.n8nArticleWebhookUrl || "",
       n8nPostWebhookUrl: user?.n8nPostWebhookUrl || "",
+      hasChat: !!(user?.n8nWebhookUrl || ENV.n8nChatWebhookUrl),
+      hasImage: !!(user?.n8nImageWebhookUrl || ENV.n8nImageWebhookUrl),
+      hasArticle: !!(user?.n8nArticleWebhookUrl || ENV.n8nArticleWebhookUrl),
+      hasPost: !!(user?.n8nPostWebhookUrl || ENV.n8nPostWebhookUrl),
     };
   }),
 

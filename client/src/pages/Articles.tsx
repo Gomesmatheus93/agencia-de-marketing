@@ -99,7 +99,7 @@ export default function Articles() {
     generateMutation.mutate({
       topic: topic.trim(),
       sourceUrl: sourceUrl.trim() || undefined,
-      useWebhook: !!webhookSettings?.n8nArticleWebhookUrl,
+      useWebhook: webhookSettings?.hasArticle ?? false,
     });
   };
 
@@ -376,7 +376,7 @@ export default function Articles() {
               <p className="text-xs text-muted-foreground">Cole um link de notícia ou artigo de referência</p>
             </div>
 
-            {webhookSettings?.n8nArticleWebhookUrl && (
+            {webhookSettings?.hasArticle && (
               <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 rounded-lg">
                 <Sparkles className="w-3.5 h-3.5" />
                 Webhook n8n configurado — será usado para geração

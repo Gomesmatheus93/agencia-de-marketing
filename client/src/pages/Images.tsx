@@ -173,7 +173,7 @@ export default function Images() {
     if (!prompt.trim()) { toast.error("Digite um prompt para gerar a imagem"); return; }
     generateMutation.mutate({
       prompt: prompt.trim(),
-      useWebhook: !!webhookSettings?.n8nImageWebhookUrl,
+      useWebhook: webhookSettings?.hasImage ?? false,
       referenceImageUrl: referenceImageUrl || undefined,
     });
   };
@@ -256,7 +256,7 @@ export default function Images() {
           </div>
  
           <div className="flex items-center justify-between">
-            {webhookSettings?.n8nImageWebhookUrl && (
+            {webhookSettings?.hasImage && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
                 <Sparkles className="w-3 h-3" />
                 Usando webhook n8n
