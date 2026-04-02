@@ -1,5 +1,4 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -12,8 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight,
-  Bell,
+  LayoutDashboard,
+  GalleryHorizontal,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -26,9 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { toast } from "sonner";
 
 const navItems = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    path: "/dashboard",
+    color: "from-violet-500 to-purple-600",
+    description: "Visão geral",
+  },
   {
     id: "chat",
     label: "Chat com IA",
@@ -53,13 +59,13 @@ const navItems = [
     color: "from-emerald-500 to-teal-500",
     description: "Gere artigos automáticos",
   },
-    {
+  {
     id: "carousel",
-    label: "Gerar Carrossel",
-    icon: Image,
+    label: "Carrossel",
+    icon: GalleryHorizontal,
     path: "/dashboard/carousel",
-    color: "from-blue-500 to-cyan-500",
-    description: "Crie carrosseis com IA",
+    color: "from-amber-500 to-orange-500",
+    description: "Crie carrosséis com IA",
   },
   {
     id: "posts",
@@ -70,6 +76,15 @@ const navItems = [
     description: "Automatize suas redes",
   },
 ];
+
+const settingsItem = {
+  id: "settings",
+  label: "Configurações",
+  icon: Settings,
+  path: "/dashboard/settings",
+  color: "from-slate-500 to-slate-600",
+  description: "Conta e integrações",
+};
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -114,17 +129,64 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
     : "U";
 
+  const NavButton = ({ item }: { item: typeof navItems[0] }) => {
+    const Icon = item.icon;
+    const isActive = activeModule === item.id;
+    return (
+      <button
+        onClick={() => {
+          navigate(item.path);
+          setSidebarOpen(false);
+        }}
+        className={cn(
+          "w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group",
+          isActive
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+        )}
+      >
+        <div
+          className={cn(
+            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200",
+            isActive
+              ? `bg-gradient-to-br ${item.color} shadow-md`
+              : "bg-muted/60 group-hover:bg-muted"
+          )}
+        >
+          <Icon className={cn("w-4 h-4", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+        </div>
+        <div className="flex-1 text-left min-w-0">
+          <div className="truncate leading-tight">{item.label}</div>
+          <div className={cn(
+            "text-[11px] truncate mt-0.5",
+            isActive ? "text-primary/70" : "text-muted-foreground/60"
+          )}>
+            {item.description}
+          </div>
+        </div>
+        {isActive && (
+          <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+        )}
+      </button>
+    );
+  };
+
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-5 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md flex-shrink-0">
-            <img src="/logo.png" 
-            alt="krythoslab" 
-            className="w-full h-full object-cover"
+          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden">
+            <img
+              src="/logo.png"
+              alt="KrythosLab"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+                (e.target as HTMLImageElement).parentElement!.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>';
+              }}
             />
-      </div>
+          </div>
           <div className="min-w-0">
             <div className="font-bold text-sm text-foreground tracking-tight truncate">KrythosLab</div>
             <div className="text-[11px] text-muted-foreground truncate">Plataforma de Marketing</div>
@@ -133,68 +195,18 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto scrollbar-thin">
         <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
           Módulos
         </div>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeModule === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                navigate(item.path);
-                setSidebarOpen(false);
-              }}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              <div
-                className={cn(
-                  "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200",
-                  isActive
-                    ? `bg-gradient-to-br ${item.color} shadow-md`
-                    : "bg-muted/60 group-hover:bg-muted"
-                )}
-              >
-                <Icon className={cn("w-4 h-4", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <div className="truncate">{item.label}</div>
-                {isActive && (
-                  <div className="text-[11px] text-primary/70 truncate">{item.description}</div>
-                )}
-              </div>
-              {isActive && <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-            </button>
-          );
-        })}
+        {navItems.map((item) => (
+          <NavButton key={item.id} item={item} />
+        ))}
 
-        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-4">
-          Configurações
+        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
+          Sistema
         </div>
-        <button
-          onClick={() => { navigate("/dashboard/settings"); setSidebarOpen(false); }}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
-            activeModule === "settings"
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-          )}
-        >
-          <div className={cn(
-            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-            activeModule === "settings" ? "bg-gradient-to-br from-slate-500 to-slate-600 shadow-md" : "bg-muted/60 group-hover:bg-muted"
-          )}>
-            <Settings className={cn("w-4 h-4", activeModule === "settings" ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
-          </div>
-          <span>Configurações</span>
-        </button>
+        <NavButton item={settingsItem} />
       </nav>
 
       {/* User profile */}
@@ -211,7 +223,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
                 <div className="text-sm font-medium text-foreground truncate">{user?.name || "Usuário"}</div>
                 <div className="text-[11px] text-muted-foreground truncate">{user?.email || ""}</div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground flex-shrink-0" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52 glass-card border-border/50">
@@ -285,10 +296,17 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <Menu className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-white" />
+            <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center overflow-hidden">
+              <img
+                src="/logo.png"
+                alt="KrythosLab"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
             </div>
-            <span className="font-bold text-sm tracking-tight">AI Marketing</span>
+            <span className="font-bold text-sm tracking-tight">KrythosLab</span>
           </div>
           <Avatar className="w-8 h-8">
             <AvatarFallback className="gradient-primary text-white text-xs font-semibold">

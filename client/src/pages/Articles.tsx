@@ -22,10 +22,10 @@ import {
   BookOpen,
   Copy,
   Download,
-  Archive,
   Globe,
   ArrowLeft,
 } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -82,6 +82,11 @@ export default function Articles() {
       }
     },
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
+  });
+
+  const linkedinMutation = trpc.articles.publishToLinkedin.useMutation({
+    onSuccess: () => toast.success("Artigo publicado no LinkedIn!"),
+    onError: (err) => toast.error("Erro ao publicar no LinkedIn: " + err.message),
   });
 
   const deleteMutation = trpc.articles.delete.useMutation({
@@ -266,10 +271,18 @@ export default function Articles() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleStatusChange(selectedArticle, "published")}
+                        onClick={() => {
+                          handleStatusChange(selectedArticle, "published");
+                          linkedinMutation.mutate({ id: selectedArticle.id });
+                        }}
+                        disabled={linkedinMutation.isPending}
                         className="h-8 gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                       >
-                        <Globe className="w-3.5 h-3.5" /> Publicar
+                        {linkedinMutation.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Globe className="w-3.5 h-3.5" />
+                        }
+                        Publicar
                       </Button>
                     )}
                     <Button

@@ -10,4 +10,5 @@ export const ENV = {
   n8nImageWebhookUrl: process.env.N8N_IMAGE_WEBHOOK_URL ?? "",
   n8nArticleWebhookUrl: process.env.N8N_ARTICLE_WEBHOOK_URL ?? "",
   n8nPostWebhookUrl: process.env.N8N_POST_WEBHOOK_URL ?? "",
+  n8nLinkedinWebhookUrl: process.env.N8N_LINKEDIN_WEBHOOK_URL ?? "",
 };

@@ -334,6 +334,31 @@ Formato de resposta JSON:
       return saved;
     }),
 
+  publishToLinkedin: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const article = await db.getArticle(input.id, ctx.user.id);
+      if (!article) throw new TRPCError({ code: "NOT_FOUND", message: "Artigo não encontrado" });
+
+      const linkedinWebhookUrl = ENV.n8nLinkedinWebhookUrl;
+      if (!linkedinWebhookUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "Webhook do LinkedIn não configurado" });
+
+      try {
+        await axios.post(linkedinWebhookUrl, {
+          id: article.id,
+          title: article.title,
+          content: article.content,
+          summary: article.summary ?? "",
+          topic: article.topic ?? "",
+          sourceUrl: article.sourceUrl ?? null,
+          createdAt: article.createdAt,
+        }, { timeout: 30000 });
+        return { success: true };
+      } catch (err: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao publicar no LinkedIn: " + (err?.message || "falha no webhook") });
+      }
+    }),
+
   update: protectedProcedure
     .input(z.object({
       id: z.number(),

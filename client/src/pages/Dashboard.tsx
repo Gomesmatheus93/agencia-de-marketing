@@ -2,7 +2,17 @@ import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { MessageSquare, Image, FileText, Share2, ArrowRight, Sparkles, TrendingUp, Zap } from "lucide-react";
+import {
+  MessageSquare,
+  Image,
+  FileText,
+  Share2,
+  ArrowRight,
+  Sparkles,
+  TrendingUp,
+  Zap,
+  GalleryHorizontal,
+} from "lucide-react";
 
 const modules = [
   {
@@ -12,7 +22,6 @@ const modules = [
     icon: MessageSquare,
     path: "/dashboard/chat",
     gradient: "from-violet-500 to-purple-600",
-    bgLight: "from-violet-50 to-purple-50",
     stat: "Conversas",
     color: "text-violet-600",
   },
@@ -23,7 +32,6 @@ const modules = [
     icon: Image,
     path: "/dashboard/images",
     gradient: "from-blue-500 to-cyan-500",
-    bgLight: "from-blue-50 to-cyan-50",
     stat: "Imagens",
     color: "text-blue-600",
   },
@@ -34,20 +42,18 @@ const modules = [
     icon: FileText,
     path: "/dashboard/articles",
     gradient: "from-emerald-500 to-teal-500",
-    bgLight: "from-emerald-50 to-teal-50",
     stat: "Artigos",
     color: "text-emerald-600",
   },
   {
-    id: "Carrossel",
+    id: "carousel",
     title: "Carrossel de Imagens",
-    description: "Crie carrosséis de imagens dinâmicos e atraentes para suas campanhas de marketing.",
-    icon: Image,
+    description: "Crie carrosséis dinâmicos e atraentes para suas campanhas nas redes sociais.",
+    icon: GalleryHorizontal,
     path: "/dashboard/carousel",
     gradient: "from-amber-500 to-orange-500",
-    bgLight: "from-emerald-50 to-teal-50",
-    stat: "imagens",
-    color: "text-emerald-600",
+    stat: "Carrosséis",
+    color: "text-amber-600",
   },
   {
     id: "posts",
@@ -56,7 +62,6 @@ const modules = [
     icon: Share2,
     path: "/dashboard/posts",
     gradient: "from-orange-500 to-rose-500",
-    bgLight: "from-orange-50 to-rose-50",
     stat: "Posts",
     color: "text-orange-600",
   },
@@ -75,6 +80,7 @@ export default function Dashboard() {
     chat: chatStats?.count ?? 0,
     images: imageStats?.count ?? 0,
     articles: articleStats?.count ?? 0,
+    carousel: 0,
     posts: postStats?.count ?? 0,
   };
 
@@ -94,7 +100,7 @@ export default function Dashboard() {
             <span className="text-sm text-muted-foreground font-medium">Dashboard</span>
           </div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            {greeting}, <span className="gradient-text">{firstName}</span> 👋
+            {greeting}, <span className="gradient-text">{firstName}</span>
           </h1>
           <p className="text-muted-foreground mt-1">
             Sua plataforma de marketing com IA está pronta para usar.
@@ -102,7 +108,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           {modules.map((mod) => {
             const Icon = mod.icon;
             return (
@@ -153,24 +159,6 @@ export default function Dashboard() {
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        {/* Quick tip */}
-        <div className="glass-card p-5 border-l-4 border-primary animate-fade-in-up" style={{ animationDelay: "0.5s" }}>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-sm mb-1">Configure seus webhooks n8n</h3>
-              <p className="text-sm text-muted-foreground">
-                Para usar a integração completa com automações, configure as URLs dos seus webhooks n8n nas{" "}
-                <button onClick={() => navigate("/dashboard/settings")} className="text-primary hover:underline font-medium">
-                  Configurações
-                </button>.
-              </p>
-            </div>
           </div>
         </div>
       </div>
