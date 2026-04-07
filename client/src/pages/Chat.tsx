@@ -58,7 +58,6 @@ export default function Chat() {
     { conversationId: activeConvId! },
     { enabled: !!activeConvId }
   );
-  const { data: webhookSettings } = trpc.settings.getWebhooks.useQuery();
 
   const createConv = trpc.chat.createConversation.useMutation({
     onSuccess: (conv) => {
@@ -69,8 +68,8 @@ export default function Chat() {
 
   const sendMsg = trpc.chat.sendMessage.useMutation({
     onMutate: () => setIsTyping(true),
-    onSuccess: () => {
-      utils.chat.getMessages.invalidate({ conversationId: activeConvId! });
+    onSuccess: (_result, variables) => {
+      utils.chat.getMessages.invalidate({ conversationId: variables.conversationId });
       utils.chat.getConversations.invalidate();
       utils.chat.getStats.invalidate();
       setIsTyping(false);
@@ -99,6 +98,12 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
+  useEffect(() => {
+    if (!activeConvId && conversations.length > 0) {
+      setActiveConvId(conversations[0].id);
+    }
+  }, [activeConvId, conversations]);
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
 
@@ -113,7 +118,7 @@ export default function Chat() {
     sendMsg.mutate({
       conversationId: convId,
       content: msg,
-      useWebhook: webhookSettings?.hasChat ?? false,
+      useWebhook: false,
     });
   };
 
@@ -152,12 +157,15 @@ export default function Chat() {
           )}
         >
           <div className="p-4 border-b border-border/30 flex items-center justify-between">
-            <h2 className="font-semibold text-sm text-foreground">Conversas</h2>
+            <div>
+              <h2 className="font-semibold text-sm text-foreground">Historico</h2>
+              <p className="text-[11px] text-muted-foreground">Conversas salvas por usuario</p>
+            </div>
             <Button
               size="sm"
               onClick={() => createConv.mutate({})}
               disabled={createConv.isPending}
-              className="h-8 gap-1.5 text-xs gradient-primary text-white border-0 hover:opacity-90"
+              className="h-8 gap-1.5 rounded-lg border-0 bg-emerald-600 text-xs text-white hover:bg-emerald-700"
             >
               <Plus className="w-3.5 h-3.5" />
               Nova
@@ -168,7 +176,7 @@ export default function Chat() {
             {loadingConvs ? (
               <div className="space-y-2 p-2">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 shimmer rounded-xl" />
+                  <div key={i} className="h-12 shimmer rounded-lg" />
                 ))}
               </div>
             ) : conversations.length === 0 ? (
@@ -182,7 +190,7 @@ export default function Chat() {
                 <div
                   key={conv.id}
                   className={cn(
-                    "group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150",
+                    "group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150",
                     activeConvId === conv.id
                       ? "bg-primary/10 text-primary"
                       : "hover:bg-accent/50 text-muted-foreground hover:text-foreground"
@@ -248,51 +256,49 @@ export default function Chat() {
               <ChevronLeft className={cn("w-4 h-4 transition-transform", !sidebarVisible && "rotate-180")} />
             </Button>
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center flex-shrink-0">
                 <Bot className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="min-w-0">
                 <div className="font-semibold text-sm text-foreground truncate">
-                  {activeConv?.title || "Chat com IA"}
+                  {activeConv?.title || "Agente de conversa"}
                 </div>
                 <div className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {webhookSettings?.hasChat ? "n8n conectado" : "IA integrada"}
+                  Pesquisa breve em tempo real | historico salvo por usuario
                 </div>
               </div>
             </div>
-            {webhookSettings?.hasChat && (
-              <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
-                <Zap className="w-3 h-3" />
-                n8n ativo
-              </div>
-            )}
+            <div className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700 dark:bg-emerald-950/30 sm:flex">
+              <Zap className="w-3 h-3" />
+              Agente ativo
+            </div>
           </div>
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
             {!activeConvId ? (
               <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto space-y-6">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-xl">
+                <div className="w-16 h-16 rounded-lg bg-emerald-600 flex items-center justify-center shadow-xl">
                   <Sparkles className="w-8 h-8 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-foreground mb-2">Como posso ajudar?</h2>
+                  <h2 className="text-xl font-bold text-foreground mb-2">Agente de conversa e pesquisa</h2>
                   <p className="text-sm text-muted-foreground">
-                    Sou seu assistente de marketing digital. Posso ajudar com criação de conteúdo, estratégias, copywriting e muito mais.
+                    Pergunte sobre estrategia, conteudo, vendas, cotacao do dolar, noticias atuais ou envie links para eu analisar antes de responder.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 w-full">
                   {[
-                    "Crie um post para Instagram sobre minha empresa",
-                    "Sugira estratégias de marketing digital",
-                    "Escreva um email de boas-vindas para clientes",
-                    "Como melhorar meu SEO?",
+                    "Qual e o valor atual do dolar?",
+                    "Explique esse assunto para um cliente leigo",
+                    "Crie uma resposta comercial para um lead",
+                    "Compare duas estrategias e recomende a melhor",
                   ].map((suggestion) => (
                     <button
                       key={suggestion}
                       onClick={() => setInput(suggestion)}
-                      className="text-left text-xs p-3 glass-card hover:scale-[1.02] transition-all duration-200 text-muted-foreground hover:text-foreground"
+                      className="rounded-lg border border-border/40 bg-background/70 p-3 text-left text-xs text-muted-foreground transition-all duration-200 hover:border-emerald-300 hover:text-foreground"
                     >
                       {suggestion}
                     </button>
@@ -303,7 +309,7 @@ export default function Chat() {
               <div className="space-y-4">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className={cn("flex gap-3", i % 2 === 0 && "flex-row-reverse")}>
-                    <div className="w-8 h-8 rounded-xl shimmer flex-shrink-0" />
+                    <div className="w-8 h-8 rounded-lg shimmer flex-shrink-0" />
                     <div className={cn("space-y-1.5", i % 2 === 0 ? "items-end" : "items-start", "flex flex-col")}>
                       <div className="h-4 w-48 shimmer rounded-full" />
                       <div className="h-4 w-32 shimmer rounded-full" />
@@ -328,10 +334,10 @@ export default function Chat() {
                 >
                   <div
                     className={cn(
-                      "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md",
+                      "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md",
                       msg.role === "user"
-                        ? "bg-gradient-to-br from-violet-500 to-purple-600"
-                        : "bg-gradient-to-br from-slate-600 to-slate-700"
+                        ? "bg-emerald-600"
+                        : "bg-slate-700"
                     )}
                   >
                     {msg.role === "user" ? (
@@ -343,9 +349,9 @@ export default function Chat() {
                   <div className={cn("max-w-[75%] space-y-1", msg.role === "user" ? "items-end" : "items-start", "flex flex-col")}>
                     <div
                       className={cn(
-                        "px-4 py-3 rounded-2xl text-sm leading-relaxed",
+                        "px-4 py-3 rounded-lg text-sm leading-relaxed",
                         msg.role === "user"
-                          ? "bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-tr-sm"
+                          ? "bg-emerald-600 text-white rounded-tr-sm"
                           : "glass-card text-foreground rounded-tl-sm"
                       )}
                     >
@@ -368,10 +374,10 @@ export default function Chat() {
             {/* Typing indicator */}
             {isTyping && (
               <div className="flex gap-3 animate-fade-in-up">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-md">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
-                <div className="glass-card px-4 py-3 rounded-2xl rounded-tl-sm">
+                <div className="glass-card px-4 py-3 rounded-lg rounded-tl-sm">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-muted-foreground typing-dot" />
                     <div className="w-2 h-2 rounded-full bg-muted-foreground typing-dot" />
@@ -392,8 +398,8 @@ export default function Chat() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Escreva sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
-                  className="resize-none min-h-[48px] max-h-[200px] pr-12 glass border-border/50 focus:border-primary/50 rounded-2xl text-sm"
+                  placeholder="Pergunte algo ou peça uma pesquisa breve... (Enter envia, Shift+Enter quebra linha)"
+                  className="resize-none min-h-[48px] max-h-[200px] pr-12 glass border-border/50 focus:border-emerald-500/50 rounded-lg text-sm"
                   rows={1}
                   disabled={isTyping}
                 />
@@ -402,7 +408,7 @@ export default function Chat() {
                 onClick={handleSend}
                 disabled={!input.trim() || isTyping}
                 size="icon"
-                className="w-11 h-11 rounded-xl gradient-primary text-white border-0 hover:opacity-90 flex-shrink-0 shadow-md"
+                className="w-11 h-11 rounded-lg bg-emerald-600 text-white border-0 hover:bg-emerald-700 flex-shrink-0 shadow-md"
               >
                 {isTyping ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

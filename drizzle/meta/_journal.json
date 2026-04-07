@@ -22,6 +22,20 @@
       "when": 1774459792582,
       "tag": "0002_mixed_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775460000000,
+      "tag": "0003_calm_carousel",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775548800000,
+      "tag": "0004_article_cover_image",
+      "breakpoints": true
     }
   ]
 }

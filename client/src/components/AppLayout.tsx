@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -10,6 +11,8 @@ import {
   Sparkles,
   LogOut,
   Menu,
+  Moon,
+  Sun,
   X,
   LayoutDashboard,
   GalleryHorizontal,
@@ -93,8 +96,17 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { user, isAuthenticated, loading } = useAuth();
+  const { theme, toggleTheme, switchable } = useTheme();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isDarkTheme = theme === "dark";
+  const themeToggleLabel = isDarkTheme ? "Tema claro" : "Tema escuro";
+  const themeToggleDescription = isDarkTheme ? "Voltar ao visual claro" : "Usar visual escuro";
+  const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
+  const handleThemeToggle = () => {
+    if (!switchable || !toggleTheme) return;
+    toggleTheme();
+  };
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {
       window.location.href = "/";
@@ -211,6 +223,21 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
+        <button
+          type="button"
+          onClick={handleThemeToggle}
+          disabled={!switchable || !toggleTheme}
+          className="mb-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 group"
+        >
+          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0 transition-colors group-hover:bg-muted">
+            <ThemeToggleIcon className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{themeToggleLabel}</div>
+            <div className="text-[11px] text-muted-foreground truncate">{themeToggleDescription}</div>
+          </div>
+        </button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200 group">
@@ -229,6 +256,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="gap-2">
               <Settings className="w-4 h-4" />
               Configurações
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleThemeToggle} className="gap-2" disabled={!switchable || !toggleTheme}>
+              <ThemeToggleIcon className="w-4 h-4" />
+              {themeToggleLabel}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -308,11 +339,24 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             </div>
             <span className="font-bold text-sm tracking-tight">KrythosLab</span>
           </div>
-          <Avatar className="w-8 h-8">
-            <AvatarFallback className="gradient-primary text-white text-xs font-semibold">
-              {userInitials}
-            </AvatarFallback>
-          </Avatar>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleThemeToggle}
+              disabled={!switchable || !toggleTheme}
+              className="w-9 h-9 rounded-lg"
+              aria-label={themeToggleLabel}
+              title={themeToggleLabel}
+            >
+              <ThemeToggleIcon className="w-4 h-4" />
+            </Button>
+            <Avatar className="w-8 h-8">
+              <AvatarFallback className="gradient-primary text-white text-xs font-semibold">
+                {userInitials}
+              </AvatarFallback>
+            </Avatar>
+          </div>
         </header>
 
         {/* Page content */}

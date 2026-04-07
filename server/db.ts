@@ -85,6 +85,7 @@ export async function updateUserWebhooks(
     n8nImageWebhookUrl?: string | null;
     n8nArticleWebhookUrl?: string | null;
     n8nPostWebhookUrl?: string | null;
+    n8nCarouselWebhookUrl?: string | null;
   }
 ) {
   const db = await getDb();
@@ -222,7 +223,14 @@ export async function getArticle(id: number, userId: number): Promise<Article | 
 
 export async function saveArticle(
   userId: number,
-  data: { title: string; topic?: string; sourceUrl?: string; content: string; summary?: string }
+  data: {
+    title: string;
+    topic?: string;
+    sourceUrl?: string;
+    coverImageUrl?: string;
+    content: string;
+    summary?: string;
+  }
 ): Promise<Article> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -235,7 +243,12 @@ export async function saveArticle(
 export async function updateArticle(
   id: number,
   userId: number,
-  data: Partial<{ title: string; content: string; status: "draft" | "published" | "archived" }>
+  data: Partial<{
+    title: string;
+    content: string;
+    coverImageUrl: string;
+    status: "draft" | "published" | "archived";
+  }>
 ) {
   const db = await getDb();
   if (!db) return;

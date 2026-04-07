@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
   const [postUrl, setPostUrl] = useState("");
+  const [carouselUrl, setCarouselUrl] = useState("");
 
   useEffect(() => {
     if (webhooks) {
@@ -37,6 +38,7 @@ export default function SettingsPage() {
       setImageUrl(webhooks.n8nImageWebhookUrl || "");
       setArticleUrl(webhooks.n8nArticleWebhookUrl || "");
       setPostUrl(webhooks.n8nPostWebhookUrl || "");
+      setCarouselUrl(webhooks.n8nCarouselWebhookUrl || "");
     }
   }, [webhooks]);
 
@@ -53,6 +55,7 @@ export default function SettingsPage() {
       n8nImageWebhookUrl: imageUrl || undefined,
       n8nArticleWebhookUrl: articleUrl || undefined,
       n8nPostWebhookUrl: postUrl || undefined,
+      n8nCarouselWebhookUrl: carouselUrl || undefined,
     });
   };
 
@@ -99,23 +102,23 @@ export default function SettingsPage() {
       description: "Recebe post e publica nas redes sociais via n8n",
       icon: Share2,
       gradient: "from-blue-500 to-rose-500",
-      value: imageUrl,
-      onChange: setImageUrl,
-      placeholder: "https://seu-n8n.com/webhook/carousel",
+      value: postUrl,
+      onChange: setPostUrl,
+      placeholder: "https://seu-n8n.com/webhook/posts",
       payload: `{ "channel": "instagram|linkedin|newsletter", "content": "...", "title": "...", "userId": 1 }`,
       response: `{ "success": true }`,
     },
     {
       id: "carousel",
-      label: "Webhook — Geração de carrossel",
-      description: "Recebe prompt e retorna URL da imagem gerada",
+      label: "Webhook — Postagem automática de carrossel",
+      description: "Recebe o carrossel pronto e dispara a publicação automática pelo n8n.",
       icon: Image,
       gradient: "from-orange-500 to-rose-500",
-      value: postUrl,
-      onChange: setPostUrl,
+      value: carouselUrl,
+      onChange: setCarouselUrl,
       placeholder: "https://seu-n8n.com/webhook/carousel",
-      payload: `{ "prompt": "...", "userId": 1 }`,
-      response: `{ "imageUrl": "https://... }`,
+      payload: `{ "type": "carousel_publish", "channel": "instagram", "carousel": { "topic": "...", "caption": "...", "slides": [...] }, "userId": 1 }`,
+      response: `{ "success": true }`,
     },
   ];
 

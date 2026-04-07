@@ -23,9 +23,17 @@ import {
   Copy,
   Download,
   Globe,
+  ImageIcon,
   ArrowLeft,
+  Search,
+  Newspaper,
+  ExternalLink,
+  Zap,
+  Clock,
+  RefreshCw,
+  Send,
+  Settings2,
 } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -34,11 +42,52 @@ type Article = {
   title: string;
   topic: string | null;
   sourceUrl: string | null;
+  coverImageUrl: string | null;
   content: string;
   summary: string | null;
   status: "draft" | "published" | "archived";
   createdAt: Date;
 };
+
+type EnergyNewsItem = {
+  title: string;
+  url: string;
+  source: string;
+  excerpt: string | null;
+  publishedAt: string | null;
+};
+
+// Coloque aqui seus sites favoritos de pesquisa sobre energia.
+const FAVORITE_ENERGY_RESEARCH_SITES = [
+  "https://canalsolar.com.br/",
+  "https://www.portalsolar.com.br",
+  "https://www.canalenergia.com.br",
+  "https://agenciainfra.com/blog",
+  "https://eixos.com.br/",
+  "https://petronoticias.com.br/",
+  "https://agenciabrasil.ebc.com.br/",
+  "https://www.pv-magazine-brasil.com",
+];
+
+function parseFavoriteSites(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((site) => site.trim())
+    .filter(Boolean)
+    .map((site) => (/^https?:\/\//i.test(site) ? site : `https://${site}`));
+}
+
+function formatNewsDate(value: string | null) {
+  if (!value) return "Data nao identificada";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Data nao identificada";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
 
 const statusConfig = {
   draft: { label: "Rascunho", color: "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" },
@@ -55,9 +104,51 @@ export default function Articles() {
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [showGenerator, setShowGenerator] = useState(false);
+  const [researchTopic, setResearchTopic] = useState("energia");
+  const [favoriteSites, setFavoriteSites] = useState(FAVORITE_ENERGY_RESEARCH_SITES.join("\n"));
+  const [newsResults, setNewsResults] = useState<EnergyNewsItem[]>([]);
+  const [selectedNews, setSelectedNews] = useState<EnergyNewsItem | null>(null);
 
   const { data: articles = [], isLoading } = trpc.articles.getAll.useQuery();
   const { data: webhookSettings } = trpc.settings.getWebhooks.useQuery();
+
+  const researchNewsMutation = trpc.articles.researchEnergyNews.useMutation({
+    onSuccess: (result) => {
+      setNewsResults(result.items);
+      setSelectedNews(result.items[0] ?? null);
+
+      if (result.failedSites.length > 0) {
+        toast.warning(`Pesquisa concluida, mas ${result.failedSites.length} site(s) falharam.`);
+        return;
+      }
+
+      toast.success("Agente pesquisador encontrou as noticias mais recentes.");
+    },
+    onError: (err) => toast.error("Erro ao pesquisar noticias: " + err.message),
+  });
+
+  const generateFromNewsMutation = trpc.articles.generateFromNews.useMutation({
+    onSuccess: (article) => {
+      utils.articles.getAll.invalidate();
+      utils.articles.getStats.invalidate();
+      toast.success("Artigo e capa criados pelos agentes!");
+      setShowGenerator(false);
+      setSelectedArticle(article as Article);
+      setIsEditing(false);
+    },
+    onError: (err) => toast.error("Erro ao criar artigo com capa: " + err.message),
+  });
+
+  const regenerateCoverMutation = trpc.articles.regenerateCover.useMutation({
+    onSuccess: (result) => {
+      utils.articles.getAll.invalidate();
+      toast.success("Nova capa criada pelo agente designer!");
+      if (selectedArticle) {
+        setSelectedArticle({ ...selectedArticle, coverImageUrl: result.coverImageUrl });
+      }
+    },
+    onError: (err) => toast.error("Erro no agente designer: " + err.message),
+  });
 
   const generateMutation = trpc.articles.generate.useMutation({
     onSuccess: (article) => {
@@ -84,11 +175,6 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
 
-  const linkedinMutation = trpc.articles.publishToLinkedin.useMutation({
-    onSuccess: () => toast.success("Artigo publicado no LinkedIn!"),
-    onError: (err) => toast.error("Erro ao publicar no LinkedIn: " + err.message),
-  });
-
   const deleteMutation = trpc.articles.delete.useMutation({
     onSuccess: () => {
       utils.articles.getAll.invalidate();
@@ -108,6 +194,35 @@ export default function Articles() {
     });
   };
 
+  const handleResearchNews = () => {
+    const sites = parseFavoriteSites(favoriteSites);
+
+    if (sites.length === 0) {
+      toast.error("Adicione pelo menos um site para a pesquisa.");
+      return;
+    }
+
+    setNewsResults([]);
+    setSelectedNews(null);
+    researchNewsMutation.mutate({
+      sites,
+      topic: researchTopic.trim() || "energia",
+    });
+  };
+
+  const handleGenerateFromNews = () => {
+    if (!selectedNews) {
+      toast.error("Escolha uma noticia antes de enviar para o redator.");
+      return;
+    }
+
+    generateFromNewsMutation.mutate({ news: selectedNews });
+  };
+
+  const handleRegenerateCover = (article: Article) => {
+    regenerateCoverMutation.mutate({ id: article.id });
+  };
+
   const startEdit = (article: Article) => {
     setEditContent(article.content);
     setEditTitle(article.title);
@@ -125,7 +240,8 @@ export default function Articles() {
   };
 
   const handleDownload = (article: Article) => {
-    const content = `# ${article.title}\n\n${article.content}`;
+    const cover = article.coverImageUrl ? `![Capa do artigo](${article.coverImageUrl})\n\n` : "";
+    const content = `${cover}# ${article.title}\n\n${article.content}`;
     const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -166,10 +282,10 @@ export default function Articles() {
             <Button
               size="sm"
               onClick={() => setShowGenerator(true)}
-              className="h-8 gap-1.5 text-xs gradient-primary text-white border-0 hover:opacity-90"
+              className="h-8 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Novo
+              <Newspaper className="w-3.5 h-3.5" />
+              Pesquisar
             </Button>
           </div>
 
@@ -196,6 +312,13 @@ export default function Articles() {
                       : "hover:bg-accent/50"
                   )}
                 >
+                  {article.coverImageUrl && (
+                    <img
+                      src={article.coverImageUrl}
+                      alt="Capa do artigo"
+                      className="mb-2 h-24 w-full rounded-lg object-cover"
+                    />
+                  )}
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{article.title}</p>
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium", statusConfig[article.status].color)}>
@@ -245,7 +368,7 @@ export default function Articles() {
                   <span className="text-[10px] text-muted-foreground">{formatDate(selectedArticle.createdAt)}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="flex flex-shrink-0 items-center gap-1.5 overflow-x-auto scrollbar-thin">
                 {isEditing ? (
                   <>
                     <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} className="h-8 gap-1.5 text-xs gradient-primary text-white border-0">
@@ -258,6 +381,20 @@ export default function Articles() {
                   </>
                 ) : (
                   <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRegenerateCover(selectedArticle)}
+                      className="h-8 gap-1.5 text-xs"
+                      disabled={regenerateCoverMutation.isPending}
+                    >
+                      {regenerateCoverMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      Capa
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => startEdit(selectedArticle)} className="h-8 gap-1.5 text-xs">
                       <Edit2 className="w-3.5 h-3.5" /> Editar
                     </Button>
@@ -271,18 +408,10 @@ export default function Articles() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          handleStatusChange(selectedArticle, "published");
-                          linkedinMutation.mutate({ id: selectedArticle.id });
-                        }}
-                        disabled={linkedinMutation.isPending}
+                        onClick={() => handleStatusChange(selectedArticle, "published")}
                         className="h-8 gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                       >
-                        {linkedinMutation.isPending
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Globe className="w-3.5 h-3.5" />
-                        }
-                        Publicar
+                        <Globe className="w-3.5 h-3.5" /> Publicar
                       </Button>
                     )}
                     <Button
@@ -309,6 +438,40 @@ export default function Articles() {
                 />
               ) : (
                 <div className="max-w-3xl mx-auto">
+                  {selectedArticle.coverImageUrl ? (
+                    <div className="mb-6 overflow-hidden rounded-lg border border-border/40 bg-background/70">
+                      <img
+                        src={selectedArticle.coverImageUrl}
+                        alt={`Capa do artigo ${selectedArticle.title}`}
+                        className="aspect-square w-full object-cover sm:aspect-[16/9]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-dashed border-border/60 bg-background/70 p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Este artigo ainda nao tem capa</p>
+                          <p className="text-xs text-muted-foreground">Gere uma imagem ultrarrealista para postar no LinkedIn.</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handleRegenerateCover(selectedArticle)}
+                        disabled={regenerateCoverMutation.isPending}
+                        className="shrink-0 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        {regenerateCoverMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ImageIcon className="h-4 w-4" />
+                        )}
+                        Gerar capa
+                      </Button>
+                    </div>
+                  )}
                   {selectedArticle.topic && (
                     <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
                       <Tag className="w-3.5 h-3.5" />
@@ -350,68 +513,270 @@ export default function Articles() {
 
       {/* Generator Dialog */}
       <Dialog open={showGenerator} onOpenChange={setShowGenerator}>
-        <DialogContent className="glass-card border-border/50 max-w-lg">
+        <DialogContent className="glass-card grid h-[min(94vh,900px)] w-[min(96vw,1180px)] max-w-none grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-border/50 sm:max-w-none">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-white" />
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center">
+                <Zap className="w-3.5 h-3.5 text-white" />
               </div>
-              Gerar Novo Artigo
+              Agente de Artigos de Energia
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-muted-foreground" />
-                Tema do artigo *
-              </label>
-              <Input
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="Ex: Marketing digital para pequenas empresas"
-                className="glass border-border/50 focus:border-primary/50"
-                disabled={generateMutation.isPending}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Link className="w-3.5 h-3.5 text-muted-foreground" />
-                URL de referência (opcional)
-              </label>
-              <Input
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder="https://exemplo.com/noticia"
-                type="url"
-                className="glass border-border/50 focus:border-primary/50"
-                disabled={generateMutation.isPending}
-              />
-              <p className="text-xs text-muted-foreground">Cole um link de notícia ou artigo de referência</p>
-            </div>
+          <div className="grid min-h-0 gap-5 overflow-y-auto pr-1 scrollbar-thin lg:grid-cols-[420px_minmax(0,1fr)] lg:overflow-hidden lg:pr-0">
+            <div className="space-y-5 lg:overflow-y-auto lg:pr-1 lg:scrollbar-thin">
+              <section className="space-y-4 rounded-lg border border-border/50 bg-background/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Agente pesquisador</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Busque 5 noticias recentes nas fontes abaixo.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="gap-1">
+                    <Search className="w-3 h-3" />
+                    Pesquisa
+                  </Badge>
+                </div>
 
-            {webhookSettings?.hasArticle && (
-              <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 rounded-lg">
-                <Sparkles className="w-3.5 h-3.5" />
-                Webhook n8n configurado — será usado para geração
-              </div>
-            )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    Sites favoritos
+                  </label>
+                  <Textarea
+                    value={favoriteSites}
+                    onChange={(e) => setFavoriteSites(e.target.value)}
+                    className="min-h-32 resize-none glass border-border/50 text-sm"
+                    placeholder={"https://site-de-energia.com.br\nhttps://outro-site.com/noticias"}
+                    disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Tambem da para editar direto no codigo em FAVORITE_ENERGY_RESEARCH_SITES.
+                  </p>
+                </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowGenerator(false)} className="flex-1" disabled={generateMutation.isPending}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleGenerate}
-                disabled={!topic.trim() || generateMutation.isPending}
-                className="flex-1 gradient-primary text-white border-0 hover:opacity-90 gap-2"
-              >
-                {generateMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</>
-                ) : (
-                  <><Sparkles className="w-4 h-4" /> Gerar Artigo</>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                    Termo de pesquisa
+                  </label>
+                  <Input
+                    value={researchTopic}
+                    onChange={(e) => setResearchTopic(e.target.value)}
+                    placeholder="energia, solar, eolica..."
+                    className="glass border-border/50 focus:border-emerald-500/50"
+                    disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
+                  />
+                </div>
+
+                <Button
+                  onClick={handleResearchNews}
+                  disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
+                  className="w-full gap-2 border-0 bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  {researchNewsMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Pesquisando noticias...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4" />
+                      Buscar 5 noticias
+                    </>
+                  )}
+                </Button>
+              </section>
+
+              <section className="space-y-4 rounded-lg border border-border/50 bg-background/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Geracao manual</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Crie um artigo por tema ou URL de referencia.
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="gap-1">
+                    <Plus className="w-3 h-3" />
+                    Livre
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                    Tema do artigo
+                  </label>
+                  <Input
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Ex: Como a energia solar reduz custos"
+                    className="glass border-border/50 focus:border-emerald-500/50"
+                    disabled={generateMutation.isPending}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Link className="w-3.5 h-3.5 text-muted-foreground" />
+                    URL de referencia
+                  </label>
+                  <Input
+                    value={sourceUrl}
+                    onChange={(e) => setSourceUrl(e.target.value)}
+                    placeholder="https://exemplo.com/noticia"
+                    type="url"
+                    className="glass border-border/50 focus:border-emerald-500/50"
+                    disabled={generateMutation.isPending}
+                  />
+                </div>
+
+                {webhookSettings?.hasArticle && (
+                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 rounded-lg">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Webhook n8n configurado para geracao manual.
+                  </div>
                 )}
-              </Button>
+
+                <Button
+                  onClick={handleGenerate}
+                  disabled={!topic.trim() || generateMutation.isPending}
+                  variant="outline"
+                  className="w-full gap-2"
+                >
+                  {generateMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Gerando artigo...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Gerar por tema
+                    </>
+                  )}
+                </Button>
+              </section>
             </div>
+
+            <section className="flex min-h-[520px] flex-col rounded-lg border border-border/50 bg-background/70 p-4 lg:min-h-0">
+              <div className="flex items-start justify-between gap-3 border-b border-border/40 pb-4">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Noticias encontradas</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Escolha uma noticia e envie para o redator.
+                  </p>
+                </div>
+                <Badge variant="outline">{newsResults.length}/5</Badge>
+              </div>
+
+              <div className="flex-1 overflow-y-auto py-4 scrollbar-thin">
+                {researchNewsMutation.isPending ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map((item) => (
+                      <div key={item} className="rounded-lg border border-border/30 p-4">
+                        <div className="h-3 w-28 rounded-full bg-muted shimmer" />
+                        <div className="mt-4 h-4 rounded-full bg-muted shimmer" />
+                        <div className="mt-2 h-4 w-4/5 rounded-full bg-muted shimmer" />
+                        <div className="mt-3 h-3 w-2/3 rounded-full bg-muted shimmer" />
+                      </div>
+                    ))}
+                  </div>
+                ) : newsResults.length === 0 ? (
+                  <div className="flex h-full min-h-[360px] flex-col items-center justify-center text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30">
+                      <Newspaper className="h-7 w-7" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">Nenhuma pesquisa feita ainda</p>
+                    <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                      Adicione suas fontes favoritas e busque noticias recentes sobre energia.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 pr-1">
+                    {newsResults.map((news, index) => {
+                      const isSelected = selectedNews?.url === news.url;
+
+                      return (
+                        <article
+                          key={news.url}
+                          className={cn(
+                            "rounded-lg border p-4 transition-all",
+                            isSelected
+                              ? "border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/20"
+                              : "border-border/40 bg-background/70 hover:border-emerald-300"
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedNews(news)}
+                            className="w-full text-left"
+                          >
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                              <Badge variant={isSelected ? "default" : "outline"} className={isSelected ? "bg-emerald-600 text-white" : ""}>
+                                #{index + 1}
+                              </Badge>
+                              <span className="inline-flex items-center gap-1">
+                                <Globe className="h-3 w-3" />
+                                {news.source}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatNewsDate(news.publishedAt)}
+                              </span>
+                            </div>
+                            <h3 className="mt-3 text-sm font-semibold leading-snug text-foreground">
+                              {news.title}
+                            </h3>
+                            {news.excerpt && (
+                              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                {news.excerpt}
+                              </p>
+                            )}
+                          </button>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className={cn(
+                              "text-xs font-medium",
+                              isSelected ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"
+                            )}>
+                              {isSelected ? "Selecionada para o redator" : "Clique para selecionar"}
+                            </span>
+                            <a
+                              href={news.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300"
+                            >
+                              Fonte
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/40 pt-4">
+                <Button
+                  onClick={handleGenerateFromNews}
+                  disabled={!selectedNews || generateFromNewsMutation.isPending || researchNewsMutation.isPending}
+                  className="w-full gap-2 border-0 bg-slate-900 text-white hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-700"
+                >
+                  {generateFromNewsMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Redator e designer trabalhando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Criar artigo com capa
+                    </>
+                  )}
+                </Button>
+              </div>
+            </section>
           </div>
         </DialogContent>
       </Dialog>

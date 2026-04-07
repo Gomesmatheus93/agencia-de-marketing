@@ -5,6 +5,10 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
+import { generateCarouselWithAgent } from "./_core/carouselAgent";
+import { generateArticleCoverWithDesigner } from "./_core/articleDesignerAgent";
+import { generateChatAgentReply } from "./_core/chatAgent";
+import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import { storagePut } from "./storage";
 import * as db from "./db";
 import { ENV } from "./_core/env";
@@ -82,7 +86,18 @@ const chatRouter = router({
         }
       }
 
-      // Fallback to built-in LLM
+      // Fallback to built-in research/chat agent
+      if (!assistantContent) {
+        try {
+          assistantContent = await generateChatAgentReply({
+            history: historyMessages,
+            userName: user?.name,
+          });
+        } catch (err) {
+          console.warn("[Chat] research agent failed, falling back to basic LLM:", err);
+        }
+      }
+
       if (!assistantContent) {
         const llmResponse = await invokeLLM({
           messages: [
@@ -178,6 +193,558 @@ const imagesRouter = router({
 });
 
 // ─── Articles Router ──────────────────────────────────────────────────────────
+type EnergyNewsItem = {
+  title: string;
+  url: string;
+  source: string;
+  excerpt: string | null;
+  publishedAt: string | null;
+};
+
+type RankedEnergyNewsItem = EnergyNewsItem & {
+  order: number;
+  keywordScore: number;
+};
+
+const NEWS_AGENT_USER_AGENT =
+  "Mozilla/5.0 (compatible; AgenciaMarketingEnergyResearchBot/1.0; +https://localhost)";
+
+const NEWS_KEYWORDS = [
+  "energia",
+  "energetic",
+  "eletric",
+  "solar",
+  "eolica",
+  "hidro",
+  "petroleo",
+  "gas",
+  "renovavel",
+  "aneel",
+  "ons",
+  "mme",
+  "tarifa",
+  "hidrogenio",
+  "combustivel",
+  "power",
+  "energy",
+  "electric",
+  "wind",
+  "oil",
+  "renewable",
+];
+
+const ARTICLE_CONTEXT_CHAR_LIMIT = 18000;
+
+const selectedNewsSchema = z.object({
+  title: z.string().min(3).max(500),
+  url: z.string().url(),
+  source: z.string().min(1).max(200),
+  excerpt: z.string().nullable().optional(),
+  publishedAt: z.string().nullable().optional(),
+});
+
+function decodeHtml(value: string) {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+
+  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (_, entity: string) => {
+    const normalized = entity.toLowerCase();
+
+    if (normalized.startsWith("#x")) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : "";
+    }
+
+    if (normalized.startsWith("#")) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : "";
+    }
+
+    return namedEntities[normalized] ?? `&${entity};`;
+  });
+}
+
+function compactText(value: string) {
+  return decodeHtml(value)
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripHtml(value: string) {
+  return compactText(
+    value
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  );
+}
+
+function getAttrValue(tag: string, attr: string) {
+  const match = tag.match(new RegExp(`${attr}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return compactText(match?.[2] || match?.[3] || match?.[4] || "");
+}
+
+function getTagValue(block: string, tag: string) {
+  const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = block.match(new RegExp(`<${escapedTag}\\b[^>]*>([\\s\\S]*?)<\\/${escapedTag}>`, "i"));
+  return match ? stripHtml(match[1]) : "";
+}
+
+function getFirstTagValue(block: string, tags: string[]) {
+  for (const tag of tags) {
+    const value = getTagValue(block, tag);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function toAbsoluteHttpUrl(href: string, baseUrl: string) {
+  const trimmed = href.trim();
+  if (!trimmed || /^(#|javascript:|mailto:|tel:)/i.test(trimmed)) return "";
+
+  try {
+    const url = new URL(trimmed, baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function getHeaderValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toPublicAssetUrl(
+  req: { protocol?: string; headers?: Record<string, string | string[] | undefined> },
+  url: string
+) {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+
+  const host =
+    getHeaderValue(req.headers?.["x-forwarded-host"]) ||
+    getHeaderValue(req.headers?.host);
+  const protocol =
+    getHeaderValue(req.headers?.["x-forwarded-proto"]) ||
+    req.protocol ||
+    "http";
+
+  if (!host) return url;
+
+  return new URL(url, `${protocol}://${host}`).toString();
+}
+
+function inferSourceName(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function normalizeNewsUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    parsed.searchParams.delete("utm_source");
+    parsed.searchParams.delete("utm_medium");
+    parsed.searchParams.delete("utm_campaign");
+    parsed.searchParams.delete("utm_term");
+    parsed.searchParams.delete("utm_content");
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return url.replace(/\/$/, "");
+  }
+}
+
+function normalizeDate(value: string) {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
+}
+
+function getMetaContent(html: string, keys: string[]) {
+  const normalizedKeys = keys.map((key) => key.toLowerCase());
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
+
+  for (const tag of metaTags) {
+    const marker =
+      getAttrValue(tag, "property") ||
+      getAttrValue(tag, "name") ||
+      getAttrValue(tag, "itemprop");
+
+    if (marker && normalizedKeys.includes(marker.toLowerCase())) {
+      const content = getAttrValue(tag, "content");
+      if (content) return content;
+    }
+  }
+
+  return "";
+}
+
+function keywordScore(value: string, topic = "") {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const topicKeywords = topic
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[\s,;]+/)
+    .filter((keyword) => keyword.length >= 3);
+
+  const baseScore = NEWS_KEYWORDS.reduce(
+    (score, keyword) => score + (normalized.includes(keyword) ? 1 : 0),
+    0
+  );
+  const topicScore = topicKeywords.reduce(
+    (score, keyword) => score + (normalized.includes(keyword) ? 2 : 0),
+    0
+  );
+
+  return baseScore + topicScore;
+}
+
+function looksLikeArticleUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.toLowerCase();
+    const segments = path.split("/").filter(Boolean);
+
+    return (
+      /(noticia|noticias|news|article|artigo|energia|mercado|economia|negocios|politica|sustentabilidade)/i.test(path) ||
+      /\/20\d{2}\//.test(path) ||
+      segments.some((segment) => segment.includes("-") && segment.length > 20)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isUsefulHeadline(title: string) {
+  if (title.length < 18 || title.length > 220) return false;
+  return !/^(home|menu|login|entrar|assine|newsletter|podcast|videos|fale conosco|leia mais)$/i.test(title);
+}
+
+async function fetchUrlText(url: string) {
+  const response = await axios.get<string>(url, {
+    headers: {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "user-agent": NEWS_AGENT_USER_AGENT,
+    },
+    maxRedirects: 5,
+    responseType: "text",
+    timeout: 20000,
+    transformResponse: [(data) => data],
+  });
+
+  return typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+}
+
+function extractRssItems(xml: string, baseUrl: string, source: string): EnergyNewsItem[] {
+  const blocks = [
+    ...(xml.match(/<item\b[\s\S]*?<\/item>/gi) || []),
+    ...(xml.match(/<entry\b[\s\S]*?<\/entry>/gi) || []),
+  ];
+
+  return blocks
+    .map((block) => {
+      const title = getTagValue(block, "title");
+      const linkTag = block.match(/<link\b[^>]*>/i)?.[0] || "";
+      const atomHref = getAttrValue(linkTag, "href");
+      const rawUrl = atomHref || getTagValue(block, "link") || getTagValue(block, "guid");
+      const url = toAbsoluteHttpUrl(rawUrl, baseUrl);
+      const excerpt = getFirstTagValue(block, ["description", "summary", "content:encoded"]);
+      const publishedAt = normalizeDate(
+        getFirstTagValue(block, ["pubDate", "published", "updated", "dc:date", "date"])
+      );
+
+      if (!url || !isUsefulHeadline(title)) return null;
+
+      return {
+        title,
+        url,
+        source,
+        excerpt: excerpt || null,
+        publishedAt,
+      };
+    })
+    .filter((item): item is EnergyNewsItem => Boolean(item));
+}
+
+function getJsonLdUrl(value: unknown) {
+  if (typeof value === "string") return value;
+
+  if (value && typeof value === "object") {
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate["@id"] === "string") return candidate["@id"];
+    if (typeof candidate.url === "string") return candidate.url;
+  }
+
+  return "";
+}
+
+function extractJsonLdItems(html: string, baseUrl: string, source: string): EnergyNewsItem[] {
+  const items: EnergyNewsItem[] = [];
+  const scripts = html.match(
+    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi
+  ) || [];
+
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+
+    if (!node || typeof node !== "object") return;
+
+    const record = node as Record<string, unknown>;
+    const rawType = record["@type"];
+    const types = Array.isArray(rawType) ? rawType : [rawType];
+    const isArticle = types.some(
+      (type) => typeof type === "string" && /^(newsarticle|article|blogposting)$/i.test(type)
+    );
+
+    const title = compactText(String(record.headline || record.name || ""));
+    const rawUrl = getJsonLdUrl(record.url) || getJsonLdUrl(record.mainEntityOfPage);
+    const url = rawUrl ? toAbsoluteHttpUrl(rawUrl, baseUrl) : "";
+
+    if (isArticle && title && url && isUsefulHeadline(title)) {
+      const excerpt = compactText(String(record.description || ""));
+      const publishedAt = normalizeDate(
+        String(record.datePublished || record.dateModified || "")
+      );
+
+      items.push({
+        title,
+        url,
+        source,
+        excerpt: excerpt || null,
+        publishedAt,
+      });
+    }
+
+    Object.values(record).forEach((value) => {
+      if (value && typeof value === "object") visit(value);
+    });
+  };
+
+  scripts.forEach((script) => {
+    const rawJson = script.replace(/^<script\b[^>]*>/i, "").replace(/<\/script>$/i, "").trim();
+    try {
+      visit(JSON.parse(decodeHtml(rawJson)));
+    } catch {
+      // Ignore malformed JSON-LD; many publishers embed invalid tracking fragments.
+    }
+  });
+
+  return items;
+}
+
+function extractAnchorItems(html: string, baseUrl: string, source: string): EnergyNewsItem[] {
+  const items: EnergyNewsItem[] = [];
+  const anchorPattern = /<a\b[\s\S]*?<\/a>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = anchorPattern.exec(html)) !== null) {
+    const anchor = match[0];
+    const openingTag = anchor.match(/^<a\b[^>]*>/i)?.[0] || "";
+    const href = getAttrValue(openingTag, "href");
+    const url = toAbsoluteHttpUrl(href, baseUrl);
+    const title = stripHtml(anchor) || getAttrValue(openingTag, "title");
+
+    if (!url || !isUsefulHeadline(title)) continue;
+    if (!looksLikeArticleUrl(url) && keywordScore(`${title} ${url}`) === 0) continue;
+
+    const context = html.slice(
+      Math.max(0, match.index - 600),
+      Math.min(html.length, match.index + anchor.length + 900)
+    );
+    const timeTag = context.match(/<time\b[^>]*>/i)?.[0] || "";
+    const publishedAt = normalizeDate(
+      getAttrValue(timeTag, "datetime") || getMetaContent(context, ["article:published_time", "date"])
+    );
+
+    items.push({
+      title,
+      url,
+      source,
+      excerpt: null,
+      publishedAt,
+    });
+  }
+
+  return items;
+}
+
+function extractFeedUrls(html: string, baseUrl: string) {
+  const linkTags = html.match(/<link\b[^>]*>/gi) || [];
+
+  return Array.from(
+    new Set(
+      linkTags
+        .map((tag) => {
+          const type = getAttrValue(tag, "type").toLowerCase();
+          const rel = getAttrValue(tag, "rel").toLowerCase();
+          const href = getAttrValue(tag, "href");
+
+          if (!href) return "";
+          if (!/(rss|atom|xml)/i.test(type) && !rel.includes("alternate")) return "";
+
+          return toAbsoluteHttpUrl(href, baseUrl);
+        })
+        .filter(Boolean)
+    )
+  );
+}
+
+function dedupeNewsItems(items: EnergyNewsItem[]) {
+  const byUrl = new Map<string, EnergyNewsItem>();
+
+  for (const item of items) {
+    const key = normalizeNewsUrl(item.url);
+    const existing = byUrl.get(key);
+
+    if (!existing) {
+      byUrl.set(key, item);
+      continue;
+    }
+
+    byUrl.set(key, {
+      ...existing,
+      title: existing.title.length >= item.title.length ? existing.title : item.title,
+      excerpt: existing.excerpt || item.excerpt,
+      publishedAt: existing.publishedAt || item.publishedAt,
+    });
+  }
+
+  return Array.from(byUrl.values());
+}
+
+function rankNewsItems(items: EnergyNewsItem[], topic: string) {
+  const ranked = items.map<RankedEnergyNewsItem>((item, order) => ({
+    ...item,
+    order,
+    keywordScore: keywordScore(`${item.title} ${item.excerpt || ""} ${item.url}`, topic),
+  }));
+
+  const keywordPool = ranked.filter((item) => item.keywordScore > 0);
+  const pool = keywordPool.length >= 5 ? keywordPool : ranked;
+
+  return pool
+    .sort((a, b) => {
+      const aDate = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+      const bDate = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+
+      if (aDate && bDate && aDate !== bDate) return bDate - aDate;
+      if (a.keywordScore !== b.keywordScore) return b.keywordScore - a.keywordScore;
+      if (aDate !== bDate) return bDate - aDate;
+      return a.order - b.order;
+    })
+    .map(({ order, keywordScore, ...item }) => item);
+}
+
+async function fetchNewsFromSite(siteUrl: string) {
+  const source = inferSourceName(siteUrl);
+  const html = await fetchUrlText(siteUrl);
+  const rssItems = extractRssItems(html, siteUrl, source);
+  const htmlItems = [
+    ...extractJsonLdItems(html, siteUrl, source),
+    ...extractAnchorItems(html, siteUrl, source),
+  ];
+  const feedUrls = extractFeedUrls(html, siteUrl).slice(0, 2);
+  const feedResults = await Promise.allSettled(
+    feedUrls.map(async (feedUrl) => extractRssItems(await fetchUrlText(feedUrl), feedUrl, source))
+  );
+  const feedItems = feedResults.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : []
+  );
+
+  return [...rssItems, ...feedItems, ...htmlItems];
+}
+
+function extractMainHtml(html: string) {
+  return (
+    html.match(/<article\b[\s\S]*?<\/article>/i)?.[0] ||
+    html.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ||
+    html.match(/<body\b[\s\S]*?<\/body>/i)?.[0] ||
+    html
+  );
+}
+
+function extractArticleTextFromHtml(html: string) {
+  const mainHtml = extractMainHtml(html)
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<header\b[\s\S]*?<\/header>/gi, " ")
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<aside\b[\s\S]*?<\/aside>/gi, " ")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ");
+  const textBlocks = mainHtml.match(/<(h1|h2|h3|p|li|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gi) || [];
+  const unique = new Set<string>();
+  const paragraphs: string[] = [];
+
+  for (const block of textBlocks) {
+    const tag = block.match(/^<([a-z0-9]+)/i)?.[1]?.toLowerCase() || "";
+    const text = stripHtml(block);
+    const key = text.toLowerCase();
+
+    if (!text || unique.has(key)) continue;
+    if (!tag.startsWith("h") && text.length < 40) continue;
+
+    unique.add(key);
+    paragraphs.push(text);
+  }
+
+  const articleText = paragraphs.join("\n\n");
+  return (articleText || stripHtml(mainHtml)).slice(0, ARTICLE_CONTEXT_CHAR_LIMIT);
+}
+
+async function fetchArticleContext(news: z.infer<typeof selectedNewsSchema>) {
+  try {
+    const html = await fetchUrlText(news.url);
+    const title =
+      stripHtml(html.match(/<h1\b[^>]*>[\s\S]*?<\/h1>/i)?.[0] || "") ||
+      getMetaContent(html, ["og:title", "twitter:title"]) ||
+      news.title;
+    const excerpt =
+      getMetaContent(html, ["description", "og:description", "twitter:description"]) ||
+      news.excerpt ||
+      "";
+    const publishedAt =
+      normalizeDate(getMetaContent(html, ["article:published_time", "datePublished", "date"])) ||
+      news.publishedAt ||
+      null;
+
+    return {
+      title,
+      excerpt,
+      publishedAt,
+      content: extractArticleTextFromHtml(html),
+    };
+  } catch (err) {
+    console.warn("[Articles] Failed to fetch selected news:", err);
+    return {
+      title: news.title,
+      excerpt: news.excerpt || "",
+      publishedAt: news.publishedAt || null,
+      content: "",
+    };
+  }
+}
+
 const articlesRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
     return db.getArticles(ctx.user.id);
@@ -187,6 +754,154 @@ const articlesRouter = router({
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
       return db.getArticle(input.id, ctx.user.id);
+    }),
+
+  researchEnergyNews: protectedProcedure
+    .input(z.object({
+      sites: z.array(z.string().url()).min(1).max(12),
+      topic: z.string().min(2).max(120).optional().default("energia"),
+    }))
+    .mutation(async ({ input }) => {
+      const sites = Array.from(new Set(input.sites.map((site) => site.trim()).filter(Boolean)));
+      const results = await Promise.allSettled(sites.map((site) => fetchNewsFromSite(site)));
+      const items = dedupeNewsItems(
+        results.flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+      );
+      const failedSites = results
+        .map((result, index) => (result.status === "rejected" ? sites[index] : ""))
+        .filter(Boolean);
+      const topItems = rankNewsItems(items, input.topic).slice(0, 5);
+
+      if (topItems.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "O agente pesquisador nao encontrou noticias nos sites informados.",
+        });
+      }
+
+      return {
+        items: topItems,
+        failedSites,
+      };
+    }),
+
+  generateFromNews: protectedProcedure
+    .input(z.object({
+      news: selectedNewsSchema,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const articleContext = await fetchArticleContext(input.news);
+      const contextBlocks = [
+        `Titulo original: ${articleContext.title}`,
+        `Fonte: ${input.news.source}`,
+        `URL: ${input.news.url}`,
+        articleContext.publishedAt ? `Publicado em: ${articleContext.publishedAt}` : "",
+        articleContext.excerpt ? `Resumo capturado: ${articleContext.excerpt}` : "",
+        articleContext.content
+          ? `Texto capturado da noticia:\n${articleContext.content}`
+          : "Texto completo nao capturado; use apenas os metadados e seja conservador.",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const llmResponse = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `Voce e um agente redator especializado no setor de energia. Transforme uma noticia em um artigo claro, profissional e publicavel em portugues brasileiro.
+
+Regras:
+- Use somente informacoes presentes no material da noticia.
+- Nao invente numeros, nomes, datas ou declaracoes.
+- Preserve o contexto da fonte original.
+- Explique impactos praticos para empresas, consumidores ou mercado quando o material permitir.
+- Escreva em markdown, com introducao, 3 a 5 secoes com subtitulos e conclusao.
+- Evite emojis, sensacionalismo e linguagem generica.
+- Se o conteudo capturado for limitado, deixe o artigo mais analitico e conservador.`,
+          },
+          {
+            role: "user",
+            content: `Leia a noticia abaixo e transforme em artigo.\n\n${contextBlocks}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "energy_news_article",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["title", "summary", "content"],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+
+      const rawArticle = llmResponse.choices[0]?.message?.content;
+      const parsed = JSON.parse((typeof rawArticle === "string" ? rawArticle : JSON.stringify(rawArticle)) || "{}");
+      const title = compactText(String(parsed.title || articleContext.title || input.news.title)).slice(0, 512);
+      const content = String(parsed.content || "").trim();
+      const summary = compactText(String(parsed.summary || articleContext.excerpt || ""));
+
+      if (!content) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "O agente redator nao retornou conteudo para o artigo.",
+        });
+      }
+
+      const cover = await generateArticleCoverWithDesigner({
+        newsTitle: input.news.title,
+        source: input.news.source,
+        summary,
+        articleTitle: title,
+        articleContent: content,
+      });
+      const coverImageUrl = toPublicAssetUrl(ctx.req, cover.imageUrl);
+
+      const saved = await db.saveArticle(ctx.user.id, {
+        title,
+        topic: `Energia: ${input.news.title}`,
+        sourceUrl: input.news.url,
+        coverImageUrl,
+        content,
+        summary,
+      });
+
+      return saved;
+    }),
+
+  regenerateCover: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const article = await db.getArticle(input.id, ctx.user.id);
+      if (!article) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Artigo nao encontrado" });
+      }
+
+      const cover = await generateArticleCoverWithDesigner({
+        newsTitle: article.topic || article.title,
+        source: article.sourceUrl ? inferSourceName(article.sourceUrl) : "Artigo interno",
+        summary: article.summary || "",
+        articleTitle: article.title,
+        articleContent: article.content,
+      });
+      const coverImageUrl = toPublicAssetUrl(ctx.req, cover.imageUrl);
+
+      await db.updateArticle(article.id, ctx.user.id, {
+        coverImageUrl,
+      });
+
+      return {
+        coverImageUrl,
+        prompt: cover.prompt,
+      };
     }),
 
   generate: protectedProcedure
@@ -351,6 +1066,7 @@ Formato de resposta JSON:
           summary: article.summary ?? "",
           topic: article.topic ?? "",
           sourceUrl: article.sourceUrl ?? null,
+          coverImageUrl: article.coverImageUrl ?? null,
           createdAt: article.createdAt,
         }, { timeout: 30000 });
         return { success: true };
@@ -364,6 +1080,7 @@ Formato de resposta JSON:
       id: z.number(),
       title: z.string().optional(),
       content: z.string().optional(),
+      coverImageUrl: z.string().optional(),
       status: z.enum(["draft", "published", "archived"]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -386,6 +1103,179 @@ Formato de resposta JSON:
 });
 
 // ─── Posts Router ─────────────────────────────────────────────────────────────
+const carouselRouter = router({
+  generate: protectedProcedure
+    .input(
+      z.object({
+        topic: z.string().min(3).max(500),
+        slideCount: z.number().int().min(1).max(10),
+        style: z.string().min(1).max(100),
+        coverImageUrl: z.string().optional(),
+        coverImageDataUrl: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        return await generateCarouselWithAgent({
+          topic: input.topic,
+          slideCount: input.slideCount,
+          style: input.style,
+          coverImageUrl: input.coverImageUrl,
+          coverImageDataUrl: input.coverImageDataUrl,
+        });
+      } catch (err: any) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao gerar carrossel com o agente: ${err?.message || "falha ao gerar"}`,
+        });
+      }
+    }),
+
+  publish: protectedProcedure
+    .input(
+      z.object({
+        topic: z.string().min(1).max(500),
+        style: z.string().min(1).max(100),
+        hook: z.string().optional(),
+        caption: z.string().optional(),
+        finalCta: z.string().optional(),
+        coverImageUrl: z.string().optional(),
+        createdAt: z.string().optional(),
+        slides: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              body: z.string().optional(),
+              imageUrl: z.string().optional(),
+            })
+          )
+          .min(1)
+          .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await db.getUserByOpenId(ctx.user.openId);
+      const carouselWebhookUrl = user?.n8nCarouselWebhookUrl || ENV.n8nCarouselWebhookUrl;
+
+      if (!carouselWebhookUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Webhook de postagem do carrossel no n8n nao configurado",
+        });
+      }
+
+      const slides = input.slides.map((slide, index) => ({
+        ...slide,
+        order: index + 1,
+        imageUrl: slide.imageUrl ? toPublicAssetUrl(ctx.req, slide.imageUrl) : undefined,
+      }));
+
+      try {
+        const response = await axios.post(
+          carouselWebhookUrl,
+          {
+            type: "carousel_publish",
+            channel: "instagram",
+            userId: ctx.user.id,
+            user: {
+              id: ctx.user.id,
+              name: ctx.user.name,
+              email: ctx.user.email,
+            },
+            carousel: {
+              topic: input.topic,
+              style: input.style,
+              hook: input.hook || input.slides[0]?.title || input.topic,
+              caption: input.caption || "",
+              finalCta: input.finalCta || "",
+              coverImageUrl: input.coverImageUrl
+                ? toPublicAssetUrl(ctx.req, input.coverImageUrl)
+                : slides[0]?.imageUrl,
+              createdAt: input.createdAt || new Date().toISOString(),
+              slides,
+            },
+          },
+          { timeout: 60000 }
+        );
+
+        return { success: true, response: response.data };
+      } catch (err: any) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao disparar postagem pelo n8n: ${err?.message || "falha no webhook"}`,
+        });
+      }
+    }),
+
+  publishInstagram: protectedProcedure
+    .input(
+      z.object({
+        topic: z.string().min(1).max(500),
+        style: z.string().min(1).max(100),
+        hook: z.string().optional(),
+        caption: z.string().optional(),
+        finalCta: z.string().optional(),
+        coverImageUrl: z.string().optional(),
+        createdAt: z.string().optional(),
+        slides: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              body: z.string().optional(),
+              imageUrl: z.string().optional(),
+              imageDataUrl: z.string().optional(),
+              svg: z.string().optional(),
+            })
+          )
+          .min(1)
+          .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await publishInstagramCarouselWithAgent({
+          userId: ctx.user.id,
+          topic: input.topic,
+          caption: input.caption,
+          finalCta: input.finalCta,
+          slides: input.slides,
+        });
+
+        try {
+          const savedPost = await db.saveSocialPost(ctx.user.id, {
+            channel: "instagram",
+            title: input.hook || input.topic,
+            content: input.caption || input.topic,
+            imageUrl: result.slideUrls[0],
+          });
+          await db.updateSocialPost(savedPost.id, ctx.user.id, {
+            status: "published",
+            publishedAt: new Date(),
+            webhookResponse: JSON.stringify({
+              provider: "meta",
+              mediaId: result.mediaId,
+              containerId: result.containerId,
+              childContainerIds: result.childContainerIds,
+              slideUrls: result.slideUrls,
+            }),
+          });
+        } catch (err) {
+          console.warn("[Carousel] Instagram post was published but history save failed:", err);
+        }
+
+        return result;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao postar no Instagram pela Meta API: ${
+            err instanceof Error ? err.message : "falha desconhecida"
+          }`,
+        });
+      }
+    }),
+});
+
 const postsRouter = router({
   getAll: protectedProcedure
     .input(z.object({
@@ -542,10 +1432,12 @@ const settingsRouter = router({
       n8nImageWebhookUrl: user?.n8nImageWebhookUrl || "",
       n8nArticleWebhookUrl: user?.n8nArticleWebhookUrl || "",
       n8nPostWebhookUrl: user?.n8nPostWebhookUrl || "",
+      n8nCarouselWebhookUrl: user?.n8nCarouselWebhookUrl || "",
       hasChat: !!(user?.n8nWebhookUrl || ENV.n8nChatWebhookUrl),
       hasImage: !!(user?.n8nImageWebhookUrl || ENV.n8nImageWebhookUrl),
       hasArticle: !!(user?.n8nArticleWebhookUrl || ENV.n8nArticleWebhookUrl),
       hasPost: !!(user?.n8nPostWebhookUrl || ENV.n8nPostWebhookUrl),
+      hasCarousel: !!(user?.n8nCarouselWebhookUrl || ENV.n8nCarouselWebhookUrl),
     };
   }),
 
@@ -555,6 +1447,7 @@ const settingsRouter = router({
       n8nImageWebhookUrl: z.string().optional(),
       n8nArticleWebhookUrl: z.string().optional(),
       n8nPostWebhookUrl: z.string().optional(),
+      n8nCarouselWebhookUrl: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await db.updateUserWebhooks(ctx.user.id, {
@@ -562,6 +1455,7 @@ const settingsRouter = router({
         n8nImageWebhookUrl: input.n8nImageWebhookUrl || null,
         n8nArticleWebhookUrl: input.n8nArticleWebhookUrl || null,
         n8nPostWebhookUrl: input.n8nPostWebhookUrl || null,
+        n8nCarouselWebhookUrl: input.n8nCarouselWebhookUrl || null,
       });
       return { success: true };
     }),
@@ -631,6 +1525,7 @@ export const appRouter = router({
   chat: chatRouter,
   images: imagesRouter,
   articles: articlesRouter,
+  carousel: carouselRouter,
   posts: postsRouter,
   settings: settingsRouter,
 });

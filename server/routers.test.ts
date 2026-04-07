@@ -233,6 +233,7 @@ describe("settings", () => {
     expect(typeof webhooks.n8nImageWebhookUrl).toBe("string");
     expect(typeof webhooks.n8nArticleWebhookUrl).toBe("string");
     expect(typeof webhooks.n8nPostWebhookUrl).toBe("string");
+    expect(typeof webhooks.n8nCarouselWebhookUrl).toBe("string");
   });
 
   it("updates webhook settings", async () => {
