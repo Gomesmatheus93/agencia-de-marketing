@@ -14,6 +14,7 @@ export type InstagramPostingSlide = {
 export type InstagramPostingInput = {
   userId: number;
   topic: string;
+  hook?: string;
   caption?: string;
   finalCta?: string;
   slides: InstagramPostingSlide[];
@@ -26,6 +27,7 @@ export type InstagramPostingResult = {
   childContainerIds: string[];
   slideUrls: string[];
   publicAssetType: "png" | "svg";
+  caption: string;
 };
 
 type GraphResponse = {
@@ -49,6 +51,48 @@ const DEFAULT_META_GRAPH_API_VERSION = "v25.0";
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeTag(value: string) {
+  const cleaned = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+
+  const parts = cleaned.split(" ").filter(Boolean);
+  const joined = parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("");
+
+  return joined.length >= 3 ? `#${joined}` : "";
+}
+
+function buildHashtags(input: InstagramPostingInput) {
+  const stopWords = new Set([
+    "a", "as", "o", "os", "e", "de", "do", "da", "dos", "das", "na", "no", "nas", "nos",
+    "em", "para", "por", "com", "sem", "um", "uma", "uns", "umas", "que", "como", "mais",
+  ]);
+
+  const tokens = [input.topic, input.hook || "", ...input.slides.map((slide) => slide.title)]
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !stopWords.has(token));
+
+  const unique = Array.from(new Set(tokens));
+  const tags = unique
+    .slice(0, 5)
+    .map((token) => normalizeTag(token))
+    .filter(Boolean);
+
+  return tags.join(" ");
 }
 
 function getGraphApiBaseUrl() {
@@ -241,16 +285,47 @@ async function postToGraph(
 }
 
 function buildCaption(input: InstagramPostingInput) {
-  const caption = input.caption?.trim();
-  if (caption) return caption;
+  const intro = compactText(input.caption?.trim() || input.hook?.trim() || input.topic);
+  const cta = compactText(input.finalCta?.trim() || "Salve este carrossel e compartilhe com quem precisa ver isso.");
+  const hashtags = buildHashtags(input);
+  const slideBlocks = input.slides
+    .map((slide, index) => {
+      const title = compactText(slide.title);
+      const body = compactText(slide.body || "");
+      return [`${index + 1}. ${title}`, body].filter(Boolean).join("\n");
+    })
+    .filter(Boolean);
 
-  const parts = [
-    input.topic,
-    ...input.slides.map((slide, index) => `${index + 1}. ${compactText(slide.title)}`),
-    input.finalCta || "",
-  ].filter(Boolean);
+  const baseSections = [intro, "Neste carrossel:", ...slideBlocks];
+  const sections: string[] = [];
+  const reserveLength = cta.length + (hashtags ? hashtags.length + 2 : 0);
 
-  return parts.join("\n\n");
+  for (const section of baseSections) {
+    const candidate = [...sections, section].join("\n\n");
+    if (candidate.length + reserveLength <= 2200) {
+      sections.push(section);
+      continue;
+    }
+
+    if (section === "Neste carrossel:" || !section.includes("\n")) {
+      continue;
+    }
+
+    const [title, body] = section.split("\n", 2);
+    const available = 2200 - reserveLength - [...sections, title].join("\n\n").length - 2;
+    const shortenedBody =
+      available > 24 && body.length > available
+        ? `${body.slice(0, available).replace(/\s+\S*$/, "").trim()}...`
+        : body;
+
+    if (shortenedBody) {
+      sections.push([title, shortenedBody].join("\n"));
+    }
+    break;
+  }
+
+  const tail = [cta, hashtags].filter(Boolean);
+  return [...sections, ...tail].join("\n\n").slice(0, 2200).trim();
 }
 
 export async function publishInstagramCarouselWithAgent(
@@ -302,6 +377,7 @@ export async function publishInstagramCarouselWithAgent(
       childContainerIds: [],
       slideUrls,
       publicAssetType,
+      caption,
     };
   }
 
@@ -338,5 +414,6 @@ export async function publishInstagramCarouselWithAgent(
     childContainerIds,
     slideUrls,
     publicAssetType,
+    caption,
   };
 }

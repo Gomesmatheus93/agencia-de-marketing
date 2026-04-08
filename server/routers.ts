@@ -9,7 +9,11 @@ import { generateCarouselWithAgent } from "./_core/carouselAgent";
 import { generateArticleCoverWithDesigner } from "./_core/articleDesignerAgent";
 import { generateChatAgentReply } from "./_core/chatAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
-import { storagePut } from "./storage";
+import {
+  persistCarouselAssets,
+  persistCarouselDesignAssets,
+  getCarouselAssetDataUrl,
+} from "./_core/carouselPersistence";
 import * as db from "./db";
 import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
@@ -1103,7 +1107,29 @@ Formato de resposta JSON:
 });
 
 // ─── Posts Router ─────────────────────────────────────────────────────────────
+const carouselSlideSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().optional(),
+  imageUrl: z.string().optional(),
+  templateSvgUrl: z.string().optional(),
+  renderedImageUrl: z.string().optional(),
+});
+
+const carouselBaseSchema = z.object({
+  topic: z.string().min(1).max(500),
+  style: z.string().min(1).max(100),
+  hook: z.string().optional(),
+  caption: z.string().optional(),
+  finalCta: z.string().optional(),
+  coverImageUrl: z.string().optional(),
+  createdAt: z.string().optional(),
+});
+
 const carouselRouter = router({
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    return db.getCarousels(ctx.user.id);
+  }),
+
   generate: protectedProcedure
     .input(
       z.object({
@@ -1114,14 +1140,30 @@ const carouselRouter = router({
         coverImageDataUrl: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       try {
-        return await generateCarouselWithAgent({
+        const generatedCarousel = await generateCarouselWithAgent({
           topic: input.topic,
           slideCount: input.slideCount,
           style: input.style,
           coverImageUrl: input.coverImageUrl,
           coverImageDataUrl: input.coverImageDataUrl,
+        });
+
+        const persistedAssets = await persistCarouselAssets({
+          userId: ctx.user.id,
+          coverImageUrl: generatedCarousel.coverImageUrl,
+          slides: generatedCarousel.slides,
+        });
+
+        return await db.saveCarousel(ctx.user.id, {
+          topic: input.topic,
+          style: input.style,
+          hook: generatedCarousel.hook,
+          caption: generatedCarousel.caption,
+          finalCta: generatedCarousel.finalCta,
+          coverImageUrl: persistedAssets.coverImageUrl,
+          slides: persistedAssets.slides,
         });
       } catch (err: any) {
         throw new TRPCError({
@@ -1131,26 +1173,77 @@ const carouselRouter = router({
       }
     }),
 
-  publish: protectedProcedure
+  saveDesignAssets: protectedProcedure
     .input(
       z.object({
-        topic: z.string().min(1).max(500),
-        style: z.string().min(1).max(100),
-        hook: z.string().optional(),
-        caption: z.string().optional(),
-        finalCta: z.string().optional(),
-        coverImageUrl: z.string().optional(),
-        createdAt: z.string().optional(),
+        id: z.number(),
         slides: z
           .array(
-            z.object({
-              title: z.string().min(1),
-              body: z.string().optional(),
-              imageUrl: z.string().optional(),
+            carouselSlideSchema.extend({
+              templateSvg: z.string().optional(),
+              renderedImageDataUrl: z.string().optional(),
             })
           )
           .min(1)
           .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const persisted = await persistCarouselDesignAssets({
+          userId: ctx.user.id,
+          carouselId: input.id,
+          slides: input.slides,
+        });
+
+        const updated = await db.updateCarouselSlides(input.id, ctx.user.id, persisted.slides);
+        if (!updated) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Carrossel nao encontrado para salvar o template",
+          });
+        }
+
+        return updated;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao salvar os templates do carrossel: ${
+            err instanceof Error ? err.message : "falha desconhecida"
+          }`,
+        });
+      }
+    }),
+
+  resolveAssetDataUrl: protectedProcedure
+    .input(z.object({ url: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      try {
+        const dataUrl = await getCarouselAssetDataUrl(input.url);
+        if (!dataUrl) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Nao foi possivel resolver a imagem do template",
+          });
+        }
+
+        return { dataUrl };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao carregar a imagem do template: ${
+            err instanceof Error ? err.message : "falha desconhecida"
+          }`,
+        });
+      }
+    }),
+
+  publish: protectedProcedure
+    .input(
+      carouselBaseSchema.extend({
+        slides: z.array(carouselSlideSchema).min(1).max(10),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1165,7 +1258,8 @@ const carouselRouter = router({
       }
 
       const slides = input.slides.map((slide, index) => ({
-        ...slide,
+        title: slide.title,
+        body: slide.body,
         order: index + 1,
         imageUrl: slide.imageUrl ? toPublicAssetUrl(ctx.req, slide.imageUrl) : undefined,
       }));
@@ -1209,20 +1303,10 @@ const carouselRouter = router({
 
   publishInstagram: protectedProcedure
     .input(
-      z.object({
-        topic: z.string().min(1).max(500),
-        style: z.string().min(1).max(100),
-        hook: z.string().optional(),
-        caption: z.string().optional(),
-        finalCta: z.string().optional(),
-        coverImageUrl: z.string().optional(),
-        createdAt: z.string().optional(),
+      carouselBaseSchema.extend({
         slides: z
           .array(
-            z.object({
-              title: z.string().min(1),
-              body: z.string().optional(),
-              imageUrl: z.string().optional(),
+            carouselSlideSchema.extend({
               imageDataUrl: z.string().optional(),
               svg: z.string().optional(),
             })
@@ -1236,6 +1320,7 @@ const carouselRouter = router({
         const result = await publishInstagramCarouselWithAgent({
           userId: ctx.user.id,
           topic: input.topic,
+          hook: input.hook,
           caption: input.caption,
           finalCta: input.finalCta,
           slides: input.slides,
@@ -1245,7 +1330,7 @@ const carouselRouter = router({
           const savedPost = await db.saveSocialPost(ctx.user.id, {
             channel: "instagram",
             title: input.hook || input.topic,
-            content: input.caption || input.topic,
+            content: result.caption,
             imageUrl: result.slideUrls[0],
           });
           await db.updateSocialPost(savedPost.id, ctx.user.id, {
@@ -1274,6 +1359,18 @@ const carouselRouter = router({
         });
       }
     }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteCarousel(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  getStats: protectedProcedure.query(async ({ ctx }) => {
+    const count = await db.getCarouselCount(ctx.user.id);
+    return { count };
+  }),
 });
 
 const postsRouter = router({

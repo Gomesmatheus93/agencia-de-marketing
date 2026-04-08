@@ -36,6 +36,13 @@
       "when": 1775548800000,
       "tag": "0004_article_cover_image",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1775635200000,
+      "tag": "0005_persistent_carousels",
+      "breakpoints": true
     }
   ]
 }

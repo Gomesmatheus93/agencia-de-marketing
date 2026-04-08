@@ -29,18 +29,22 @@ interface CarouselSlide {
   title: string;
   body: string;
   imageUrl?: string;
+  templateSvgUrl?: string;
+  renderedImageUrl?: string;
 }
 
 interface CarouselItem {
   id: number;
+  userId: number;
   topic: string;
   slides: CarouselSlide[];
   style: string;
   hook: string;
   caption: string;
   finalCta: string;
-  coverImageUrl?: string;
-  createdAt: string;
+  coverImageUrl: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 const topicSuggestions = [
@@ -98,6 +102,7 @@ type SlideRenderInput = {
   hook: string;
   finalCta?: string;
   coverImageUrl?: string;
+  profileAvatarUrl?: string;
 };
 
 type ZipEntry = {
@@ -141,20 +146,27 @@ const ZIP_CRC_TABLE = (() => {
   return table;
 })();
 
+const embeddedAssetCache = new Map<string, Promise<string | undefined>>();
+
 function getStyleLabel(style: string) {
   return DEFAULT_STYLE_LABEL;
 }
 
-function formatDateLabel(value: string) {
-  const parsed = new Date(value);
+function formatDateLabel(value: Date | string) {
+  const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return value;
+    return String(value);
   }
 
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
   }).format(parsed);
+}
+
+function toIsoTimestamp(value: Date | string) {
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
 }
 
 function hexToRgba(hex: string, alpha: number) {
@@ -327,6 +339,84 @@ function toAbsoluteClientAssetUrl(url?: string) {
   return new URL(url, window.location.origin).toString();
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        resolve(result);
+        return;
+      }
+      reject(new Error("Nao foi possivel converter o blob para data URL"));
+    };
+    reader.onerror = () => {
+      reject(reader.error || new Error("Falha ao ler o blob da imagem"));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function toEmbeddedAssetUrl(url?: string) {
+  const resolvedUrl = toAbsoluteClientAssetUrl(url);
+  if (!resolvedUrl || resolvedUrl.startsWith("data:")) {
+    return resolvedUrl;
+  }
+
+  if (!embeddedAssetCache.has(resolvedUrl)) {
+    embeddedAssetCache.set(
+      resolvedUrl,
+      (async () => {
+        try {
+          const response = await fetch(resolvedUrl, { credentials: "include" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return await blobToDataUrl(await response.blob());
+        } catch (error) {
+          console.warn("[Carousel] Nao consegui embutir a imagem no template:", resolvedUrl, error);
+          return resolvedUrl;
+        }
+      })()
+    );
+  }
+
+  return embeddedAssetCache.get(resolvedUrl);
+}
+
+function isEmbeddedAssetUrl(url?: string) {
+  return Boolean(url && url.startsWith("data:"));
+}
+
+function decodeDataUrlPayload(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    return "";
+  }
+
+  const header = dataUrl.slice(5, commaIndex);
+  const body = dataUrl.slice(commaIndex + 1);
+
+  try {
+    if (header.includes(";base64")) {
+      return window.atob(body);
+    }
+
+    return decodeURIComponent(body);
+  } catch {
+    return "";
+  }
+}
+
+function isCarouselFallbackAssetUrl(url?: string) {
+  if (!url || !url.startsWith("data:image/svg+xml")) {
+    return false;
+  }
+
+  const payload = decodeDataUrlPayload(url);
+  return payload.includes('data-carousel-fallback="true"') || payload.includes('id="fallbackBg"');
+}
+
 function encodeUtf8(value: string) {
   return new TextEncoder().encode(value);
 }
@@ -452,22 +542,25 @@ function buildFlavioModelSlideSvg(input: SlideRenderInput) {
   const avatarClipId = `flavioAvatar-${idSuffix}`;
   const fallbackGradientId = `fallbackImage-${idSuffix}`;
   const coverImageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+  const profileAvatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || FLAVIO_PROFILE_AVATAR_URL);
   const titleSource = input.index === 0 ? input.hook || input.slide.title : input.slide.title;
   const titleLines = wrapTextLines(titleSource, titleSource.length > 52 ? 17 : 20, 3);
   const titleFontSize = titleLines.length >= 3 ? 58 : titleLines.some((line) => line.length > 18) ? 66 : 74;
   const titleLineHeight = Math.round(titleFontSize * 1.28);
-  const summarySource = clampSentence(
-    input.index === input.total - 1 && input.finalCta ? input.finalCta : input.slide.body,
-    148
-  );
-  const summaryLines = wrapTextLines(summarySource || input.topic, 46, 2);
-  const summaryFontSize = summaryLines.some((line) => line.length > 40) ? 34 : 38;
+  const summarySource = (
+    input.index === input.total - 1 && input.finalCta ? input.finalCta : input.slide.body
+  )
+    ?.replace(/\s+/g, " ")
+    .trim();
+  const summaryMaxLines = titleLines.length >= 3 ? 3 : 4;
+  const summaryLines = wrapTextLines(summarySource || input.topic, titleLines.length >= 3 ? 38 : 42, summaryMaxLines);
+  const summaryFontSize = summaryLines.length >= 4 ? 30 : summaryLines.length === 3 ? 32 : summaryLines.some((line) => line.length > 38) ? 34 : 38;
   const summaryLineHeight = Math.round(summaryFontSize * 1.28);
   const titleBlockHeight = (titleLines.length - 1) * titleLineHeight + titleFontSize;
   const summaryBlockHeight = summaryLines.length > 0
     ? (summaryLines.length - 1) * summaryLineHeight + summaryFontSize
     : 0;
-  const textBlockGap = summaryLines.length > 0 ? 58 : 0;
+  const textBlockGap = summaryLines.length > 0 ? (summaryLines.length >= 3 || titleLines.length >= 3 ? 42 : 58) : 0;
   const textZoneTop = 304;
   const textZoneBottom = 700;
   const textBlockHeight = titleBlockHeight + textBlockGap + summaryBlockHeight;
@@ -518,7 +611,7 @@ function buildFlavioModelSlideSvg(input: SlideRenderInput) {
 
   <circle cx="132" cy="138" r="64" fill="#111827" />
   <text x="132" y="154" text-anchor="middle" fill="#ffffff" font-size="36" font-family="Arial, Helvetica, sans-serif" font-weight="700">FV</text>
-  <image href="${toAbsoluteClientAssetUrl(FLAVIO_PROFILE_AVATAR_URL)}" x="68" y="74" width="128" height="128" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avatarClipId})" />
+  <image href="${escapeXml(profileAvatarUrl || "")}" x="68" y="74" width="128" height="128" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avatarClipId})" />
   <circle cx="132" cy="138" r="64" fill="none" stroke="#e5e7eb" stroke-width="2" />
 
   <text x="222" y="140" fill="#050505" font-size="44" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(FLAVIO_PROFILE_NAME)}</text>
@@ -1069,7 +1162,7 @@ function CarouselCard({
             topic={carousel.topic}
             hook={carousel.hook}
             finalCta={carousel.finalCta}
-            coverImageUrl={carousel.coverImageUrl}
+            coverImageUrl={carousel.coverImageUrl ?? undefined}
             className="rounded-[26px] border-0 shadow-none"
           />
           <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white backdrop-blur-md">
@@ -1162,7 +1255,7 @@ function buildCarouselZipEntries(carousel: CarouselItem): ZipEntry[] {
         topic: carousel.topic,
         hook: carousel.hook,
         finalCta: carousel.finalCta,
-        coverImageUrl: carousel.coverImageUrl,
+        coverImageUrl: carousel.coverImageUrl ?? undefined,
       })
     ),
   }));
@@ -1191,13 +1284,34 @@ function buildCarouselZipEntries(carousel: CarouselItem): ZipEntry[] {
   ];
 }
 
-async function buildCarouselInstagramSlides(carousel: CarouselItem) {
+async function buildCarouselTemplateSlides(
+  carousel: CarouselItem,
+  resolveAssetUrl: (url?: string) => Promise<string | undefined>
+) {
+  const embeddedProfileAvatarUrl = await resolveAssetUrl(FLAVIO_PROFILE_AVATAR_URL);
+  const embeddedCoverImageUrl = await resolveAssetUrl(carousel.coverImageUrl ?? undefined);
+  const embeddedSlideImageUrls = await Promise.all(
+    carousel.slides.map((slide) => resolveAssetUrl(slide.imageUrl))
+  );
+  const sharedEmbeddedImageUrl =
+    embeddedSlideImageUrls.find(
+      (imageUrl) => isEmbeddedAssetUrl(imageUrl) && !isCarouselFallbackAssetUrl(imageUrl)
+    ) ||
+    (embeddedCoverImageUrl && !isCarouselFallbackAssetUrl(embeddedCoverImageUrl)
+      ? embeddedCoverImageUrl
+      : undefined);
+
   return Promise.all(
     carousel.slides.map(async (slide, index) => {
+      const ownEmbeddedImageUrl = embeddedSlideImageUrls[index];
+      const embeddedSlideImageUrl =
+        ownEmbeddedImageUrl && !isCarouselFallbackAssetUrl(ownEmbeddedImageUrl)
+          ? ownEmbeddedImageUrl
+          : sharedEmbeddedImageUrl;
       const svg = buildSlideSvg({
         slide: {
           ...slide,
-          imageUrl: toAbsoluteClientAssetUrl(slide.imageUrl),
+          imageUrl: embeddedSlideImageUrl,
         },
         index,
         total: carousel.slides.length,
@@ -1205,38 +1319,155 @@ async function buildCarouselInstagramSlides(carousel: CarouselItem) {
         topic: carousel.topic,
         hook: carousel.hook,
         finalCta: carousel.finalCta,
-        coverImageUrl: toAbsoluteClientAssetUrl(carousel.coverImageUrl),
+        coverImageUrl: embeddedCoverImageUrl,
+        profileAvatarUrl: embeddedProfileAvatarUrl,
       });
       const imageDataUrl = await renderSvgToPngDataUrl(svg);
 
       return {
         title: slide.title,
         body: slide.body,
-        imageUrl: toAbsoluteClientAssetUrl(slide.imageUrl),
-        svg,
-        imageDataUrl,
+        imageUrl: slide.imageUrl,
+        templateSvg: svg,
+        renderedImageDataUrl: imageDataUrl,
+        templateSvgUrl: slide.templateSvgUrl,
+        renderedImageUrl: slide.renderedImageUrl,
       };
     })
   );
 }
 
 export default function Carousels() {
+  const utils = trpc.useUtils();
   const [topic, setTopic] = useState("");
   const [slideCount, setSlideCount] = useState(5);
   const selectedStyle = DEFAULT_STYLE_ID;
   const [coverImageUrl, setCoverImageUrl] = useState("");
-  const [carousels, setCarousels] = useState<CarouselItem[]>([]);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [selectedCarousel, setSelectedCarousel] = useState<CarouselItem | null>(null);
+  const [selectedCarouselId, setSelectedCarouselId] = useState<number | null>(null);
   const [modalSlide, setModalSlide] = useState(0);
+  const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
-  const generateCarouselMutation = trpc.carousel.generate.useMutation();
+  const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery();
+
+  const generateCarouselMutation = trpc.carousel.generate.useMutation({
+    onSuccess: (carousel) => {
+      utils.carousel.getAll.invalidate();
+      utils.carousel.getStats.invalidate();
+      setSelectedCarouselId(carousel.id);
+      setModalSlide(0);
+      setTopic("");
+      setCoverImageUrl("");
+      toast.success("Carrossel gerado com sucesso!");
+      void ensureCarouselDesignAssets(carousel as CarouselItem, { silent: true }).catch((error) => {
+        console.warn("[Carousel] Nao foi possivel salvar o template completo apos gerar:", error);
+      });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Erro ao gerar carrossel: " + message);
+    },
+  });
+  const resolveAssetDataUrlMutation = trpc.carousel.resolveAssetDataUrl.useMutation();
+  const saveDesignAssetsMutation = trpc.carousel.saveDesignAssets.useMutation({
+    onSuccess: () => {
+      utils.carousel.getAll.invalidate();
+    },
+  });
   const publishInstagramMutation = trpc.carousel.publishInstagram.useMutation();
+  const deleteCarouselMutation = trpc.carousel.delete.useMutation({
+    onSuccess: (_result, variables) => {
+      utils.carousel.getAll.invalidate();
+      utils.carousel.getStats.invalidate();
+      if (selectedCarouselId === variables.id) {
+        setSelectedCarouselId(null);
+        setModalSlide(0);
+      }
+      toast.success("Carrossel excluido");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Erro ao excluir carrossel: " + message);
+    },
+  });
   const isGenerating = generateCarouselMutation.isPending;
   const isPublishingCarousel = publishInstagramMutation.isPending;
+  const isDeleting = deleteCarouselMutation.isPending;
 
+  const selectedCarousel =
+    carousels.find((carousel) => carousel.id === selectedCarouselId) ?? null;
   const selectedSlides = selectedCarousel?.slides ?? [];
   const currentSlide = selectedSlides[modalSlide];
+
+  const resolveTemplateAssetUrl = async (url?: string) => {
+    const embeddedUrl = await toEmbeddedAssetUrl(url);
+    if (!embeddedUrl || embeddedUrl.startsWith("data:")) {
+      return embeddedUrl;
+    }
+
+    const resolvedUrl = toAbsoluteClientAssetUrl(url);
+    if (!resolvedUrl) {
+      return embeddedUrl;
+    }
+
+    try {
+      const result = await resolveAssetDataUrlMutation.mutateAsync({ url: resolvedUrl });
+      return result.dataUrl;
+    } catch (error) {
+      console.warn("[Carousel] Nao consegui resolver a imagem pelo servidor:", resolvedUrl, error);
+      return undefined;
+    }
+  };
+
+  const ensureCarouselDesignAssets = async (
+    carousel: CarouselItem,
+    options?: { silent?: boolean; force?: boolean }
+  ): Promise<CarouselItem> => {
+    const hasSavedTemplates =
+      carousel.slides.length > 0 &&
+      carousel.slides.every((slide) => Boolean(slide.renderedImageUrl && slide.templateSvgUrl));
+
+    if (hasSavedTemplates && !options?.force) {
+      return carousel;
+    }
+
+    const existing = pendingTemplateSyncsRef.current.get(carousel.id);
+    if (existing) {
+      return existing;
+    }
+
+    const task = (async () => {
+      const toastId = `carousel-template-${carousel.id}`;
+
+      if (!options?.silent) {
+        toast.loading("Mesclando design e salvando templates...", { id: toastId });
+      }
+
+      try {
+        const slides = await buildCarouselTemplateSlides(carousel, resolveTemplateAssetUrl);
+        const updated = await saveDesignAssetsMutation.mutateAsync({
+          id: carousel.id,
+          slides,
+        });
+
+        if (!options?.silent) {
+          toast.success("Template completo salvo no carrossel", { id: toastId });
+        }
+
+        return updated as CarouselItem;
+      } catch (error) {
+        if (!options?.silent) {
+          const message = error instanceof Error ? error.message : "Erro desconhecido";
+          toast.error("Nao foi possivel salvar o template completo: " + message, { id: toastId });
+        }
+        throw error;
+      } finally {
+        pendingTemplateSyncsRef.current.delete(carousel.id);
+      }
+    })();
+
+    pendingTemplateSyncsRef.current.set(carousel.id, task);
+    return task;
+  };
 
   const copyText = async (text: string, successMessage: string) => {
     try {
@@ -1248,59 +1479,26 @@ export default function Carousels() {
   };
 
   const openCarousel = (carousel: CarouselItem) => {
-    setSelectedCarousel(carousel);
+    setSelectedCarouselId(carousel.id);
     setModalSlide(0);
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
     if (!topic.trim()) {
       toast.error("Digite o tema do carrossel");
       return;
     }
 
-    try {
-      const data = await generateCarouselMutation.mutateAsync({
-        topic: topic.trim(),
-        slideCount,
-        style: selectedStyle,
-        coverImageDataUrl: coverImageUrl || undefined,
-      });
-
-      const newCarousel: CarouselItem = {
-        id: Date.now(),
-        topic: topic.trim(),
-        slides: data.slides ?? [],
-        style: selectedStyle,
-        hook: data.hook ?? data.slides?.[0]?.title ?? topic.trim(),
-        caption: data.caption ?? "",
-        finalCta: data.finalCta ?? "",
-        coverImageUrl: data.coverImageUrl,
-        createdAt: new Date().toISOString(),
-      };
-
-      setCarousels((prev) => [newCarousel, ...prev]);
-      openCarousel(newCarousel);
-      setTopic("");
-      setCoverImageUrl("");
-      toast.success("Carrossel gerado com sucesso!");
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Erro desconhecido";
-      toast.error("Erro ao gerar carrossel: " + message);
-    }
+    generateCarouselMutation.mutate({
+      topic: topic.trim(),
+      slideCount,
+      style: selectedStyle,
+      coverImageDataUrl: coverImageUrl || undefined,
+    });
   };
 
-  const handleDelete = async (id: number) => {
-    setIsDeleting(true);
-    try {
-      setCarousels((prev) => prev.filter((carousel) => carousel.id !== id));
-      if (selectedCarousel?.id === id) {
-        setSelectedCarousel(null);
-        setModalSlide(0);
-      }
-      toast.success("Carrossel excluido");
-    } finally {
-      setIsDeleting(false);
-    }
+  const handleDelete = (id: number) => {
+    deleteCarouselMutation.mutate({ id });
   };
 
   const handleDownload = (carousel: CarouselItem) => {
@@ -1321,18 +1519,26 @@ export default function Carousels() {
 
   const handlePublishInstagram = async (carousel: CarouselItem) => {
     try {
-      toast.loading("Preparando imagens publicas para a Meta...", {
+      toast.loading("Preparando carrossel completo para a Meta...", {
         id: "instagram-publish",
       });
-      const slides = await buildCarouselInstagramSlides(carousel);
+      const preparedCarousel = await ensureCarouselDesignAssets(carousel, {
+        silent: true,
+        force: true,
+      });
+      const slides = preparedCarousel.slides.map((slide) => ({
+        title: slide.title,
+        body: slide.body,
+        imageUrl: toAbsoluteClientAssetUrl(slide.renderedImageUrl || slide.imageUrl),
+      }));
       const result = await publishInstagramMutation.mutateAsync({
-        topic: carousel.topic,
-        style: carousel.style,
-        hook: carousel.hook,
-        caption: carousel.caption,
-        finalCta: carousel.finalCta,
-        coverImageUrl: carousel.coverImageUrl,
-        createdAt: carousel.createdAt,
+        topic: preparedCarousel.topic,
+        style: preparedCarousel.style,
+        hook: preparedCarousel.hook,
+        caption: preparedCarousel.caption,
+        finalCta: preparedCarousel.finalCta,
+        coverImageUrl: preparedCarousel.coverImageUrl ?? undefined,
+        createdAt: toIsoTimestamp(preparedCarousel.createdAt),
         slides,
       });
       toast.success(`Carrossel publicado no Instagram. Media ID: ${result.mediaId}`, {
@@ -1588,7 +1794,24 @@ export default function Carousels() {
             </h2>
           </div>
 
-          {carousels.length === 0 ? (
+          {isLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="glass-card overflow-hidden p-4">
+                  <div className="aspect-[4/5] rounded-2xl bg-muted shimmer" />
+                  <div className="mt-4 space-y-3">
+                    <div className="h-3 w-24 rounded-full bg-muted shimmer" />
+                    <div className="h-5 rounded-full bg-muted shimmer" />
+                    <div className="h-4 w-4/5 rounded-full bg-muted shimmer" />
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <div className="h-9 rounded-xl bg-muted shimmer" />
+                      <div className="h-9 rounded-xl bg-muted shimmer" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : carousels.length === 0 ? (
             <div className="glass-card p-12 text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-[#7b00ae] to-[#fe6e00] opacity-50">
                 <Instagram className="h-8 w-8 text-white" />
@@ -1619,7 +1842,7 @@ export default function Carousels() {
         open={!!selectedCarousel}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedCarousel(null);
+            setSelectedCarouselId(null);
             setModalSlide(0);
           }
         }}
@@ -1644,7 +1867,7 @@ export default function Carousels() {
                     topic={selectedCarousel.topic}
                     hook={selectedCarousel.hook}
                     finalCta={selectedCarousel.finalCta}
-                    coverImageUrl={selectedCarousel.coverImageUrl}
+                    coverImageUrl={selectedCarousel.coverImageUrl ?? undefined}
                   />
                 </div>
 
@@ -1713,7 +1936,7 @@ export default function Carousels() {
                     type="button"
                     className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/40 bg-background/70 transition-colors hover:bg-accent"
                     onClick={() => {
-                      setSelectedCarousel(null);
+                      setSelectedCarouselId(null);
                       setModalSlide(0);
                     }}
                   >

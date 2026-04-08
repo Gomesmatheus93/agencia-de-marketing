@@ -158,7 +158,7 @@ function buildCarouselImagePrompt(input: {
 function buildFallbackImageDataUrl(topic: string) {
   const hue = (Math.abs(topic.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % 70) + 195;
   const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600" data-carousel-fallback="true">
   <defs>
     <linearGradient id="fallbackBg" x1="0" y1="0" x2="1080" y2="600" gradientUnits="userSpaceOnUse">
       <stop stop-color="hsl(${hue} 34% 86%)" />
@@ -175,6 +175,33 @@ function buildFallbackImageDataUrl(topic: string) {
 </svg>`.trim();
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function decodeDataUrlPayload(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) return "";
+
+  const header = dataUrl.slice(5, commaIndex);
+  const body = dataUrl.slice(commaIndex + 1);
+
+  try {
+    if (header.includes(";base64")) {
+      return Buffer.from(body, "base64").toString("utf-8");
+    }
+
+    return decodeURIComponent(body);
+  } catch {
+    return "";
+  }
+}
+
+function isCarouselFallbackImageUrl(imageUrl?: string) {
+  if (!imageUrl || !imageUrl.startsWith("data:image/svg+xml")) {
+    return false;
+  }
+
+  const payload = decodeDataUrlPayload(imageUrl);
+  return payload.includes('data-carousel-fallback="true"') || payload.includes('id="fallbackBg"');
 }
 
 async function resolveCarouselCoverImage(input: {
@@ -351,9 +378,22 @@ export async function generateCarouselWithAgent(
     });
   }
 
+  const sharedImageUrl =
+    [referenceImageUrl, ...slidesWithImage.map((slide) => slide.imageUrl)].find(
+      (imageUrl) => imageUrl && !isCarouselFallbackImageUrl(imageUrl)
+    ) || undefined;
+
+  const normalizedSlides = slidesWithImage.map((slide) => ({
+    ...slide,
+    imageUrl:
+      slide.imageUrl && !isCarouselFallbackImageUrl(slide.imageUrl)
+        ? slide.imageUrl
+        : sharedImageUrl || slide.imageUrl,
+  }));
+
   return {
-    slides: slidesWithImage,
-    coverImageUrl: slidesWithImage[0]?.imageUrl || referenceImageUrl,
+    slides: normalizedSlides,
+    coverImageUrl: normalizedSlides[0]?.imageUrl || sharedImageUrl || referenceImageUrl,
     hook,
     caption,
     finalCta,

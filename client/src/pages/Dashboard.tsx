@@ -74,13 +74,14 @@ export default function Dashboard() {
   const { data: chatStats } = trpc.chat.getStats.useQuery();
   const { data: imageStats } = trpc.images.getStats.useQuery();
   const { data: articleStats } = trpc.articles.getStats.useQuery();
+  const { data: carouselStats } = trpc.carousel.getStats.useQuery();
   const { data: postStats } = trpc.posts.getStats.useQuery();
 
   const statsMap: Record<string, number> = {
     chat: chatStats?.count ?? 0,
     images: imageStats?.count ?? 0,
     articles: articleStats?.count ?? 0,
-    carousel: 0,
+    carousel: carouselStats?.count ?? 0,
     posts: postStats?.count ?? 0,
   };
 

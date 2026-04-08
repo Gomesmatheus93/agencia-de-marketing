@@ -5,9 +5,6 @@ import {
   text,
   timestamp,
   varchar,
-  bigint,
-  boolean,
-  json,
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -89,6 +86,40 @@ export const articles = mysqlTable("articles", {
 
 export type Article = typeof articles.$inferSelect;
 export type InsertArticle = typeof articles.$inferInsert;
+
+export type CarouselSlideData = {
+  title: string;
+  body: string;
+  imageUrl?: string;
+  templateSvgUrl?: string;
+  renderedImageUrl?: string;
+};
+
+// ─── Carousels ────────────────────────────────────────────────────────────────
+export const carousels = mysqlTable("carousels", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  topic: varchar("topic", { length: 512 }).notNull(),
+  style: varchar("style", { length: 100 }).notNull(),
+  hook: text("hook").notNull(),
+  caption: text("caption").notNull(),
+  finalCta: text("finalCta").notNull(),
+  coverImageUrl: text("coverImageUrl"),
+  slides: text("slides").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+type CarouselRow = typeof carousels.$inferSelect;
+type InsertCarouselRow = typeof carousels.$inferInsert;
+
+export type Carousel = Omit<CarouselRow, "slides"> & {
+  slides: CarouselSlideData[];
+};
+
+export type InsertCarousel = Omit<InsertCarouselRow, "slides"> & {
+  slides: CarouselSlideData[];
+};
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
 export const socialPosts = mysqlTable("social_posts", {

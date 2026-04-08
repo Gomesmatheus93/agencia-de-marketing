@@ -22,6 +22,41 @@ vi.mock("./db", () => ({
   updateArticle: vi.fn().mockResolvedValue(undefined),
   deleteArticle: vi.fn().mockResolvedValue(undefined),
   getArticleCount: vi.fn().mockResolvedValue(2),
+  getCarousels: vi.fn().mockResolvedValue([]),
+  saveCarousel: vi.fn().mockResolvedValue({
+    id: 1,
+    userId: 1,
+    topic: "Test carousel",
+    style: "signature",
+    hook: "Gancho forte",
+    caption: "Legenda pronta",
+    finalCta: "Salve este carrossel",
+    coverImageUrl: "https://example.com/carousel-cover.png",
+    slides: [{ title: "Slide 1", body: "Texto do slide", imageUrl: "https://example.com/slide-1.png" }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }),
+  updateCarouselSlides: vi.fn().mockResolvedValue({
+    id: 1,
+    userId: 1,
+    topic: "Test carousel",
+    style: "signature",
+    hook: "Gancho forte",
+    caption: "Legenda pronta",
+    finalCta: "Salve este carrossel",
+    coverImageUrl: "https://example.com/carousel-cover.png",
+    slides: [{
+      title: "Slide 1",
+      body: "Texto do slide",
+      imageUrl: "https://example.com/slide-1.png",
+      templateSvgUrl: "https://example.com/slide-1.svg",
+      renderedImageUrl: "https://example.com/slide-1-rendered.png",
+    }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }),
+  deleteCarousel: vi.fn().mockResolvedValue(undefined),
+  getCarouselCount: vi.fn().mockResolvedValue(4),
   getSocialPosts: vi.fn().mockResolvedValue([]),
   saveSocialPost: vi.fn().mockResolvedValue({ id: 1, userId: 1, channel: "instagram", content: "test", status: "draft", createdAt: new Date(), updatedAt: new Date() }),
   updateSocialPost: vi.fn().mockResolvedValue(undefined),
@@ -42,6 +77,36 @@ vi.mock("./_core/llm", () => ({
 // Mock image generation
 vi.mock("./_core/imageGeneration", () => ({
   generateImage: vi.fn().mockResolvedValue({ url: "https://example.com/generated.png" }),
+}));
+
+vi.mock("./_core/carouselAgent", () => ({
+  generateCarouselWithAgent: vi.fn().mockResolvedValue({
+    hook: "Gancho forte",
+    caption: "Legenda pronta",
+    finalCta: "Salve este carrossel",
+    coverImageUrl: "https://example.com/carousel-cover.png",
+    slides: [{ title: "Slide 1", body: "Texto do slide", imageUrl: "https://example.com/slide-1.png" }],
+  }),
+}));
+
+vi.mock("./_core/carouselPersistence", () => ({
+  persistCarouselAssets: vi.fn().mockImplementation(async ({ coverImageUrl, slides }) => ({
+    coverImageUrl,
+    slides,
+  })),
+  persistCarouselDesignAssets: vi.fn().mockImplementation(async ({ slides }) => ({
+    slides: slides.map((slide: any) => ({
+      title: slide.title,
+      body: slide.body || "",
+      imageUrl: slide.imageUrl,
+      templateSvgUrl: slide.templateSvgUrl || "https://example.com/slide-1.svg",
+      renderedImageUrl:
+        slide.renderedImageUrl || "https://example.com/slide-1-rendered.png",
+    })),
+  })),
+  getCarouselAssetDataUrl: vi.fn().mockResolvedValue(
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9mV8QAAAAASUVORK5CYII="
+  ),
 }));
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
@@ -182,6 +247,41 @@ describe("articles", () => {
 });
 
 // ─── Posts Tests ──────────────────────────────────────────────────────────────
+describe("carousel", () => {
+  it("returns empty carousels list", async () => {
+    const { ctx } = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+    const carousels = await caller.carousel.getAll();
+    expect(Array.isArray(carousels)).toBe(true);
+  });
+
+  it("persists a generated carousel", async () => {
+    const { ctx } = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+    const carousel = await caller.carousel.generate({
+      topic: "Como crescer no Instagram",
+      slideCount: 1,
+      style: "signature",
+    });
+    expect(carousel.id).toBe(1);
+    expect(carousel.topic).toBe("Test carousel");
+  });
+
+  it("returns carousel stats", async () => {
+    const { ctx } = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+    const stats = await caller.carousel.getStats();
+    expect(stats.count).toBe(4);
+  });
+
+  it("deletes a carousel", async () => {
+    const { ctx } = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.carousel.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("posts", () => {
   it("returns empty posts list", async () => {
     const { ctx } = createAuthContext();

@@ -1,4 +1,4 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -7,16 +7,20 @@ import {
   chatMessages,
   generatedImages,
   articles,
+  carousels,
   socialPosts,
   type ChatConversation,
   type ChatMessage,
   type GeneratedImage,
   type Article,
+  type Carousel,
+  type CarouselSlideData,
   type SocialPost,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _carouselTableReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -28,6 +32,69 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+function parseCarouselSlides(value: unknown): CarouselSlideData[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({
+        title: typeof item.title === "string" ? item.title : "",
+        body: typeof item.body === "string" ? item.body : "",
+        imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+        templateSvgUrl:
+          typeof item.templateSvgUrl === "string" ? item.templateSvgUrl : undefined,
+        renderedImageUrl:
+          typeof item.renderedImageUrl === "string" ? item.renderedImageUrl : undefined,
+      }));
+  }
+
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+
+  try {
+    return parseCarouselSlides(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function hydrateCarousel(row: Omit<Carousel, "slides"> & { slides: unknown }): Carousel {
+  return {
+    ...row,
+    slides: parseCarouselSlides(row.slides),
+  };
+}
+
+async function ensureCarouselTable() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_carouselTableReady) {
+    _carouselTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS carousels (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          topic varchar(512) NOT NULL,
+          style varchar(100) NOT NULL,
+          hook text NOT NULL,
+          caption text NOT NULL,
+          finalCta text NOT NULL,
+          coverImageUrl text,
+          slides text NOT NULL,
+          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+    })().catch((error) => {
+      _carouselTableReady = null;
+      throw error;
+    });
+  }
+
+  await _carouselTableReady;
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -267,6 +334,76 @@ export async function getArticleCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
   const result = await db.select().from(articles).where(eq(articles.userId, userId));
+  return result.length;
+}
+
+export async function getCarousels(userId: number): Promise<Carousel[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureCarouselTable();
+  const result = await db.select().from(carousels)
+    .where(eq(carousels.userId, userId))
+    .orderBy(desc(carousels.createdAt));
+  return result.map((row) => hydrateCarousel(row as Omit<Carousel, "slides"> & { slides: unknown }));
+}
+
+export async function saveCarousel(
+  userId: number,
+  data: {
+    topic: string;
+    style: string;
+    hook: string;
+    caption: string;
+    finalCta: string;
+    coverImageUrl?: string;
+    slides: CarouselSlideData[];
+  }
+): Promise<Carousel> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureCarouselTable();
+  const [result] = await db.insert(carousels).values({
+    userId,
+    ...data,
+    slides: JSON.stringify(data.slides),
+  });
+  const created = await db.select().from(carousels)
+    .where(eq(carousels.id, (result as any).insertId)).limit(1);
+  return hydrateCarousel(created[0] as Omit<Carousel, "slides"> & { slides: unknown });
+}
+
+export async function deleteCarousel(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCarouselTable();
+  await db.delete(carousels).where(and(eq(carousels.id, id), eq(carousels.userId, userId)));
+}
+
+export async function updateCarouselSlides(
+  id: number,
+  userId: number,
+  slides: CarouselSlideData[]
+): Promise<Carousel | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureCarouselTable();
+  await db.update(carousels).set({
+    slides: JSON.stringify(slides),
+    updatedAt: new Date(),
+  }).where(and(eq(carousels.id, id), eq(carousels.userId, userId)));
+
+  const updated = await db.select().from(carousels)
+    .where(and(eq(carousels.id, id), eq(carousels.userId, userId))).limit(1);
+
+  if (!updated[0]) return undefined;
+  return hydrateCarousel(updated[0] as Omit<Carousel, "slides"> & { slides: unknown });
+}
+
+export async function getCarouselCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureCarouselTable();
+  const result = await db.select().from(carousels).where(eq(carousels.userId, userId));
   return result.length;
 }
 
