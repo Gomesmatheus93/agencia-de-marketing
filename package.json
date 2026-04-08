@@ -10,6 +10,7 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
+    "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed-user.mjs",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },

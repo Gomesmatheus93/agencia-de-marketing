@@ -22,6 +22,16 @@ async function run(command, args) {
   return code ?? 0;
 }
 
+if (process.env.DATABASE_URL && process.env.RUN_MIGRATIONS !== "false") {
+  console.log("Running database migrations...");
+  const migrationCode = await run(process.execPath, ["scripts/migrate.mjs"]);
+  if (migrationCode !== 0) {
+    process.exit(migrationCode);
+  }
+} else {
+  console.log("Skipping database migrations.");
+}
+
 if (process.env.SEED_USER_PASSWORD) {
   console.log("Running user seed...");
   const seedCode = await run(process.execPath, ["scripts/seed-user.mjs"]);
