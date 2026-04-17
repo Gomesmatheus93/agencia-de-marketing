@@ -7,6 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  POST_SCHEDULER_TIME_ZONE,
+  toSchedulerDatetimeLocalValue,
+} from "@/lib/scheduling";
+import {
   Share2,
   Sparkles,
   Loader2,
@@ -214,13 +218,12 @@ export default function Posts() {
   const [aiTone, setAiTone] = useState<"professional" | "casual" | "inspiring" | "educational">("professional");
 
   const { data: posts = [], isLoading } = trpc.posts.getAll.useQuery({ channel: activeChannel });
-  const { data: webhookSettings } = trpc.settings.getWebhooks.useQuery();
 
   const createMutation = trpc.posts.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (post) => {
       utils.posts.getAll.invalidate();
       utils.posts.getStats.invalidate();
-      toast.success("Post criado com sucesso!");
+      toast.success(post.status === "scheduled" ? "Post agendado com sucesso!" : "Post criado com sucesso!");
       setShowCreate(false);
       resetForm();
     },
@@ -230,7 +233,8 @@ export default function Posts() {
   const publishMutation = trpc.posts.publish.useMutation({
     onSuccess: (data) => {
       utils.posts.getAll.invalidate();
-      if (data.success) toast.success("Post publicado com sucesso!");
+      if (data.success && data.mediaId) toast.success(`Post publicado no Instagram. Media ID: ${data.mediaId}`);
+      else if (data.success) toast.success("Post marcado como publicado!");
       else toast.error("Falha ao publicar post");
     },
     onError: (err) => toast.error("Erro ao publicar: " + err.message),
@@ -269,7 +273,7 @@ export default function Posts() {
       channel: activeChannel,
       title: formTitle || undefined,
       content: formContent,
-      scheduledAt: formScheduledAt ? new Date(formScheduledAt) : undefined,
+      scheduledAt: formScheduledAt || undefined,
       imageUrl: formImageUrl || undefined,
     });
   };
@@ -284,6 +288,7 @@ export default function Posts() {
     return new Date(date).toLocaleDateString("pt-BR", {
       day: "2-digit", month: "short", year: "numeric",
       hour: "2-digit", minute: "2-digit",
+      timeZone: POST_SCHEDULER_TIME_ZONE,
     });
   };
 
@@ -299,13 +304,13 @@ export default function Posts() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-md">
               <Share2 className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm text-muted-foreground font-medium">Automação de Postagens</span>
+            <span className="text-sm text-muted-foreground font-medium">Planejamento de Postagens</span>
           </div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">
             Gerencie suas <span className="gradient-text-accent">postagens</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Crie, agende e publique conteúdo em múltiplos canais automaticamente.
+            Crie, organize e acompanhe conteúdo para Instagram, LinkedIn e Newsletter.
           </p>
         </div>
 
@@ -349,12 +354,6 @@ export default function Posts() {
             <Plus className="w-4 h-4" />
             Criar manualmente
           </Button>
-          {webhookSettings?.n8nPostWebhookUrl && (
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 rounded-full ml-auto">
-              <Sparkles className="w-3 h-3" />
-              Webhook n8n ativo
-            </div>
-          )}
         </div>
 
         {/* Posts list */}
@@ -437,7 +436,7 @@ export default function Posts() {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
-                      {post.status === "draft" && (
+                      {post.status !== "published" && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -526,14 +525,14 @@ export default function Posts() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                Agendar para (opcional)
+                Agendar para ({POST_SCHEDULER_TIME_ZONE})
               </label>
               <Input
                 type="datetime-local"
                 value={formScheduledAt}
                 onChange={(e) => setFormScheduledAt(e.target.value)}
                 className="glass border-border/50"
-                min={new Date().toISOString().slice(0, 16)}
+                min={toSchedulerDatetimeLocalValue(new Date())}
               />
             </div>
             <div className="flex gap-2 pt-2">
@@ -547,6 +546,8 @@ export default function Posts() {
               >
                 {createMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Criando...</>
+                ) : formScheduledAt ? (
+                  <><Calendar className="w-4 h-4" /> Agendar Post</>
                 ) : (
                   <><Plus className="w-4 h-4" /> Criar Post</>
                 )}
@@ -660,14 +661,14 @@ export default function Posts() {
                   {statusConfig[previewPost.status].label}
                 </span>
               </div>
-              {previewPost.status === "draft" && (
+              {previewPost.status !== "published" && (
                 <Button
                   onClick={() => { publishMutation.mutate({ id: previewPost.id }); setPreviewPost(null); }}
                   className={cn("w-full gap-2 bg-gradient-to-r text-white border-0 hover:opacity-90", channelConfig[previewPost.channel].gradient)}
                   disabled={publishMutation.isPending}
                 >
                   <Send className="w-4 h-4" />
-                  Publicar agora
+                  {previewPost.channel === "instagram" ? "Publicar no Instagram" : "Marcar como publicado"}
                 </Button>
               )}
             </div>

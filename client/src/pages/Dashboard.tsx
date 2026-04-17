@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Zap,
   GalleryHorizontal,
+  Clapperboard,
 } from "lucide-react";
 
 const modules = [
@@ -36,6 +37,16 @@ const modules = [
     color: "text-blue-600",
   },
   {
+    id: "videos",
+    title: "Videos com Avatar",
+    description: "Transforme a foto de uma pessoa em um video falado e mantenha tudo salvo na plataforma.",
+    icon: Clapperboard,
+    path: "/dashboard/videos",
+    gradient: "from-fuchsia-500 to-rose-500",
+    stat: "Videos",
+    color: "text-fuchsia-600",
+  },
+  {
     id: "articles",
     title: "Artigos Automáticos",
     description: "Gere artigos completos e otimizados para SEO a partir de temas ou links de notícias.",
@@ -57,8 +68,8 @@ const modules = [
   },
   {
     id: "posts",
-    title: "Automação de Postagens",
-    description: "Agende e publique automaticamente no Instagram, LinkedIn e Newsletter.",
+    title: "Planejamento de Postagens",
+    description: "Organize textos, imagens e status de publicacao para Instagram, LinkedIn e Newsletter.",
     icon: Share2,
     path: "/dashboard/posts",
     gradient: "from-orange-500 to-rose-500",
@@ -73,6 +84,7 @@ export default function Dashboard() {
 
   const { data: chatStats } = trpc.chat.getStats.useQuery();
   const { data: imageStats } = trpc.images.getStats.useQuery();
+  const { data: videoStats } = trpc.videos.getStats.useQuery();
   const { data: articleStats } = trpc.articles.getStats.useQuery();
   const { data: carouselStats } = trpc.carousel.getStats.useQuery();
   const { data: postStats } = trpc.posts.getStats.useQuery();
@@ -80,6 +92,7 @@ export default function Dashboard() {
   const statsMap: Record<string, number> = {
     chat: chatStats?.count ?? 0,
     images: imageStats?.count ?? 0,
+    videos: videoStats?.count ?? 0,
     articles: articleStats?.count ?? 0,
     carousel: carouselStats?.count ?? 0,
     posts: postStats?.count ?? 0,
@@ -109,7 +122,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           {modules.map((mod) => {
             const Icon = mod.icon;
             return (

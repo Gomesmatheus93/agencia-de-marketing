@@ -6,21 +6,54 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { generateCarouselWithAgent } from "./_core/carouselAgent";
+import { saveCarouselTemplateAsset } from "./_core/carouselTemplateAgent";
 import { generateArticleCoverWithDesigner } from "./_core/articleDesignerAgent";
+import {
+  diagnoseLinkedInAuth,
+  publishArticleToLinkedInWithAgent,
+} from "./_core/linkedinArticlePostingAgent";
 import { generateChatAgentReply } from "./_core/chatAgent";
+import { generateVideoScriptWithAgent } from "./_core/videoScriptAgent";
+import { createOpenAIRealtimeToken } from "./_core/openaiRealtime";
+import {
+  prepareDidSourceImage,
+  createDidTalk,
+  waitForDidTalkCompletion,
+  downloadAndStoreDidVideo,
+} from "./_core/didAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
+import {
+  buildScheduledInstagramCarouselMetadata,
+  publishInstagramSocialPost,
+} from "./_core/instagramSocialPostPublisher";
+import {
+  getPostSchedulerTimeZone,
+  parsePostScheduledAt,
+} from "./_core/postScheduling";
 import {
   persistCarouselAssets,
   persistCarouselDesignAssets,
   getCarouselAssetDataUrl,
 } from "./_core/carouselPersistence";
 import * as db from "./db";
-import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { hashPassword, verifyPassword } from "./_core/password";
 import { nanoid } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import axios from "axios";
+
+const scheduledAtInputSchema = z.union([z.date(), z.string()]);
+
+function parseScheduledAtInput(value: Date | string) {
+  const scheduledAt = parsePostScheduledAt(value);
+  if (!scheduledAt) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Informe uma data e hora validas para o agendamento.",
+    });
+  }
+  return scheduledAt;
+}
 
 // ─── Chat Router ──────────────────────────────────────────────────────────────
 const chatRouter = router({
@@ -58,7 +91,6 @@ const chatRouter = router({
     .input(z.object({
       conversationId: z.number(),
       content: z.string().min(1),
-      useWebhook: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
       // Save user message
@@ -71,26 +103,9 @@ const chatRouter = router({
         content: m.content,
       }));
 
+      const user = await db.getUserByOpenId(ctx.user.openId);
       let assistantContent = "";
 
-      // Try n8n webhook first if configured
-      const user = await db.getUserByOpenId(ctx.user.openId);
-      const chatWebhookUrl = user?.n8nWebhookUrl || ENV.n8nChatWebhookUrl;
-      if (input.useWebhook && chatWebhookUrl) {
-        try {
-          const webhookRes = await axios.post(chatWebhookUrl, {
-            message: input.content,
-            conversationId: input.conversationId,
-            userId: ctx.user.id,
-            history: historyMessages,
-          }, { timeout: 30000 });
-          assistantContent = webhookRes.data?.response || webhookRes.data?.text || JSON.stringify(webhookRes.data);
-        } catch (err) {
-          console.warn("[Chat] n8n webhook failed, falling back to LLM:", err);
-        }
-      }
-
-      // Fallback to built-in research/chat agent
       if (!assistantContent) {
         try {
           assistantContent = await generateChatAgentReply({
@@ -142,41 +157,18 @@ const imagesRouter = router({
   }),
 
   generate: protectedProcedure
-  .input(z.object({
-  prompt: z.string(),
-  useWebhook: z.boolean(),
-  referenceImageUrl:
-  z.string().optional()
-  }))
+    .input(
+      z.object({
+        prompt: z.string(),
+        referenceImageUrl: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      let imageUrl = "";
-
-      // Try n8n webhook first
-      const user = await db.getUserByOpenId(ctx.user.openId);
-      const imageWebhookUrl = user?.n8nImageWebhookUrl || ENV.n8nImageWebhookUrl;
-      if (input.useWebhook && imageWebhookUrl) {
-        try {
-          const webhookRes = await axios.post(imageWebhookUrl, {
-            prompt: input.prompt,
-            userId: ctx.user.id,
-            referenceImageUrl: input.referenceImageUrl,
-          }, { timeout: 300000 });
-
-          console.log("[n8n response]", JSON.stringify(webhookRes.data));
-          imageUrl = webhookRes.data?.imageUrl || webhookRes.data?.url || webhookRes.data?.imagem_url || webhookRes.data?.imagemurl || "";
-        } catch (err) {
-          console.warn("[Images] n8n webhook failed, falling back to built-in:", err);
-        }
-      }
-
-      // Fallback to built-in image generation
-      if (!imageUrl) {
-        const result = await generateImage({ 
-          prompt: input.prompt,
-          referenceImageUrl: input.referenceImageUrl,
-          }); 
-        imageUrl = result.url || "";
-      }
+      const result = await generateImage({
+        prompt: input.prompt,
+        referenceImageUrl: input.referenceImageUrl,
+      });
+      const imageUrl = result.url || "";
 
       // Save to DB
       const saved = await db.saveImage(ctx.user.id, input.prompt, imageUrl);
@@ -197,6 +189,147 @@ const imagesRouter = router({
 });
 
 // ─── Articles Router ──────────────────────────────────────────────────────────
+const videosRouter = router({
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    return db.getAvatarVideos(ctx.user.id);
+  }),
+
+  createRealtimeToken: protectedProcedure
+    .input(
+      z.object({
+        instructions: z.string().trim().max(2000).optional(),
+        model: z.string().trim().max(128).optional(),
+        voice: z.string().trim().max(128).optional(),
+        ttlSeconds: z.number().int().min(60).max(3600).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        return await createOpenAIRealtimeToken(input);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "falha desconhecida";
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao criar token realtime da OpenAI: ${message}`,
+        });
+      }
+    }),
+
+  generateScript: protectedProcedure
+    .input(
+      z.object({
+        topic: z.string().min(3).max(500),
+        tone: z
+          .enum(["professional", "casual", "inspiring", "educational"])
+          .optional()
+          .default("professional"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return generateVideoScriptWithAgent(input);
+    }),
+
+  generate: protectedProcedure
+    .input(
+      z.object({
+        title: z.string().min(1).max(512).optional(),
+        topic: z.string().min(3).max(500).optional(),
+        script: z.string().min(10).max(5000),
+        sourceImageUrl: z.string().optional(),
+        sourceImageDataUrl: z.string().optional(),
+        voiceId: z.string().min(1).max(128).optional(),
+      }).refine((value) => Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
+        message: "Envie a foto da pessoa para gerar o video.",
+        path: ["sourceImageDataUrl"],
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const normalizedScript = input.script.replace(/\s+/g, " ").trim();
+      const preparedSourceImage = await prepareDidSourceImage({
+        userId: ctx.user.id,
+        sourceImageUrl: input.sourceImageUrl,
+        sourceImageDataUrl: input.sourceImageDataUrl,
+      });
+
+      const fallbackTitle = (
+        input.topic?.trim() ||
+        normalizedScript.split(/[.!?]/)[0] ||
+        "Video com avatar"
+      ).slice(0, 512);
+
+      const saved = await db.saveAvatarVideo(ctx.user.id, {
+        title: input.title?.trim() || fallbackTitle,
+        topic: input.topic?.trim(),
+        script: normalizedScript,
+        sourceImageUrl: preparedSourceImage.previewSourceImageUrl,
+        voiceProvider: "microsoft",
+        voiceId: input.voiceId,
+        status: "processing",
+      });
+
+      try {
+        const talk = await createDidTalk({
+          sourceImageUrl: preparedSourceImage.providerSourceImageUrl,
+          script: normalizedScript,
+          voiceId: input.voiceId,
+        });
+
+        await db.updateAvatarVideo(saved.id, ctx.user.id, {
+          providerJobId: talk.talkId,
+          voiceProvider: talk.voiceProvider,
+          voiceId: talk.voiceId,
+          errorMessage: null,
+        });
+
+        const completedTalk = await waitForDidTalkCompletion(talk.talkId);
+        const storedVideo = await downloadAndStoreDidVideo({
+          userId: ctx.user.id,
+          videoId: saved.id,
+          resultUrl: completedTalk.resultUrl,
+        });
+
+        const updated = await db.updateAvatarVideo(saved.id, ctx.user.id, {
+          sourceImageUrl: preparedSourceImage.previewSourceImageUrl,
+          videoUrl: storedVideo.videoUrl,
+          status: "completed",
+          errorMessage: null,
+        });
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "O video foi gerado, mas nao consegui salvar o resultado final.",
+          });
+        }
+
+        return updated;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "falha desconhecida";
+        await db.updateAvatarVideo(saved.id, ctx.user.id, {
+          status: "failed",
+          errorMessage: message,
+        });
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao gerar video com avatar: ${message}`,
+        });
+      }
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteAvatarVideo(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  getStats: protectedProcedure.query(async ({ ctx }) => {
+    const count = await db.getAvatarVideoCount(ctx.user.id);
+    return { count };
+  }),
+});
+
 type EnergyNewsItem = {
   title: string;
   url: string;
@@ -909,49 +1042,16 @@ Regras:
     }),
 
   generate: protectedProcedure
-  .input(z.object({
-    topic: z.string().min(3).max(500),
-    sourceUrl: z.string().url().optional(),
-    useWebhook: z.boolean().optional().default(false),
-  }))
-  .mutation(async ({ ctx, input }) => {
-    let title = "";
-    let content = "";
-    let summary = "";
-
-    // GARANTA QUE ESSA LINHA EXISTE ANTES DO IF:
-    const user = await db.getUserByOpenId(ctx.user.openId);
-    const articleWebhookUrl = user?.n8nArticleWebhookUrl || ENV.n8nArticleWebhookUrl;
-
-    if (input.useWebhook && articleWebhookUrl) {
-      try {
-        const webhookRes = await axios.get(articleWebhookUrl, {
-          data: {
-            topic: input.topic,
-            sourceUrl: input.sourceUrl,
-            userId: ctx.user.id,
-          },
-          timeout: 300000,
-        });
-
-        const rawData = webhookRes.data;
-        let webhookData = Array.isArray(rawData) ? rawData[0] : rawData;
-        if (webhookData?.resposta_site && typeof webhookData.resposta_site === 'string') {
-          try {
-            webhookData = JSON.parse(webhookData.resposta_site);
-          } catch {
-            webhookData = Array.isArray(rawData) ? rawData[0] : rawData;
-          }
-        }
-
-        title = webhookData?.title || webhookData?.titulo || "";
-        content = webhookData?.content || webhookData?.article || webhookData?.conteudo || "";
-        summary = webhookData?.summary || webhookData?.resumo || "";
-
-      } catch (err) {
-        console.warn("[Articles] n8n webhook falhou:", err);
-      }
-    }
+    .input(
+      z.object({
+        topic: z.string().min(3).max(500),
+        sourceUrl: z.string().url().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      let title = "";
+      let content = "";
+      let summary = "";
 
       // Fallback to built-in LLM
       if (!content) {
@@ -1053,31 +1153,48 @@ Formato de resposta JSON:
       return saved;
     }),
 
-  publishToLinkedin: protectedProcedure
+  publishLinkedIn: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const article = await db.getArticle(input.id, ctx.user.id);
-      if (!article) throw new TRPCError({ code: "NOT_FOUND", message: "Artigo não encontrado" });
+      if (!article) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Artigo nao encontrado" });
+      }
 
-      const linkedinWebhookUrl = ENV.n8nLinkedinWebhookUrl;
-      if (!linkedinWebhookUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "Webhook do LinkedIn não configurado" });
+      const result = await publishArticleToLinkedInWithAgent({
+        title: article.title,
+        content: article.content,
+        summary: article.summary,
+        topic: article.topic,
+        sourceUrl: article.sourceUrl,
+        coverImageUrl: article.coverImageUrl,
+      });
+
+      await db.updateArticle(article.id, ctx.user.id, {
+        status: "published",
+      });
 
       try {
-        await axios.post(linkedinWebhookUrl, {
-          id: article.id,
+        const savedPost = await db.saveSocialPost(ctx.user.id, {
+          channel: "linkedin",
           title: article.title,
-          content: article.content,
-          summary: article.summary ?? "",
-          topic: article.topic ?? "",
-          sourceUrl: article.sourceUrl ?? null,
-          coverImageUrl: article.coverImageUrl ?? null,
-          createdAt: article.createdAt,
-        }, { timeout: 30000 });
-        return { success: true };
-      } catch (err: any) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao publicar no LinkedIn: " + (err?.message || "falha no webhook") });
+          content: result.commentary,
+          imageUrl: article.coverImageUrl ?? undefined,
+        });
+        await db.updateSocialPost(savedPost.id, ctx.user.id, {
+          status: "published",
+          publishedAt: new Date(),
+        });
+      } catch (err) {
+        console.warn("[Articles] LinkedIn publish succeeded but history save failed:", err);
       }
+
+      return result;
     }),
+
+  diagnoseLinkedIn: protectedProcedure.mutation(async () => {
+    return diagnoseLinkedInAuth();
+  }),
 
   update: protectedProcedure
     .input(z.object({
@@ -1111,6 +1228,9 @@ const carouselSlideSchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   imageUrl: z.string().optional(),
+  designTemplateName: z.string().optional(),
+  designTemplateUrl: z.string().optional(),
+  designStyleBrief: z.string().optional(),
   templateSvgUrl: z.string().optional(),
   renderedImageUrl: z.string().optional(),
 });
@@ -1125,10 +1245,51 @@ const carouselBaseSchema = z.object({
   createdAt: z.string().optional(),
 });
 
+const carouselTemplateInputSchema = z
+  .object({
+    name: z.string().trim().min(2).max(255),
+    imageUrl: z.string().optional(),
+    imageDataUrl: z.string().optional(),
+  })
+  .refine((value) => Boolean(value.imageUrl || value.imageDataUrl), {
+    message: "Envie a imagem do template para salvar o estilo.",
+    path: ["imageDataUrl"],
+  });
+
 const carouselRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
     return db.getCarousels(ctx.user.id);
   }),
+
+  getTemplates: protectedProcedure.query(async ({ ctx }) => {
+    return db.getCarouselTemplates(ctx.user.id);
+  }),
+
+  createTemplate: protectedProcedure
+    .input(carouselTemplateInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const preparedTemplate = await saveCarouselTemplateAsset({
+          userId: ctx.user.id,
+          name: input.name,
+          imageUrl: input.imageUrl,
+          imageDataUrl: input.imageDataUrl,
+        });
+
+        return await db.saveCarouselTemplate(ctx.user.id, {
+          name: input.name,
+          imageUrl: preparedTemplate.imageUrl,
+          styleBrief: preparedTemplate.styleBrief,
+        });
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao salvar template visual: ${
+            err instanceof Error ? err.message : "falha desconhecida"
+          }`,
+        });
+      }
+    }),
 
   generate: protectedProcedure
     .input(
@@ -1136,18 +1297,39 @@ const carouselRouter = router({
         topic: z.string().min(3).max(500),
         slideCount: z.number().int().min(1).max(10),
         style: z.string().min(1).max(100),
+        templateId: z.number().int().positive().optional(),
         coverImageUrl: z.string().optional(),
         coverImageDataUrl: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       try {
+        const selectedTemplate = input.templateId
+          ? await db.getCarouselTemplate(input.templateId, ctx.user.id)
+          : undefined;
+
+        if (input.templateId && !selectedTemplate) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Template visual nao encontrado.",
+          });
+        }
+
+        const templateImageDataUrl = selectedTemplate?.imageUrl
+          ? await getCarouselAssetDataUrl(selectedTemplate.imageUrl)
+          : undefined;
+        const selectedStyle = selectedTemplate?.name || input.style;
+
         const generatedCarousel = await generateCarouselWithAgent({
           topic: input.topic,
           slideCount: input.slideCount,
-          style: input.style,
+          style: selectedStyle,
           coverImageUrl: input.coverImageUrl,
           coverImageDataUrl: input.coverImageDataUrl,
+          templateName: selectedTemplate?.name,
+          templateStyleBrief: selectedTemplate?.styleBrief ?? undefined,
+          templateImageUrl: selectedTemplate?.imageUrl,
+          templateImageDataUrl,
         });
 
         const persistedAssets = await persistCarouselAssets({
@@ -1156,19 +1338,29 @@ const carouselRouter = router({
           slides: generatedCarousel.slides,
         });
 
+        const slides = persistedAssets.slides.map((slide) => ({
+          ...slide,
+          designTemplateName: selectedTemplate?.name,
+          designTemplateUrl: selectedTemplate?.imageUrl,
+          designStyleBrief: selectedTemplate?.styleBrief ?? undefined,
+        }));
+
         return await db.saveCarousel(ctx.user.id, {
           topic: input.topic,
-          style: input.style,
+          style: selectedStyle,
           hook: generatedCarousel.hook,
           caption: generatedCarousel.caption,
           finalCta: generatedCarousel.finalCta,
           coverImageUrl: persistedAssets.coverImageUrl,
-          slides: persistedAssets.slides,
+          slides,
         });
-      } catch (err: any) {
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Erro ao gerar carrossel com o agente: ${err?.message || "falha ao gerar"}`,
+          message: `Erro ao gerar carrossel com o agente: ${
+            err instanceof Error ? err.message : "falha ao gerar"
+          }`,
         });
       }
     }),
@@ -1209,7 +1401,7 @@ const carouselRouter = router({
         if (err instanceof TRPCError) throw err;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Erro ao salvar os templates do carrossel: ${
+          message: `Erro ao salvar as imagens completas do carrossel: ${
             err instanceof Error ? err.message : "falha desconhecida"
           }`,
         });
@@ -1236,67 +1428,6 @@ const carouselRouter = router({
           message: `Erro ao carregar a imagem do template: ${
             err instanceof Error ? err.message : "falha desconhecida"
           }`,
-        });
-      }
-    }),
-
-  publish: protectedProcedure
-    .input(
-      carouselBaseSchema.extend({
-        slides: z.array(carouselSlideSchema).min(1).max(10),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const user = await db.getUserByOpenId(ctx.user.openId);
-      const carouselWebhookUrl = user?.n8nCarouselWebhookUrl || ENV.n8nCarouselWebhookUrl;
-
-      if (!carouselWebhookUrl) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Webhook de postagem do carrossel no n8n nao configurado",
-        });
-      }
-
-      const slides = input.slides.map((slide, index) => ({
-        title: slide.title,
-        body: slide.body,
-        order: index + 1,
-        imageUrl: slide.imageUrl ? toPublicAssetUrl(ctx.req, slide.imageUrl) : undefined,
-      }));
-
-      try {
-        const response = await axios.post(
-          carouselWebhookUrl,
-          {
-            type: "carousel_publish",
-            channel: "instagram",
-            userId: ctx.user.id,
-            user: {
-              id: ctx.user.id,
-              name: ctx.user.name,
-              email: ctx.user.email,
-            },
-            carousel: {
-              topic: input.topic,
-              style: input.style,
-              hook: input.hook || input.slides[0]?.title || input.topic,
-              caption: input.caption || "",
-              finalCta: input.finalCta || "",
-              coverImageUrl: input.coverImageUrl
-                ? toPublicAssetUrl(ctx.req, input.coverImageUrl)
-                : slides[0]?.imageUrl,
-              createdAt: input.createdAt || new Date().toISOString(),
-              slides,
-            },
-          },
-          { timeout: 60000 }
-        );
-
-        return { success: true, response: response.data };
-      } catch (err: any) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Erro ao disparar postagem pelo n8n: ${err?.message || "falha no webhook"}`,
         });
       }
     }),
@@ -1336,13 +1467,6 @@ const carouselRouter = router({
           await db.updateSocialPost(savedPost.id, ctx.user.id, {
             status: "published",
             publishedAt: new Date(),
-            webhookResponse: JSON.stringify({
-              provider: "meta",
-              mediaId: result.mediaId,
-              containerId: result.containerId,
-              childContainerIds: result.childContainerIds,
-              slideUrls: result.slideUrls,
-            }),
           });
         } catch (err) {
           console.warn("[Carousel] Instagram post was published but history save failed:", err);
@@ -1360,10 +1484,70 @@ const carouselRouter = router({
       }
     }),
 
+  scheduleInstagram: protectedProcedure
+    .input(
+      carouselBaseSchema.extend({
+        scheduledAt: scheduledAtInputSchema,
+        slides: z
+          .array(
+            carouselSlideSchema.extend({
+              imageDataUrl: z.string().optional(),
+              svg: z.string().optional(),
+            })
+          )
+          .min(1)
+          .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const scheduledAt = parseScheduledAtInput(input.scheduledAt);
+
+      if (scheduledAt.getTime() <= Date.now()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha uma data futura para agendar o carrossel no Instagram.",
+        });
+      }
+
+      const firstSlideImageUrl =
+        input.slides.find((slide) => slide.imageUrl || slide.imageDataUrl)?.imageUrl ||
+        input.coverImageUrl;
+      const metadata = buildScheduledInstagramCarouselMetadata({
+        topic: input.topic,
+        hook: input.hook,
+        caption: input.caption,
+        finalCta: input.finalCta,
+        slides: input.slides,
+      });
+
+      const savedPost = await db.saveSocialPost(ctx.user.id, {
+        channel: "instagram",
+        title: input.hook || input.topic,
+        content: input.caption || input.hook || input.topic,
+        imageUrl: firstSlideImageUrl,
+        metadata,
+        scheduledAt,
+      });
+
+      return {
+        success: true,
+        postId: savedPost.id,
+        scheduledAt: savedPost.scheduledAt,
+        timeZone: getPostSchedulerTimeZone(),
+      };
+    }),
+
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await db.deleteCarousel(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  deleteTemplate: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteCarouselTemplate(input.id, ctx.user.id);
       return { success: true };
     }),
 
@@ -1383,15 +1567,48 @@ const postsRouter = router({
     }),
 
   create: protectedProcedure
-    .input(z.object({
-      channel: z.enum(["instagram", "linkedin", "newsletter"]),
-      title: z.string().optional(),
-      content: z.string().min(1),
-      imageUrl: z.string().url().optional(),
-      scheduledAt: z.date().optional(),
-    }))
+    .input(
+      z
+        .object({
+          channel: z.enum(["instagram", "linkedin", "newsletter"]),
+          title: z.string().optional(),
+          content: z.string().min(1),
+          imageUrl: z
+            .string()
+            .refine(
+              (value) =>
+                /^https?:\/\//i.test(value) ||
+                value.startsWith("data:image/") ||
+                value.startsWith("/uploads/"),
+              "Informe uma URL de imagem valida."
+            )
+            .optional(),
+          scheduledAt: scheduledAtInputSchema.optional(),
+        })
+        .superRefine((value, ctx) => {
+          if (value.channel === "instagram" && value.scheduledAt && !value.imageUrl?.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["imageUrl"],
+              message: "Para agendar no Instagram, adicione uma imagem ao post.",
+            });
+          }
+        })
+    )
     .mutation(async ({ ctx, input }) => {
-      const saved = await db.saveSocialPost(ctx.user.id, input);
+      const { scheduledAt: scheduledAtInput, ...data } = input;
+      const scheduledAt = scheduledAtInput
+        ? parseScheduledAtInput(scheduledAtInput)
+        : undefined;
+
+      if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha uma data futura para agendar a postagem.",
+        });
+      }
+
+      const saved = await db.saveSocialPost(ctx.user.id, { ...data, scheduledAt });
       return saved;
     }),
 
@@ -1460,37 +1677,31 @@ Responda em JSON:
     .mutation(async ({ ctx, input }) => {
       const posts = await db.getSocialPosts(ctx.user.id);
       const post = posts.find((p) => p.id === input.id);
-      if (!post) throw new Error("Post não encontrado");
+      if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Post não encontrado" });
 
-      const user = await db.getUserByOpenId(ctx.user.openId);
-      const postWebhookUrl = user?.n8nPostWebhookUrl || ENV.n8nPostWebhookUrl;
-      let webhookResponse = "";
-      let status: "published" | "failed" = "published";
+      if (post.channel === "instagram") {
+        const { result, publicImageUrl } = await publishInstagramSocialPost(post);
 
-      if (postWebhookUrl) {
-        try {
-          const res = await axios.post(postWebhookUrl, {
-            postId: post.id,
-            channel: post.channel,
-            title: post.title,
-            content: post.content,
-            imageUrl: post.imageUrl,
-            userId: ctx.user.id,
-          }, { timeout: 30000 });
-          webhookResponse = JSON.stringify(res.data);
-        } catch (err: any) {
-          status = "failed";
-          webhookResponse = err?.message || "Webhook error";
-        }
+        await db.updateSocialPost(input.id, ctx.user.id, {
+          status: "published",
+          publishedAt: new Date(),
+          imageUrl: publicImageUrl,
+        });
+
+        return {
+          success: true,
+          status: "published" as const,
+          mediaId: result.mediaId,
+          imageUrl: publicImageUrl,
+        };
       }
 
       await db.updateSocialPost(input.id, ctx.user.id, {
-        status,
-        publishedAt: status === "published" ? new Date() : null,
-        webhookResponse,
+        status: "published",
+        publishedAt: new Date(),
       });
 
-      return { success: status === "published", status };
+      return { success: true, status: "published" as const };
     }),
 
   update: protectedProcedure
@@ -1498,12 +1709,32 @@ Responda em JSON:
       id: z.number(),
       content: z.string().optional(),
       title: z.string().optional(),
-      scheduledAt: z.date().nullable().optional(),
+      scheduledAt: z.union([scheduledAtInputSchema, z.null()]).optional(),
       status: z.enum(["draft", "scheduled", "published", "failed"]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-      await db.updateSocialPost(id, ctx.user.id, data);
+      const { id, scheduledAt: scheduledAtInput, ...data } = input;
+      const scheduledAt =
+        scheduledAtInput === undefined || scheduledAtInput === null
+          ? scheduledAtInput
+          : parseScheduledAtInput(scheduledAtInput);
+
+      if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha uma data futura para reagendar a postagem.",
+        });
+      }
+
+      const updateData = {
+        ...data,
+        ...(scheduledAtInput === undefined
+          ? {}
+          : {
+              scheduledAt,
+            }),
+      };
+      await db.updateSocialPost(id, ctx.user.id, updateData);
       return { success: true };
     }),
 
@@ -1521,43 +1752,6 @@ Responda em JSON:
 });
 
 // ─── Settings Router ──────────────────────────────────────────────────────────
-const settingsRouter = router({
-  getWebhooks: protectedProcedure.query(async ({ ctx }) => {
-    const user = await db.getUserByOpenId(ctx.user.openId);
-    return {
-      n8nWebhookUrl: user?.n8nWebhookUrl || "",
-      n8nImageWebhookUrl: user?.n8nImageWebhookUrl || "",
-      n8nArticleWebhookUrl: user?.n8nArticleWebhookUrl || "",
-      n8nPostWebhookUrl: user?.n8nPostWebhookUrl || "",
-      n8nCarouselWebhookUrl: user?.n8nCarouselWebhookUrl || "",
-      hasChat: !!(user?.n8nWebhookUrl || ENV.n8nChatWebhookUrl),
-      hasImage: !!(user?.n8nImageWebhookUrl || ENV.n8nImageWebhookUrl),
-      hasArticle: !!(user?.n8nArticleWebhookUrl || ENV.n8nArticleWebhookUrl),
-      hasPost: !!(user?.n8nPostWebhookUrl || ENV.n8nPostWebhookUrl),
-      hasCarousel: !!(user?.n8nCarouselWebhookUrl || ENV.n8nCarouselWebhookUrl),
-    };
-  }),
-
-  updateWebhooks: protectedProcedure
-    .input(z.object({
-      n8nWebhookUrl: z.string().optional(),
-      n8nImageWebhookUrl: z.string().optional(),
-      n8nArticleWebhookUrl: z.string().optional(),
-      n8nPostWebhookUrl: z.string().optional(),
-      n8nCarouselWebhookUrl: z.string().optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      await db.updateUserWebhooks(ctx.user.id, {
-        n8nWebhookUrl: input.n8nWebhookUrl || null,
-        n8nImageWebhookUrl: input.n8nImageWebhookUrl || null,
-        n8nArticleWebhookUrl: input.n8nArticleWebhookUrl || null,
-        n8nPostWebhookUrl: input.n8nPostWebhookUrl || null,
-        n8nCarouselWebhookUrl: input.n8nCarouselWebhookUrl || null,
-      });
-      return { success: true };
-    }),
-});
-
 // ─── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
   system: systemRouter,
@@ -1621,10 +1815,10 @@ export const appRouter = router({
   }),
   chat: chatRouter,
   images: imagesRouter,
+  videos: videosRouter,
   articles: articlesRouter,
   carousel: carouselRouter,
   posts: postsRouter,
-  settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -5,7 +5,9 @@ const CAROUSEL_AGENT_PROMPT = `Voce e um especialista em criacao de conteudo par
 
 Sua funcao e transformar qualquer tema ou ideia em um carrossel completo, pronto para design e postagem, com foco em engajamento, retencao e conversao. Prendam atencao no primeiro slide, Gerem curiosidade e retencao ate o final, Estimulem salvamentos, compartilhamentos e comentarios, Tenham linguagem simples, direta e persuasiva. Use gatilhos mentais (curiosidade, urgencia, prova, dor), Crie sensacao de descoberta, Use contraste (ex: certo vs errado), Faca o leitor pensar "eu precisava disso".
 
-O design final segue um modelo fixo: cabecalho com perfil, titulo grande centralizado, resumo curto abaixo e uma imagem tematica ocupando todo o bloco inferior. Por isso, escreva titulos curtos e resumos compactos, sem instrucoes visuais dentro do texto.`;
+O design final segue um modelo fixo: cabecalho com perfil, titulo grande centralizado, resumo curto abaixo e uma imagem tematica ocupando todo o bloco inferior. Por isso, escreva titulos curtos e resumos compactos, sem instrucoes visuais dentro do texto.
+
+Quando existir um template visual enviado pelo usuario, preserve essa familia visual como referencia principal para o clima, a composicao e a direcao de arte.`;
 
 const STYLE_GUIDE: Record<string, string> = {
   signature: "Visual premium, contrastado e moderno, com atmosfera roxa profunda e acentos laranja vibrantes.",
@@ -25,6 +27,10 @@ export type CarouselAgentInput = {
   style: string;
   coverImageDataUrl?: string;
   coverImageUrl?: string;
+  templateName?: string;
+  templateStyleBrief?: string;
+  templateImageDataUrl?: string;
+  templateImageUrl?: string;
 };
 
 export type CarouselAgentSlide = {
@@ -138,6 +144,8 @@ function buildCarouselImagePrompt(input: {
   slideBody: string;
   imageSearchQuery: string;
   slideIndex: number;
+  templateName?: string;
+  templateStyleBrief?: string;
 }) {
   return [
     "Use case: photorealistic social media carousel visual",
@@ -147,12 +155,18 @@ function buildCarouselImagePrompt(input: {
     `Slide ${input.slideIndex + 1} focus: ${input.slideTitle}`,
     `Slide context: ${input.slideBody}`,
     `Creative direction: ${input.imageSearchQuery || input.hook}`,
+    input.templateName ? `Chosen design template: ${input.templateName}` : undefined,
+    input.templateStyleBrief ? `Template style reference: ${input.templateStyleBrief}` : undefined,
     "The visual subject must clearly represent the main topic first. The slide focus only changes the angle inside that same topic.",
+    "If a reference image is provided, treat it as a style reference: preserve the visual language, finish, palette, mood and framing logic, but generate a new scene that matches this slide's content.",
     "Style: ultra-realistic editorial photography, premium, clean, sharp, natural light, realistic details.",
+    "Make the photography feel visually compatible with the chosen template, especially in tone, palette, framing and finish.",
     "Make this image specific to this slide, not a generic repeated cover for the whole carousel.",
     "Avoid random metaphors, unrelated people, unrelated office scenes, generic smartphones, abstract backgrounds, stock-photo cliches, or objects disconnected from the main topic.",
     "Composition: strong subject from the main topic, no text, no logos, no watermark, no UI, no charts, no fake typography.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildFallbackImageDataUrl(topic: string) {
@@ -211,6 +225,9 @@ async function resolveCarouselCoverImage(input: {
   slideTitle: string;
   slideBody: string;
   slideIndex: number;
+  templateName?: string;
+  templateStyleBrief?: string;
+  referenceImageUrl?: string;
 }) {
   const query = buildCentralThemeImageQuery(input);
 
@@ -223,7 +240,10 @@ async function resolveCarouselCoverImage(input: {
         slideBody: input.slideBody,
         imageSearchQuery: query,
         slideIndex: input.slideIndex,
+        templateName: input.templateName,
+        templateStyleBrief: input.templateStyleBrief,
       }),
+      referenceImageUrl: input.referenceImageUrl,
     });
 
     if (generatedImage.url) {
@@ -247,12 +267,16 @@ export async function generateCarouselWithAgent(
   input: CarouselAgentInput
 ): Promise<CarouselAgentResult> {
   const referenceImageUrl = input.coverImageDataUrl || input.coverImageUrl;
-  const styleGuide = STYLE_GUIDE[input.style] || `Estilo visual: ${input.style}.`;
+  const templateImageUrl = input.templateImageDataUrl || input.templateImageUrl;
+  const styleGuide = input.templateStyleBrief?.trim()
+    ? `Template escolhido: ${input.templateName || input.style}. ${input.templateStyleBrief.trim()}`
+    : STYLE_GUIDE[input.style] || `Estilo visual: ${input.style}.`;
 
   const userPrompt = [
     `Tema do carrossel: ${input.topic}`,
     `Quantidade exata de slides: ${input.slideCount}`,
     `Direcao visual: ${styleGuide}`,
+    input.templateName ? `Nome do template visual: ${input.templateName}` : undefined,
     "Escreva tudo em portugues brasileiro.",
     "Crie um gancho forte e direto.",
     "O primeiro slide deve prender a atencao imediatamente.",
@@ -268,23 +292,47 @@ export async function generateCarouselWithAgent(
     "Nao use consultas visuais abstratas, metaforicas ou genericas como transformation, growth, future, innovation ou success sem objeto/cena concreta do tema.",
     "Se o tema for energia, por exemplo, use cenas concretas como smart grid, solar panels, power transmission, battery storage, EV charging, power plant, oil market ou wind farm, de acordo com o assunto.",
     "Evite emojis e evite texto generico.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const userContent: MessageContent | MessageContent[] = referenceImageUrl
-    ? [
-        {
-          type: "text",
-          text: `${userPrompt}\nUse a imagem enviada como referencia contextual e visual quando fizer sentido.`,
-        },
-        {
-          type: "image_url",
-          image_url: {
-            url: referenceImageUrl,
-            detail: "auto",
-          },
-        },
-      ]
-    : userPrompt;
+  const userContentParts: MessageContent[] = [
+    {
+      type: "text",
+      text: userPrompt,
+    },
+  ];
+
+  if (templateImageUrl) {
+    userContentParts.push({
+      type: "text",
+      text: "Imagem de referencia 1: template visual do usuario. Preserve a familia visual, o clima, a composicao e o acabamento desse modelo.",
+    });
+    userContentParts.push({
+      type: "image_url",
+      image_url: {
+        url: templateImageUrl,
+        detail: "low",
+      },
+    });
+  }
+
+  if (referenceImageUrl) {
+    userContentParts.push({
+      type: "text",
+      text: "Imagem de referencia 2: imagem opcional para o bloco inferior. Use como referencia de conteudo quando fizer sentido.",
+    });
+    userContentParts.push({
+      type: "image_url",
+      image_url: {
+        url: referenceImageUrl,
+        detail: "auto",
+      },
+    });
+  }
+
+  const userContent: MessageContent | MessageContent[] =
+    userContentParts.length === 1 ? userPrompt : userContentParts;
 
   const response = await invokeLLM({
     messages: [
@@ -369,6 +417,9 @@ export async function generateCarouselWithAgent(
         slideTitle: slide.title,
         slideBody: slide.body,
         slideIndex: index,
+        templateName: input.templateName,
+        templateStyleBrief: input.templateStyleBrief,
+        referenceImageUrl: templateImageUrl,
       }));
 
     slidesWithImage.push({

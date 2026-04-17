@@ -118,7 +118,6 @@ export default function Chat() {
     sendMsg.mutate({
       conversationId: convId,
       content: msg,
-      useWebhook: false,
     });
   };
 

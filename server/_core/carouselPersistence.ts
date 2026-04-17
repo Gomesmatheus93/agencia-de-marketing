@@ -23,6 +23,9 @@ type PersistCarouselDesignAssetsInput = {
     title: string;
     body?: string;
     imageUrl?: string;
+    designTemplateName?: string;
+    designTemplateUrl?: string;
+    designStyleBrief?: string;
     templateSvg?: string;
     renderedImageDataUrl?: string;
     templateSvgUrl?: string;
@@ -46,6 +49,8 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
   "image/svg+xml": "svg",
   "image/webp": "webp",
 };
+
+const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
 function getExtensionFromMimeType(mimeType: string) {
   return MIME_EXTENSION_MAP[mimeType] || "bin";
@@ -159,20 +164,34 @@ async function resolveAnyAsset(assetUrl: string): Promise<StorageAsset | undefin
   return resolveStorageAsset(assetUrl) || await readRemoteAsset(assetUrl);
 }
 
-function shouldReusePersistedUrl(assetUrl: string) {
-  const uploadsAssetPath = getUploadsAssetPath(assetUrl);
-  if (uploadsAssetPath) return true;
+async function writeUploadsAsset(input: {
+  asset: StorageAsset;
+  batchId: string;
+  filePrefix: string;
+  userId: number;
+}) {
+  const safePrefix = input.filePrefix.replace(/[^a-zA-Z0-9._-]/g, "-") || "asset";
+  const directory = path.resolve(
+    UPLOADS_ROOT,
+    "carousels",
+    String(input.userId),
+    input.batchId,
+    "sources"
+  );
 
-  if (!/^https?:\/\//i.test(assetUrl)) {
-    return false;
+  if (!directory.startsWith(`${UPLOADS_ROOT}${path.sep}`) && directory !== UPLOADS_ROOT) {
+    throw new Error(`Invalid uploads path: ${directory}`);
   }
 
-  try {
-    const parsed = new URL(assetUrl);
-    return parsed.hostname === "files.catbox.moe";
-  } catch {
-    return false;
+  await fs.mkdir(directory, { recursive: true });
+
+  const filePath = path.resolve(directory, `${safePrefix}.${input.asset.extension}`);
+  if (!filePath.startsWith(`${UPLOADS_ROOT}${path.sep}`)) {
+    throw new Error(`Invalid uploads path: ${filePath}`);
   }
+
+  await fs.writeFile(filePath, input.asset.data);
+  return `/uploads/${path.relative(UPLOADS_ROOT, filePath).replace(/\\/g, "/")}`;
 }
 
 export async function persistCarouselAssets(
@@ -188,19 +207,17 @@ export async function persistCarouselAssets(
     let persistedUrl = assetUrl;
 
     try {
-      const asset = shouldReusePersistedUrl(assetUrl)
-        ? await resolveStorageAsset(assetUrl)
-        : await resolveAnyAsset(assetUrl);
-      if (asset) {
-        const uploaded = await storagePut(
-          `carousels/${input.userId}/${batchId}/${filePrefix}.${asset.extension}`,
-          asset.data,
-          asset.contentType
-        );
-        persistedUrl = uploaded.url;
+      const dataUrlAsset = parseDataUrl(assetUrl);
+      if (dataUrlAsset) {
+        persistedUrl = await writeUploadsAsset({
+          asset: dataUrlAsset,
+          batchId,
+          filePrefix,
+          userId: input.userId,
+        });
       }
     } catch (error) {
-      console.warn("[Carousel] Failed to persist asset, keeping original URL:", error);
+      console.warn("[Carousel] Failed to save local source asset, keeping original URL:", error);
     }
 
     cache.set(assetUrl, persistedUrl);
@@ -233,17 +250,7 @@ export async function persistCarouselDesignAssets(
 
   for (let index = 0; index < input.slides.length; index += 1) {
     const slide = input.slides[index];
-    let templateSvgUrl = slide.templateSvgUrl;
     let renderedImageUrl = slide.renderedImageUrl;
-
-    if (slide.templateSvg) {
-      const uploadedTemplate = await storagePut(
-        `carousels/${input.userId}/${input.carouselId}/templates/slide-${String(index + 1).padStart(2, "0")}.svg`,
-        slide.templateSvg,
-        "image/svg+xml"
-      );
-      templateSvgUrl = uploadedTemplate.url;
-    }
 
     if (slide.renderedImageDataUrl) {
       const renderedAsset = parseDataUrl(slide.renderedImageDataUrl);
@@ -263,7 +270,10 @@ export async function persistCarouselDesignAssets(
       title: slide.title,
       body: slide.body || "",
       imageUrl: slide.imageUrl,
-      templateSvgUrl,
+      designTemplateName: slide.designTemplateName,
+      designTemplateUrl: slide.designTemplateUrl,
+      designStyleBrief: slide.designStyleBrief,
+      templateSvgUrl: slide.templateSvgUrl,
       renderedImageUrl,
     });
   }

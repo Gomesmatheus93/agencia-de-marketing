@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import Images from "./pages/Images";
+import Videos from "./pages/Videos";
 import Articles from "./pages/Articles";
 import Posts from "./pages/Posts";
 import Settings from "./pages/Settings";
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/dashboard/chat" component={Chat} />
       <Route path="/dashboard/images" component={Images} />
+      <Route path="/dashboard/videos" component={Videos} />
       <Route path="/dashboard/articles" component={Articles} />
       <Route path="/dashboard/carousel" component={CarouselPage} />
       <Route path="/dashboard/posts" component={Posts} />

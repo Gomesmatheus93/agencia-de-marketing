@@ -2,6 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Calendar,
   Download,
   Image,
   Instagram,
@@ -24,11 +26,19 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  isSchedulerDatetimeLocalInFuture,
+  POST_SCHEDULER_TIME_ZONE,
+  toSchedulerDatetimeLocalValue,
+} from "@/lib/scheduling";
 
 interface CarouselSlide {
   title: string;
   body: string;
   imageUrl?: string;
+  designTemplateName?: string;
+  designTemplateUrl?: string;
+  designStyleBrief?: string;
   templateSvgUrl?: string;
   renderedImageUrl?: string;
 }
@@ -105,6 +115,8 @@ type SlideRenderInput = {
   profileAvatarUrl?: string;
 };
 
+type TemplateDrivenTone = "light" | "dark";
+
 type ZipEntry = {
   name: string;
   data: Uint8Array;
@@ -149,7 +161,15 @@ const ZIP_CRC_TABLE = (() => {
 const embeddedAssetCache = new Map<string, Promise<string | undefined>>();
 
 function getStyleLabel(style: string) {
-  return DEFAULT_STYLE_LABEL;
+  if (!style.trim()) {
+    return DEFAULT_STYLE_LABEL;
+  }
+
+  if (style === DEFAULT_STYLE_ID) {
+    return DEFAULT_STYLE_LABEL;
+  }
+
+  return style;
 }
 
 function formatDateLabel(value: Date | string) {
@@ -534,7 +554,203 @@ function createZipBlob(entries: ZipEntry[]) {
 }
 
 function buildSlideSvg(input: SlideRenderInput) {
+  if (input.slide.designTemplateUrl) {
+    return buildTemplateDrivenSlideSvg(input);
+  }
+
   return buildFlavioModelSlideSvg(input);
+}
+
+function resolveTemplateDrivenTone(styleBrief?: string, templateName?: string): TemplateDrivenTone {
+  const source = `${styleBrief || ""} ${templateName || ""}`.toLowerCase();
+  const lightHints = [
+    "claro",
+    "clean",
+    "cleaner",
+    "minimal",
+    "minimalista",
+    "branco",
+    "light",
+    "suave",
+    "soft",
+    "editorial",
+    "premium claro",
+  ];
+  const darkHints = [
+    "escuro",
+    "dark",
+    "noturno",
+    "cinema",
+    "dramatico",
+    "dramática",
+    "alto contraste",
+    "luxo",
+    "preto",
+    "neon",
+    "moody",
+  ];
+
+  const lightScore = lightHints.reduce(
+    (score, hint) => score + (source.includes(hint) ? 1 : 0),
+    0
+  );
+  const darkScore = darkHints.reduce(
+    (score, hint) => score + (source.includes(hint) ? 1 : 0),
+    0
+  );
+
+  return darkScore > lightScore ? "dark" : "light";
+}
+
+function buildTemplateDrivenSlideSvg(input: SlideRenderInput) {
+  const idSuffix = hashString(
+    `${input.topic}-${input.index}-${input.slide.title}-${input.slide.designTemplateName || "template"}`
+  );
+  const templateImageUrl = toAbsoluteClientAssetUrl(input.slide.designTemplateUrl);
+  const generatedImageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+  const tone = resolveTemplateDrivenTone(
+    input.slide.designStyleBrief,
+    input.slide.designTemplateName
+  );
+  const titleSource = input.index === 0 ? input.hook || input.slide.title : input.slide.title;
+  const bodySource =
+    input.index === input.total - 1 && input.finalCta
+      ? input.finalCta
+      : input.slide.body || input.topic;
+  const topicLabel = clampSentence(input.topic, 40).toUpperCase();
+  const templateLabel = clampSentence(
+    input.slide.designTemplateName || getStyleLabel(input.style),
+    28
+  ).toUpperCase();
+  const titleLines = wrapTextLines(titleSource, input.index === 0 ? 20 : 22, 3);
+  const titleFontSize =
+    titleLines.length >= 3 ? 74 : titleLines.some((line) => line.length > 18) ? 82 : 92;
+  const titleLineHeight = Math.round(titleFontSize * 1.04);
+  const bodyLines = wrapTextLines(bodySource, 34, input.index === input.total - 1 ? 4 : 3);
+  const bodyFontSize =
+    bodyLines.length >= 4 ? 34 : bodyLines.length === 3 ? 36 : bodyLines.some((line) => line.length > 28) ? 38 : 40;
+  const bodyLineHeight = Math.round(bodyFontSize * 1.24);
+  const kickerText = input.index === input.total - 1
+    ? clampSentence(input.finalCta || "Salve este conteudo para revisar depois.", 52)
+    : clampSentence(input.slide.body || input.topic, 56);
+  const kickerLines = wrapTextLines(kickerText, 34, 2);
+  const headerChipId = `templateHeader-${idSuffix}`;
+  const panelShadowId = `panelShadow-${idSuffix}`;
+  const imageClipId = `templateImageClip-${idSuffix}`;
+  const fallbackGradientId = `templateFallback-${idSuffix}`;
+  const imageFallbackGradientId = `templateImageFallback-${idSuffix}`;
+  const textX = 116;
+  const titleStartY = 236;
+  const bodyStartY = titleStartY + (titleLines.length - 1) * titleLineHeight + 84;
+  const kickerStartY = Math.min(
+    666,
+    bodyStartY + (bodyLines.length - 1) * bodyLineHeight + 62
+  );
+  const titleFill = tone === "dark" ? "#f8fafc" : "#101828";
+  const bodyFill = tone === "dark" ? "#e2e8f0" : "#344054";
+  const mutedFill = tone === "dark" ? "#cbd5e1" : "#475467";
+  const panelFill = tone === "dark" ? "rgba(7, 12, 24, 0.62)" : "rgba(255, 255, 255, 0.76)";
+  const panelStroke = tone === "dark" ? "rgba(226, 232, 240, 0.14)" : "rgba(15, 23, 42, 0.12)";
+  const outerStroke = tone === "dark" ? "rgba(255, 255, 255, 0.14)" : "rgba(15, 23, 42, 0.08)";
+  const overlayTop = tone === "dark" ? "rgba(2, 6, 23, 0.72)" : "rgba(248, 250, 252, 0.34)";
+  const overlayBottom = tone === "dark" ? "rgba(2, 6, 23, 0.28)" : "rgba(248, 250, 252, 0.18)";
+  const chipFill = tone === "dark" ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.82)";
+  const chipText = tone === "dark" ? "#f8fafc" : "#0f172a";
+  const chipAccent = tone === "dark" ? "#c084fc" : "#7c3aed";
+  const counterFill = tone === "dark" ? "rgba(15, 23, 42, 0.58)" : "rgba(255, 255, 255, 0.84)";
+  const counterText = tone === "dark" ? "#f8fafc" : "#0f172a";
+  const imageOverlay = tone === "dark" ? "rgba(15, 23, 42, 0.16)" : "rgba(15, 23, 42, 0.04)";
+  const imageYOffset = generatedImageUrl ? 792 : 0;
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="${fallbackGradientId}" x1="0" y1="0" x2="1080" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="${tone === "dark" ? "#111827" : "#f8fafc"}" />
+      <stop offset="1" stop-color="${tone === "dark" ? "#312e81" : "#dbeafe"}" />
+    </linearGradient>
+    <linearGradient id="${headerChipId}" x1="84" y1="82" x2="436" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="${tone === "dark" ? "#7c3aed" : "#4f46e5"}" />
+      <stop offset="1" stop-color="${tone === "dark" ? "#ec4899" : "#7c3aed"}" />
+    </linearGradient>
+    <linearGradient id="${imageFallbackGradientId}" x1="96" y1="792" x2="984" y2="1248" gradientUnits="userSpaceOnUse">
+      <stop stop-color="${tone === "dark" ? "#111827" : "#e2e8f0"}" />
+      <stop offset="1" stop-color="${tone === "dark" ? "#4338ca" : "#cbd5e1"}" />
+    </linearGradient>
+    <clipPath id="${imageClipId}">
+      <rect x="72" y="792" width="936" height="486" rx="34" />
+    </clipPath>
+    <filter id="${panelShadowId}" x="28" y="34" width="1024" height="1310" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="${tone === "dark" ? "#020617" : "#0f172a"}" flood-opacity="${tone === "dark" ? "0.42" : "0.16"}" />
+    </filter>
+  </defs>
+
+  ${templateImageUrl
+    ? `<image href="${escapeXml(templateImageUrl)}" x="0" y="0" width="1080" height="1350" preserveAspectRatio="xMidYMid slice" />`
+    : `<rect width="1080" height="1350" fill="url(#${fallbackGradientId})" />`}
+  <rect width="1080" height="1350" fill="${overlayTop}" opacity="1" />
+  <rect width="1080" height="1350" fill="${overlayBottom}" opacity="1" />
+  <rect x="36" y="36" width="1008" height="1278" rx="40" fill="none" stroke="${outerStroke}" />
+
+  <rect x="72" y="72" width="936" height="654" rx="42" fill="${panelFill}" stroke="${panelStroke}" filter="url(#${panelShadowId})" />
+  <rect x="96" y="96" width="350" height="50" rx="25" fill="${chipFill}" stroke="${panelStroke}" />
+  <rect x="112" y="112" width="122" height="18" rx="9" fill="url(#${headerChipId})" />
+  <text x="252" y="126" fill="${chipText}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(templateLabel)}</text>
+
+  <rect x="862" y="96" width="146" height="50" rx="25" fill="${counterFill}" stroke="${panelStroke}" />
+  <text x="935" y="128" text-anchor="middle" fill="${counterText}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${input.index + 1}/${input.total}</text>
+
+  <text x="${textX}" y="184" fill="${chipAccent}" font-size="22" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.4" font-weight="700">${escapeXml(topicLabel)}</text>
+
+  <text x="${textX}" y="${titleStartY}" fill="${titleFill}" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
+    ${titleLines
+      .map(
+        (line, lineIndex) =>
+          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
+      )
+      .join("")}
+  </text>
+
+  <text x="${textX}" y="${bodyStartY}" fill="${bodyFill}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+    ${bodyLines
+      .map(
+        (line, lineIndex) =>
+          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`
+      )
+      .join("")}
+  </text>
+
+  <rect x="${textX}" y="610" width="412" height="62" rx="31" fill="${tone === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(15, 23, 42, 0.06)"}" stroke="${panelStroke}" />
+  <text x="${textX + 206}" y="650" text-anchor="middle" fill="${titleFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.index === input.total - 1 ? "CTA do fechamento" : "Mensagem principal")}</text>
+
+  <text x="${textX}" y="${kickerStartY}" fill="${mutedFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+    ${kickerLines
+      .map(
+        (line, lineIndex) =>
+          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`
+      )
+      .join("")}
+  </text>
+
+  <rect x="72" y="792" width="936" height="486" rx="34" fill="${generatedImageUrl ? "rgba(255, 255, 255, 0.12)" : `url(#${imageFallbackGradientId})`}" stroke="${panelStroke}" />
+  ${
+    generatedImageUrl
+      ? `
+  <g clip-path="url(#${imageClipId})">
+    <image href="${escapeXml(generatedImageUrl)}" x="72" y="${imageYOffset}" width="936" height="486" preserveAspectRatio="xMidYMid slice" />
+    <rect x="72" y="792" width="936" height="486" fill="${imageOverlay}" />
+  </g>
+      `
+      : `
+  <circle cx="284" cy="1018" r="168" fill="${tone === "dark" ? "rgba(129, 140, 248, 0.24)" : "rgba(99, 102, 241, 0.16)"}" />
+  <circle cx="812" cy="1126" r="210" fill="${tone === "dark" ? "rgba(236, 72, 153, 0.22)" : "rgba(168, 85, 247, 0.14)"}" />
+  <path d="M72 1192L266 1034L424 1128L612 972L792 1096L1008 972V1278H72V1192Z" fill="${tone === "dark" ? "rgba(15, 23, 42, 0.38)" : "rgba(255, 255, 255, 0.42)"}" />
+      `
+  }
+  <rect x="96" y="818" width="322" height="56" rx="28" fill="${tone === "dark" ? "rgba(2, 6, 23, 0.44)" : "rgba(255, 255, 255, 0.86)"}" stroke="${panelStroke}" />
+  <text x="257" y="853" text-anchor="middle" fill="${tone === "dark" ? "#f8fafc" : "#0f172a"}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.index === 0 ? "Visual guiado pelo template" : "Imagem gerada no estilo escolhido")}</text>
+</svg>
+  `.trim();
 }
 
 function buildFlavioModelSlideSvg(input: SlideRenderInput) {
@@ -1140,13 +1356,17 @@ function CarouselCard({
   onOpen,
   onDownload,
   onPublish,
+  onSchedule,
   isPublishing,
+  isScheduling,
 }: {
   carousel: CarouselItem;
   onOpen: () => void;
   onDownload: () => void;
   onPublish: () => void;
+  onSchedule: () => void;
   isPublishing: boolean;
+  isScheduling: boolean;
 }) {
   const heroSlide = carousel.slides[0];
 
@@ -1205,19 +1425,34 @@ function CarouselCard({
             ZIP
           </Button>
         </div>
-        <Button
-          variant="outline"
-          className="w-full border-emerald-500/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-          onClick={onPublish}
-          disabled={isPublishing}
-        >
-          {isPublishing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Instagram className="mr-2 h-4 w-4" />
-          )}
-          Postar Instagram
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            className="border-emerald-500/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+            onClick={onPublish}
+            disabled={isPublishing || isScheduling}
+          >
+            {isPublishing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Instagram className="mr-2 h-4 w-4" />
+            )}
+            Postar
+          </Button>
+          <Button
+            variant="outline"
+            className="border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
+            onClick={onSchedule}
+            disabled={isPublishing || isScheduling}
+          >
+            {isScheduling ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Calendar className="mr-2 h-4 w-4" />
+            )}
+            Agendar
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1293,6 +1528,9 @@ async function buildCarouselTemplateSlides(
   const embeddedSlideImageUrls = await Promise.all(
     carousel.slides.map((slide) => resolveAssetUrl(slide.imageUrl))
   );
+  const embeddedDesignTemplateUrls = await Promise.all(
+    carousel.slides.map((slide) => resolveAssetUrl(slide.designTemplateUrl))
+  );
   const sharedEmbeddedImageUrl =
     embeddedSlideImageUrls.find(
       (imageUrl) => isEmbeddedAssetUrl(imageUrl) && !isCarouselFallbackAssetUrl(imageUrl)
@@ -1308,10 +1546,12 @@ async function buildCarouselTemplateSlides(
         ownEmbeddedImageUrl && !isCarouselFallbackAssetUrl(ownEmbeddedImageUrl)
           ? ownEmbeddedImageUrl
           : sharedEmbeddedImageUrl;
+      const embeddedDesignTemplateUrl = embeddedDesignTemplateUrls[index];
       const svg = buildSlideSvg({
         slide: {
           ...slide,
           imageUrl: embeddedSlideImageUrl,
+          designTemplateUrl: embeddedDesignTemplateUrl || slide.designTemplateUrl,
         },
         index,
         total: carousel.slides.length,
@@ -1328,7 +1568,9 @@ async function buildCarouselTemplateSlides(
         title: slide.title,
         body: slide.body,
         imageUrl: slide.imageUrl,
-        templateSvg: svg,
+        designTemplateName: slide.designTemplateName,
+        designTemplateUrl: slide.designTemplateUrl,
+        designStyleBrief: slide.designStyleBrief,
         renderedImageDataUrl: imageDataUrl,
         templateSvgUrl: slide.templateSvgUrl,
         renderedImageUrl: slide.renderedImageUrl,
@@ -1345,6 +1587,8 @@ export default function Carousels() {
   const [coverImageUrl, setCoverImageUrl] = useState("");
   const [selectedCarouselId, setSelectedCarouselId] = useState<number | null>(null);
   const [modalSlide, setModalSlide] = useState(0);
+  const [scheduleCarousel, setScheduleCarousel] = useState<CarouselItem | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
   const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery();
@@ -1358,8 +1602,8 @@ export default function Carousels() {
       setTopic("");
       setCoverImageUrl("");
       toast.success("Carrossel gerado com sucesso!");
-      void ensureCarouselDesignAssets(carousel as CarouselItem, { silent: true }).catch((error) => {
-        console.warn("[Carousel] Nao foi possivel salvar o template completo apos gerar:", error);
+      void ensureCarouselDesignAssets(carousel as CarouselItem).catch((error) => {
+        console.warn("[Carousel] Nao foi possivel enviar a imagem renderizada para AWS:", error);
       });
     },
     onError: (error) => {
@@ -1374,6 +1618,12 @@ export default function Carousels() {
     },
   });
   const publishInstagramMutation = trpc.carousel.publishInstagram.useMutation();
+  const scheduleInstagramMutation = trpc.carousel.scheduleInstagram.useMutation({
+    onSuccess: () => {
+      utils.posts.getAll.invalidate();
+      utils.posts.getStats.invalidate();
+    },
+  });
   const deleteCarouselMutation = trpc.carousel.delete.useMutation({
     onSuccess: (_result, variables) => {
       utils.carousel.getAll.invalidate();
@@ -1391,6 +1641,7 @@ export default function Carousels() {
   });
   const isGenerating = generateCarouselMutation.isPending;
   const isPublishingCarousel = publishInstagramMutation.isPending;
+  const isSchedulingCarousel = scheduleInstagramMutation.isPending;
   const isDeleting = deleteCarouselMutation.isPending;
 
   const selectedCarousel =
@@ -1422,11 +1673,11 @@ export default function Carousels() {
     carousel: CarouselItem,
     options?: { silent?: boolean; force?: boolean }
   ): Promise<CarouselItem> => {
-    const hasSavedTemplates =
+    const hasRenderedSlides =
       carousel.slides.length > 0 &&
-      carousel.slides.every((slide) => Boolean(slide.renderedImageUrl && slide.templateSvgUrl));
+      carousel.slides.every((slide) => Boolean(slide.renderedImageUrl));
 
-    if (hasSavedTemplates && !options?.force) {
+    if (hasRenderedSlides && !options?.force) {
       return carousel;
     }
 
@@ -1439,7 +1690,7 @@ export default function Carousels() {
       const toastId = `carousel-template-${carousel.id}`;
 
       if (!options?.silent) {
-        toast.loading("Mesclando design e salvando templates...", { id: toastId });
+        toast.loading("Renderizando imagem completa dos slides...", { id: toastId });
       }
 
       try {
@@ -1450,14 +1701,14 @@ export default function Carousels() {
         });
 
         if (!options?.silent) {
-          toast.success("Template completo salvo no carrossel", { id: toastId });
+          toast.success("Imagem completa salva no carrossel", { id: toastId });
         }
 
         return updated as CarouselItem;
       } catch (error) {
         if (!options?.silent) {
           const message = error instanceof Error ? error.message : "Erro desconhecido";
-          toast.error("Nao foi possivel salvar o template completo: " + message, { id: toastId });
+          toast.error("Nao foi possivel salvar a imagem renderizada: " + message, { id: toastId });
         }
         throw error;
       } finally {
@@ -1517,30 +1768,36 @@ export default function Carousels() {
     }
   };
 
+  const prepareInstagramCarouselPayload = async (carousel: CarouselItem) => {
+    const preparedCarousel = await ensureCarouselDesignAssets(carousel, {
+      silent: true,
+      force: true,
+    });
+    const slides = preparedCarousel.slides.map((slide) => ({
+      title: slide.title,
+      body: slide.body,
+      imageUrl: toAbsoluteClientAssetUrl(slide.renderedImageUrl || slide.imageUrl),
+    }));
+
+    return {
+      topic: preparedCarousel.topic,
+      style: preparedCarousel.style,
+      hook: preparedCarousel.hook,
+      caption: preparedCarousel.caption,
+      finalCta: preparedCarousel.finalCta,
+      coverImageUrl: preparedCarousel.coverImageUrl ?? undefined,
+      createdAt: toIsoTimestamp(preparedCarousel.createdAt),
+      slides,
+    };
+  };
+
   const handlePublishInstagram = async (carousel: CarouselItem) => {
     try {
       toast.loading("Preparando carrossel completo para a Meta...", {
         id: "instagram-publish",
       });
-      const preparedCarousel = await ensureCarouselDesignAssets(carousel, {
-        silent: true,
-        force: true,
-      });
-      const slides = preparedCarousel.slides.map((slide) => ({
-        title: slide.title,
-        body: slide.body,
-        imageUrl: toAbsoluteClientAssetUrl(slide.renderedImageUrl || slide.imageUrl),
-      }));
-      const result = await publishInstagramMutation.mutateAsync({
-        topic: preparedCarousel.topic,
-        style: preparedCarousel.style,
-        hook: preparedCarousel.hook,
-        caption: preparedCarousel.caption,
-        finalCta: preparedCarousel.finalCta,
-        coverImageUrl: preparedCarousel.coverImageUrl ?? undefined,
-        createdAt: toIsoTimestamp(preparedCarousel.createdAt),
-        slides,
-      });
+      const payload = await prepareInstagramCarouselPayload(carousel);
+      const result = await publishInstagramMutation.mutateAsync(payload);
       toast.success(`Carrossel publicado no Instagram. Media ID: ${result.mediaId}`, {
         id: "instagram-publish",
       });
@@ -1548,6 +1805,47 @@ export default function Carousels() {
       const message = error instanceof Error ? error.message : "Erro desconhecido";
       toast.error("Erro ao postar no Instagram: " + message, {
         id: "instagram-publish",
+      });
+    }
+  };
+
+  const openScheduleDialog = (carousel: CarouselItem) => {
+    setScheduleCarousel(carousel);
+    setScheduleDate(toSchedulerDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)));
+  };
+
+  const handleScheduleInstagram = async () => {
+    if (!scheduleCarousel) return;
+
+    const scheduledAt = scheduleDate.trim();
+    if (!scheduledAt) {
+      toast.error("Escolha uma data e hora para agendar.");
+      return;
+    }
+
+    if (!isSchedulerDatetimeLocalInFuture(scheduledAt)) {
+      toast.error("Escolha uma data futura para agendar.");
+      return;
+    }
+
+    try {
+      toast.loading("Preparando carrossel para agendar...", {
+        id: "instagram-schedule",
+      });
+      const payload = await prepareInstagramCarouselPayload(scheduleCarousel);
+      await scheduleInstagramMutation.mutateAsync({
+        ...payload,
+        scheduledAt,
+      });
+      toast.success("Carrossel agendado para o Instagram.", {
+        id: "instagram-schedule",
+      });
+      setScheduleCarousel(null);
+      setScheduleDate("");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Erro ao agendar no Instagram: " + message, {
+        id: "instagram-schedule",
       });
     }
   };
@@ -1608,7 +1906,7 @@ export default function Carousels() {
                   <h2 className="text-sm font-semibold text-foreground">Briefing do carrossel</h2>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Tudo o que o agente precisa para gerar uma versao pronta para design e postagem.
+                  Defina o tema, a quantidade de slides e a imagem opcional para gerar no modelo original.
                 </p>
               </div>
               <div className="rounded-full border border-[#7b00ae]/20 bg-[#7b00ae]/10 px-3 py-1 text-xs font-medium text-[#7b00ae]">
@@ -1760,6 +2058,9 @@ export default function Carousels() {
                 <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-muted-foreground">
                   {coverImageUrl ? "Com imagem propria" : "Imagem automatica"}
                 </span>
+                <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-muted-foreground">
+                  {DEFAULT_STYLE_LABEL}
+                </span>
               </div>
             </div>
 
@@ -1830,7 +2131,9 @@ export default function Carousels() {
                   onOpen={() => openCarousel(carousel)}
                   onDownload={() => handleDownload(carousel)}
                   onPublish={() => handlePublishInstagram(carousel)}
+                  onSchedule={() => openScheduleDialog(carousel)}
                   isPublishing={isPublishingCarousel}
+                  isScheduling={isSchedulingCarousel}
                 />
               ))}
             </div>
@@ -2070,7 +2373,7 @@ export default function Carousels() {
                   <Button
                     variant="outline"
                     onClick={() => handlePublishInstagram(selectedCarousel)}
-                    disabled={isPublishingCarousel}
+                    disabled={isPublishingCarousel || isSchedulingCarousel}
                     className="border-emerald-500/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
                   >
                     {isPublishingCarousel ? (
@@ -2079,6 +2382,19 @@ export default function Carousels() {
                       <Instagram className="mr-2 h-4 w-4" />
                     )}
                     Postar Instagram
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => openScheduleDialog(selectedCarousel)}
+                    disabled={isPublishingCarousel || isSchedulingCarousel}
+                    className="border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                  >
+                    {isSchedulingCarousel ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Calendar className="mr-2 h-4 w-4" />
+                    )}
+                    Agendar Instagram
                   </Button>
                   <Button variant="outline" onClick={() => handleCopyAll(selectedCarousel)}>
                     <Copy className="mr-2 h-4 w-4" />
@@ -2098,6 +2414,71 @@ export default function Carousels() {
             </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!scheduleCarousel}
+        onOpenChange={(open) => {
+          if (!open) {
+            setScheduleCarousel(null);
+            setScheduleDate("");
+          }
+        }}
+      >
+        <DialogContent className="w-[min(92vw,480px)] border-border/50 bg-background">
+          <DialogTitle>Agendar Instagram</DialogTitle>
+          <DialogDescription>
+            Escolha quando este carrossel deve ser publicado no Instagram.
+          </DialogDescription>
+          <div className="space-y-4 pt-2">
+            {scheduleCarousel ? (
+              <div className="rounded-lg border border-border/40 bg-muted/30 p-3">
+                <p className="line-clamp-2 text-sm font-medium text-foreground">
+                  {scheduleCarousel.hook || scheduleCarousel.topic}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {scheduleCarousel.slides.length} slides
+                </p>
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Data e hora ({POST_SCHEDULER_TIME_ZONE})
+              </label>
+              <Input
+                type="datetime-local"
+                value={scheduleDate}
+                min={toSchedulerDatetimeLocalValue(new Date())}
+                onChange={(event) => setScheduleDate(event.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setScheduleCarousel(null);
+                  setScheduleDate("");
+                }}
+                disabled={isSchedulingCarousel}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 gap-2 bg-blue-600 text-white hover:bg-blue-700"
+                onClick={handleScheduleInstagram}
+                disabled={isSchedulingCarousel || !scheduleDate}
+              >
+                {isSchedulingCarousel ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Calendar className="h-4 w-4" />
+                )}
+                Agendar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>

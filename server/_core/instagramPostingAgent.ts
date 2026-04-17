@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
-import { storagePut } from "../storage";
+import { getMetaFetchableStorageUrl, storagePut } from "../storage";
 
 export type InstagramPostingSlide = {
   title: string;
@@ -48,6 +50,7 @@ type ParsedDataUrl = {
 };
 
 const DEFAULT_META_GRAPH_API_VERSION = "v25.0";
+const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -155,6 +158,50 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
   };
 }
 
+function getUploadsAssetPath(assetUrl: string) {
+  if (assetUrl.startsWith("/uploads/")) {
+    return assetUrl;
+  }
+
+  if (!/^https?:\/\//i.test(assetUrl)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(assetUrl);
+    return parsed.pathname.startsWith("/uploads/") ? parsed.pathname : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readUploadsAsset(assetUrl: string): ParsedDataUrl | undefined {
+  const uploadsAssetPath = getUploadsAssetPath(assetUrl);
+  if (!uploadsAssetPath) return undefined;
+
+  const absolutePath = path.resolve(process.cwd(), uploadsAssetPath.replace(/^\/+/, ""));
+
+  if (!absolutePath.startsWith(`${UPLOADS_DIR}${path.sep}`) && absolutePath !== UPLOADS_DIR) {
+    throw new Error(`Caminho de imagem invalido: ${uploadsAssetPath}`);
+  }
+
+  const extension = path.extname(absolutePath).replace(/^\./, "").toLowerCase() || "png";
+  const mimeType =
+    extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "webp"
+        ? "image/webp"
+        : extension === "svg"
+          ? "image/svg+xml"
+          : "image/png";
+
+  return {
+    buffer: fs.readFileSync(absolutePath),
+    mimeType,
+    extension,
+  };
+}
+
 function buildStorageKey(input: {
   userId: number;
   batchId: string;
@@ -177,7 +224,9 @@ async function putPublicAsset(key: string, data: Buffer | string, contentType: s
     const storageHint =
       ENV.publicStorageProvider === "catbox"
         ? "Confira PUBLIC_STORAGE_PROVIDER=catbox, CATBOX_API_URL e, se usar conta, CATBOX_USERHASH."
-        : "Confira BUILT_IN_FORGE_API_URL e BUILT_IN_FORGE_API_KEY.";
+        : ENV.publicStorageProvider === "aws" || ENV.publicStorageProvider === "s3"
+          ? "Confira PUBLIC_STORAGE_PROVIDER=aws, AWS_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY."
+          : "Confira BUILT_IN_FORGE_API_URL e BUILT_IN_FORGE_API_KEY.";
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: `Nao consegui transformar o slide em URL publica. ${storageHint} Detalhe: ${
@@ -187,14 +236,37 @@ async function putPublicAsset(key: string, data: Buffer | string, contentType: s
   }
 }
 
+function ensureInstagramImageAsset(asset: ParsedDataUrl) {
+  if (!asset.mimeType.startsWith("image/") || asset.mimeType === "image/svg+xml") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "A Meta so aceita imagem rasterizada para postar. Renderize o slide como PNG ou JPG antes de publicar.",
+    });
+  }
+}
+
+async function buildUploadedSlideResult(url: string, assetType: "png" | "svg") {
+  return {
+    url,
+    metaUrl: await getMetaFetchableStorageUrl(url),
+    assetType,
+  };
+}
+
 async function uploadSlideToPublicUrl(input: {
   slide: InstagramPostingSlide;
   userId: number;
   batchId: string;
   index: number;
 }) {
-  if (input.slide.imageDataUrl) {
-    const parsed = parseDataUrl(input.slide.imageDataUrl);
+  const embeddedImageUrl = input.slide.imageUrl?.startsWith("data:image/")
+    ? input.slide.imageUrl
+    : undefined;
+
+  if (input.slide.imageDataUrl || embeddedImageUrl) {
+    const parsed = parseDataUrl(input.slide.imageDataUrl || embeddedImageUrl!);
+    ensureInstagramImageAsset(parsed);
     const key = buildStorageKey({
       userId: input.userId,
       batchId: input.batchId,
@@ -202,22 +274,34 @@ async function uploadSlideToPublicUrl(input: {
       extension: parsed.extension,
     });
     const uploaded = await putPublicAsset(key, parsed.buffer, parsed.mimeType);
-    return { url: uploaded.url, assetType: parsed.extension === "svg" ? "svg" : "png" };
+    return buildUploadedSlideResult(uploaded.url, "png");
+  }
+
+  if (input.slide.imageUrl) {
+    const uploadsAsset = readUploadsAsset(input.slide.imageUrl);
+    if (uploadsAsset) {
+      ensureInstagramImageAsset(uploadsAsset);
+      const key = buildStorageKey({
+        userId: input.userId,
+        batchId: input.batchId,
+        index: input.index,
+        extension: uploadsAsset.extension,
+      });
+      const uploaded = await putPublicAsset(key, uploadsAsset.buffer, uploadsAsset.mimeType);
+      return buildUploadedSlideResult(uploaded.url, "png");
+    }
   }
 
   if (input.slide.svg) {
-    const key = buildStorageKey({
-      userId: input.userId,
-      batchId: input.batchId,
-      index: input.index,
-      extension: "svg",
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "A Meta nao aceita SVG como imagem de postagem. Salve a imagem renderizada em PNG antes de publicar.",
     });
-    const uploaded = await putPublicAsset(key, input.slide.svg, "image/svg+xml");
-    return { url: uploaded.url, assetType: "svg" };
   }
 
   if (input.slide.imageUrl && /^https?:\/\//i.test(input.slide.imageUrl)) {
-    return { url: input.slide.imageUrl, assetType: "png" };
+    return buildUploadedSlideResult(input.slide.imageUrl, "png");
   }
 
   throw new TRPCError({
@@ -356,6 +440,7 @@ export async function publishInstagramCarouselWithAgent(
   }
 
   const slideUrls = uploadedSlides.map((slide) => slide.url);
+  const metaSlideUrls = uploadedSlides.map((slide) => slide.metaUrl);
   const publicAssetType = uploadedSlides.some((slide) => slide.assetType === "svg") ? "svg" : "png";
   const caption = buildCaption(input);
 
@@ -363,7 +448,7 @@ export async function publishInstagramCarouselWithAgent(
     const containerId = await postToGraph(
       "media",
       {
-        image_url: slideUrls[0],
+        image_url: metaSlideUrls[0],
         caption,
       },
       config
@@ -388,7 +473,7 @@ export async function publishInstagramCarouselWithAgent(
       await postToGraph(
         "media",
         {
-          image_url: slideUrls[index],
+          image_url: metaSlideUrls[index],
           is_carousel_item: "true",
         },
         config

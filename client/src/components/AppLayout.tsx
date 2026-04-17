@@ -16,6 +16,7 @@ import {
   X,
   LayoutDashboard,
   GalleryHorizontal,
+  Clapperboard,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -53,6 +54,14 @@ const navItems = [
     path: "/dashboard/images",
     color: "from-blue-500 to-cyan-500",
     description: "Crie imagens com IA",
+  },
+  {
+    id: "videos",
+    label: "Videos IA",
+    icon: Clapperboard,
+    path: "/dashboard/videos",
+    color: "from-fuchsia-500 to-rose-500",
+    description: "Avatares em video",
   },
   {
     id: "articles",

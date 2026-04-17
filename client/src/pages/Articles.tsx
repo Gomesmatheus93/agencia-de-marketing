@@ -57,6 +57,31 @@ type EnergyNewsItem = {
   publishedAt: string | null;
 };
 
+type LinkedInDiagnosticCheck = {
+  name: string;
+  ok: boolean;
+  detail: string;
+};
+
+type LinkedInDiagnostic = {
+  success: boolean;
+  apiBaseUrl: string;
+  apiVersion: string;
+  tokenPresent: boolean;
+  tokenPreview: string;
+  configuredAuthorUrn: string;
+  configuredAuthorUrnType: "person" | "organization" | "unknown";
+  configuredAuthorUrnLooksValid: boolean;
+  configuredAuthorUrnIsPlaceholder: boolean;
+  detectedPersonUrn?: string;
+  detectedMemberId?: string;
+  detectedMemberName?: string;
+  administeredOrganizationUrns: string[];
+  recommendedAuthorUrns: string[];
+  checks: LinkedInDiagnosticCheck[];
+  nextSteps: string[];
+};
+
 // Coloque aqui seus sites favoritos de pesquisa sobre energia.
 const FAVORITE_ENERGY_RESEARCH_SITES = [
   "https://canalsolar.com.br/",
@@ -108,9 +133,10 @@ export default function Articles() {
   const [favoriteSites, setFavoriteSites] = useState(FAVORITE_ENERGY_RESEARCH_SITES.join("\n"));
   const [newsResults, setNewsResults] = useState<EnergyNewsItem[]>([]);
   const [selectedNews, setSelectedNews] = useState<EnergyNewsItem | null>(null);
+  const [linkedinDiagnostic, setLinkedinDiagnostic] = useState<LinkedInDiagnostic | null>(null);
+  const [showLinkedInDiagnostic, setShowLinkedInDiagnostic] = useState(false);
 
   const { data: articles = [], isLoading } = trpc.articles.getAll.useQuery();
-  const { data: webhookSettings } = trpc.settings.getWebhooks.useQuery();
 
   const researchNewsMutation = trpc.articles.researchEnergyNews.useMutation({
     onSuccess: (result) => {
@@ -175,6 +201,35 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
 
+  const publishLinkedInMutation = trpc.articles.publishLinkedIn.useMutation({
+    onSuccess: (_result, variables) => {
+      utils.articles.getAll.invalidate();
+      utils.articles.getStats.invalidate();
+      utils.posts.getAll.invalidate();
+      utils.posts.getStats.invalidate();
+      toast.success("Artigo publicado no LinkedIn!");
+      setSelectedArticle((current) =>
+        current && current.id === variables.id
+          ? { ...current, status: "published" }
+          : current
+      );
+    },
+    onError: (err) => toast.error("Erro ao publicar no LinkedIn: " + err.message),
+  });
+
+  const diagnoseLinkedInMutation = trpc.articles.diagnoseLinkedIn.useMutation({
+    onSuccess: (result) => {
+      setLinkedinDiagnostic(result as LinkedInDiagnostic);
+      setShowLinkedInDiagnostic(true);
+      if (result.success) {
+        toast.success("Diagnostico do LinkedIn concluido com sucesso.");
+      } else {
+        toast.warning("Diagnostico do LinkedIn concluido com alertas.");
+      }
+    },
+    onError: (err) => toast.error("Erro ao diagnosticar LinkedIn: " + err.message),
+  });
+
   const deleteMutation = trpc.articles.delete.useMutation({
     onSuccess: () => {
       utils.articles.getAll.invalidate();
@@ -190,7 +245,6 @@ export default function Articles() {
     generateMutation.mutate({
       topic: topic.trim(),
       sourceUrl: sourceUrl.trim() || undefined,
-      useWebhook: webhookSettings?.hasArticle ?? false,
     });
   };
 
@@ -252,11 +306,12 @@ export default function Articles() {
     toast.success("Artigo baixado!");
   };
 
-  const handleStatusChange = (article: Article, status: "draft" | "published" | "archived") => {
-    updateMutation.mutate({ id: article.id, status });
-    if (selectedArticle?.id === article.id) {
-      setSelectedArticle({ ...selectedArticle, status });
-    }
+  const handlePublishLinkedIn = (article: Article) => {
+    publishLinkedInMutation.mutate({ id: article.id });
+  };
+
+  const handleDiagnoseLinkedIn = () => {
+    diagnoseLinkedInMutation.mutate();
   };
 
   const formatDate = (date: Date) => new Date(date).toLocaleDateString("pt-BR", {
@@ -404,14 +459,34 @@ export default function Articles() {
                     <Button size="sm" variant="ghost" onClick={() => handleDownload(selectedArticle)} className="h-8">
                       <Download className="w-3.5 h-3.5" />
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDiagnoseLinkedIn}
+                      disabled={diagnoseLinkedInMutation.isPending}
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      {diagnoseLinkedInMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Settings2 className="w-3.5 h-3.5" />
+                      )}
+                      LinkedIn
+                    </Button>
                     {selectedArticle.status !== "published" && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleStatusChange(selectedArticle, "published")}
+                        onClick={() => handlePublishLinkedIn(selectedArticle)}
+                        disabled={publishLinkedInMutation.isPending}
                         className="h-8 gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                       >
-                        <Globe className="w-3.5 h-3.5" /> Publicar
+                        {publishLinkedInMutation.isPending ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Globe className="w-3.5 h-3.5" />
+                        )}{" "}
+                        Publicar
                       </Button>
                     )}
                     <Button
@@ -630,13 +705,6 @@ export default function Articles() {
                   />
                 </div>
 
-                {webhookSettings?.hasArticle && (
-                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 rounded-lg">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Webhook n8n configurado para geracao manual.
-                  </div>
-                )}
-
                 <Button
                   onClick={handleGenerate}
                   disabled={!topic.trim() || generateMutation.isPending}
@@ -778,6 +846,140 @@ export default function Articles() {
               </div>
             </section>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLinkedInDiagnostic} onOpenChange={setShowLinkedInDiagnostic}>
+        <DialogContent className="glass-card max-h-[90vh] max-w-3xl overflow-y-auto border-border/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-primary" />
+              Diagnostico do LinkedIn
+            </DialogTitle>
+          </DialogHeader>
+
+          {linkedinDiagnostic ? (
+            <div className="space-y-5">
+              <div
+                className={cn(
+                  "rounded-lg border p-4",
+                  linkedinDiagnostic.success
+                    ? "border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20"
+                    : "border-amber-500/30 bg-amber-50/70 dark:bg-amber-950/20"
+                )}
+              >
+                <p className="text-sm font-semibold text-foreground">
+                  {linkedinDiagnostic.success
+                    ? "Configuracao pronta para publicar"
+                    : "Configuracao com pendencias"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  API: {linkedinDiagnostic.apiBaseUrl} · versao {linkedinDiagnostic.apiVersion}
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Token
+                  </p>
+                  <p className="mt-2 text-sm text-foreground">
+                    {linkedinDiagnostic.tokenPresent
+                      ? linkedinDiagnostic.tokenPreview
+                      : "Nao configurado"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Author URN atual
+                  </p>
+                  <p className="mt-2 break-all text-sm text-foreground">
+                    {linkedinDiagnostic.configuredAuthorUrn || "Nao configurado"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Checks
+                </p>
+                {linkedinDiagnostic.checks.map((check) => (
+                  <div key={check.name} className="rounded-lg border border-border/50 bg-background/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{check.name}</p>
+                      <Badge
+                        variant={check.ok ? "default" : "outline"}
+                        className={check.ok ? "bg-emerald-600 text-white" : "text-amber-700"}
+                      >
+                        {check.ok ? "OK" : "Ajustar"}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Pessoa detectada pelo token
+                  </p>
+                  <p className="mt-2 break-all text-sm text-foreground">
+                    {linkedinDiagnostic.detectedPersonUrn || "Nao detectada"}
+                  </p>
+                  {linkedinDiagnostic.detectedMemberName ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {linkedinDiagnostic.detectedMemberName}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Organizacoes administradas
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {linkedinDiagnostic.administeredOrganizationUrns.length > 0 ? (
+                      linkedinDiagnostic.administeredOrganizationUrns.map((urn) => (
+                        <p key={urn} className="break-all text-sm text-foreground">
+                          {urn}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nenhuma organizacao retornada.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Proximos passos
+                </p>
+                <div className="mt-2 space-y-2">
+                  {linkedinDiagnostic.nextSteps.map((step, index) => (
+                    <p key={`${index}-${step}`} className="text-sm text-foreground">
+                      {index + 1}. {step}
+                    </p>
+                  ))}
+                </div>
+              </div>
+
+              {linkedinDiagnostic.recommendedAuthorUrns.length > 0 ? (
+                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Author URNs recomendadas
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {linkedinDiagnostic.recommendedAuthorUrns.map((urn) => (
+                      <p key={urn} className="break-all text-sm text-foreground">
+                        {urn}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </AppLayout>

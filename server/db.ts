@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, asc, and, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -8,6 +8,8 @@ import {
   generatedImages,
   articles,
   carousels,
+  carouselTemplates,
+  avatarVideos,
   socialPosts,
   type ChatConversation,
   type ChatMessage,
@@ -15,12 +17,16 @@ import {
   type Article,
   type Carousel,
   type CarouselSlideData,
+  type CarouselTemplate,
+  type AvatarVideo,
   type SocialPost,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _carouselTableReady: Promise<void> | null = null;
+let _carouselTemplateTableReady: Promise<void> | null = null;
+let _avatarVideoTableReady: Promise<void> | null = null;
+let _socialPostsMetadataReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -42,6 +48,12 @@ function parseCarouselSlides(value: unknown): CarouselSlideData[] {
         title: typeof item.title === "string" ? item.title : "",
         body: typeof item.body === "string" ? item.body : "",
         imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+        designTemplateName:
+          typeof item.designTemplateName === "string" ? item.designTemplateName : undefined,
+        designTemplateUrl:
+          typeof item.designTemplateUrl === "string" ? item.designTemplateUrl : undefined,
+        designStyleBrief:
+          typeof item.designStyleBrief === "string" ? item.designStyleBrief : undefined,
         templateSvgUrl:
           typeof item.templateSvgUrl === "string" ? item.templateSvgUrl : undefined,
         renderedImageUrl:
@@ -65,6 +77,35 @@ function hydrateCarousel(row: Omit<Carousel, "slides"> & { slides: unknown }): C
     ...row,
     slides: parseCarouselSlides(row.slides),
   };
+}
+
+function isMysqlDuplicateColumnError(error: unknown): boolean {
+  const inspected = new Set<unknown>();
+  const parts: string[] = [];
+
+  const collect = (value: unknown, depth = 0) => {
+    if (!value || depth > 4 || inspected.has(value)) return;
+    inspected.add(value);
+
+    if (typeof value === "string") {
+      parts.push(value);
+      return;
+    }
+
+    if (typeof value !== "object") return;
+
+    const record = value as Record<string, unknown>;
+    for (const key of ["code", "errno", "sqlState", "sqlMessage", "message"]) {
+      const field = record[key];
+      if (field !== undefined) parts.push(String(field));
+    }
+
+    collect(record.cause, depth + 1);
+  };
+
+  collect(error);
+
+  return /ER_DUP_FIELDNAME|Duplicate column|1060|42S21/i.test(parts.join(" "));
 }
 
 async function ensureCarouselTable() {
@@ -95,6 +136,98 @@ async function ensureCarouselTable() {
   }
 
   await _carouselTableReady;
+}
+
+async function ensureCarouselTemplateTable() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_carouselTemplateTableReady) {
+    _carouselTemplateTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS carousel_templates (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          name varchar(255) NOT NULL,
+          imageUrl text NOT NULL,
+          styleBrief text,
+          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+    })().catch((error) => {
+      _carouselTemplateTableReady = null;
+      throw error;
+    });
+  }
+
+  await _carouselTemplateTableReady;
+}
+
+async function ensureAvatarVideoTable() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_avatarVideoTableReady) {
+    _avatarVideoTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS avatar_videos (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          provider varchar(32) NOT NULL DEFAULT 'd-id',
+          title varchar(512) NOT NULL,
+          topic text,
+          script text NOT NULL,
+          sourceImageUrl text NOT NULL,
+          videoUrl text,
+          voiceProvider varchar(64),
+          voiceId varchar(128),
+          providerJobId varchar(255),
+          status enum('processing','completed','failed') NOT NULL DEFAULT 'processing',
+          errorMessage text,
+          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+    })().catch((error) => {
+      _avatarVideoTableReady = null;
+      throw error;
+    });
+  }
+
+  await _avatarVideoTableReady;
+}
+
+async function ensureSocialPostsMetadataColumn() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_socialPostsMetadataReady) {
+    _socialPostsMetadataReady = (async () => {
+      const [columnRows] = (await db.execute(sql`
+        SELECT COUNT(*) AS columnCount
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'social_posts'
+          AND column_name = 'metadata'
+      `)) as unknown as [Array<{ columnCount: number | string }>, unknown];
+
+      if (Number(columnRows[0]?.columnCount ?? 0) > 0) return;
+
+      try {
+        await db.execute(sql`ALTER TABLE social_posts ADD COLUMN metadata text`);
+      } catch (error) {
+        if (!isMysqlDuplicateColumnError(error)) {
+          throw error;
+        }
+      }
+    })().catch((error) => {
+      _socialPostsMetadataReady = null;
+      throw error;
+    });
+  }
+
+  await _socialPostsMetadataReady;
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -143,21 +276,6 @@ export async function getUserByEmail(email: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
   return result.length > 0 ? result[0] : undefined;
-}
-
-export async function updateUserWebhooks(
-  userId: number,
-  webhooks: {
-    n8nWebhookUrl?: string | null;
-    n8nImageWebhookUrl?: string | null;
-    n8nArticleWebhookUrl?: string | null;
-    n8nPostWebhookUrl?: string | null;
-    n8nCarouselWebhookUrl?: string | null;
-  }
-) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(users).set(webhooks).where(eq(users.id, userId));
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -409,18 +527,190 @@ export async function getCarouselCount(userId: number): Promise<number> {
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
 
+export async function getCarouselTemplates(userId: number): Promise<CarouselTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureCarouselTemplateTable();
+  return db
+    .select()
+    .from(carouselTemplates)
+    .where(eq(carouselTemplates.userId, userId))
+    .orderBy(desc(carouselTemplates.createdAt));
+}
+
+export async function getCarouselTemplate(
+  id: number,
+  userId: number
+): Promise<CarouselTemplate | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureCarouselTemplateTable();
+  const result = await db
+    .select()
+    .from(carouselTemplates)
+    .where(and(eq(carouselTemplates.id, id), eq(carouselTemplates.userId, userId)))
+    .limit(1);
+  return result[0];
+}
+
+export async function saveCarouselTemplate(
+  userId: number,
+  data: {
+    name: string;
+    imageUrl: string;
+    styleBrief?: string;
+  }
+): Promise<CarouselTemplate> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureCarouselTemplateTable();
+  const [result] = await db.insert(carouselTemplates).values({
+    userId,
+    name: data.name,
+    imageUrl: data.imageUrl,
+    styleBrief: data.styleBrief ?? null,
+  });
+  const created = await db
+    .select()
+    .from(carouselTemplates)
+    .where(eq(carouselTemplates.id, (result as any).insertId))
+    .limit(1);
+  return created[0];
+}
+
+export async function deleteCarouselTemplate(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCarouselTemplateTable();
+  await db
+    .delete(carouselTemplates)
+    .where(and(eq(carouselTemplates.id, id), eq(carouselTemplates.userId, userId)));
+}
+
+export async function getAvatarVideos(userId: number): Promise<AvatarVideo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureAvatarVideoTable();
+  return db.select().from(avatarVideos)
+    .where(eq(avatarVideos.userId, userId))
+    .orderBy(desc(avatarVideos.createdAt));
+}
+
+export async function saveAvatarVideo(
+  userId: number,
+  data: {
+    provider?: string;
+    title: string;
+    topic?: string;
+    script: string;
+    sourceImageUrl: string;
+    videoUrl?: string;
+    voiceProvider?: string;
+    voiceId?: string;
+    providerJobId?: string;
+    status?: "processing" | "completed" | "failed";
+    errorMessage?: string;
+  }
+): Promise<AvatarVideo> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureAvatarVideoTable();
+  const [result] = await db.insert(avatarVideos).values({
+    userId,
+    provider: data.provider ?? "d-id",
+    title: data.title,
+    topic: data.topic,
+    script: data.script,
+    sourceImageUrl: data.sourceImageUrl,
+    videoUrl: data.videoUrl,
+    voiceProvider: data.voiceProvider,
+    voiceId: data.voiceId,
+    providerJobId: data.providerJobId,
+    status: data.status ?? "processing",
+    errorMessage: data.errorMessage,
+  });
+  const created = await db.select().from(avatarVideos)
+    .where(eq(avatarVideos.id, (result as any).insertId)).limit(1);
+  return created[0];
+}
+
+export async function updateAvatarVideo(
+  id: number,
+  userId: number,
+  data: Partial<{
+    title: string;
+    topic: string | null;
+    script: string;
+    sourceImageUrl: string;
+    videoUrl: string | null;
+    voiceProvider: string | null;
+    voiceId: string | null;
+    providerJobId: string | null;
+    status: "processing" | "completed" | "failed";
+    errorMessage: string | null;
+  }>
+): Promise<AvatarVideo | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureAvatarVideoTable();
+  await db.update(avatarVideos).set({
+    ...data,
+    updatedAt: new Date(),
+  }).where(and(eq(avatarVideos.id, id), eq(avatarVideos.userId, userId)));
+
+  const updated = await db.select().from(avatarVideos)
+    .where(and(eq(avatarVideos.id, id), eq(avatarVideos.userId, userId))).limit(1);
+
+  return updated[0];
+}
+
+export async function deleteAvatarVideo(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureAvatarVideoTable();
+  await db.delete(avatarVideos).where(and(eq(avatarVideos.id, id), eq(avatarVideos.userId, userId)));
+}
+
+export async function getAvatarVideoCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureAvatarVideoTable();
+  const result = await db.select().from(avatarVideos).where(eq(avatarVideos.userId, userId));
+  return result.length;
+}
+
 export async function getSocialPosts(
   userId: number,
   channel?: "instagram" | "linkedin" | "newsletter"
 ): Promise<SocialPost[]> {
   const db = await getDb();
   if (!db) return [];
+  await ensureSocialPostsMetadataColumn();
   const conditions = channel
     ? and(eq(socialPosts.userId, userId), eq(socialPosts.channel, channel))
     : eq(socialPosts.userId, userId);
   return db.select().from(socialPosts)
     .where(conditions)
     .orderBy(desc(socialPosts.createdAt));
+}
+
+export async function getDueScheduledInstagramPosts(
+  now = new Date(),
+  limit = 20
+): Promise<SocialPost[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureSocialPostsMetadataColumn();
+  return db.select().from(socialPosts)
+    .where(
+      and(
+        eq(socialPosts.channel, "instagram"),
+        eq(socialPosts.status, "scheduled"),
+        lte(socialPosts.scheduledAt, now)
+      )
+    )
+    .orderBy(asc(socialPosts.scheduledAt))
+    .limit(limit);
 }
 
 export async function saveSocialPost(
@@ -430,11 +720,13 @@ export async function saveSocialPost(
     title?: string;
     content: string;
     imageUrl?: string;
+    metadata?: string;
     scheduledAt?: Date;
   }
 ): Promise<SocialPost> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await ensureSocialPostsMetadataColumn();
   const status = data.scheduledAt ? "scheduled" : "draft";
   const [result] = await db.insert(socialPosts).values({ userId, ...data, status });
   const created = await db.select().from(socialPosts)
@@ -449,13 +741,15 @@ export async function updateSocialPost(
     content: string;
     title: string;
     status: "draft" | "scheduled" | "published" | "failed";
+    imageUrl: string | null;
+    metadata: string | null;
     scheduledAt: Date | null;
     publishedAt: Date | null;
-    webhookResponse: string;
   }>
 ) {
   const db = await getDb();
   if (!db) return;
+  await ensureSocialPostsMetadataColumn();
   await db.update(socialPosts).set(data).where(
     and(eq(socialPosts.id, id), eq(socialPosts.userId, userId))
   );

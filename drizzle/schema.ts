@@ -16,11 +16,6 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: text("passwordHash"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  n8nWebhookUrl: text("n8nWebhookUrl"),
-  n8nImageWebhookUrl: text("n8nImageWebhookUrl"),
-  n8nArticleWebhookUrl: text("n8nArticleWebhookUrl"),
-  n8nPostWebhookUrl: text("n8nPostWebhookUrl"),
-  n8nCarouselWebhookUrl: text("n8nCarouselWebhookUrl"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -91,6 +86,9 @@ export type CarouselSlideData = {
   title: string;
   body: string;
   imageUrl?: string;
+  designTemplateName?: string;
+  designTemplateUrl?: string;
+  designStyleBrief?: string;
   templateSvgUrl?: string;
   renderedImageUrl?: string;
 };
@@ -122,6 +120,42 @@ export type InsertCarousel = Omit<InsertCarouselRow, "slides"> & {
 };
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
+export const carouselTemplates = mysqlTable("carousel_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  imageUrl: text("imageUrl").notNull(),
+  styleBrief: text("styleBrief"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CarouselTemplate = typeof carouselTemplates.$inferSelect;
+export type InsertCarouselTemplate = typeof carouselTemplates.$inferInsert;
+
+export const avatarVideos = mysqlTable("avatar_videos", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  provider: varchar("provider", { length: 32 }).notNull().default("d-id"),
+  title: varchar("title", { length: 512 }).notNull(),
+  topic: text("topic"),
+  script: text("script").notNull(),
+  sourceImageUrl: text("sourceImageUrl").notNull(),
+  videoUrl: text("videoUrl"),
+  voiceProvider: varchar("voiceProvider", { length: 64 }),
+  voiceId: varchar("voiceId", { length: 128 }),
+  providerJobId: varchar("providerJobId", { length: 255 }),
+  status: mysqlEnum("status", ["processing", "completed", "failed"])
+    .default("processing")
+    .notNull(),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AvatarVideo = typeof avatarVideos.$inferSelect;
+export type InsertAvatarVideo = typeof avatarVideos.$inferInsert;
+
 export const socialPosts = mysqlTable("social_posts", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -129,10 +163,10 @@ export const socialPosts = mysqlTable("social_posts", {
   title: varchar("title", { length: 512 }),
   content: text("content").notNull(),
   imageUrl: text("imageUrl"),
+  metadata: text("metadata"),
   scheduledAt: timestamp("scheduledAt"),
   publishedAt: timestamp("publishedAt"),
   status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
-  webhookResponse: text("webhookResponse"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
