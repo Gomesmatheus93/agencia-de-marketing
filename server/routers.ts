@@ -2,7 +2,8 @@ import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { aiProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { generateCarouselWithAgent } from "./_core/carouselAgent";
@@ -156,7 +157,7 @@ const imagesRouter = router({
     return db.getImages(ctx.user.id);
   }),
 
-  generate: protectedProcedure
+  generate: aiProcedure
     .input(
       z.object({
         prompt: z.string(),
@@ -170,7 +171,6 @@ const imagesRouter = router({
       });
       const imageUrl = result.url || "";
 
-      // Save to DB
       const saved = await db.saveImage(ctx.user.id, input.prompt, imageUrl);
       return saved;
     }),
@@ -215,7 +215,7 @@ const videosRouter = router({
       }
     }),
 
-  generateScript: protectedProcedure
+  generateScript: aiProcedure
     .input(
       z.object({
         topic: z.string().min(3).max(500),
@@ -229,7 +229,7 @@ const videosRouter = router({
       return generateVideoScriptWithAgent(input);
     }),
 
-  generate: protectedProcedure
+  generate: aiProcedure
     .input(
       z.object({
         title: z.string().min(1).max(512).optional(),
@@ -893,7 +893,7 @@ const articlesRouter = router({
       return db.getArticle(input.id, ctx.user.id);
     }),
 
-  researchEnergyNews: protectedProcedure
+  researchEnergyNews: aiProcedure
     .input(z.object({
       sites: z.array(z.string().url()).min(1).max(12),
       topic: z.string().min(2).max(120).optional().default("energia"),
@@ -922,7 +922,7 @@ const articlesRouter = router({
       };
     }),
 
-  generateFromNews: protectedProcedure
+  generateFromNews: aiProcedure
     .input(z.object({
       news: selectedNewsSchema,
     }))
@@ -981,7 +981,12 @@ Regras:
       });
 
       const rawArticle = llmResponse.choices[0]?.message?.content;
-      const parsed = JSON.parse((typeof rawArticle === "string" ? rawArticle : JSON.stringify(rawArticle)) || "{}");
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse((typeof rawArticle === "string" ? rawArticle : JSON.stringify(rawArticle)) || "{}");
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "O agente redator retornou uma resposta invalida." });
+      }
       const title = compactText(String(parsed.title || articleContext.title || input.news.title)).slice(0, 512);
       const content = String(parsed.content || "").trim();
       const summary = compactText(String(parsed.summary || articleContext.excerpt || ""));
@@ -1041,7 +1046,7 @@ Regras:
       };
     }),
 
-  generate: protectedProcedure
+  generate: aiProcedure
     .input(
       z.object({
         topic: z.string().min(3).max(500),
@@ -1137,10 +1142,15 @@ Formato de resposta JSON:
         });
 
         const rawArticle = llmResponse.choices[0]?.message?.content;
-        const parsed = JSON.parse((typeof rawArticle === 'string' ? rawArticle : JSON.stringify(rawArticle)) || "{}");
-        title = parsed.title || input.topic;
-        content = parsed.content || "";
-        summary = parsed.summary || "";
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse((typeof rawArticle === "string" ? rawArticle : JSON.stringify(rawArticle)) || "{}");
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "O agente redator retornou uma resposta invalida." });
+        }
+        title = String(parsed.title || input.topic);
+        content = String(parsed.content || "");
+        summary = String(parsed.summary || "");
       }
 
       const saved = await db.saveArticle(ctx.user.id, {
@@ -1291,7 +1301,7 @@ const carouselRouter = router({
       }
     }),
 
-  generate: protectedProcedure
+  generate: aiProcedure
     .input(
       z.object({
         topic: z.string().min(3).max(500),
@@ -1300,6 +1310,7 @@ const carouselRouter = router({
         templateId: z.number().int().positive().optional(),
         coverImageUrl: z.string().optional(),
         coverImageDataUrl: z.string().optional(),
+        useAiImages: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1330,6 +1341,7 @@ const carouselRouter = router({
           templateStyleBrief: selectedTemplate?.styleBrief ?? undefined,
           templateImageUrl: selectedTemplate?.imageUrl,
           templateImageDataUrl,
+          useAiImages: input.useAiImages ?? false,
         });
 
         const persistedAssets = await persistCarouselAssets({
@@ -1753,6 +1765,112 @@ Responda em JSON:
 
 // ─── Settings Router ──────────────────────────────────────────────────────────
 // ─── App Router ───────────────────────────────────────────────────────────────
+function graphUrl(path: string) {
+  const base = (ENV.metaGraphApiBaseUrl || "https://graph.facebook.com").replace(/\/+$/, "");
+  const version = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
+  return `${base}/${version}/${path}`;
+}
+
+async function graphGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+  const qs = new URLSearchParams({ ...params, access_token: ENV.metaAccessToken }).toString();
+  const res = await fetch(`${graphUrl(path)}?${qs}`);
+  const data = await res.json() as T & { error?: { message?: string } };
+  if (!res.ok || (data as { error?: { message?: string } }).error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: (data as { error?: { message?: string } }).error?.message ?? "Erro na API do Instagram",
+    });
+  }
+  return data;
+}
+
+const analyticsRouter = router({
+  getProfile: protectedProcedure.query(async () => {
+    return graphGet<{
+      username: string;
+      name: string;
+      biography: string;
+      followers_count: number;
+      follows_count: number;
+      media_count: number;
+      profile_picture_url: string;
+      website: string;
+    }>(`${ENV.metaInstagramAccountId}`, {
+      fields: "username,name,biography,followers_count,follows_count,media_count,profile_picture_url,website",
+    });
+  }),
+
+  getInsights: protectedProcedure
+    .input(z.object({ days: z.number().int().min(7).max(90).default(30) }))
+    .query(async ({ input }) => {
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - input.days * 86400;
+      const metrics = ["impressions", "reach", "profile_views", "follower_count"] as const;
+
+      const results = await Promise.allSettled(
+        metrics.map((metric) =>
+          graphGet<{ data: Array<{ name: string; values: Array<{ value: number; end_time: string }> }> }>(
+            `${ENV.metaInstagramAccountId}/insights`,
+            { metric, period: "day", since: String(since), until: String(until) }
+          )
+        )
+      );
+
+      return metrics.map((metric, i) => {
+        const result = results[i];
+        const values = result.status === "fulfilled"
+          ? (result.value.data?.[0]?.values ?? [])
+          : [];
+        return { metric, values };
+      });
+    }),
+
+  getMedia: protectedProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(50).default(12) }))
+    .query(async ({ input }) => {
+      type MediaItem = {
+        id: string;
+        caption?: string;
+        media_type: string;
+        media_url?: string;
+        thumbnail_url?: string;
+        timestamp: string;
+        like_count: number;
+        comments_count: number;
+        permalink: string;
+      };
+
+      const mediaData = await graphGet<{ data: MediaItem[] }>(
+        `${ENV.metaInstagramAccountId}/media`,
+        {
+          fields: "id,caption,media_type,media_url,thumbnail_url,timestamp,like_count,comments_count,permalink",
+          limit: String(input.limit),
+        }
+      );
+
+      const items = mediaData.data ?? [];
+      const withInsights = await Promise.all(
+        items.map(async (item) => {
+          try {
+            const insightsData = await graphGet<{
+              data: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
+            }>(`${item.id}/insights`, { metric: "impressions,reach,saved,shares" });
+
+            const insights: Record<string, number> = {};
+            for (const d of insightsData.data ?? []) {
+              insights[d.name] = d.value ?? d.values?.[0]?.value ?? 0;
+            }
+            return { ...item, insights };
+          } catch {
+            return { ...item, insights: {} as Record<string, number> };
+          }
+        })
+      );
+
+      return withInsights;
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1819,6 +1937,7 @@ export const appRouter = router({
   articles: articlesRouter,
   carousel: carouselRouter,
   posts: postsRouter,
+  analytics: analyticsRouter,
 });
 
 export type AppRouter = typeof appRouter;

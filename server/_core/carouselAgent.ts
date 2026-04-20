@@ -1,5 +1,6 @@
 import { generateImage } from "./imageGeneration";
 import { invokeLLM, type MessageContent } from "./llm";
+import { ENV } from "./env";
 
 const CAROUSEL_AGENT_PROMPT = `Voce e um especialista em criacao de conteudo para Instagram, focado em carrosseis altamente virais, estrategicos e visualmente atrativos.
 
@@ -31,6 +32,7 @@ export type CarouselAgentInput = {
   templateStyleBrief?: string;
   templateImageDataUrl?: string;
   templateImageUrl?: string;
+  useAiImages?: boolean;
 };
 
 export type CarouselAgentSlide = {
@@ -100,6 +102,64 @@ function buildCentralThemeImageQuery(input: {
       "photorealistic editorial image",
     ].join(" ")
   );
+}
+
+async function searchUnsplashImage(query: string): Promise<string | undefined> {
+  if (!ENV.unsplashAccessKey) return undefined;
+  try {
+    const params = new URLSearchParams({
+      query: normalizeImageSearchQuery(query),
+      per_page: "5",
+      orientation: "portrait",
+    });
+    const response = await fetch(`https://api.unsplash.com/search/photos?${params}`, {
+      headers: { Authorization: `Client-ID ${ENV.unsplashAccessKey}` },
+    });
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { results?: Array<{ urls?: { regular?: string } }> };
+    return data.results?.[0]?.urls?.regular;
+  } catch {
+    return undefined;
+  }
+}
+
+async function searchPexelsImage(query: string): Promise<string | undefined> {
+  if (!ENV.pexelsApiKey) return undefined;
+  try {
+    const params = new URLSearchParams({
+      query: normalizeImageSearchQuery(query),
+      per_page: "5",
+      orientation: "portrait",
+    });
+    const response = await fetch(`https://api.pexels.com/v1/search?${params}`, {
+      headers: { Authorization: ENV.pexelsApiKey },
+    });
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { photos?: Array<{ src?: { large?: string } }> };
+    return data.photos?.[0]?.src?.large;
+  } catch {
+    return undefined;
+  }
+}
+
+async function searchPixabayImage(query: string): Promise<string | undefined> {
+  if (!ENV.pixabayApiKey) return undefined;
+  try {
+    const params = new URLSearchParams({
+      key: ENV.pixabayApiKey,
+      q: normalizeImageSearchQuery(query),
+      image_type: "photo",
+      orientation: "vertical",
+      per_page: "5",
+      safesearch: "true",
+    });
+    const response = await fetch(`https://pixabay.com/api/?${params}`);
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { hits?: Array<{ largeImageURL?: string }> };
+    return data.hits?.[0]?.largeImageURL;
+  } catch {
+    return undefined;
+  }
 }
 
 async function searchWikimediaImage(query: string) {
@@ -228,36 +288,48 @@ async function resolveCarouselCoverImage(input: {
   templateName?: string;
   templateStyleBrief?: string;
   referenceImageUrl?: string;
+  useAiImages?: boolean;
 }) {
   const query = buildCentralThemeImageQuery(input);
 
-  try {
-    const generatedImage = await generateImage({
-      prompt: buildCarouselImagePrompt({
-        topic: input.topic,
-        hook: input.hook,
-        slideTitle: input.slideTitle,
-        slideBody: input.slideBody,
-        imageSearchQuery: query,
-        slideIndex: input.slideIndex,
-        templateName: input.templateName,
-        templateStyleBrief: input.templateStyleBrief,
-      }),
-      referenceImageUrl: input.referenceImageUrl,
-    });
+  if (input.useAiImages) {
+    try {
+      const generatedImage = await generateImage({
+        prompt: buildCarouselImagePrompt({
+          topic: input.topic,
+          hook: input.hook,
+          slideTitle: input.slideTitle,
+          slideBody: input.slideBody,
+          imageSearchQuery: query,
+          slideIndex: input.slideIndex,
+          templateName: input.templateName,
+          templateStyleBrief: input.templateStyleBrief,
+        }),
+        referenceImageUrl: input.referenceImageUrl,
+      });
 
-    if (generatedImage.url) {
-      return generatedImage.url;
+      if (generatedImage.url) {
+        return generatedImage.url;
+      }
+    } catch (err) {
+      console.warn("[CarouselAgent] AI image generation failed, falling back to stock photos:", err);
     }
-  } catch (err) {
-    console.warn("[CarouselAgent] Image generation failed, trying Wikimedia:", err);
   }
 
-  try {
-    const searchedImage = await searchWikimediaImage(query);
-    if (searchedImage) return searchedImage;
-  } catch (err) {
-    console.warn("[CarouselAgent] Wikimedia image search failed, using fallback:", err);
+  const stockSources: Array<{ name: string; fn: () => Promise<string | undefined> }> = [
+    { name: "Unsplash", fn: () => searchUnsplashImage(query) },
+    { name: "Pexels", fn: () => searchPexelsImage(query) },
+    { name: "Pixabay", fn: () => searchPixabayImage(query) },
+    { name: "Wikimedia", fn: () => searchWikimediaImage(query) },
+  ];
+
+  for (const source of stockSources) {
+    try {
+      const result = await source.fn();
+      if (result) return result;
+    } catch (err) {
+      console.warn(`[CarouselAgent] ${source.name} failed:`, err);
+    }
   }
 
   return buildFallbackImageDataUrl(`${input.topic} ${input.slideTitle}`);
@@ -420,6 +492,7 @@ export async function generateCarouselWithAgent(
         templateName: input.templateName,
         templateStyleBrief: input.templateStyleBrief,
         referenceImageUrl: templateImageUrl,
+        useAiImages: input.useAiImages ?? false,
       }));
 
     slidesWithImage.push({

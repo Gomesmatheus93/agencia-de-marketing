@@ -9,6 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { serveStatic, setupVite } from "./vite";
+import { validateRequiredEnv } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -30,11 +31,12 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  validateRequiredEnv();
+
   const app = express();
   const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "20mb" }));
+  app.use(express.urlencoded({ limit: "20mb", extended: true }));
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
   // OAuth callback under /api/oauth/callback

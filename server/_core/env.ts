@@ -29,6 +29,9 @@ export const ENV = {
     process.env.S3_PUBLIC_BASE_URL ??
     "",
   hfToken: process.env.HF_TOKEN ?? "",
+  unsplashAccessKey: process.env.UNSPLASH_ACCESS_KEY ?? "",
+  pexelsApiKey: process.env.PEXELS_API_KEY ?? "",
+  pixabayApiKey: process.env.PIXABAY_API_KEY ?? "",
   metaGraphApiBaseUrl: process.env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com",
   metaGraphApiVersion: process.env.META_GRAPH_API_VERSION ?? "v25.0",
   metaAppId: process.env.META_APP_ID ?? "",
@@ -42,3 +45,19 @@ export const ENV = {
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
   linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
 };
+
+const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [
+  { key: "DATABASE_URL", label: "DATABASE_URL" },
+  { key: "JWT_SECRET", label: "JWT_SECRET" },
+  { key: "OPENAI_API_KEY", label: "OPENAI_API_KEY" },
+];
+
+export function validateRequiredEnv(): void {
+  const missing = REQUIRED_VARS.filter(({ key }) => !process.env[key]).map(({ label }) => label);
+  if (missing.length > 0) {
+    throw new Error(
+      `Variáveis de ambiente obrigatórias ausentes: ${missing.join(", ")}\n` +
+        "Copie o arquivo .env.example para .env e preencha os valores."
+    );
+  }
+}

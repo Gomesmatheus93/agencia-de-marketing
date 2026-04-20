@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   GalleryHorizontal,
   Clapperboard,
+  BarChart2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -86,6 +87,14 @@ const navItems = [
     path: "/dashboard/posts",
     color: "from-orange-500 to-rose-500",
     description: "Automatize suas redes",
+  },
+  {
+    id: "analytics",
+    label: "Analytics",
+    icon: BarChart2,
+    path: "/dashboard/analytics",
+    color: "from-cyan-500 to-blue-500",
+    description: "Insights do Instagram",
   },
 ];
 

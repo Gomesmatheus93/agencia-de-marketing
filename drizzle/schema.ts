@@ -1,4 +1,5 @@
 import {
+  index,
   int,
   mysqlEnum,
   mysqlTable,
@@ -25,59 +26,77 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // ─── Chat Conversations ───────────────────────────────────────────────────────
-export const chatConversations = mysqlTable("chat_conversations", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  title: varchar("title", { length: 255 }).notNull().default("Nova Conversa"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const chatConversations = mysqlTable(
+  "chat_conversations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    title: varchar("title", { length: 255 }).notNull().default("Nova Conversa"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_chat_conversations_userId").on(t.userId)]
+);
 
 export type ChatConversation = typeof chatConversations.$inferSelect;
 export type InsertChatConversation = typeof chatConversations.$inferInsert;
 
 // ─── Chat Messages ────────────────────────────────────────────────────────────
-export const chatMessages = mysqlTable("chat_messages", {
-  id: int("id").autoincrement().primaryKey(),
-  conversationId: int("conversationId").notNull(),
-  userId: int("userId").notNull(),
-  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+export const chatMessages = mysqlTable(
+  "chat_messages",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    conversationId: int("conversationId").notNull(),
+    userId: int("userId").notNull(),
+    role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_chat_messages_conversationId_userId").on(t.conversationId, t.userId),
+  ]
+);
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
 // ─── Generated Images ─────────────────────────────────────────────────────────
-export const generatedImages = mysqlTable("generated_images", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  prompt: text("prompt").notNull(),
-  imageUrl: text("imageUrl").notNull(),
-  fileKey: varchar("fileKey", { length: 512 }),
-  width: int("width").default(1024),
-  height: int("height").default(1024),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+export const generatedImages = mysqlTable(
+  "generated_images",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    prompt: text("prompt").notNull(),
+    imageUrl: text("imageUrl").notNull(),
+    fileKey: varchar("fileKey", { length: 512 }),
+    width: int("width").default(1024),
+    height: int("height").default(1024),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_generated_images_userId").on(t.userId)]
+);
 
 export type GeneratedImage = typeof generatedImages.$inferSelect;
 export type InsertGeneratedImage = typeof generatedImages.$inferInsert;
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
-export const articles = mysqlTable("articles", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  title: varchar("title", { length: 512 }).notNull(),
-  topic: text("topic"),
-  sourceUrl: text("sourceUrl"),
-  coverImageUrl: text("coverImageUrl"),
-  content: text("content").notNull(),
-  summary: text("summary"),
-  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const articles = mysqlTable(
+  "articles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    title: varchar("title", { length: 512 }).notNull(),
+    topic: text("topic"),
+    sourceUrl: text("sourceUrl"),
+    coverImageUrl: text("coverImageUrl"),
+    content: text("content").notNull(),
+    summary: text("summary"),
+    status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_articles_userId").on(t.userId)]
+);
 
 export type Article = typeof articles.$inferSelect;
 export type InsertArticle = typeof articles.$inferInsert;
@@ -94,19 +113,23 @@ export type CarouselSlideData = {
 };
 
 // ─── Carousels ────────────────────────────────────────────────────────────────
-export const carousels = mysqlTable("carousels", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  topic: varchar("topic", { length: 512 }).notNull(),
-  style: varchar("style", { length: 100 }).notNull(),
-  hook: text("hook").notNull(),
-  caption: text("caption").notNull(),
-  finalCta: text("finalCta").notNull(),
-  coverImageUrl: text("coverImageUrl"),
-  slides: text("slides").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const carousels = mysqlTable(
+  "carousels",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    topic: varchar("topic", { length: 512 }).notNull(),
+    style: varchar("style", { length: 100 }).notNull(),
+    hook: text("hook").notNull(),
+    caption: text("caption").notNull(),
+    finalCta: text("finalCta").notNull(),
+    coverImageUrl: text("coverImageUrl"),
+    slides: text("slides").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_carousels_userId").on(t.userId)]
+);
 
 type CarouselRow = typeof carousels.$inferSelect;
 type InsertCarouselRow = typeof carousels.$inferInsert;
@@ -120,56 +143,71 @@ export type InsertCarousel = Omit<InsertCarouselRow, "slides"> & {
 };
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
-export const carouselTemplates = mysqlTable("carousel_templates", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  name: varchar("name", { length: 255 }).notNull(),
-  imageUrl: text("imageUrl").notNull(),
-  styleBrief: text("styleBrief"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const carouselTemplates = mysqlTable(
+  "carousel_templates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    imageUrl: text("imageUrl").notNull(),
+    styleBrief: text("styleBrief"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_carousel_templates_userId").on(t.userId)]
+);
 
 export type CarouselTemplate = typeof carouselTemplates.$inferSelect;
 export type InsertCarouselTemplate = typeof carouselTemplates.$inferInsert;
 
-export const avatarVideos = mysqlTable("avatar_videos", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  provider: varchar("provider", { length: 32 }).notNull().default("d-id"),
-  title: varchar("title", { length: 512 }).notNull(),
-  topic: text("topic"),
-  script: text("script").notNull(),
-  sourceImageUrl: text("sourceImageUrl").notNull(),
-  videoUrl: text("videoUrl"),
-  voiceProvider: varchar("voiceProvider", { length: 64 }),
-  voiceId: varchar("voiceId", { length: 128 }),
-  providerJobId: varchar("providerJobId", { length: 255 }),
-  status: mysqlEnum("status", ["processing", "completed", "failed"])
-    .default("processing")
-    .notNull(),
-  errorMessage: text("errorMessage"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const avatarVideos = mysqlTable(
+  "avatar_videos",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    provider: varchar("provider", { length: 32 }).notNull().default("d-id"),
+    title: varchar("title", { length: 512 }).notNull(),
+    topic: text("topic"),
+    script: text("script").notNull(),
+    sourceImageUrl: text("sourceImageUrl").notNull(),
+    videoUrl: text("videoUrl"),
+    voiceProvider: varchar("voiceProvider", { length: 64 }),
+    voiceId: varchar("voiceId", { length: 128 }),
+    providerJobId: varchar("providerJobId", { length: 255 }),
+    status: mysqlEnum("status", ["processing", "completed", "failed"])
+      .default("processing")
+      .notNull(),
+    errorMessage: text("errorMessage"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_avatar_videos_userId").on(t.userId)]
+);
 
 export type AvatarVideo = typeof avatarVideos.$inferSelect;
 export type InsertAvatarVideo = typeof avatarVideos.$inferInsert;
 
-export const socialPosts = mysqlTable("social_posts", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  channel: mysqlEnum("channel", ["instagram", "linkedin", "newsletter"]).notNull(),
-  title: varchar("title", { length: 512 }),
-  content: text("content").notNull(),
-  imageUrl: text("imageUrl"),
-  metadata: text("metadata"),
-  scheduledAt: timestamp("scheduledAt"),
-  publishedAt: timestamp("publishedAt"),
-  status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+export const socialPosts = mysqlTable(
+  "social_posts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    channel: mysqlEnum("channel", ["instagram", "linkedin", "newsletter"]).notNull(),
+    title: varchar("title", { length: 512 }),
+    content: text("content").notNull(),
+    imageUrl: text("imageUrl"),
+    metadata: text("metadata"),
+    scheduledAt: timestamp("scheduledAt"),
+    publishedAt: timestamp("publishedAt"),
+    status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("idx_social_posts_userId").on(t.userId),
+    index("idx_social_posts_scheduled").on(t.channel, t.status, t.scheduledAt),
+  ]
+);
 
 export type SocialPost = typeof socialPosts.$inferSelect;
 export type InsertSocialPost = typeof socialPosts.$inferInsert;

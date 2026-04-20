@@ -1,5 +1,10 @@
-import { eq, desc, asc, and, lte, sql } from "drizzle-orm";
+import { eq, desc, asc, and, lte, sql, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import type { ResultSetHeader } from "mysql2";
+
+function insertId(result: unknown): number {
+  return (result as ResultSetHeader).insertId;
+}
 import {
   InsertUser,
   users,
@@ -296,7 +301,7 @@ export async function createConversation(userId: number, title?: string): Promis
     title: title || "Nova Conversa",
   });
   const created = await db.select().from(chatConversations)
-    .where(eq(chatConversations.id, (result as any).insertId)).limit(1);
+    .where(eq(chatConversations.id, insertId(result))).limit(1);
   return created[0];
 }
 
@@ -338,15 +343,15 @@ export async function addMessage(
   await db.update(chatConversations).set({ updatedAt: new Date() })
     .where(eq(chatConversations.id, conversationId));
   const created = await db.select().from(chatMessages)
-    .where(eq(chatMessages.id, (result as any).insertId)).limit(1);
+    .where(eq(chatMessages.id, insertId(result))).limit(1);
   return created[0];
 }
 
 export async function getChatCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const result = await db.select().from(chatConversations).where(eq(chatConversations.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(chatConversations).where(eq(chatConversations.userId, userId));
+  return row?.count ?? 0;
 }
 
 // ─── Images ───────────────────────────────────────────────────────────────────
@@ -369,7 +374,7 @@ export async function saveImage(
   if (!db) throw new Error("Database not available");
   const [result] = await db.insert(generatedImages).values({ userId, prompt, imageUrl, fileKey });
   const created = await db.select().from(generatedImages)
-    .where(eq(generatedImages.id, (result as any).insertId)).limit(1);
+    .where(eq(generatedImages.id, insertId(result))).limit(1);
   return created[0];
 }
 
@@ -384,8 +389,8 @@ export async function deleteImage(id: number, userId: number) {
 export async function getImageCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const result = await db.select().from(generatedImages).where(eq(generatedImages.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(generatedImages).where(eq(generatedImages.userId, userId));
+  return row?.count ?? 0;
 }
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
@@ -421,7 +426,7 @@ export async function saveArticle(
   if (!db) throw new Error("Database not available");
   const [result] = await db.insert(articles).values({ userId, ...data });
   const created = await db.select().from(articles)
-    .where(eq(articles.id, (result as any).insertId)).limit(1);
+    .where(eq(articles.id, insertId(result))).limit(1);
   return created[0];
 }
 
@@ -451,8 +456,8 @@ export async function deleteArticle(id: number, userId: number) {
 export async function getArticleCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const result = await db.select().from(articles).where(eq(articles.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(articles).where(eq(articles.userId, userId));
+  return row?.count ?? 0;
 }
 
 export async function getCarousels(userId: number): Promise<Carousel[]> {
@@ -486,7 +491,7 @@ export async function saveCarousel(
     slides: JSON.stringify(data.slides),
   });
   const created = await db.select().from(carousels)
-    .where(eq(carousels.id, (result as any).insertId)).limit(1);
+    .where(eq(carousels.id, insertId(result))).limit(1);
   return hydrateCarousel(created[0] as Omit<Carousel, "slides"> & { slides: unknown });
 }
 
@@ -521,8 +526,8 @@ export async function getCarouselCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
   await ensureCarouselTable();
-  const result = await db.select().from(carousels).where(eq(carousels.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(carousels).where(eq(carousels.userId, userId));
+  return row?.count ?? 0;
 }
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
@@ -573,7 +578,7 @@ export async function saveCarouselTemplate(
   const created = await db
     .select()
     .from(carouselTemplates)
-    .where(eq(carouselTemplates.id, (result as any).insertId))
+    .where(eq(carouselTemplates.id, insertId(result)))
     .limit(1);
   return created[0];
 }
@@ -630,7 +635,7 @@ export async function saveAvatarVideo(
     errorMessage: data.errorMessage,
   });
   const created = await db.select().from(avatarVideos)
-    .where(eq(avatarVideos.id, (result as any).insertId)).limit(1);
+    .where(eq(avatarVideos.id, insertId(result))).limit(1);
   return created[0];
 }
 
@@ -675,8 +680,8 @@ export async function getAvatarVideoCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
   await ensureAvatarVideoTable();
-  const result = await db.select().from(avatarVideos).where(eq(avatarVideos.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(avatarVideos).where(eq(avatarVideos.userId, userId));
+  return row?.count ?? 0;
 }
 
 export async function getSocialPosts(
@@ -730,7 +735,7 @@ export async function saveSocialPost(
   const status = data.scheduledAt ? "scheduled" : "draft";
   const [result] = await db.insert(socialPosts).values({ userId, ...data, status });
   const created = await db.select().from(socialPosts)
-    .where(eq(socialPosts.id, (result as any).insertId)).limit(1);
+    .where(eq(socialPosts.id, insertId(result))).limit(1);
   return created[0];
 }
 
@@ -764,6 +769,6 @@ export async function deleteSocialPost(id: number, userId: number) {
 export async function getPostCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const result = await db.select().from(socialPosts).where(eq(socialPosts.userId, userId));
-  return result.length;
+  const [row] = await db.select({ count: count() }).from(socialPosts).where(eq(socialPosts.userId, userId));
+  return row?.count ?? 0;
 }

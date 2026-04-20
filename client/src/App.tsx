@@ -13,6 +13,7 @@ import Articles from "./pages/Articles";
 import Posts from "./pages/Posts";
 import Settings from "./pages/Settings";
 import Carousel from "./pages/Carousel";
+import Analytics from "./pages/Analytics";
 
 const CarouselPage = () => <Carousel />;
 
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/dashboard/videos" component={Videos} />
       <Route path="/dashboard/articles" component={Articles} />
       <Route path="/dashboard/carousel" component={CarouselPage} />
+      <Route path="/dashboard/analytics" component={Analytics} />
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/settings" component={Settings} />
       <Route path="/404" component={NotFound} />

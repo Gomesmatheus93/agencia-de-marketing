@@ -73,6 +73,22 @@ const BRAND_SECONDARY = "#fe6e00";
 const FLAVIO_PROFILE_NAME = "Flávio Vasconcelos";
 const FLAVIO_PROFILE_HANDLE = "@comflavio";
 const FLAVIO_PROFILE_AVATAR_URL = "/flavio-avatar.png";
+const KRYTHOS_PROFILE_NAME = "krythoslab";
+const KRYTHOS_PROFILE_HANDLE = "@krythoslab";
+const KRYTHOS_PROFILE_AVATAR_URL = "/krythoslab-avatar.png";
+
+type ProfileModel = {
+  id: string;
+  name: string;
+  handle: string;
+  initials: string;
+  avatarUrl: string;
+};
+
+const PROFILE_MODELS: ProfileModel[] = [
+  { id: "flavio", name: FLAVIO_PROFILE_NAME, handle: FLAVIO_PROFILE_HANDLE, initials: "FV", avatarUrl: FLAVIO_PROFILE_AVATAR_URL },
+  { id: "krythos", name: KRYTHOS_PROFILE_NAME, handle: KRYTHOS_PROFILE_HANDLE, initials: "KL", avatarUrl: KRYTHOS_PROFILE_AVATAR_URL },
+];
 
 const slideCountOptions = [3, 5, 7, 10];
 
@@ -113,6 +129,10 @@ type SlideRenderInput = {
   finalCta?: string;
   coverImageUrl?: string;
   profileAvatarUrl?: string;
+  profileName?: string;
+  profileHandle?: string;
+  profileInitials?: string;
+  profileId?: string;
 };
 
 type TemplateDrivenTone = "light" | "dark";
@@ -558,6 +578,10 @@ function buildSlideSvg(input: SlideRenderInput) {
     return buildTemplateDrivenSlideSvg(input);
   }
 
+  if (input.profileId === "krythos") {
+    return buildKrythosModelSlideSvg(input);
+  }
+
   return buildFlavioModelSlideSvg(input);
 }
 
@@ -826,14 +850,14 @@ function buildFlavioModelSlideSvg(input: SlideRenderInput) {
   <rect width="1080" height="1350" fill="#ffffff" />
 
   <circle cx="132" cy="138" r="64" fill="#111827" />
-  <text x="132" y="154" text-anchor="middle" fill="#ffffff" font-size="36" font-family="Arial, Helvetica, sans-serif" font-weight="700">FV</text>
+  <text x="132" y="154" text-anchor="middle" fill="#ffffff" font-size="36" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileInitials || "FV")}</text>
   <image href="${escapeXml(profileAvatarUrl || "")}" x="68" y="74" width="128" height="128" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avatarClipId})" />
   <circle cx="132" cy="138" r="64" fill="none" stroke="#e5e7eb" stroke-width="2" />
 
-  <text x="222" y="140" fill="#050505" font-size="44" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(FLAVIO_PROFILE_NAME)}</text>
+  <text x="222" y="140" fill="#050505" font-size="44" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileName || FLAVIO_PROFILE_NAME)}</text>
   <circle cx="682" cy="126" r="15" fill="#1d9bf0" />
   <path d="M675 126.5L680.5 132L690 121" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" />
-  <text x="222" y="185" fill="#9ca3af" font-size="35" font-family="Arial, Helvetica, sans-serif" font-weight="500">${escapeXml(FLAVIO_PROFILE_HANDLE)}</text>
+  <text x="222" y="185" fill="#9ca3af" font-size="35" font-family="Arial, Helvetica, sans-serif" font-weight="500">${escapeXml(input.profileHandle || FLAVIO_PROFILE_HANDLE)}</text>
 
   <text x="540" y="${titleStartY}" text-anchor="middle" fill="#050505" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
     ${titleLines
@@ -848,6 +872,108 @@ function buildFlavioModelSlideSvg(input: SlideRenderInput) {
 
   ${imageMarkup}
   <rect x="0" y="${imageTop}" width="1080" height="2" fill="#f3f4f6" />
+</svg>
+  `.trim();
+}
+
+function buildKrythosModelSlideSvg(input: SlideRenderInput) {
+  const idSuffix = hashString(`${input.topic}-${input.index}-${input.slide.title}`);
+  const overlayId = `krOverlay-${idSuffix}`;
+  const fallbackId = `krFallback-${idSuffix}`;
+
+  const ACCENT_CYAN = "#29d9ff";
+  const imageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+  const profileAvatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || KRYTHOS_PROFILE_AVATAR_URL);
+
+  const rawTitle = (input.index === 0 ? input.hook || input.slide.title : input.slide.title)
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const MAX_CHARS = 14;
+  const MAX_LINES = 4;
+  const titleLines = wrapTextLines(rawTitle, MAX_CHARS, MAX_LINES);
+
+  const FONT_SIZE = titleLines.length >= 4 ? 82 : titleLines.length >= 3 ? 90 : titleLines.length >= 2 ? 100 : 112;
+  const LINE_HEIGHT = Math.round(FONT_SIZE * 1.18);
+
+  const accentStartLine = titleLines.length <= 1 ? 0 : Math.ceil(titleLines.length * 0.62);
+
+  const BOTTOM_PADDING = 100;
+  const MAX_TEXT_BOTTOM = 1350 - BOTTOM_PADDING;
+  const titleBlockHeight = (titleLines.length - 1) * LINE_HEIGHT + FONT_SIZE;
+
+  const PILL_H = 80;
+  const PILL_AVATAR_R = 30;
+  const GAP_PILL_TEXT = 44;
+  const totalBlockHeight = PILL_H + GAP_PILL_TEXT + titleBlockHeight;
+  const CONTENT_CENTER = 1060;
+  const PILL_CY = Math.min(
+    Math.round(CONTENT_CENTER - totalBlockHeight / 2 + PILL_H / 2),
+    Math.round(MAX_TEXT_BOTTOM - titleBlockHeight - GAP_PILL_TEXT - PILL_H / 2)
+  );
+
+  const profileHandle = input.profileHandle || "@krythoslab";
+  const profileInitials = input.profileInitials || "K";
+  const handleWidth = profileHandle.length * 23;
+  const PILL_W = PILL_AVATAR_R * 2 + 24 + handleWidth + 32;
+  const PILL_X = (1080 - PILL_W) / 2;
+  const AVATAR_CX = PILL_X + PILL_AVATAR_R + 12;
+  const HANDLE_X = AVATAR_CX + PILL_AVATAR_R + 18;
+
+  const TEXT_ZONE_TOP = PILL_CY + PILL_H / 2 + GAP_PILL_TEXT;
+  const titleStartY = TEXT_ZONE_TOP + FONT_SIZE * 0.82;
+
+  const MAX_TEXT_WIDTH = 1000;
+  const titleMarkup = titleLines
+    .map((line, i) => {
+      const isAccent = i >= accentStartLine;
+      const estimatedWidth = line.length * FONT_SIZE * 0.62;
+      const needsClamp = estimatedWidth > MAX_TEXT_WIDTH;
+      const clampAttr = needsClamp
+        ? ` textLength="${MAX_TEXT_WIDTH}" lengthAdjust="spacingAndGlyphs"`
+        : "";
+      return `<text x="540" y="${titleStartY + i * LINE_HEIGHT}" text-anchor="middle" fill="${isAccent ? ACCENT_CYAN : "#ffffff"}" font-size="${FONT_SIZE}" font-family="Arial Black, Arial, Helvetica, sans-serif" font-weight="900"${clampAttr}>${escapeXml(line)}</text>`;
+    })
+    .join("\n  ");
+
+  const imageMarkup = imageUrl
+    ? `<image href="${escapeXml(imageUrl)}" x="0" y="0" width="1080" height="1350" preserveAspectRatio="xMidYMid slice" />`
+    : `<rect width="1080" height="1350" fill="url(#${fallbackId})" />`;
+
+  const slideLabel = `${input.index + 1}/${input.total}`;
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="${overlayId}" x1="0" y1="0" x2="0" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="40%" stop-color="#000000" stop-opacity="0.06" />
+      <stop offset="60%" stop-color="#000000" stop-opacity="0.65" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.96" />
+    </linearGradient>
+    <linearGradient id="${fallbackId}" x1="0" y1="0" x2="1080" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d1b2a" />
+      <stop offset="0.5" stop-color="#1b2838" />
+      <stop offset="1" stop-color="#0a3d62" />
+    </linearGradient>
+    <clipPath id="krAvatar-${idSuffix}">
+      <circle cx="${AVATAR_CX}" cy="${PILL_CY}" r="${PILL_AVATAR_R}" />
+    </clipPath>
+  </defs>
+
+  ${imageMarkup}
+  <rect width="1080" height="1350" fill="url(#${overlayId})" />
+
+  <text x="540" y="64" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="600" letter-spacing="4">${escapeXml(slideLabel)}</text>
+
+  <rect x="${PILL_X}" y="${PILL_CY - PILL_H / 2}" width="${PILL_W}" height="${PILL_H}" rx="${PILL_H / 2}" fill="rgba(0,0,0,0.60)" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" />
+  <circle cx="${AVATAR_CX}" cy="${PILL_CY}" r="${PILL_AVATAR_R}" fill="#1a1a2e" />
+  <text x="${AVATAR_CX}" y="${PILL_CY + 11}" text-anchor="middle" fill="#ffffff" font-size="26" font-family="Arial Black, Arial, sans-serif" font-weight="900">${escapeXml(profileInitials)}</text>
+  <image href="${escapeXml(profileAvatarUrl || "")}" x="${AVATAR_CX - PILL_AVATAR_R}" y="${PILL_CY - PILL_AVATAR_R}" width="${PILL_AVATAR_R * 2}" height="${PILL_AVATAR_R * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#krAvatar-${idSuffix})" />
+  <text x="${HANDLE_X}" y="${PILL_CY + 14}" fill="#ffffff" font-size="38" font-family="Arial, Helvetica, sans-serif" font-weight="600">${escapeXml(profileHandle)}</text>
+
+  ${titleMarkup}
 </svg>
   `.trim();
 }
@@ -1314,6 +1440,11 @@ function SlidePreview({
   hook,
   finalCta,
   coverImageUrl,
+  profileAvatarUrl,
+  profileName,
+  profileHandle,
+  profileInitials,
+  profileId,
   className,
 }: {
   slide: CarouselSlide;
@@ -1324,6 +1455,11 @@ function SlidePreview({
   hook: string;
   finalCta?: string;
   coverImageUrl?: string;
+  profileAvatarUrl?: string;
+  profileName?: string;
+  profileHandle?: string;
+  profileInitials?: string;
+  profileId?: string;
   className?: string;
 }) {
   const previewSvg = buildSlideSvg({
@@ -1335,6 +1471,11 @@ function SlidePreview({
     hook,
     finalCta,
     coverImageUrl,
+    profileAvatarUrl,
+    profileName,
+    profileHandle,
+    profileInitials,
+    profileId,
   });
 
   return (
@@ -1359,6 +1500,7 @@ function CarouselCard({
   onSchedule,
   isPublishing,
   isScheduling,
+  profileId,
 }: {
   carousel: CarouselItem;
   onOpen: () => void;
@@ -1367,24 +1509,45 @@ function CarouselCard({
   onSchedule: () => void;
   isPublishing: boolean;
   isScheduling: boolean;
+  profileId?: string;
 }) {
   const heroSlide = carousel.slides[0];
+  const renderedPreviewUrl = heroSlide?.renderedImageUrl
+    ? toAbsoluteClientAssetUrl(heroSlide.renderedImageUrl)
+    : null;
+  const [imgFailed, setImgFailed] = useState(false);
 
   return (
     <div className="group relative overflow-hidden rounded-[30px] border border-border/40 bg-background/75 p-3 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
       <button type="button" onClick={onOpen} className="block w-full text-left">
         <div className="relative overflow-hidden rounded-[26px]">
-          <SlidePreview
-            slide={heroSlide}
-            index={0}
-            total={carousel.slides.length}
-            style={carousel.style}
-            topic={carousel.topic}
-            hook={carousel.hook}
-            finalCta={carousel.finalCta}
-            coverImageUrl={carousel.coverImageUrl ?? undefined}
-            className="rounded-[26px] border-0 shadow-none"
-          />
+          {renderedPreviewUrl && !imgFailed ? (
+            <div className="aspect-[4/5] overflow-hidden rounded-[26px]">
+              <img
+                src={renderedPreviewUrl}
+                alt="preview do slide"
+                className="h-full w-full object-cover"
+                onError={() => setImgFailed(true)}
+              />
+            </div>
+          ) : (
+            <SlidePreview
+              slide={heroSlide}
+              index={0}
+              total={carousel.slides.length}
+              style={carousel.style}
+              topic={carousel.topic}
+              hook={carousel.hook}
+              finalCta={carousel.finalCta}
+              coverImageUrl={carousel.coverImageUrl ?? undefined}
+              profileId={profileId}
+              profileHandle={profileId === "krythos" ? KRYTHOS_PROFILE_HANDLE : FLAVIO_PROFILE_HANDLE}
+              profileName={profileId === "krythos" ? KRYTHOS_PROFILE_NAME : FLAVIO_PROFILE_NAME}
+              profileInitials={profileId === "krythos" ? "KL" : "FV"}
+              profileAvatarUrl={profileId === "krythos" ? KRYTHOS_PROFILE_AVATAR_URL : FLAVIO_PROFILE_AVATAR_URL}
+              className="rounded-[26px] border-0 shadow-none"
+            />
+          )}
           <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white backdrop-blur-md">
             <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-white/70">
               <span>Carrossel IA</span>
@@ -1521,9 +1684,11 @@ function buildCarouselZipEntries(carousel: CarouselItem): ZipEntry[] {
 
 async function buildCarouselTemplateSlides(
   carousel: CarouselItem,
-  resolveAssetUrl: (url?: string) => Promise<string | undefined>
+  resolveAssetUrl: (url?: string) => Promise<string | undefined>,
+  profile?: ProfileModel
 ) {
-  const embeddedProfileAvatarUrl = await resolveAssetUrl(FLAVIO_PROFILE_AVATAR_URL);
+  const activeProfile = profile || PROFILE_MODELS[0];
+  const embeddedProfileAvatarUrl = await resolveAssetUrl(activeProfile.avatarUrl);
   const embeddedCoverImageUrl = await resolveAssetUrl(carousel.coverImageUrl ?? undefined);
   const embeddedSlideImageUrls = await Promise.all(
     carousel.slides.map((slide) => resolveAssetUrl(slide.imageUrl))
@@ -1561,6 +1726,10 @@ async function buildCarouselTemplateSlides(
         finalCta: carousel.finalCta,
         coverImageUrl: embeddedCoverImageUrl,
         profileAvatarUrl: embeddedProfileAvatarUrl,
+        profileName: activeProfile.name,
+        profileHandle: activeProfile.handle,
+        profileInitials: activeProfile.initials,
+        profileId: activeProfile.id,
       });
       const imageDataUrl = await renderSvgToPngDataUrl(svg);
 
@@ -1589,6 +1758,9 @@ export default function Carousels() {
   const [modalSlide, setModalSlide] = useState(0);
   const [scheduleCarousel, setScheduleCarousel] = useState<CarouselItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(PROFILE_MODELS[0].id);
+  const [useAiImages, setUseAiImages] = useState(false);
+  const selectedProfileRef = useRef<ProfileModel>(PROFILE_MODELS[0]);
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
   const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery();
@@ -1694,7 +1866,7 @@ export default function Carousels() {
       }
 
       try {
-        const slides = await buildCarouselTemplateSlides(carousel, resolveTemplateAssetUrl);
+        const slides = await buildCarouselTemplateSlides(carousel, resolveTemplateAssetUrl, selectedProfileRef.current);
         const updated = await saveDesignAssetsMutation.mutateAsync({
           id: carousel.id,
           slides,
@@ -1745,6 +1917,7 @@ export default function Carousels() {
       slideCount,
       style: selectedStyle,
       coverImageDataUrl: coverImageUrl || undefined,
+      useAiImages,
     });
   };
 
@@ -1967,6 +2140,40 @@ export default function Carousels() {
 
             <div className="space-y-2">
               <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Instagram className="h-3.5 w-3.5" />
+                Perfil do Instagram
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {PROFILE_MODELS.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    disabled={isGenerating}
+                    onClick={() => {
+                      setSelectedProfileId(profile.id);
+                      selectedProfileRef.current = profile;
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-medium transition-all duration-150",
+                      selectedProfileId === profile.id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/30 text-muted-foreground hover:border-border hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">
+                      {profile.initials}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-semibold leading-none">{profile.name}</p>
+                      <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">{profile.handle}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Image className="h-3.5 w-3.5" />
                 Imagem do bloco inferior
               </label>
@@ -1995,7 +2202,7 @@ export default function Carousels() {
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-foreground">Pronto para gerar</p>
                 <p className="text-xs text-muted-foreground">
-                  O agente vai devolver os slides no modelo do Flavio, com imagem tematica aplicada.
+                  O agente vai devolver os slides no perfil <strong>{PROFILE_MODELS.find((p) => p.id === selectedProfileId)?.handle}</strong>, com imagem tematica aplicada.
                 </p>
               </div>
               <Button
@@ -2015,6 +2222,34 @@ export default function Carousels() {
                   </>
                 )}
               </Button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl border border-border/40 bg-background/60 px-4 py-3">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">Imagens geradas por IA</p>
+                <p className="text-xs text-muted-foreground">
+                  {useAiImages
+                    ? "Ligado — o agente vai gerar imagens com IA para cada slide."
+                    : "Desligado — o agente vai buscar fotos no Unsplash, Pexels e Pixabay."}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useAiImages}
+                onClick={() => setUseAiImages((v) => !v)}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none",
+                  useAiImages ? "bg-primary" : "bg-muted"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transition-transform duration-200",
+                    useAiImages ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
             </div>
 
             {isGenerating ? (
@@ -2134,6 +2369,7 @@ export default function Carousels() {
                   onSchedule={() => openScheduleDialog(carousel)}
                   isPublishing={isPublishingCarousel}
                   isScheduling={isSchedulingCarousel}
+                  profileId={selectedProfileId}
                 />
               ))}
             </div>
@@ -2171,6 +2407,11 @@ export default function Carousels() {
                     hook={selectedCarousel.hook}
                     finalCta={selectedCarousel.finalCta}
                     coverImageUrl={selectedCarousel.coverImageUrl ?? undefined}
+                    profileAvatarUrl={selectedProfileRef.current.avatarUrl}
+                    profileName={selectedProfileRef.current.name}
+                    profileHandle={selectedProfileRef.current.handle}
+                    profileInitials={selectedProfileRef.current.initials}
+                    profileId={selectedProfileRef.current.id}
                   />
                 </div>
 
