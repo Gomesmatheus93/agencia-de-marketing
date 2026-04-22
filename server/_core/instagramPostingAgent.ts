@@ -310,6 +310,42 @@ async function uploadSlideToPublicUrl(input: {
   });
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+async function waitForContainerReady(
+  containerId: string,
+  config: ReturnType<typeof getRequiredMetaConfig>,
+  maxAttempts = 15,
+  delayMs = 4000
+) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const url = `${config.graphBaseUrl}/${containerId}?fields=status_code&access_token=${config.accessToken}`;
+    const res = await fetch(url);
+    const text = await res.text();
+    const data = text ? (JSON.parse(text) as { status_code?: string; error?: { message?: string } }) : {};
+
+    if (data.error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Erro ao verificar status do container Instagram: ${data.error.message}`,
+      });
+    }
+
+    if (data.status_code === "FINISHED") return;
+    if (data.status_code === "ERROR" || data.status_code === "EXPIRED") {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Container Instagram falhou com status: ${data.status_code}`,
+      });
+    }
+
+    if (attempt < maxAttempts) await sleep(delayMs);
+  }
+  // Tenta publicar mesmo se o polling esgotou — a Meta às vezes aceita mesmo sem FINISHED
+}
+
 async function postToGraph(
   endpoint: string,
   params: Record<string, string>,
@@ -453,6 +489,7 @@ export async function publishInstagramCarouselWithAgent(
       },
       config
     );
+    await waitForContainerReady(containerId, config);
     const mediaId = await postToGraph("media_publish", { creation_id: containerId }, config);
 
     return {
@@ -490,6 +527,7 @@ export async function publishInstagramCarouselWithAgent(
     },
     config
   );
+  await waitForContainerReady(containerId, config);
   const mediaId = await postToGraph("media_publish", { creation_id: containerId }, config);
 
   return {

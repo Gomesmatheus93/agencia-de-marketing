@@ -211,3 +211,25 @@ export const socialPosts = mysqlTable(
 
 export type SocialPost = typeof socialPosts.$inferSelect;
 export type InsertSocialPost = typeof socialPosts.$inferInsert;
+
+// ─── Instagram Connections ────────────────────────────────────────────────────
+export const instagramConnections = mysqlTable(
+  "instagram_connections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    instagramAccountId: varchar("instagramAccountId", { length: 64 }).notNull(),
+    facebookPageId: varchar("facebookPageId", { length: 64 }),
+    username: varchar("username", { length: 64 }),
+    name: varchar("name", { length: 255 }),
+    profilePictureUrl: text("profilePictureUrl"),
+    accessToken: text("accessToken").notNull(),
+    tokenExpiresAt: timestamp("tokenExpiresAt"),
+    connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_instagram_connections_userId").on(t.userId)]
+);
+
+export type InstagramConnection = typeof instagramConnections.$inferSelect;
+export type InsertInstagramConnection = typeof instagramConnections.$inferInsert;

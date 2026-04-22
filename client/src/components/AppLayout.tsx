@@ -241,20 +241,32 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
-        <button
-          type="button"
-          onClick={handleThemeToggle}
-          disabled={!switchable || !toggleTheme}
-          className="mb-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 group"
-        >
-          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0 transition-colors group-hover:bg-muted">
-            <ThemeToggleIcon className="w-4 h-4" />
+        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
+          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
+            <ThemeToggleIcon className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{themeToggleLabel}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{themeToggleDescription}</div>
+            <div className="text-sm font-medium text-foreground truncate">{isDarkTheme ? "Tema escuro" : "Tema claro"}</div>
           </div>
-        </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isDarkTheme}
+            onClick={handleThemeToggle}
+            disabled={!switchable || !toggleTheme}
+            className={cn(
+              "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              isDarkTheme ? "bg-primary" : "bg-muted"
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                isDarkTheme ? "translate-x-5" : "translate-x-0"
+              )}
+            />
+          </button>
+        </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -274,10 +286,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="gap-2">
               <Settings className="w-4 h-4" />
               Configurações
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleThemeToggle} className="gap-2" disabled={!switchable || !toggleTheme}>
-              <ThemeToggleIcon className="w-4 h-4" />
-              {themeToggleLabel}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -357,18 +365,26 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             </div>
             <span className="font-bold text-sm tracking-tight">KrythosLab</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isDarkTheme}
+              aria-label={themeToggleLabel}
               onClick={handleThemeToggle}
               disabled={!switchable || !toggleTheme}
-              className="w-9 h-9 rounded-lg"
-              aria-label={themeToggleLabel}
-              title={themeToggleLabel}
+              className={cn(
+                "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+                isDarkTheme ? "bg-primary" : "bg-muted"
+              )}
             >
-              <ThemeToggleIcon className="w-4 h-4" />
-            </Button>
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  isDarkTheme ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
             <Avatar className="w-8 h-8">
               <AvatarFallback className="gradient-primary text-white text-xs font-semibold">
                 {userInitials}

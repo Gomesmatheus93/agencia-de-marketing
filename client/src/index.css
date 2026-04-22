@@ -3,6 +3,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─── Theme transition (View Transitions API) ────────────────────────────── */
+::view-transition-old(root) {
+  animation: theme-fade-out 0.18s ease both;
+}
+
+::view-transition-new(root) {
+  animation: theme-fade-in 0.22s ease both;
+}
+
+@keyframes theme-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes theme-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

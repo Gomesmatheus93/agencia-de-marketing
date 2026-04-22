@@ -40,6 +40,8 @@ export type CreatedDidTalk = {
 export type PreparedDidSourceImage = {
   previewSourceImageUrl: string;
   providerSourceImageUrl: string;
+  imageBuffer: Buffer;
+  contentType: "image/jpeg" | "image/png";
 };
 
 const MIME_EXTENSION_MAP: Record<string, string> = {
@@ -255,6 +257,8 @@ export async function prepareDidSourceImage(input: {
   return {
     previewSourceImageUrl,
     providerSourceImageUrl,
+    imageBuffer: asset.data,
+    contentType: asset.contentType as "image/jpeg" | "image/png",
   };
 }
 
@@ -309,9 +313,17 @@ export async function createDidTalk(input: CreateDidTalkInput): Promise<CreatedD
           voice_id: voiceId,
         },
       },
+      face: {
+        detector: "MaxFace",
+      },
       config: {
         stitch: true,
         fluent: true,
+        pad_audio: 0.5,
+        align_driver: true,
+        align_expand_factor: 0.3,
+        motion_factor: 0.9,
+        sharpen: true,
         output_resolution: 1080,
         result_format: "mp4",
       },

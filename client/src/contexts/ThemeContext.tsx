@@ -44,7 +44,17 @@ export function ThemeProvider({
 
   const toggleTheme = switchable
     ? () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
+        const next: Theme = theme === "light" ? "dark" : "light";
+        if (
+          typeof document !== "undefined" &&
+          "startViewTransition" in document &&
+          typeof (document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition === "function"
+        ) {
+          (document as Document & { startViewTransition: (cb: () => void) => void })
+            .startViewTransition(() => setTheme(next));
+        } else {
+          setTheme(next);
+        }
       }
     : undefined;
 

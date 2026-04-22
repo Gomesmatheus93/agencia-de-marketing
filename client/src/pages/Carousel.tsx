@@ -58,12 +58,7 @@ interface CarouselItem {
 }
 
 const topicSuggestions = [
-  "5 erros que travam o crescimento no Instagram",
-  "Como criar conteudo que gera comentarios de verdade",
-  "O que separa um perfil comum de um perfil memoravel",
-  "Como vender sem parecer forcar a venda nas redes sociais",
-  "Os sinais de que sua estrategia de conteudo esta errada",
-  "O passo a passo para transformar seguidores em clientes",
+  
 ];
 
 const DEFAULT_STYLE_ID = "signature";
@@ -1280,10 +1275,52 @@ function buildSlideSvgDataUrl(input: SlideRenderInput) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildSlideSvg(input))}`;
 }
 
-function renderSvgToPngDataUrl(svg: string): Promise<string> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Renderizacao de imagem indisponivel fora do navegador"));
+async function inlineSvgExternalImages(svg: string): Promise<string> {
+  const hrefPattern = /href="([^"]+)"/g;
+  const externalUrls: string[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = hrefPattern.exec(svg)) !== null) {
+    const url = match[1];
+    if (!url.startsWith("data:") && (url.startsWith("http") || url.startsWith("/"))) {
+      externalUrls.push(url);
+    }
   }
+
+  if (externalUrls.length === 0) return svg;
+
+  const unique = Array.from(new Set(externalUrls));
+  const results = await Promise.all(
+    unique.map(async (url) => {
+      try {
+        const absUrl = toAbsoluteClientAssetUrl(url) || url;
+        const response = await fetch(absUrl, { credentials: "include" });
+        if (!response.ok) return null;
+        const blob = await response.blob();
+        return blobToDataUrl(blob);
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  let result = svg;
+  for (let i = 0; i < unique.length; i++) {
+    const dataUrl = results[i];
+    if (dataUrl) {
+      const escaped = unique[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      result = result.replace(new RegExp(`href="${escaped}"`, "g"), `href="${dataUrl}"`);
+    }
+  }
+  return result;
+}
+
+async function renderSvgToPngDataUrl(svg: string): Promise<string> {
+  if (typeof window === "undefined") {
+    throw new Error("Renderizacao de imagem indisponivel fora do navegador");
+  }
+
+  const embeddedSvg = await inlineSvgExternalImages(svg);
 
   return new Promise((resolve, reject) => {
     const image = new window.Image();
@@ -1307,7 +1344,7 @@ function renderSvgToPngDataUrl(svg: string): Promise<string> {
     image.onerror = () => {
       reject(new Error("Nao foi possivel carregar o SVG do slide para conversao"));
     };
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(embeddedSvg)}`;
   });
 }
 
@@ -1498,8 +1535,10 @@ function CarouselCard({
   onDownload,
   onPublish,
   onSchedule,
+  onDelete,
   isPublishing,
   isScheduling,
+  isDeleting,
   profileId,
 }: {
   carousel: CarouselItem;
@@ -1507,8 +1546,10 @@ function CarouselCard({
   onDownload: () => void;
   onPublish: () => void;
   onSchedule: () => void;
+  onDelete: () => void;
   isPublishing: boolean;
   isScheduling: boolean;
+  isDeleting: boolean;
   profileId?: string;
 }) {
   const heroSlide = carousel.slides[0];
@@ -1616,6 +1657,19 @@ function CarouselCard({
             Agendar
           </Button>
         </div>
+        <Button
+          variant="outline"
+          className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={onDelete}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-2 h-4 w-4" />
+          )}
+          Excluir
+        </Button>
       </div>
     </div>
   );
@@ -1641,7 +1695,8 @@ function buildCarouselExportText(carousel: CarouselItem): string {
   return sections.join("\n\n");
 }
 
-function buildCarouselZipEntries(carousel: CarouselItem): ZipEntry[] {
+function buildCarouselZipEntries(carousel: CarouselItem, profile?: ProfileModel): ZipEntry[] {
+  const activeProfile = profile || PROFILE_MODELS[0];
   const slideEntries = carousel.slides.map((slide, index) => ({
     name: `slides/slide-${String(index + 1).padStart(2, "0")}.svg`,
     data: encodeUtf8(
@@ -1654,6 +1709,11 @@ function buildCarouselZipEntries(carousel: CarouselItem): ZipEntry[] {
         hook: carousel.hook,
         finalCta: carousel.finalCta,
         coverImageUrl: carousel.coverImageUrl ?? undefined,
+        profileId: activeProfile.id,
+        profileAvatarUrl: activeProfile.avatarUrl,
+        profileName: activeProfile.name,
+        profileHandle: activeProfile.handle,
+        profileInitials: activeProfile.initials,
       })
     ),
   }));
@@ -1927,7 +1987,7 @@ export default function Carousels() {
 
   const handleDownload = (carousel: CarouselItem) => {
     try {
-      const zipEntries = buildCarouselZipEntries(carousel);
+      const zipEntries = buildCarouselZipEntries(carousel, selectedProfileRef.current);
       const blob = createZipBlob(zipEntries);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -2055,16 +2115,12 @@ export default function Carousels() {
               <Instagram className="h-4 w-4 text-white" />
             </div>
             <span className="text-sm font-medium text-muted-foreground">
-              Geracao centralizada em carrossel
+              Geração centralizada em carrossel
             </span>
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
             Crie carrosseis com <span className="gradient-text">gancho, legenda e CTA</span>
           </h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Esta pagina concentra toda a experiencia de geracao. Voce define o briefing e o
-            agente interno devolve os slides, o gancho, a legenda pronta e o CTA final.
-          </p>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -2082,9 +2138,6 @@ export default function Carousels() {
                   Defina o tema, a quantidade de slides e a imagem opcional para gerar no modelo original.
                 </p>
               </div>
-              <div className="rounded-full border border-[#7b00ae]/20 bg-[#7b00ae]/10 px-3 py-1 text-xs font-medium text-[#7b00ae]">
-                Agente interno ativo
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -2099,19 +2152,6 @@ export default function Carousels() {
                 className="min-h-[120px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
                 disabled={isGenerating}
               />
-              <div className="flex flex-wrap gap-2">
-                {topicSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    disabled={isGenerating}
-                    onClick={() => setTopic(suggestion)}
-                    className="rounded-full bg-accent/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -2179,8 +2219,8 @@ export default function Carousels() {
               </label>
               <CoverImageUpload value={coverImageUrl} onChange={setCoverImageUrl} />
               <p className="text-xs text-muted-foreground">
-                Se voce nao enviar uma imagem, o agente busca ou gera uma imagem relacionada ao
-                tema para substituir o bloco azul do modelo.
+                Se você não enviar uma imagem, o agente busca ou gera uma imagem relacionada ao
+                tema.
               </p>
             </div>
 
@@ -2276,7 +2316,7 @@ export default function Carousels() {
           >
             <div className="flex items-center gap-2">
               <LayoutTemplate className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Visao da geracao</h2>
+              <h2 className="text-sm font-semibold text-foreground">Visão da geracão</h2>
             </div>
 
             <div className="rounded-3xl border border-border/40 bg-background/60 p-5">
@@ -2367,8 +2407,10 @@ export default function Carousels() {
                   onDownload={() => handleDownload(carousel)}
                   onPublish={() => handlePublishInstagram(carousel)}
                   onSchedule={() => openScheduleDialog(carousel)}
+                  onDelete={() => deleteCarouselMutation.mutate({ id: carousel.id })}
                   isPublishing={isPublishingCarousel}
                   isScheduling={isSchedulingCarousel}
+                  isDeleting={deleteCarouselMutation.isPending && deleteCarouselMutation.variables?.id === carousel.id}
                   profileId={selectedProfileId}
                 />
               ))}

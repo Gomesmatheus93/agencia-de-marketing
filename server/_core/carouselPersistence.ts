@@ -161,7 +161,7 @@ async function resolveStorageAsset(assetUrl: string): Promise<StorageAsset | und
 }
 
 async function resolveAnyAsset(assetUrl: string): Promise<StorageAsset | undefined> {
-  return resolveStorageAsset(assetUrl) || await readRemoteAsset(assetUrl);
+  return (await resolveStorageAsset(assetUrl)) || await readRemoteAsset(assetUrl);
 }
 
 async function writeUploadsAsset(input: {

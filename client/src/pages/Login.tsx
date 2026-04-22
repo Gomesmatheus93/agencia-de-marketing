@@ -2,7 +2,15 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Sparkles, Zap, Image, FileText, Share2, Eye, EyeOff } from "lucide-react";
+import { Sparkles, Zap, Image, FileText, Share2, Eye, EyeOff, AlertCircle } from "lucide-react";
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+    </svg>
+  );
+}
 
 export default function Login() {
   const { isAuthenticated, loading, refresh } = useAuth();
@@ -11,6 +19,17 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+
+  // Show OAuth errors from redirect params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("error");
+    if (oauthError === "oauth_denied") setError("Autorização negada pelo Instagram.");
+    else if (oauthError === "oauth_failed") {
+      const detail = params.get("detail");
+      setError(`Erro no login com Instagram${detail ? `: ${decodeURIComponent(detail)}` : "."}`);
+    } else if (oauthError === "oauth_invalid_state") setError("Sessão de login expirada. Tente novamente.");
+  }, []);
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: () => { refresh(); navigate("/dashboard"); },
@@ -170,6 +189,26 @@ export default function Login() {
                 {isPending ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
               </button>
             </form>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border/50" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card/80 px-3 text-muted-foreground backdrop-blur-sm rounded-full">
+                  ou continue com
+                </span>
+              </div>
+            </div>
+
+            <a
+              href="/auth/instagram"
+              className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" }}
+            >
+              <InstagramIcon className="w-4 h-4" />
+              Entrar com Instagram
+            </a>
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">

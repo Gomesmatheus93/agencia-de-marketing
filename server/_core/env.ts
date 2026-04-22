@@ -29,6 +29,7 @@ export const ENV = {
     process.env.S3_PUBLIC_BASE_URL ??
     "",
   hfToken: process.env.HF_TOKEN ?? "",
+  heyGenApiKey: process.env.HEYGEN_API_KEY ?? "",
   unsplashAccessKey: process.env.UNSPLASH_ACCESS_KEY ?? "",
   pexelsApiKey: process.env.PEXELS_API_KEY ?? "",
   pixabayApiKey: process.env.PIXABAY_API_KEY ?? "",
@@ -39,6 +40,7 @@ export const ENV = {
   metaAccessToken: process.env.META_ACCESS_TOKEN ?? "",
   metaInstagramAccountId: process.env.META_INSTAGRAM_ACCOUNT_ID ?? "",
   metaFacebookPageId: process.env.META_FACEBOOK_PAGE_ID ?? "",
+  appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
   postSchedulerTimeZone: process.env.POST_SCHEDULER_TIME_ZONE ?? "America/Fortaleza",
   linkedinApiBaseUrl: process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest",
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202601",

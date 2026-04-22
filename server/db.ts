@@ -16,6 +16,7 @@ import {
   carouselTemplates,
   avatarVideos,
   socialPosts,
+  instagramConnections,
   type ChatConversation,
   type ChatMessage,
   type GeneratedImage,
@@ -25,6 +26,8 @@ import {
   type CarouselTemplate,
   type AvatarVideo,
   type SocialPost,
+  type InstagramConnection,
+  type InsertInstagramConnection,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -771,4 +774,39 @@ export async function getPostCount(userId: number): Promise<number> {
   if (!db) return 0;
   const [row] = await db.select({ count: count() }).from(socialPosts).where(eq(socialPosts.userId, userId));
   return row?.count ?? 0;
+}
+
+// ─── Instagram Connections ────────────────────────────────────────────────────
+export async function getInstagramConnection(userId: number): Promise<InstagramConnection | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.userId, userId));
+  return row ?? null;
+}
+
+export async function upsertInstagramConnection(data: InsertInstagramConnection): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getInstagramConnection(data.userId);
+  if (existing) {
+    await db.update(instagramConnections)
+      .set({
+        instagramAccountId: data.instagramAccountId,
+        facebookPageId: data.facebookPageId,
+        username: data.username,
+        name: data.name,
+        profilePictureUrl: data.profilePictureUrl,
+        accessToken: data.accessToken,
+        tokenExpiresAt: data.tokenExpiresAt,
+      })
+      .where(eq(instagramConnections.userId, data.userId));
+  } else {
+    await db.insert(instagramConnections).values(data);
+  }
+}
+
+export async function deleteInstagramConnection(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(instagramConnections).where(eq(instagramConnections.userId, userId));
 }

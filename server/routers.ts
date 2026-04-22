@@ -22,6 +22,12 @@ import {
   waitForDidTalkCompletion,
   downloadAndStoreDidVideo,
 } from "./_core/didAvatarAgent";
+import {
+  createHeyGenAvatarVideo,
+  waitForHeyGenCompletion,
+  downloadAndStoreHeyGenVideo,
+  listHeyGenVoices,
+} from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
   buildScheduledInstagramCarouselMetadata,
@@ -229,6 +235,20 @@ const videosRouter = router({
       return generateVideoScriptWithAgent(input);
     }),
 
+  getVoices: protectedProcedure
+    .input(z.object({ provider: z.enum(["heygen", "did"]), language: z.string().optional() }))
+    .query(async ({ input }) => {
+      if (input.provider === "heygen") {
+        return listHeyGenVoices(); // filtro de idioma feito no cliente
+      }
+      return [
+        { voice_id: "pt-BR-FranciscaNeural", name: "Francisca PT-BR", language: "pt-BR", gender: "Female" },
+        { voice_id: "pt-BR-AntonioNeural", name: "Antonio PT-BR", language: "pt-BR", gender: "Male" },
+        { voice_id: "en-US-JennyNeural", name: "Jenny EN-US", language: "en-US", gender: "Female" },
+        { voice_id: "en-US-GuyNeural", name: "Guy EN-US", language: "en-US", gender: "Male" },
+      ];
+    }),
+
   generate: aiProcedure
     .input(
       z.object({
@@ -237,7 +257,10 @@ const videosRouter = router({
         script: z.string().min(10).max(5000),
         sourceImageUrl: z.string().optional(),
         sourceImageDataUrl: z.string().optional(),
-        voiceId: z.string().min(1).max(128).optional(),
+        voiceId: z.string().min(1).max(256).optional(),
+        provider: z.enum(["did", "heygen"]).default("did"),
+        emotion: z.enum(["Excited", "Friendly", "Serious", "Soothing", "Broadcaster"]).optional(),
+        talkingStyle: z.enum(["expressive", "stable"]).optional(),
       }).refine((value) => Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
         message: "Envie a foto da pessoa para gerar o video.",
         path: ["sourceImageDataUrl"],
@@ -245,6 +268,7 @@ const videosRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const normalizedScript = input.script.replace(/\s+/g, " ").trim();
+
       const preparedSourceImage = await prepareDidSourceImage({
         userId: ctx.user.id,
         sourceImageUrl: input.sourceImageUrl,
@@ -262,35 +286,64 @@ const videosRouter = router({
         topic: input.topic?.trim(),
         script: normalizedScript,
         sourceImageUrl: preparedSourceImage.previewSourceImageUrl,
-        voiceProvider: "microsoft",
+        provider: input.provider,
+        voiceProvider: input.provider === "heygen" ? "heygen" : "microsoft",
         voiceId: input.voiceId,
         status: "processing",
       });
 
       try {
-        const talk = await createDidTalk({
-          sourceImageUrl: preparedSourceImage.providerSourceImageUrl,
-          script: normalizedScript,
-          voiceId: input.voiceId,
-        });
+        let videoUrl: string;
 
-        await db.updateAvatarVideo(saved.id, ctx.user.id, {
-          providerJobId: talk.talkId,
-          voiceProvider: talk.voiceProvider,
-          voiceId: talk.voiceId,
-          errorMessage: null,
-        });
+        if (input.provider === "heygen") {
+          const { videoId } = await createHeyGenAvatarVideo({
+            userId: ctx.user.id,
+            imageBuffer: preparedSourceImage.imageBuffer,
+            contentType: preparedSourceImage.contentType,
+            script: normalizedScript,
+            voiceId: input.voiceId ?? "",
+            emotion: input.emotion,
+            talkingStyle: input.talkingStyle ?? "expressive",
+          });
 
-        const completedTalk = await waitForDidTalkCompletion(talk.talkId);
-        const storedVideo = await downloadAndStoreDidVideo({
-          userId: ctx.user.id,
-          videoId: saved.id,
-          resultUrl: completedTalk.resultUrl,
-        });
+          await db.updateAvatarVideo(saved.id, ctx.user.id, {
+            providerJobId: videoId,
+            errorMessage: null,
+          });
+
+          const completed = await waitForHeyGenCompletion(videoId);
+          const stored = await downloadAndStoreHeyGenVideo({
+            userId: ctx.user.id,
+            videoId: saved.id,
+            resultUrl: completed.resultUrl,
+          });
+          videoUrl = stored.videoUrl;
+        } else {
+          const talk = await createDidTalk({
+            sourceImageUrl: preparedSourceImage.providerSourceImageUrl,
+            script: normalizedScript,
+            voiceId: input.voiceId,
+          });
+
+          await db.updateAvatarVideo(saved.id, ctx.user.id, {
+            providerJobId: talk.talkId,
+            voiceProvider: talk.voiceProvider,
+            voiceId: talk.voiceId,
+            errorMessage: null,
+          });
+
+          const completedTalk = await waitForDidTalkCompletion(talk.talkId);
+          const stored = await downloadAndStoreDidVideo({
+            userId: ctx.user.id,
+            videoId: saved.id,
+            resultUrl: completedTalk.resultUrl,
+          });
+          videoUrl = stored.videoUrl;
+        }
 
         const updated = await db.updateAvatarVideo(saved.id, ctx.user.id, {
           sourceImageUrl: preparedSourceImage.previewSourceImageUrl,
-          videoUrl: storedVideo.videoUrl,
+          videoUrl,
           status: "completed",
           errorMessage: null,
         });
@@ -1784,7 +1837,96 @@ async function graphGet<T>(path: string, params: Record<string, string> = {}): P
   return data;
 }
 
+async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T> {
+  const apiBase = (ENV.linkedinApiBaseUrl || "https://api.linkedin.com/rest").replace(/\/+$/, "");
+  const apiVersion = (ENV.linkedinApiVersion || "202601").trim();
+  const url = endpoint.startsWith("http") ? endpoint : `${apiBase}${endpoint}`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Linkedin-Version": apiVersion,
+      "X-Restli-Protocol-Version": "2.0.0",
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Erro na LinkedIn API (${res.status}): ${text || res.statusText}`,
+    });
+  }
+  const text = await res.text();
+  return text ? (JSON.parse(text) as T) : ({} as T);
+}
+
 const analyticsRouter = router({
+  getLinkedInProfile: protectedProcedure.query(async () => {
+    if (!ENV.linkedinAccessToken) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "LINKEDIN_ACCESS_TOKEN não configurado." });
+    }
+    const profile = await linkedInGet<{
+      sub?: string;
+      name?: string;
+      given_name?: string;
+      family_name?: string;
+      picture?: string;
+      email?: string;
+    }>("https://api.linkedin.com/v2/userinfo", ENV.linkedinAccessToken);
+
+    const authorUrn = ENV.linkedinAuthorUrn || "";
+    const isOrg = /^urn:li:organization:/i.test(authorUrn);
+    let followerCount: number | undefined;
+
+    if (isOrg && authorUrn) {
+      try {
+        const encoded = encodeURIComponent(authorUrn);
+        const sizeData = await linkedInGet<{ firstDegreeSize?: number }>(
+          `/networkSizes/${encoded}?edgeType=CompanyFollowedByMember`,
+          ENV.linkedinAccessToken
+        );
+        followerCount = sizeData.firstDegreeSize;
+      } catch {
+        // follower count is optional
+      }
+    }
+
+    return {
+      sub: profile.sub,
+      name: profile.name || `${profile.given_name || ""} ${profile.family_name || ""}`.trim(),
+      picture: profile.picture,
+      email: profile.email,
+      authorUrn,
+      isOrg,
+      followerCount,
+    };
+  }),
+
+  getLinkedInStats: protectedProcedure.query(async ({ ctx }) => {
+    const posts = await db.getSocialPosts(ctx.user.id, "linkedin");
+    const published = posts.filter((p) => p.status === "published");
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const publishedThisMonth = published.filter(
+      (p) => p.publishedAt && new Date(p.publishedAt) >= monthStart
+    );
+
+    const recent = published.slice(0, 12).map((p) => ({
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      imageUrl: p.imageUrl,
+      publishedAt: p.publishedAt?.toISOString() ?? p.createdAt.toISOString(),
+      status: p.status,
+    }));
+
+    return {
+      totalPublished: published.length,
+      publishedThisMonth: publishedThisMonth.length,
+      totalDrafts: posts.filter((p) => p.status === "draft").length,
+      recentPosts: recent,
+    };
+  }),
+
   getProfile: protectedProcedure.query(async () => {
     return graphGet<{
       username: string;
