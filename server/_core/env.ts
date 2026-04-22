@@ -42,6 +42,7 @@ export const ENV = {
   metaFacebookPageId: process.env.META_FACEBOOK_PAGE_ID ?? "",
   appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
   postSchedulerTimeZone: process.env.POST_SCHEDULER_TIME_ZONE ?? "America/Fortaleza",
+  instagramOAuthRedirectUri: process.env.REDIRECT_URI ?? "",
   linkedinApiBaseUrl: process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest",
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202601",
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",

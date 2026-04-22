@@ -77,6 +77,9 @@ async function graphGet<T>(path: string): Promise<T> {
 }
 
 function buildCallbackUrl(req: Express["request"]) {
+  if (ENV.instagramOAuthRedirectUri) {
+    return ENV.instagramOAuthRedirectUri;
+  }
   if (ENV.appBaseUrl) {
     return `${ENV.appBaseUrl.replace(/\/+$/, "")}/auth/instagram/callback`;
   }
