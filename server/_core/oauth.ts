@@ -243,24 +243,29 @@ export function registerOAuthRoutes(app: Express) {
       const user = await db.getUserByOpenId(openId);
       if (!user) throw new Error("Falha ao criar usuário após OAuth.");
 
-      // 6. Save Instagram connection if found
+      // 6. Save Instagram connection if found (never crash the login if this fails)
       let igConnectStatus = "no_account";
       if (resolvedIg?.id) {
-        await db.upsertInstagramConnection({
-          userId: user.id,
-          instagramAccountId: resolvedIg.id!,
-          facebookPageId: resolvedPageId,
-          username: resolvedIg.username,
-          name: resolvedIg.name || userName,
-          profilePictureUrl: resolvedIg.profile_picture_url,
-          accessToken: resolvedToken,
-          tokenExpiresAt,
-          connectedAt: new Date(),
-        });
-        igConnectStatus = "success";
-        console.log(`[OAuth/Instagram] Conta IG conectada: @${resolvedIg.username} (userId=${user.id})`);
+        try {
+          await db.upsertInstagramConnection({
+            userId: user.id,
+            instagramAccountId: resolvedIg.id!,
+            facebookPageId: resolvedPageId,
+            username: resolvedIg.username,
+            name: resolvedIg.name || userName,
+            profilePictureUrl: resolvedIg.profile_picture_url,
+            accessToken: resolvedToken,
+            tokenExpiresAt,
+            connectedAt: new Date(),
+          });
+          igConnectStatus = "success";
+          console.log(`[OAuth/Instagram] Conta IG conectada: @${resolvedIg.username} (userId=${user.id})`);
+        } catch (dbErr) {
+          console.error("[OAuth/Instagram] Falha ao salvar instagram_connection (tabela pode não existir):", dbErr);
+          igConnectStatus = "db_error";
+        }
       } else {
-        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}). Verifique se a conta Business/Creator está vinculada a uma Página do Facebook.`);
+        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}).`);
       }
 
       // 7. Create session cookie and redirect
@@ -275,11 +280,7 @@ export function registerOAuthRoutes(app: Express) {
       if (igConnectStatus === "success") {
         res.redirect("/dashboard/analytics?ig_connect=success");
       } else {
-        // Redirect with debug info about what was found
-        const debugInfo = encodeURIComponent(
-          `fbUserId=${fbUserId} | pages_found=${resolvedPageId ? "yes("+resolvedPageId+")" : "no"} | ig_found=no`
-        );
-        res.redirect(`/dashboard/analytics?ig_connect=no_account&debug=${debugInfo}`);
+        res.redirect(`/dashboard/analytics?ig_connect=no_account`);
       }
     } catch (err) {
       console.error("[OAuth/Instagram] Erro no callback:", err);
