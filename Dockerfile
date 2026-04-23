@@ -27,7 +27,7 @@ FROM base AS prod-deps
 ENV NODE_ENV=production
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 FROM base AS runner
 ENV NODE_ENV=production
