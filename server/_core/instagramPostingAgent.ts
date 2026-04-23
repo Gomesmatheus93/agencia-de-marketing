@@ -4,6 +4,7 @@ import path from "node:path";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
 import { getMetaFetchableStorageUrl, storagePut } from "../storage";
+import { getInstagramConnection } from "../db";
 
 export type InstagramPostingSlide = {
   title: string;
@@ -106,16 +107,28 @@ function getGraphApiVersion() {
   return (ENV.metaGraphApiVersion || DEFAULT_META_GRAPH_API_VERSION).replace(/^\/+/, "");
 }
 
-function getRequiredMetaConfig() {
-  const missing: string[] = [];
+async function getRequiredMetaConfig(userId?: number) {
+  if (userId) {
+    const connection = await getInstagramConnection(userId);
+    if (connection?.accessToken && connection?.instagramAccountId) {
+      return {
+        igUserId: connection.instagramAccountId,
+        accessToken: connection.accessToken,
+        graphBaseUrl: `${getGraphApiBaseUrl()}/${getGraphApiVersion()}`,
+      };
+    }
+  }
 
+  const missing: string[] = [];
   if (!ENV.metaInstagramAccountId) missing.push("META_INSTAGRAM_ACCOUNT_ID");
   if (!ENV.metaAccessToken) missing.push("META_ACCESS_TOKEN");
 
   if (missing.length > 0) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: `Configuracao da Meta incompleta. Defina no .env: ${missing.join(", ")}.`,
+      message: userId
+        ? `Conta Instagram nao conectada. Conecte sua conta em Configuracoes > Instagram ou defina no .env: ${missing.join(", ")}.`
+        : `Configuracao da Meta incompleta. Defina no .env: ${missing.join(", ")}.`,
     });
   }
 
@@ -314,9 +327,11 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+type MetaConfig = Awaited<ReturnType<typeof getRequiredMetaConfig>>;
+
 async function waitForContainerReady(
   containerId: string,
-  config: ReturnType<typeof getRequiredMetaConfig>,
+  config: MetaConfig,
   maxAttempts = 15,
   delayMs = 4000
 ) {
@@ -349,7 +364,7 @@ async function waitForContainerReady(
 async function postToGraph(
   endpoint: string,
   params: Record<string, string>,
-  config: ReturnType<typeof getRequiredMetaConfig>
+  config: MetaConfig
 ) {
   const body = new URLSearchParams({
     ...params,
@@ -451,7 +466,7 @@ function buildCaption(input: InstagramPostingInput) {
 export async function publishInstagramCarouselWithAgent(
   input: InstagramPostingInput
 ): Promise<InstagramPostingResult> {
-  const config = getRequiredMetaConfig();
+  const config = await getRequiredMetaConfig(input.userId);
   const slides = input.slides.filter((slide) => compactText(slide.title).length > 0);
 
   if (slides.length === 0) {

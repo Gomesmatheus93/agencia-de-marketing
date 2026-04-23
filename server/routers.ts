@@ -1824,8 +1824,9 @@ function graphUrl(path: string) {
   return `${base}/${version}/${path}`;
 }
 
-async function graphGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const qs = new URLSearchParams({ ...params, access_token: ENV.metaAccessToken }).toString();
+async function graphGet<T>(path: string, params: Record<string, string> = {}, accessToken?: string): Promise<T> {
+  const token = accessToken || ENV.metaAccessToken;
+  const qs = new URLSearchParams({ ...params, access_token: token }).toString();
   const res = await fetch(`${graphUrl(path)}?${qs}`);
   const data = await res.json() as T & { error?: { message?: string } };
   if (!res.ok || (data as { error?: { message?: string } }).error) {
@@ -1835,6 +1836,14 @@ async function graphGet<T>(path: string, params: Record<string, string> = {}): P
     });
   }
   return data;
+}
+
+async function getInstagramCredentials(userId: number) {
+  const connection = await db.getInstagramConnection(userId);
+  if (connection?.accessToken && connection?.instagramAccountId) {
+    return { accessToken: connection.accessToken, igAccountId: connection.instagramAccountId };
+  }
+  return { accessToken: ENV.metaAccessToken, igAccountId: ENV.metaInstagramAccountId };
 }
 
 async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T> {
@@ -1927,7 +1936,8 @@ const analyticsRouter = router({
     };
   }),
 
-  getProfile: protectedProcedure.query(async () => {
+  getProfile: protectedProcedure.query(async ({ ctx }) => {
+    const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
     return graphGet<{
       username: string;
       name: string;
@@ -1937,14 +1947,15 @@ const analyticsRouter = router({
       media_count: number;
       profile_picture_url: string;
       website: string;
-    }>(`${ENV.metaInstagramAccountId}`, {
+    }>(`${igAccountId}`, {
       fields: "username,name,biography,followers_count,follows_count,media_count,profile_picture_url,website",
-    });
+    }, accessToken);
   }),
 
   getInsights: protectedProcedure
     .input(z.object({ days: z.number().int().min(7).max(90).default(30) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
       const until = Math.floor(Date.now() / 1000);
       const since = until - input.days * 86400;
       const metrics = ["impressions", "reach", "profile_views", "follower_count"] as const;
@@ -1952,8 +1963,9 @@ const analyticsRouter = router({
       const results = await Promise.allSettled(
         metrics.map((metric) =>
           graphGet<{ data: Array<{ name: string; values: Array<{ value: number; end_time: string }> }> }>(
-            `${ENV.metaInstagramAccountId}/insights`,
-            { metric, period: "day", since: String(since), until: String(until) }
+            `${igAccountId}/insights`,
+            { metric, period: "day", since: String(since), until: String(until) },
+            accessToken
           )
         )
       );
@@ -1969,7 +1981,8 @@ const analyticsRouter = router({
 
   getMedia: protectedProcedure
     .input(z.object({ limit: z.number().int().min(1).max(50).default(12) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
       type MediaItem = {
         id: string;
         caption?: string;
@@ -1983,11 +1996,12 @@ const analyticsRouter = router({
       };
 
       const mediaData = await graphGet<{ data: MediaItem[] }>(
-        `${ENV.metaInstagramAccountId}/media`,
+        `${igAccountId}/media`,
         {
           fields: "id,caption,media_type,media_url,thumbnail_url,timestamp,like_count,comments_count,permalink",
           limit: String(input.limit),
-        }
+        },
+        accessToken
       );
 
       const items = mediaData.data ?? [];
@@ -1996,7 +2010,7 @@ const analyticsRouter = router({
           try {
             const insightsData = await graphGet<{
               data: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
-            }>(`${item.id}/insights`, { metric: "impressions,reach,saved,shares" });
+            }>(`${item.id}/insights`, { metric: "impressions,reach,saved,shares" }, accessToken);
 
             const insights: Record<string, number> = {};
             for (const d of insightsData.data ?? []) {

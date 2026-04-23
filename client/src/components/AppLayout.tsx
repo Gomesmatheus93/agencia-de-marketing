@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -31,80 +32,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const navItems = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    path: "/dashboard",
-    color: "from-violet-500 to-purple-600",
-    description: "Visão geral",
-  },
-  {
-    id: "chat",
-    label: "Chat com IA",
-    icon: MessageSquare,
-    path: "/dashboard/chat",
-    color: "from-violet-500 to-purple-600",
-    description: "Converse com IA",
-  },
-  {
-    id: "images",
-    label: "Gerar Imagens",
-    icon: Image,
-    path: "/dashboard/images",
-    color: "from-blue-500 to-cyan-500",
-    description: "Crie imagens com IA",
-  },
-  {
-    id: "videos",
-    label: "Videos IA",
-    icon: Clapperboard,
-    path: "/dashboard/videos",
-    color: "from-fuchsia-500 to-rose-500",
-    description: "Avatares em video",
-  },
-  {
-    id: "articles",
-    label: "Artigos",
-    icon: FileText,
-    path: "/dashboard/articles",
-    color: "from-emerald-500 to-teal-500",
-    description: "Gere artigos automáticos",
-  },
-  {
-    id: "carousel",
-    label: "Carrossel",
-    icon: GalleryHorizontal,
-    path: "/dashboard/carousel",
-    color: "from-amber-500 to-orange-500",
-    description: "Crie carrosséis com IA",
-  },
-  {
-    id: "posts",
-    label: "Postagens",
-    icon: Share2,
-    path: "/dashboard/posts",
-    color: "from-orange-500 to-rose-500",
-    description: "Automatize suas redes",
-  },
-  {
-    id: "analytics",
-    label: "Analytics",
-    icon: BarChart2,
-    path: "/dashboard/analytics",
-    color: "from-cyan-500 to-blue-500",
-    description: "Insights do Instagram",
-  },
+const NAV_ITEMS_CONFIG = [
+  { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-violet-500 to-purple-600", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const },
+  { id: "chat", icon: MessageSquare, path: "/dashboard/chat", color: "from-violet-500 to-purple-600", labelKey: "chat" as const, descKey: "chatDesc" as const },
+  { id: "images", icon: Image, path: "/dashboard/images", color: "from-blue-500 to-cyan-500", labelKey: "images" as const, descKey: "imagesDesc" as const },
+  { id: "videos", icon: Clapperboard, path: "/dashboard/videos", color: "from-fuchsia-500 to-rose-500", labelKey: "videos" as const, descKey: "videosDesc" as const },
+  { id: "articles", icon: FileText, path: "/dashboard/articles", color: "from-emerald-500 to-teal-500", labelKey: "articles" as const, descKey: "articlesDesc" as const },
+  { id: "carousel", icon: GalleryHorizontal, path: "/dashboard/carousel", color: "from-amber-500 to-orange-500", labelKey: "carousel" as const, descKey: "carouselDesc" as const },
+  { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const },
+  { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const },
 ];
 
-const settingsItem = {
-  id: "settings",
-  label: "Configurações",
-  icon: Settings,
-  path: "/dashboard/settings",
-  color: "from-slate-500 to-slate-600",
-  description: "Conta e integrações",
+const SETTINGS_CONFIG = {
+  id: "settings", icon: Settings, path: "/dashboard/settings", color: "from-slate-500 to-slate-600", labelKey: "settings" as const, descKey: "settingsDesc" as const,
 };
 
 interface AppLayoutProps {
@@ -115,12 +55,19 @@ interface AppLayoutProps {
 export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { user, isAuthenticated, loading } = useAuth();
   const { theme, toggleTheme, switchable } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDarkTheme = theme === "dark";
-  const themeToggleLabel = isDarkTheme ? "Tema claro" : "Tema escuro";
-  const themeToggleDescription = isDarkTheme ? "Voltar ao visual claro" : "Usar visual escuro";
+  const themeToggleLabel = isDarkTheme ? t("lightTheme") : t("darkTheme");
   const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
+
+  const navItems = NAV_ITEMS_CONFIG.map((item) => ({
+    ...item,
+    label: t(item.labelKey),
+    description: t(item.descKey),
+  }));
+  const settingsItem = { ...SETTINGS_CONFIG, label: t(SETTINGS_CONFIG.labelKey), description: t(SETTINGS_CONFIG.descKey) };
   const handleThemeToggle = () => {
     if (!switchable || !toggleTheme) return;
     toggleTheme();
@@ -159,7 +106,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
     : "U";
 
-  const NavButton = ({ item }: { item: typeof navItems[0] }) => {
+  type NavItem = { id: string; label: string; description: string; icon: React.ComponentType<{ className?: string }>; path: string; color: string };
+  const NavButton = ({ item }: { item: NavItem }) => {
     const Icon = item.icon;
     const isActive = activeModule === item.id;
     return (
@@ -219,7 +167,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           </div>
           <div className="min-w-0">
             <div className="font-bold text-sm text-foreground tracking-tight truncate">KrythosLab</div>
-            <div className="text-[11px] text-muted-foreground truncate">Plataforma de Marketing</div>
+            <div className="text-[11px] text-muted-foreground truncate">{t("platformName")}</div>
           </div>
         </div>
       </div>
@@ -227,14 +175,14 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto scrollbar-thin">
         <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
-          Módulos
+          {t("modules")}
         </div>
         {navItems.map((item) => (
           <NavButton key={item.id} item={item} />
         ))}
 
         <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
-          Sistema
+          {t("system")}
         </div>
         <NavButton item={settingsItem} />
       </nav>
@@ -246,7 +194,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <ThemeToggleIcon className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{isDarkTheme ? "Tema escuro" : "Tema claro"}</div>
+            <div className="text-sm font-medium text-foreground truncate">{themeToggleLabel}</div>
           </div>
           <button
             type="button"
@@ -268,6 +216,37 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           </button>
         </div>
 
+        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
+          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-muted-foreground">
+            {language.toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-foreground truncate">{t("language")}</div>
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setLanguage("pt")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[11px] font-semibold transition-colors",
+                language === "pt" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              PT
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage("en")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[11px] font-semibold transition-colors",
+                language === "en" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              EN
+            </button>
+          </div>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200 group">
@@ -285,7 +264,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           <DropdownMenuContent align="end" className="w-52 glass-card border-border/50">
             <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="gap-2">
               <Settings className="w-4 h-4" />
-              Configurações
+              {t("settings")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -293,7 +272,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               className="gap-2 text-destructive focus:text-destructive"
             >
               <LogOut className="w-4 h-4" />
-              Sair
+              {t("logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -370,7 +349,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               type="button"
               role="switch"
               aria-checked={isDarkTheme}
-              aria-label={themeToggleLabel}
+              aria-label={themeToggleLabel as string}
               onClick={handleThemeToggle}
               disabled={!switchable || !toggleTheme}
               className={cn(
