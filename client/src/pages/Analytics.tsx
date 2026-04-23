@@ -225,7 +225,13 @@ function InstagramTab() {
           <p className="font-medium">Conta Instagram não conectada</p>
           <p className="mt-1">
             Para ver seus dados, faça login com o Instagram (conta Business ou Creator) e autorize o acesso.{" "}
-            <a href="/auth/instagram" className="underline font-medium">Conectar agora</a>
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/auth/instagram"; }}
+              className="underline font-medium"
+            >
+              Conectar agora
+            </button>
           </p>
         </div>
       )}
