@@ -1,4 +1,4 @@
-CREATE TABLE `instagram_connections` (
+CREATE TABLE IF NOT EXISTS `instagram_connections` (
   `id` int AUTO_INCREMENT NOT NULL,
   `userId` int NOT NULL,
   `instagramAccountId` varchar(64) NOT NULL,
@@ -14,4 +14,4 @@ CREATE TABLE `instagram_connections` (
   CONSTRAINT `instagram_connections_userId_unique` UNIQUE(`userId`)
 );
 
-CREATE INDEX `idx_instagram_connections_userId` ON `instagram_connections` (`userId`);
+CREATE INDEX IF NOT EXISTS `idx_instagram_connections_userId` ON `instagram_connections` (`userId`);

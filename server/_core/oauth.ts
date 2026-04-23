@@ -284,8 +284,15 @@ export function registerOAuthRoutes(app: Express) {
       }
     } catch (err) {
       console.error("[OAuth/Instagram] Erro no callback:", err);
-      const message = encodeURIComponent(err instanceof Error ? err.message : "Erro desconhecido");
-      res.redirect(`/?error=oauth_failed&detail=${message}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      // If the failure is DB-related to instagram_connections, don't block login
+      if (errMsg.includes("instagram_connections") || errMsg.includes("Failed query")) {
+        console.warn("[OAuth/Instagram] DB error during connection save — redirecting to analytics anyway");
+        res.redirect("/dashboard/analytics?ig_connect=no_account");
+      } else {
+        const message = encodeURIComponent(errMsg);
+        res.redirect(`/?error=oauth_failed&detail=${message}`);
+      }
     }
   });
 }
