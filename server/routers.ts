@@ -1839,9 +1839,19 @@ async function graphGet<T>(path: string, params: Record<string, string> = {}, ac
 }
 
 async function getInstagramCredentials(userId: number) {
-  const connection = await db.getInstagramConnection(userId);
-  if (connection?.accessToken && connection?.instagramAccountId) {
-    return { accessToken: connection.accessToken, igAccountId: connection.instagramAccountId };
+  try {
+    const connection = await db.getInstagramConnection(userId);
+    if (connection?.accessToken && connection?.instagramAccountId) {
+      return { accessToken: connection.accessToken, igAccountId: connection.instagramAccountId };
+    }
+  } catch {
+    // DB may not have the table yet — fall back to ENV
+  }
+  if (!ENV.metaAccessToken || !ENV.metaInstagramAccountId) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Nenhuma conta Instagram conectada. Faça login com o Instagram para continuar.",
+    });
   }
   return { accessToken: ENV.metaAccessToken, igAccountId: ENV.metaInstagramAccountId };
 }

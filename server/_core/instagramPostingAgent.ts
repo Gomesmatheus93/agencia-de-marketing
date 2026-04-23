@@ -109,13 +109,17 @@ function getGraphApiVersion() {
 
 async function getRequiredMetaConfig(userId?: number) {
   if (userId) {
-    const connection = await getInstagramConnection(userId);
-    if (connection?.accessToken && connection?.instagramAccountId) {
-      return {
-        igUserId: connection.instagramAccountId,
-        accessToken: connection.accessToken,
-        graphBaseUrl: `${getGraphApiBaseUrl()}/${getGraphApiVersion()}`,
-      };
+    try {
+      const connection = await getInstagramConnection(userId);
+      if (connection?.accessToken && connection?.instagramAccountId) {
+        return {
+          igUserId: connection.instagramAccountId,
+          accessToken: connection.accessToken,
+          graphBaseUrl: `${getGraphApiBaseUrl()}/${getGraphApiVersion()}`,
+        };
+      }
+    } catch {
+      // DB may not have the table yet — fall back to ENV
     }
   }
 
