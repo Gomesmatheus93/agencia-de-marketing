@@ -283,6 +283,12 @@ function InstagramTab() {
         </div>
       </div>
 
+      {connectionQuery.isLoading && (
+        <div className="flex items-center justify-center py-20">
+          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
       {notConnected && (oauthNoAccount ? <InstagramSetupGuide /> : <InstagramLoginPrompt />)}
 
       {hasError && isConnected && (
@@ -291,7 +297,7 @@ function InstagramTab() {
         </div>
       )}
 
-      {!notConnected && <>
+      {isConnected && <>
       <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/80">
         <div className="h-24 bg-gradient-to-r from-[#7b00ae]/30 via-[#fe6e00]/20 to-[#7b00ae]/10" />
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-end">
@@ -438,6 +444,7 @@ function InstagramTab() {
         )}
       </div>
       </>}
+
     </div>
   );
 }
