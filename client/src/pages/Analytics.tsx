@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -177,79 +176,22 @@ const CHART_COLORS = {
   "Visitas ao Perfil": "#06b6d4",
 };
 
-function InstagramConnectPanel({ onConnected }: { onConnected: () => void }) {
-  const [accountId, setAccountId] = useState("");
-  const [token, setToken] = useState("");
-  const [username, setUsername] = useState("");
-  const saveMutation = trpc.analytics.saveInstagramCredentials.useMutation({
-    onSuccess: () => { toast.success("Instagram conectado!"); onConnected(); },
-    onError: (e) => toast.error(e.message),
-  });
-
+function InstagramLoginPrompt() {
   return (
-    <div className="rounded-2xl border border-border/40 bg-background/80 p-6 space-y-5">
-      <div>
-        <h3 className="font-semibold text-foreground">Conectar Instagram</h3>
-        <p className="text-xs text-muted-foreground mt-1">
-          Conecte via Facebook ou insira manualmente as credenciais do Meta Business Suite.
-        </p>
+    <div className="flex flex-col items-center justify-center gap-5 rounded-2xl border border-border/40 bg-background/80 py-16 px-6 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#7b00ae] to-[#fe6e00]">
+        <Instagram className="h-8 w-8 text-white" />
       </div>
-
+      <div>
+        <h3 className="text-lg font-semibold text-foreground">Conecte seu Instagram</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Faça login com sua conta para visualizar os analytics.</p>
+      </div>
       <Button
-        className="w-full bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
+        className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white px-8"
         onClick={() => { window.location.href = "/auth/instagram"; }}
       >
-        Conectar via Facebook (OAuth)
+        Entrar com Instagram
       </Button>
-
-      <div className="relative flex items-center">
-        <div className="flex-1 border-t border-border/40" />
-        <span className="mx-3 text-xs text-muted-foreground">ou insira manualmente</span>
-        <div className="flex-1 border-t border-border/40" />
-      </div>
-
-      <div className="space-y-3">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Instagram Account ID</label>
-          <Input
-            placeholder="Ex: 17841442418397147"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="font-mono text-sm"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Encontre em: Meta Business Suite → Configurações → Contas do Instagram → ID da conta
-          </p>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Page Access Token</label>
-          <Input
-            placeholder="EAASSrd..."
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="font-mono text-sm"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Gere em: <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="underline">Graph API Explorer</a> → selecione sua Página → gere token com <code>instagram_content_publish</code>
-          </p>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Username (opcional)</label>
-          <Input
-            placeholder="@seuinstagram"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="text-sm"
-          />
-        </div>
-        <Button
-          className="w-full"
-          disabled={!accountId || !token || saveMutation.isPending}
-          onClick={() => saveMutation.mutate({ instagramAccountId: accountId, accessToken: token, username: username || undefined })}
-        >
-          {saveMutation.isPending ? "Salvando..." : "Salvar credenciais"}
-        </Button>
-      </div>
     </div>
   );
 }
@@ -283,10 +225,6 @@ function InstagramTab() {
   const hasError = profileQuery.isError || insightsQuery.isError;
   const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
-  const params = new URLSearchParams(window.location.search);
-  const igConnectParam = params.get("ig_connect");
-  const igDebugInfo = params.get("debug");
-  const oauthNoAccount = igConnectParam === "no_account";
 
   return (
     <div className="space-y-6">
@@ -313,26 +251,7 @@ function InstagramTab() {
         </div>
       </div>
 
-      {oauthNoAccount && (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200 space-y-2">
-          <p className="font-semibold">Facebook autorizado, mas Instagram não encontrado</p>
-          <p>O Facebook permitiu o acesso, mas nenhuma conta Instagram Business/Creator foi encontrada vinculada ao seu perfil.</p>
-          {igDebugInfo && (
-            <p className="font-mono text-xs bg-amber-100 dark:bg-amber-900/40 rounded p-2">{igDebugInfo}</p>
-          )}
-          <p className="font-medium">Para resolver, verifique:</p>
-          <ul className="list-disc pl-4 space-y-1">
-            <li>Sua conta Instagram está como <strong>Business ou Creator</strong> (Configurações → Conta → Tipo de conta)</li>
-            <li>A conta Instagram está <strong>vinculada a uma Página do Facebook</strong> que você administra</li>
-            <li>Na Página do Facebook: Configurações → Instagram → Conectar conta</li>
-          </ul>
-          <p>Depois de configurar: <button type="button" onClick={() => { window.location.href = "/auth/instagram"; }} className="underline font-semibold">tentar novamente</button></p>
-        </div>
-      )}
-
-      {notConnected && (
-        <InstagramConnectPanel onConnected={() => { void connectionQuery.refetch(); void profileQuery.refetch(); }} />
-      )}
+      {notConnected && <InstagramLoginPrompt />}
 
       {hasError && isConnected && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
