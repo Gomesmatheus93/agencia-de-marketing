@@ -283,6 +283,10 @@ function InstagramTab() {
   const hasError = profileQuery.isError || insightsQuery.isError;
   const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
+  const params = new URLSearchParams(window.location.search);
+  const igConnectParam = params.get("ig_connect");
+  const igDebugInfo = params.get("debug");
+  const oauthNoAccount = igConnectParam === "no_account";
 
   return (
     <div className="space-y-6">
@@ -308,6 +312,23 @@ function InstagramTab() {
           </Button>
         </div>
       </div>
+
+      {oauthNoAccount && (
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200 space-y-2">
+          <p className="font-semibold">Facebook autorizado, mas Instagram não encontrado</p>
+          <p>O Facebook permitiu o acesso, mas nenhuma conta Instagram Business/Creator foi encontrada vinculada ao seu perfil.</p>
+          {igDebugInfo && (
+            <p className="font-mono text-xs bg-amber-100 dark:bg-amber-900/40 rounded p-2">{igDebugInfo}</p>
+          )}
+          <p className="font-medium">Para resolver, verifique:</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Sua conta Instagram está como <strong>Business ou Creator</strong> (Configurações → Conta → Tipo de conta)</li>
+            <li>A conta Instagram está <strong>vinculada a uma Página do Facebook</strong> que você administra</li>
+            <li>Na Página do Facebook: Configurações → Instagram → Conectar conta</li>
+          </ul>
+          <p>Depois de configurar: <button type="button" onClick={() => { window.location.href = "/auth/instagram"; }} className="underline font-semibold">tentar novamente</button></p>
+        </div>
+      )}
 
       {notConnected && (
         <InstagramConnectPanel onConnected={() => { void connectionQuery.refetch(); void profileQuery.refetch(); }} />

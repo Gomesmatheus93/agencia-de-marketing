@@ -109,7 +109,7 @@ export function registerOAuthRoutes(app: Express) {
     authUrl.searchParams.set("scope", SCOPES);
     authUrl.searchParams.set("state", state);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("auth_type", "rerequest");
+    authUrl.searchParams.set("auth_type", "reauthorize");
 
     res.redirect(authUrl.toString());
   });
@@ -251,7 +251,16 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(`/dashboard/analytics?ig_connect=${igConnectStatus}`);
+
+      if (igConnectStatus === "success") {
+        res.redirect("/dashboard/analytics?ig_connect=success");
+      } else {
+        // Redirect with debug info about what was found
+        const debugInfo = encodeURIComponent(
+          `fbUserId=${fbUserId} | pages_found=${resolvedPageId ? "yes("+resolvedPageId+")" : "no"} | ig_found=no`
+        );
+        res.redirect(`/dashboard/analytics?ig_connect=no_account&debug=${debugInfo}`);
+      }
     } catch (err) {
       console.error("[OAuth/Instagram] Erro no callback:", err);
       const message = encodeURIComponent(err instanceof Error ? err.message : "Erro desconhecido");
