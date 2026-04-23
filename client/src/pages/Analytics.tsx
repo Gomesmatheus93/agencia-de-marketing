@@ -236,7 +236,7 @@ function InstagramTab() {
         </div>
       )}
 
-      {/* Profile card */}
+      {!notConnected && <>
       <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/80">
         <div className="h-24 bg-gradient-to-r from-[#7b00ae]/30 via-[#fe6e00]/20 to-[#7b00ae]/10" />
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-end">
@@ -382,6 +382,7 @@ function InstagramTab() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
