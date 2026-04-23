@@ -17,8 +17,10 @@ const SCOPES = [
   "instagram_basic",
   "instagram_manage_insights",
   "instagram_content_publish",
+  "instagram_business_management",
   "pages_show_list",
   "pages_read_engagement",
+  "business_management",
 ].join(",");
 
 // In-memory CSRF state store (nonce → timestamp)
@@ -107,6 +109,7 @@ export function registerOAuthRoutes(app: Express) {
     authUrl.searchParams.set("scope", SCOPES);
     authUrl.searchParams.set("state", state);
     authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("auth_type", "rerequest");
 
     res.redirect(authUrl.toString());
   });

@@ -32,7 +32,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { toast } from "sonner";
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -175,13 +177,91 @@ const CHART_COLORS = {
   "Visitas ao Perfil": "#06b6d4",
 };
 
-function InstagramTab() {
-  const igConnectParam = new URLSearchParams(window.location.search).get("ig_connect");
+function InstagramConnectPanel({ onConnected }: { onConnected: () => void }) {
+  const [accountId, setAccountId] = useState("");
+  const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const saveMutation = trpc.analytics.saveInstagramCredentials.useMutation({
+    onSuccess: () => { toast.success("Instagram conectado!"); onConnected(); },
+    onError: (e) => toast.error(e.message),
+  });
 
+  return (
+    <div className="rounded-2xl border border-border/40 bg-background/80 p-6 space-y-5">
+      <div>
+        <h3 className="font-semibold text-foreground">Conectar Instagram</h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Conecte via Facebook ou insira manualmente as credenciais do Meta Business Suite.
+        </p>
+      </div>
+
+      <Button
+        className="w-full bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
+        onClick={() => { window.location.href = "/auth/instagram"; }}
+      >
+        Conectar via Facebook (OAuth)
+      </Button>
+
+      <div className="relative flex items-center">
+        <div className="flex-1 border-t border-border/40" />
+        <span className="mx-3 text-xs text-muted-foreground">ou insira manualmente</span>
+        <div className="flex-1 border-t border-border/40" />
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Instagram Account ID</label>
+          <Input
+            placeholder="Ex: 17841442418397147"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className="font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Encontre em: Meta Business Suite → Configurações → Contas do Instagram → ID da conta
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Page Access Token</label>
+          <Input
+            placeholder="EAASSrd..."
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Gere em: <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="underline">Graph API Explorer</a> → selecione sua Página → gere token com <code>instagram_content_publish</code>
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Username (opcional)</label>
+          <Input
+            placeholder="@seuinstagram"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="text-sm"
+          />
+        </div>
+        <Button
+          className="w-full"
+          disabled={!accountId || !token || saveMutation.isPending}
+          onClick={() => saveMutation.mutate({ instagramAccountId: accountId, accessToken: token, username: username || undefined })}
+        >
+          {saveMutation.isPending ? "Salvando..." : "Salvar credenciais"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function InstagramTab() {
   const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
   const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { retry: 1 });
   const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { retry: 1 });
   const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, { retry: 1 });
+  const disconnectMutation = trpc.analytics.disconnectInstagram.useMutation({
+    onSuccess: () => { toast.success("Instagram desconectado."); void connectionQuery.refetch(); },
+  });
 
   const refetchAll = () => {
     void connectionQuery.refetch();
@@ -203,7 +283,6 @@ function InstagramTab() {
   const hasError = profileQuery.isError || insightsQuery.isError;
   const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
-  const oauthNoAccount = igConnectParam === "no_account";
 
   return (
     <div className="space-y-6">
@@ -217,45 +296,26 @@ function InstagramTab() {
             <p className="text-xs text-muted-foreground">Painel de desempenho em tempo real</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
-          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-          Atualizar
-        </Button>
+        <div className="flex gap-2">
+          {isConnected && (
+            <Button variant="outline" size="sm" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="gap-2 rounded-xl text-destructive hover:text-destructive">
+              Desconectar
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
-      {oauthNoAccount && (
-        <div className="rounded-2xl border border-red-400/40 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300">
-          <p className="font-semibold">Instagram Business/Creator não encontrado</p>
-          <p className="mt-1">
-            O Facebook autorizou o acesso, mas nenhuma conta Instagram Business ou Creator foi encontrada vinculada ao seu perfil. Para conectar:
-          </p>
-          <ol className="mt-2 list-decimal pl-4 space-y-1">
-            <li>No app do Instagram: <strong>Configurações → Conta → Mudar para conta profissional</strong> (escolha Creator ou Business)</li>
-            <li>No Facebook: vincule sua Página do Facebook à conta Instagram em <strong>Configurações da Página → Instagram</strong></li>
-            <li>Depois clique em <button type="button" onClick={() => { window.location.href = "/auth/instagram"; }} className="underline font-semibold">Conectar novamente</button></li>
-          </ol>
-        </div>
-      )}
-
-      {notConnected && !oauthNoAccount && (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-          <p className="font-medium">Conta Instagram não conectada</p>
-          <p className="mt-1">
-            Para ver seus dados, faça login com o Instagram (conta Business ou Creator) e autorize o acesso.{" "}
-            <button
-              type="button"
-              onClick={() => { window.location.href = "/auth/instagram"; }}
-              className="underline font-medium"
-            >
-              Conectar agora
-            </button>
-          </p>
-        </div>
+      {notConnected && (
+        <InstagramConnectPanel onConnected={() => { void connectionQuery.refetch(); void profileQuery.refetch(); }} />
       )}
 
       {hasError && isConnected && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Não foi possível carregar os dados da API do Instagram. Verifique se a conta é Business/Creator.
+          Não foi possível carregar os dados. Token inválido ou expirado — reconecte a conta.
         </div>
       )}
 

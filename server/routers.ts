@@ -1879,6 +1879,28 @@ async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T>
 }
 
 const analyticsRouter = router({
+  saveInstagramCredentials: protectedProcedure
+    .input(z.object({
+      instagramAccountId: z.string().min(1),
+      accessToken: z.string().min(1),
+      username: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await db.upsertInstagramConnection({
+        userId: ctx.user.id,
+        instagramAccountId: input.instagramAccountId,
+        accessToken: input.accessToken,
+        username: input.username,
+        connectedAt: new Date(),
+      });
+      return { success: true };
+    }),
+
+  disconnectInstagram: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.deleteInstagramConnection(ctx.user.id);
+    return { success: true };
+  }),
+
   getInstagramConnectionStatus: protectedProcedure.query(async ({ ctx }) => {
     try {
       const connection = await db.getInstagramConnection(ctx.user.id);
