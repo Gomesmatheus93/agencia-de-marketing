@@ -59,6 +59,7 @@ type FbPage = {
   name?: string;
   access_token?: string;
   instagram_business_account?: IgBusinessAccount;
+  connected_instagram_account?: IgBusinessAccount;
 };
 
 type FbPagesResponse = {
@@ -162,18 +163,20 @@ export function registerOAuthRoutes(app: Express) {
       const userEmail = userInfo.email;
       const openId = `meta_${fbUserId}`;
 
-      // 4a. Get Facebook Pages + linked Instagram Business Accounts
+      // 4a. Get Facebook Pages + linked Instagram Business/Connected Accounts
       let resolvedIg: IgBusinessAccount | undefined;
       let resolvedPageId: string | undefined;
       let resolvedToken: string = accessToken;
 
       try {
         const pagesData = await graphGet<FbPagesResponse>(
-          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
         );
-        const pageWithIg = (pagesData.data ?? []).find((p) => p.instagram_business_account?.id);
-        if (pageWithIg?.instagram_business_account?.id) {
-          resolvedIg = pageWithIg.instagram_business_account;
+        const pageWithIg = (pagesData.data ?? []).find(
+          (p) => p.instagram_business_account?.id || p.connected_instagram_account?.id
+        );
+        if (pageWithIg) {
+          resolvedIg = pageWithIg.instagram_business_account || pageWithIg.connected_instagram_account;
           resolvedPageId = pageWithIg.id;
           resolvedToken = pageWithIg.access_token || accessToken;
         }
@@ -195,7 +198,7 @@ export function registerOAuthRoutes(app: Express) {
         }
       }
 
-      // 4c. Fallback: try /me/instagram_accounts (broader search)
+      // 4c. Fallback: try /me/instagram_accounts
       if (!resolvedIg) {
         try {
           const igAccounts = await graphGet<{ data?: IgBusinessAccount[]; error?: { message?: string } }>(
@@ -207,6 +210,24 @@ export function registerOAuthRoutes(app: Express) {
           }
         } catch (e) {
           console.warn("[OAuth/Instagram] Falha ao buscar /me/instagram_accounts:", e);
+        }
+      }
+
+      // 4d. Fallback: try /me/businesses (via Business Manager portfolio)
+      if (!resolvedIg) {
+        try {
+          const bizData = await graphGet<{
+            data?: Array<{ instagram_business_accounts?: { data?: IgBusinessAccount[] } }>;
+            error?: { message?: string };
+          }>(
+            `${GRAPH}/me/businesses?fields=instagram_business_accounts{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+          );
+          for (const biz of bizData.data ?? []) {
+            const first = (biz.instagram_business_accounts?.data ?? []).find((a) => a.id);
+            if (first?.id) { resolvedIg = first; break; }
+          }
+        } catch (e) {
+          console.warn("[OAuth/Instagram] Falha ao buscar /me/businesses:", e);
         }
       }
 

@@ -196,6 +196,37 @@ function InstagramLoginPrompt() {
   );
 }
 
+function InstagramSetupGuide() {
+  return (
+    <div className="rounded-2xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 p-6 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400/20">
+          <Instagram className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+        </div>
+        <div>
+          <h3 className="font-semibold text-amber-900 dark:text-amber-200">Conta Instagram não encontrada</h3>
+          <p className="text-xs text-amber-700 dark:text-amber-400">O Facebook foi autorizado, mas nenhuma conta Instagram Business/Creator foi localizada.</p>
+        </div>
+      </div>
+
+      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Para conectar, siga esses passos:</p>
+      <ol className="space-y-2 text-sm text-amber-800 dark:text-amber-300 list-decimal pl-5">
+        <li>No Instagram: <strong>Configurações → Conta → Mudar para conta profissional</strong> (Business ou Creator)</li>
+        <li>No Facebook: crie ou acesse uma <strong>Página do Facebook</strong> que você administra</li>
+        <li>Na Página do Facebook: <strong>Configurações → Instagram → Conectar conta</strong></li>
+        <li>Depois volte aqui e clique em <strong>Tentar novamente</strong></li>
+      </ol>
+
+      <Button
+        className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
+        onClick={() => { window.location.href = "/auth/instagram"; }}
+      >
+        Tentar novamente
+      </Button>
+    </div>
+  );
+}
+
 function InstagramTab() {
   const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
   const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { retry: 1 });
@@ -225,6 +256,7 @@ function InstagramTab() {
   const hasError = profileQuery.isError || insightsQuery.isError;
   const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
+  const oauthNoAccount = new URLSearchParams(window.location.search).get("ig_connect") === "no_account";
 
   return (
     <div className="space-y-6">
@@ -251,7 +283,7 @@ function InstagramTab() {
         </div>
       </div>
 
-      {notConnected && <InstagramLoginPrompt />}
+      {notConnected && (oauthNoAccount ? <InstagramSetupGuide /> : <InstagramLoginPrompt />)}
 
       {hasError && isConnected && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
