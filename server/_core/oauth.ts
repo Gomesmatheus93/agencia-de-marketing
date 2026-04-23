@@ -160,13 +160,53 @@ export function registerOAuthRoutes(app: Express) {
       const userEmail = userInfo.email;
       const openId = `meta_${fbUserId}`;
 
-      // 4. Get Facebook pages + linked Instagram Business Accounts
-      const pagesData = await graphGet<FbPagesResponse>(
-        `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
-      );
+      // 4a. Get Facebook Pages + linked Instagram Business Accounts
+      let resolvedIg: IgBusinessAccount | undefined;
+      let resolvedPageId: string | undefined;
+      let resolvedToken: string = accessToken;
 
-      const pages = pagesData.data ?? [];
-      const pageWithIg = pages.find((p) => p.instagram_business_account?.id);
+      try {
+        const pagesData = await graphGet<FbPagesResponse>(
+          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+        );
+        const pageWithIg = (pagesData.data ?? []).find((p) => p.instagram_business_account?.id);
+        if (pageWithIg?.instagram_business_account?.id) {
+          resolvedIg = pageWithIg.instagram_business_account;
+          resolvedPageId = pageWithIg.id;
+          resolvedToken = pageWithIg.access_token || accessToken;
+        }
+      } catch (e) {
+        console.warn("[OAuth/Instagram] Falha ao buscar páginas Facebook:", e);
+      }
+
+      // 4b. Fallback: try instagram_business_account directly on the FB user
+      if (!resolvedIg) {
+        try {
+          const userIg = await graphGet<{ instagram_business_account?: IgBusinessAccount; error?: { message?: string } }>(
+            `${GRAPH}/${fbUserId}?fields=instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+          );
+          if (userIg.instagram_business_account?.id) {
+            resolvedIg = userIg.instagram_business_account;
+          }
+        } catch (e) {
+          console.warn("[OAuth/Instagram] Falha ao buscar instagram_business_account do usuário:", e);
+        }
+      }
+
+      // 4c. Fallback: try /me/instagram_accounts (broader search)
+      if (!resolvedIg) {
+        try {
+          const igAccounts = await graphGet<{ data?: IgBusinessAccount[]; error?: { message?: string } }>(
+            `${GRAPH}/me/instagram_accounts?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
+          );
+          const first = (igAccounts.data ?? []).find((a) => a.id);
+          if (first?.id) {
+            resolvedIg = first;
+          }
+        } catch (e) {
+          console.warn("[OAuth/Instagram] Falha ao buscar /me/instagram_accounts:", e);
+        }
+      }
 
       // 5. Create or update user
       await db.upsertUser({
@@ -181,25 +221,21 @@ export function registerOAuthRoutes(app: Express) {
       if (!user) throw new Error("Falha ao criar usuário após OAuth.");
 
       // 6. Save Instagram connection if found
-      if (pageWithIg?.instagram_business_account?.id) {
-        const ig = pageWithIg.instagram_business_account;
-        const pageToken = pageWithIg.access_token || accessToken;
-
+      if (resolvedIg?.id) {
         await db.upsertInstagramConnection({
           userId: user.id,
-          instagramAccountId: ig.id!,
-          facebookPageId: pageWithIg.id,
-          username: ig.username,
-          name: ig.name || userName,
-          profilePictureUrl: ig.profile_picture_url,
-          accessToken: pageToken,
+          instagramAccountId: resolvedIg.id!,
+          facebookPageId: resolvedPageId,
+          username: resolvedIg.username,
+          name: resolvedIg.name || userName,
+          profilePictureUrl: resolvedIg.profile_picture_url,
+          accessToken: resolvedToken,
           tokenExpiresAt,
           connectedAt: new Date(),
         });
-
-        console.log(`[OAuth/Instagram] Conta IG conectada: @${ig.username} (userId=${user.id})`);
+        console.log(`[OAuth/Instagram] Conta IG conectada: @${resolvedIg.username} (userId=${user.id})`);
       } else {
-        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram Business encontrada para userId=${user.id}. O usuário pode conectar depois.`);
+        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}). Verifique se a conta é Business/Creator.`);
       }
 
       // 7. Create session cookie and redirect

@@ -176,11 +176,13 @@ const CHART_COLORS = {
 };
 
 function InstagramTab() {
+  const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
   const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { retry: 1 });
   const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { retry: 1 });
   const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, { retry: 1 });
 
   const refetchAll = () => {
+    void connectionQuery.refetch();
     void profileQuery.refetch();
     void insightsQuery.refetch();
     void mediaQuery.refetch();
@@ -197,6 +199,8 @@ function InstagramTab() {
   const isLoading = profileQuery.isLoading || insightsQuery.isLoading;
   const isFetching = profileQuery.isFetching || insightsQuery.isFetching || mediaQuery.isFetching;
   const hasError = profileQuery.isError || insightsQuery.isError;
+  const isConnected = connectionQuery.data?.connected === true;
+  const notConnected = connectionQuery.isSuccess && !isConnected;
 
   return (
     <div className="space-y-6">
@@ -216,9 +220,19 @@ function InstagramTab() {
         </Button>
       </div>
 
-      {hasError && (
+      {notConnected && (
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <p className="font-medium">Conta Instagram não conectada</p>
+          <p className="mt-1">
+            Para ver seus dados, faça login com o Instagram (conta Business ou Creator) e autorize o acesso.{" "}
+            <a href="/auth/instagram" className="underline font-medium">Conectar agora</a>
+          </p>
+        </div>
+      )}
+
+      {hasError && isConnected && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Não foi possível carregar os dados. Verifique se o token de acesso e o Instagram Account ID estão corretos no .env.
+          Não foi possível carregar os dados da API do Instagram. Verifique se a conta é Business/Creator.
         </div>
       )}
 

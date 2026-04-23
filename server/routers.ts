@@ -1879,6 +1879,25 @@ async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T>
 }
 
 const analyticsRouter = router({
+  getInstagramConnectionStatus: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const connection = await db.getInstagramConnection(ctx.user.id);
+      if (connection) {
+        return {
+          connected: true,
+          username: connection.username,
+          name: connection.name,
+          profilePictureUrl: connection.profilePictureUrl,
+          instagramAccountId: connection.instagramAccountId,
+          tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,
+        };
+      }
+    } catch {
+      // table may not exist yet
+    }
+    return { connected: false };
+  }),
+
   getLinkedInProfile: protectedProcedure.query(async () => {
     if (!ENV.linkedinAccessToken) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "LINKEDIN_ACCESS_TOKEN não configurado." });
