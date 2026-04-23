@@ -221,6 +221,7 @@ export function registerOAuthRoutes(app: Express) {
       if (!user) throw new Error("Falha ao criar usuário após OAuth.");
 
       // 6. Save Instagram connection if found
+      let igConnectStatus = "no_account";
       if (resolvedIg?.id) {
         await db.upsertInstagramConnection({
           userId: user.id,
@@ -233,9 +234,10 @@ export function registerOAuthRoutes(app: Express) {
           tokenExpiresAt,
           connectedAt: new Date(),
         });
+        igConnectStatus = "success";
         console.log(`[OAuth/Instagram] Conta IG conectada: @${resolvedIg.username} (userId=${user.id})`);
       } else {
-        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}). Verifique se a conta é Business/Creator.`);
+        console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}). Verifique se a conta Business/Creator está vinculada a uma Página do Facebook.`);
       }
 
       // 7. Create session cookie and redirect
@@ -246,7 +248,7 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect("/dashboard");
+      res.redirect(`/dashboard/analytics?ig_connect=${igConnectStatus}`);
     } catch (err) {
       console.error("[OAuth/Instagram] Erro no callback:", err);
       const message = encodeURIComponent(err instanceof Error ? err.message : "Erro desconhecido");

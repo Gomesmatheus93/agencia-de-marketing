@@ -176,6 +176,8 @@ const CHART_COLORS = {
 };
 
 function InstagramTab() {
+  const igConnectParam = new URLSearchParams(window.location.search).get("ig_connect");
+
   const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
   const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { retry: 1 });
   const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { retry: 1 });
@@ -201,6 +203,7 @@ function InstagramTab() {
   const hasError = profileQuery.isError || insightsQuery.isError;
   const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
+  const oauthNoAccount = igConnectParam === "no_account";
 
   return (
     <div className="space-y-6">
@@ -220,7 +223,21 @@ function InstagramTab() {
         </Button>
       </div>
 
-      {notConnected && (
+      {oauthNoAccount && (
+        <div className="rounded-2xl border border-red-400/40 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-300">
+          <p className="font-semibold">Instagram Business/Creator não encontrado</p>
+          <p className="mt-1">
+            O Facebook autorizou o acesso, mas nenhuma conta Instagram Business ou Creator foi encontrada vinculada ao seu perfil. Para conectar:
+          </p>
+          <ol className="mt-2 list-decimal pl-4 space-y-1">
+            <li>No app do Instagram: <strong>Configurações → Conta → Mudar para conta profissional</strong> (escolha Creator ou Business)</li>
+            <li>No Facebook: vincule sua Página do Facebook à conta Instagram em <strong>Configurações da Página → Instagram</strong></li>
+            <li>Depois clique em <button type="button" onClick={() => { window.location.href = "/auth/instagram"; }} className="underline font-semibold">Conectar novamente</button></li>
+          </ol>
+        </div>
+      )}
+
+      {notConnected && !oauthNoAccount && (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
           <p className="font-medium">Conta Instagram não conectada</p>
           <p className="mt-1">
