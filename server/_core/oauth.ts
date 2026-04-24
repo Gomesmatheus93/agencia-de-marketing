@@ -79,12 +79,17 @@ async function graphGet<T>(path: string): Promise<T> {
 }
 
 function buildCallbackUrl(req: Express["request"]) {
-  if (ENV.instagramOAuthRedirectUri) {
-    return ENV.instagramOAuthRedirectUri;
+  // In production, respect explicit redirect URI configuration (required for Meta app allow-list)
+  if (ENV.isProduction) {
+    if (ENV.instagramOAuthRedirectUri) {
+      return ENV.instagramOAuthRedirectUri;
+    }
+    if (ENV.appBaseUrl) {
+      return `${ENV.appBaseUrl.replace(/\/+$/, "")}/auth/instagram/callback`;
+    }
   }
-  if (ENV.appBaseUrl) {
-    return `${ENV.appBaseUrl.replace(/\/+$/, "")}/auth/instagram/callback`;
-  }
+  // In development (or production without explicit config), derive from the incoming request so
+  // that local testing works without needing REDIRECT_URI set.
   const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || req.protocol || "http";
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000";
   return `${proto}://${host}/auth/instagram/callback`;

@@ -229,9 +229,10 @@ function InstagramSetupGuide() {
 
 function InstagramTab() {
   const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
-  const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { retry: 1 });
-  const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { retry: 1 });
-  const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, { retry: 1 });
+  const isConnected = connectionQuery.data?.connected === true;
+  const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { enabled: isConnected, retry: 1 });
+  const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { enabled: isConnected, retry: 1 });
+  const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, { enabled: isConnected, retry: 1 });
   const disconnectMutation = trpc.analytics.disconnectInstagram.useMutation({
     onSuccess: () => { toast.success("Instagram desconectado."); void connectionQuery.refetch(); },
   });
@@ -254,7 +255,6 @@ function InstagramTab() {
   const isLoading = profileQuery.isLoading || insightsQuery.isLoading;
   const isFetching = profileQuery.isFetching || insightsQuery.isFetching || mediaQuery.isFetching;
   const hasError = profileQuery.isError || insightsQuery.isError;
-  const isConnected = connectionQuery.data?.connected === true;
   const notConnected = connectionQuery.isSuccess && !isConnected;
   const oauthNoAccount = new URLSearchParams(window.location.search).get("ig_connect") === "no_account";
 

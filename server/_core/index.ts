@@ -35,6 +35,8 @@ async function startServer() {
 
   const app = express();
   const server = createServer(app);
+  // Trust the first proxy so req.protocol reflects x-forwarded-proto (needed for cookies and OAuth in production)
+  app.set("trust proxy", 1);
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
   // Serve uploaded images
