@@ -4,11 +4,99 @@ import { ENV } from "./env";
 
 const CAROUSEL_AGENT_PROMPT = `Voce e um especialista em criacao de conteudo para Instagram, focado em carrosseis altamente virais, estrategicos e visualmente atrativos.
 
-Sua funcao e transformar qualquer tema ou ideia em um carrossel completo, pronto para design e postagem, com foco em engajamento, retencao e conversao. Prendam atencao no primeiro slide, Gerem curiosidade e retencao ate o final, Estimulem salvamentos, compartilhamentos e comentarios, Tenham linguagem simples, direta e persuasiva. Use gatilhos mentais (curiosidade, urgencia, prova, dor), Crie sensacao de descoberta, Use contraste (ex: certo vs errado), Faca o leitor pensar "eu precisava disso".
+ESTRUTURA OBRIGATORIA DOS SLIDES — siga exatamente esta ordem:
 
-O design final segue um modelo fixo: cabecalho com perfil, titulo grande centralizado, resumo curto abaixo e uma imagem tematica ocupando todo o bloco inferior. Por isso, escreva titulos curtos e resumos compactos, sem instrucoes visuais dentro do texto.
+SLIDE 1 — GANCHO: Unica funcao e parar o scroll. Deve gerar curiosidade imediata, provocar uma dor, revelar algo surpreendente ou fazer uma promessa irresistivel. Titulo impactante, corpo que amplifica a tensao e faz o leitor querer ver o proximo slide. NAO antecipe o conteudo, apenas crie urgencia de continuar.
 
-Quando existir um template visual enviado pelo usuario, preserve essa familia visual como referencia principal para o clima, a composicao e a direcao de arte.`;
+SLIDES INTERMEDIARIOS (do 2 ate o penultimo) — DESENVOLVIMENTO: Cada slide aprofunda um aspecto do tema com clareza, dados, contraste (certo vs errado, antes vs depois) ou descoberta. Mantenha ritmo crescente de valor. Use gatilhos mentais: prova, curiosidade, urgencia, especificidade. Faca o leitor pensar "eu precisava saber disso".
+
+ULTIMO SLIDE — CTA DE ENGAJAMENTO: Exclusivamente voltado para engajamento social. Titulo convidativo e direto. Corpo pedindo de forma natural que o seguidor curta, comente e compartilhe — sem soar forcado. Exemplo de corpo: "Se isso te ajudou, curte e compartilha com quem precisa ver isso hoje. Comenta aqui o que voce achou!" Adapte o texto ao tom do tema, mas mantenha o pedido de curtir, comentar e compartilhar.
+
+REGRAS GERAIS:
+- Linguagem simples, direta e persuasiva em portugues brasileiro
+- Titulos curtos e impactantes, idealmente ate 9 palavras
+- Corpo objetivo e pronto para virar resumo visual, com ate 150 caracteres
+- Sem emojis, sem instrucoes visuais dentro do texto, sem texto generico
+- O design segue modelo fixo: cabecalho de perfil, titulo centralizado, resumo abaixo, imagem tematica no bloco inferior
+
+Quando existir um template visual enviado pelo usuario, preserve essa familia visual como referencia.
+
+Quando receber uma secao "=== Pesquisa sobre o tema ===", use os dados como base factual para enriquecer os slides intermediarios. Incorpore fatos, numeros e conceitos naturalmente — sem citar a fonte.`;
+
+// ─── Topic Research (Serper — Google Search) ─────────────────────────────────
+
+type SerperOrganicResult = {
+  title?: string;
+  snippet?: string;
+};
+
+type SerperResponse = {
+  organic?: SerperOrganicResult[];
+  answerBox?: { answer?: string; snippet?: string; title?: string };
+  knowledgeGraph?: { description?: string; title?: string };
+};
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 6000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+async function researchTopicContext(topic: string): Promise<string | null> {
+  if (!ENV.serperApiKey) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      "https://google.serper.dev/search",
+      {
+        method: "POST",
+        headers: {
+          "X-API-KEY": ENV.serperApiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ q: topic, gl: "br", hl: "pt", num: 6 }),
+      },
+      6000
+    );
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as SerperResponse;
+    const parts: string[] = [];
+
+    // Answer box ou Knowledge Graph têm o melhor resumo direto
+    const directAnswer =
+      data.answerBox?.answer ||
+      data.answerBox?.snippet ||
+      data.knowledgeGraph?.description;
+    if (directAnswer) {
+      parts.push(`Resumo: ${directAnswer.replace(/\n/g, " ").trim()}`);
+    }
+
+    // Top resultados orgânicos
+    const organic = (data.organic ?? [])
+      .slice(0, 5)
+      .map((r) => {
+        const title = r.title?.trim() ?? "";
+        const snippet = r.snippet?.replace(/\n/g, " ").trim() ?? "";
+        return title && snippet ? `• ${title}: ${snippet}` : snippet || title;
+      })
+      .filter(Boolean);
+
+    parts.push(...organic);
+
+    if (parts.length === 0) return null;
+
+    return `[Google — "${topic}"]\n${parts.join("\n")}`;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Style Guide ──────────────────────────────────────────────────────────────
 
 const STYLE_GUIDE: Record<string, string> = {
   signature: "Visual premium, contrastado e moderno, com atmosfera roxa profunda e acentos laranja vibrantes.",
@@ -25,6 +113,7 @@ const FALLBACK_CTA = "Salve este carrossel e compartilhe com quem precisa ver is
 export type CarouselAgentInput = {
   topic: string;
   slideCount: number;
+  carouselFormat?: "feed" | "story";
   style: string;
   coverImageDataUrl?: string;
   coverImageUrl?: string;
@@ -33,6 +122,7 @@ export type CarouselAgentInput = {
   templateImageDataUrl?: string;
   templateImageUrl?: string;
   useAiImages?: boolean;
+  articleContext?: string;
 };
 
 export type CarouselAgentSlide = {
@@ -207,23 +297,49 @@ function buildCarouselImagePrompt(input: {
   templateName?: string;
   templateStyleBrief?: string;
 }) {
+  const isHook = input.slideIndex === 0;
+
   return [
-    "Use case: photorealistic social media carousel visual",
-    "Asset type: lower half image for a 4:5 LinkedIn/Instagram carousel slide",
-    `Main topic: ${input.topic}`,
+    // ── Intent ──────────────────────────────────────────────────────────────
+    "Create a photorealistic hero image for an Instagram/LinkedIn carousel slide.",
+    `Portrait orientation, 2:3 aspect ratio. Topic: ${input.topic}.`,
+
+    // ── Slide context ────────────────────────────────────────────────────────
     `Carousel hook: ${input.hook}`,
-    `Slide ${input.slideIndex + 1} focus: ${input.slideTitle}`,
-    `Slide context: ${input.slideBody}`,
-    `Creative direction: ${input.imageSearchQuery || input.hook}`,
-    input.templateName ? `Chosen design template: ${input.templateName}` : undefined,
-    input.templateStyleBrief ? `Template style reference: ${input.templateStyleBrief}` : undefined,
-    "The visual subject must clearly represent the main topic first. The slide focus only changes the angle inside that same topic.",
-    "If a reference image is provided, treat it as a style reference: preserve the visual language, finish, palette, mood and framing logic, but generate a new scene that matches this slide's content.",
-    "Style: ultra-realistic editorial photography, premium, clean, sharp, natural light, realistic details.",
-    "Make the photography feel visually compatible with the chosen template, especially in tone, palette, framing and finish.",
-    "Make this image specific to this slide, not a generic repeated cover for the whole carousel.",
-    "Avoid random metaphors, unrelated people, unrelated office scenes, generic smartphones, abstract backgrounds, stock-photo cliches, or objects disconnected from the main topic.",
-    "Composition: strong subject from the main topic, no text, no logos, no watermark, no UI, no charts, no fake typography.",
+    `This slide: ${input.slideTitle}`,
+    input.slideBody ? `Slide context: ${input.slideBody}` : undefined,
+    `Visual direction: ${input.imageSearchQuery || input.hook}`,
+
+    // ── Camera & lens ────────────────────────────────────────────────────────
+    "Camera: full-frame mirrorless (Sony A7R V or Canon R5 equivalent). Lens: 24–50mm prime, f/1.4–f/2.8. Shallow depth of field with smooth bokeh background. Tack-sharp foreground subject.",
+
+    // ── Lighting ─────────────────────────────────────────────────────────────
+    "Lighting: dramatic professional lighting — cinematic side-light, rim-light, or motivated natural source. Deep shadows, rich midtones, controlled highlights. No flat or blown-out exposures.",
+
+    // ── Color grade & mood ───────────────────────────────────────────────────
+    "Color grade: cinematic. Deep blacks, slightly desaturated mids, selective color accents. Dark and moody overall — compatible with a dark UI overlay without losing subject legibility. Reference mood: high-end editorial magazines, Bloomberg or Wired cover photography.",
+
+    // ── Composition ──────────────────────────────────────────────────────────
+    isHook
+      ? "Composition: impactful wide or medium shot. Strong visual tension. Hero subject occupies center-to-lower third, leaving the upper portion naturally dark for text overlay. Rule of thirds applied."
+      : "Composition: clean medium or close-up shot. Hero subject clearly identifiable. Strong visual hierarchy. Upper area intentionally darker or uncluttered for text overlay. Rule of thirds applied.",
+
+    // ── Template alignment ───────────────────────────────────────────────────
+    input.templateName ? `Design context: ${input.templateName}` : undefined,
+    input.templateStyleBrief
+      ? `Visual style reference: ${input.templateStyleBrief}`
+      : "Visual palette: dark navy/charcoal tones, compatible with a dark-themed carousel card design.",
+
+    // ── Specificity requirement ──────────────────────────────────────────────
+    "This image must be uniquely composed for this specific slide — not a generic stock cover. The scene, subject, and framing must directly represent the slide's message and energy.",
+
+    // ── Reference image handling ─────────────────────────────────────────────
+    "If a style reference image is provided: match its visual language, color palette, mood, depth, and finish — but generate a completely new scene aligned with this slide's content.",
+
+    // ── Hard constraints ─────────────────────────────────────────────────────
+    "Do not include: text, letters, numbers, logos, watermarks, UI elements, charts, infographics, device screens, fake typography, illustration, vector art, or cartoon style.",
+    "Do not use stock-photo clichés: no random handshakes, disconnected office scenes, generic laptops, anonymous crowds, or objects unrelated to the topic.",
+    "Photorealistic photography only. No AI-obvious artifacts. No oversaturated, overexposed, or HDR-style processing.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -344,26 +460,42 @@ export async function generateCarouselWithAgent(
     ? `Template escolhido: ${input.templateName || input.style}. ${input.templateStyleBrief.trim()}`
     : STYLE_GUIDE[input.style] || `Estilo visual: ${input.style}.`;
 
+  // Use article content when provided; otherwise fall back to Google search
+  const topicResearch = input.articleContext
+    ? `[Notícia]\n${input.articleContext}`
+    : await researchTopicContext(input.topic).catch(() => null);
+
+  if (topicResearch) {
+    console.log(`[CarouselAgent] Research context ready for topic: "${input.topic}" (source: ${input.articleContext ? "article" : "google"})`);
+  }
+
+  const lastSlideIndex = input.slideCount;
+
+  const carouselFormat = input.carouselFormat || "feed";
+  const formatInfo = carouselFormat === "story"
+    ? "Story (9:16, 1080x1920) — formato vertical extendido do Instagram Stories"
+    : "Feed (4:5, 1080x1350) — formato padrão de posts no feed";
+
   const userPrompt = [
     `Tema do carrossel: ${input.topic}`,
     `Quantidade exata de slides: ${input.slideCount}`,
+    `Formato: ${formatInfo}`,
     `Direcao visual: ${styleGuide}`,
     input.templateName ? `Nome do template visual: ${input.templateName}` : undefined,
-    "Escreva tudo em portugues brasileiro.",
-    "Crie um gancho forte e direto.",
-    "O primeiro slide deve prender a atencao imediatamente.",
-    "Os slides do meio devem desenvolver a ideia com clareza, contraste e ritmo.",
-    "O ultimo slide deve incentivar salvar, compartilhar ou comentar.",
-    "Cada titulo deve ser curto, facil de diagramar e impactante, idealmente com ate 9 palavras.",
-    "Cada corpo deve ser objetivo, persuasivo e pronto para virar resumo visual, com ate 150 caracteres.",
-    "Gere uma legenda pronta para postagem.",
-    "Gere um CTA final curto, claro e acionavel.",
-    "Gere imageSearchQuery geral em ingles, com 3 a 8 palavras, para buscar ou gerar uma fotografia editorial relacionada ao tema central.",
-    "Para cada slide, gere tambem um imageSearchQuery em ingles e especifico daquele slide, com 4 a 10 palavras.",
-    "Toda imageSearchQuery de slide deve repetir explicitamente o assunto central em ingles e acrescentar apenas o foco do slide.",
-    "Nao use consultas visuais abstratas, metaforicas ou genericas como transformation, growth, future, innovation ou success sem objeto/cena concreta do tema.",
-    "Se o tema for energia, por exemplo, use cenas concretas como smart grid, solar panels, power transmission, battery storage, EV charging, power plant, oil market ou wind farm, de acordo com o assunto.",
-    "Evite emojis e evite texto generico.",
+    `MAPA DE SLIDES (siga obrigatoriamente):`,
+    `  Slide 1: GANCHO — para o scroll, gera curiosidade, promessa ou dor. NAO entrega o conteudo ainda.`,
+    input.slideCount > 2
+      ? `  Slides 2 a ${lastSlideIndex - 1}: DESENVOLVIMENTO — cada um aprofunda um aspecto diferente do tema com dados, contraste ou descoberta.`
+      : undefined,
+    `  Slide ${lastSlideIndex}: CTA DE ENGAJAMENTO — pede curtida, comentario e compartilhamento de forma natural e direta.`,
+    "Gere uma legenda completa pronta para postagem, com o gancho, os pontos principais e o CTA.",
+    "Gere imageSearchQuery geral em ingles, com 3 a 8 palavras, para fotografia editorial do tema central.",
+    "Para cada slide, gere imageSearchQuery em ingles especifico daquele slide, com 4 a 10 palavras.",
+    "Toda imageSearchQuery deve mencionar o assunto central em ingles e acrescentar apenas o foco do slide.",
+    "Nao use consultas abstratas como transformation, growth, future ou innovation sem objeto concreto do tema.",
+    topicResearch
+      ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch}`
+      : undefined,
   ]
     .filter(Boolean)
     .join("\n");

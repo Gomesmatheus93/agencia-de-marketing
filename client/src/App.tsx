@@ -32,7 +32,7 @@ function Router() {
       <Route path="/dashboard/analytics" component={Analytics} />
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/settings" component={Settings} />
-      <Route path="/404" component={NotFound} />
+<Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );

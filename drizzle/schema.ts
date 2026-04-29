@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   int,
   mysqlEnum,
@@ -110,6 +111,26 @@ export type CarouselSlideData = {
   designStyleBrief?: string;
   templateSvgUrl?: string;
   renderedImageUrl?: string;
+  fontFamily?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  editorSettings?: {
+    titleOffsetX?: number;
+    titleOffsetY?: number;
+    titleScale?: number;
+    bodyOffsetX?: number;
+    bodyOffsetY?: number;
+    bodyScale?: number;
+    imageOffsetX?: number;
+    imageOffsetY?: number;
+    imageScale?: number;
+    imageRotation?: number;
+    imageBrightness?: number;
+    imageContrast?: number;
+    imageSaturate?: number;
+    titleColor?: string;
+    bodyColor?: string;
+  };
 };
 
 // ─── Carousels ────────────────────────────────────────────────────────────────
@@ -233,3 +254,17 @@ export const instagramConnections = mysqlTable(
 
 export type InstagramConnection = typeof instagramConnections.$inferSelect;
 export type InsertInstagramConnection = typeof instagramConnections.$inferInsert;
+
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+export const featureFlags = mysqlTable("feature_flags", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 128 }).notNull().unique(),
+  label: varchar("label", { length: 255 }).notNull(),
+  description: text("description"),
+  enabled: boolean("enabled").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+export type InsertFeatureFlag = typeof featureFlags.$inferInsert;

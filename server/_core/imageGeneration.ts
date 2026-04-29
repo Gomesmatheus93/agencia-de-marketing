@@ -157,8 +157,8 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
 
         formData.append("model", ENV.openaiImageModel);
         formData.append("prompt", options.prompt);
-        formData.append("size", "1024x1024");
-        formData.append("quality", "medium");
+        formData.append("size", "1024x1536");
+        formData.append("quality", "high");
         formData.append("image", blob, `reference.${referenceAsset!.extension}`);
 
         return {
@@ -178,8 +178,8 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
         body: JSON.stringify({
           model: ENV.openaiImageModel,
           prompt: options.prompt,
-          size: "1024x1024",
-          quality: "medium",
+          size: "1024x1536",
+          quality: "high",
         }),
       };
 

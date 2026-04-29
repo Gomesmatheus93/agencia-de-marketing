@@ -2,6 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { adminRouter, featuresRouter } from "./_core/adminRouter";
 import { aiProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
@@ -41,6 +42,7 @@ import {
   persistCarouselAssets,
   persistCarouselDesignAssets,
   getCarouselAssetDataUrl,
+  persistSingleCarouselImage,
 } from "./_core/carouselPersistence";
 import * as db from "./db";
 import { sdk } from "./_core/sdk";
@@ -1287,6 +1289,24 @@ Formato de resposta JSON:
 });
 
 // ─── Posts Router ─────────────────────────────────────────────────────────────
+const carouselEditorSettingsSchema = z.object({
+  titleOffsetX: z.number().optional(),
+  titleOffsetY: z.number().optional(),
+  titleScale: z.number().optional(),
+  bodyOffsetX: z.number().optional(),
+  bodyOffsetY: z.number().optional(),
+  bodyScale: z.number().optional(),
+  imageOffsetX: z.number().optional(),
+  imageOffsetY: z.number().optional(),
+  imageScale: z.number().optional(),
+  imageRotation: z.number().optional(),
+  imageBrightness: z.number().optional(),
+  imageContrast: z.number().optional(),
+  imageSaturate: z.number().optional(),
+  titleColor: z.string().optional(),
+  bodyColor: z.string().optional(),
+});
+
 const carouselSlideSchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
@@ -1296,6 +1316,10 @@ const carouselSlideSchema = z.object({
   designStyleBrief: z.string().optional(),
   templateSvgUrl: z.string().optional(),
   renderedImageUrl: z.string().optional(),
+  fontFamily: z.string().optional(),
+  accentColor: z.string().optional(),
+  backgroundColor: z.string().optional(),
+  editorSettings: carouselEditorSettingsSchema.optional(),
 });
 
 const carouselBaseSchema = z.object({
@@ -1354,16 +1378,65 @@ const carouselRouter = router({
       }
     }),
 
+  fetchArticle: aiProcedure
+    .input(z.object({ url: z.string().url() }))
+    .mutation(async ({ input }) => {
+      let html: string;
+      try {
+        html = await fetchUrlText(input.url);
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível acessar a URL. Verifique se o link está correto e acessível." });
+      }
+
+      const title =
+        stripHtml(html.match(/<h1\b[^>]*>[\s\S]*?<\/h1>/i)?.[0] || "") ||
+        getMetaContent(html, ["og:title", "twitter:title"]) ||
+        "";
+      const articleText = extractArticleTextFromHtml(html);
+
+      if (!articleText || articleText.length < 100) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível extrair o conteúdo do artigo. Tente uma URL diferente." });
+      }
+
+      const summaryResponse = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: "Você é um editor de conteúdo especialista. Analise o artigo e retorne um JSON com: topic (string, tema direto e impactante para um carrossel no Instagram, máx 120 chars) e summary (string, resumo dos principais fatos e dados do artigo, máx 500 chars). Sem explicações extras.",
+          },
+          {
+            role: "user",
+            content: `Título: ${title}\n\nConteúdo:\n${articleText.slice(0, 4000)}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const rawContent = summaryResponse.choices[0]?.message?.content;
+      const raw = typeof rawContent === "string" ? rawContent : "{}";
+      let parsed: { topic?: string; summary?: string } = {};
+      try { parsed = JSON.parse(raw); } catch { /* fallback below */ }
+
+      return {
+        title,
+        topic: parsed.topic || title,
+        summary: parsed.summary || articleText.slice(0, 500),
+        articleContext: `Título: ${title}\n\nResumo: ${parsed.summary || ""}\n\nConteúdo:\n${articleText.slice(0, 3000)}`,
+      };
+    }),
+
   generate: aiProcedure
     .input(
       z.object({
         topic: z.string().min(3).max(500),
         slideCount: z.number().int().min(1).max(10),
+        carouselFormat: z.enum(["feed", "story"]).optional(),
         style: z.string().min(1).max(100),
         templateId: z.number().int().positive().optional(),
         coverImageUrl: z.string().optional(),
         coverImageDataUrl: z.string().optional(),
         useAiImages: z.boolean().optional(),
+        articleContext: z.string().max(5000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1387,6 +1460,7 @@ const carouselRouter = router({
         const generatedCarousel = await generateCarouselWithAgent({
           topic: input.topic,
           slideCount: input.slideCount,
+          carouselFormat: input.carouselFormat ?? "feed",
           style: selectedStyle,
           coverImageUrl: input.coverImageUrl,
           coverImageDataUrl: input.coverImageDataUrl,
@@ -1395,6 +1469,7 @@ const carouselRouter = router({
           templateImageUrl: selectedTemplate?.imageUrl,
           templateImageDataUrl,
           useAiImages: input.useAiImages ?? false,
+          articleContext: input.articleContext,
         });
 
         const persistedAssets = await persistCarouselAssets({
@@ -1495,6 +1570,77 @@ const carouselRouter = router({
           }`,
         });
       }
+    }),
+
+  generateCaptionFromImage: aiProcedure
+    .input(z.object({ imageDataUrl: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: input.imageDataUrl, detail: "auto" },
+              },
+              {
+                type: "text",
+                text: "Analise esta imagem e crie uma legenda envolvente para Instagram em português brasileiro. A legenda deve ser atraente, usar hashtags relevantes e ter um CTA natural no final. Retorne apenas a legenda pronta, sem títulos ou explicações.",
+              },
+            ],
+          },
+        ],
+      });
+      const caption = typeof response.choices[0]?.message?.content === "string"
+        ? response.choices[0].message.content
+        : "";
+      return { caption };
+    }),
+
+  importImages: protectedProcedure
+    .input(
+      z.object({
+        topic: z.string().min(1).max(500),
+        hook: z.string().max(1000).optional(),
+        caption: z.string().max(5000).optional(),
+        finalCta: z.string().max(500).optional(),
+        slides: z
+          .array(
+            z.object({
+              title: z.string().min(1).max(255),
+              imageDataUrl: z.string().min(1),
+            })
+          )
+          .min(1)
+          .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const persistedSlides = await Promise.all(
+        input.slides.map(async (slide, index) => {
+          const url = await persistSingleCarouselImage({
+            userId: ctx.user.id,
+            imageDataUrl: slide.imageDataUrl,
+          });
+          return {
+            title: slide.title,
+            body: "",
+            renderedImageUrl: url,
+            imageUrl: url,
+          } as import("../drizzle/schema").CarouselSlideData;
+        })
+      );
+
+      return db.saveCarousel(ctx.user.id, {
+        topic: input.topic,
+        style: "importado",
+        hook: input.hook ?? input.topic,
+        caption: input.caption ?? "",
+        finalCta: input.finalCta ?? "",
+        coverImageUrl: persistedSlides[0]?.renderedImageUrl,
+        slides: persistedSlides,
+      });
     }),
 
   publishInstagram: protectedProcedure
@@ -1600,6 +1746,51 @@ const carouselRouter = router({
         scheduledAt: savedPost.scheduledAt,
         timeZone: getPostSchedulerTimeZone(),
       };
+    }),
+
+  updateContent: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        hook: z.string(),
+        caption: z.string(),
+        finalCta: z.string(),
+        slides: z
+          .array(
+            carouselSlideSchema
+          )
+          .min(1)
+          .max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const updated = await db.updateCarouselContent(input.id, ctx.user.id, {
+        hook: input.hook,
+        caption: input.caption,
+        finalCta: input.finalCta,
+        slides: input.slides.map((s) => ({ ...s, body: s.body ?? "" })),
+      });
+      if (!updated) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+      }
+      return updated;
+    }),
+
+  uploadSlideImage: protectedProcedure
+    .input(z.object({ imageDataUrl: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const url = await persistSingleCarouselImage({
+          userId: ctx.user.id,
+          imageDataUrl: input.imageDataUrl,
+        });
+        return { url };
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao enviar imagem: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        });
+      }
     }),
 
   delete: protectedProcedure
@@ -2145,6 +2336,8 @@ export const appRouter = router({
   carousel: carouselRouter,
   posts: postsRouter,
   analytics: analyticsRouter,
+  admin: adminRouter,
+  features: featuresRouter,
 });
 
 export type AppRouter = typeof appRouter;

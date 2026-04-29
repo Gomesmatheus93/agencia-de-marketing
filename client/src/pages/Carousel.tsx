@@ -1,22 +1,29 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   ChevronLeft,
   ChevronRight,
   Copy,
   Calendar,
+  Check,
   Download,
   Image,
   Instagram,
   Layers,
   LayoutTemplate,
   Loader2,
+  Newspaper,
+  Link as LinkIcon,
+  Pencil,
+  RefreshCw,
   Sparkles,
   Trash2,
   Type,
@@ -41,6 +48,10 @@ interface CarouselSlide {
   designStyleBrief?: string;
   templateSvgUrl?: string;
   renderedImageUrl?: string;
+  fontFamily?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  editorSettings?: SlideEditorSettings;
 }
 
 interface CarouselItem {
@@ -57,6 +68,44 @@ interface CarouselItem {
   updatedAt: Date | string;
 }
 
+type SlideEditorSettings = {
+  titleOffsetX?: number;
+  titleOffsetY?: number;
+  titleScale?: number;
+  bodyOffsetX?: number;
+  bodyOffsetY?: number;
+  bodyScale?: number;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
+  imageRotation?: number;
+  imageBrightness?: number;
+  imageContrast?: number;
+  imageSaturate?: number;
+  titleColor?: string;
+  bodyColor?: string;
+};
+
+type SlideEditorSettingKey = keyof SlideEditorSettings;
+
+type NormalizedSlideEditorSettings = {
+  titleOffsetX: number;
+  titleOffsetY: number;
+  titleScale: number;
+  bodyOffsetX: number;
+  bodyOffsetY: number;
+  bodyScale: number;
+  imageOffsetX: number;
+  imageOffsetY: number;
+  imageScale: number;
+  imageRotation: number;
+  imageBrightness: number;
+  imageContrast: number;
+  imageSaturate: number;
+  titleColor?: string;
+  bodyColor?: string;
+};
+
 const topicSuggestions = [
   
 ];
@@ -68,9 +117,32 @@ const BRAND_SECONDARY = "#fe6e00";
 const FLAVIO_PROFILE_NAME = "Flávio Vasconcelos";
 const FLAVIO_PROFILE_HANDLE = "@comflavio";
 const FLAVIO_PROFILE_AVATAR_URL = "/flavio-avatar.png";
+const FV_DARK = "#0f172a";
+const FV_GOLD = "#c9a227";
+const FV_BLUE = "#2196F3";
+const FV_GRAY = "#6b7280";
 const KRYTHOS_PROFILE_NAME = "krythoslab";
 const KRYTHOS_PROFILE_HANDLE = "@krythoslab";
 const KRYTHOS_PROFILE_AVATAR_URL = "/krythoslab-avatar.png";
+const ALLE_ORANGE_BG = "#F47B20";
+const ALLE_PURPLE_BG = "#7B2FBE";
+const ALLE_DARK_TEXT = "#1E0A01";
+const ALLE_SHAPE_LIGHT_ORANGE = "#F99040";
+const ALLE_SHAPE_DARK_ORANGE = "#CC5500";
+const ALLE_SHAPE_DARK_PURPLE = "#5B1D9A";
+const ALLE_PROFILE_NAME = "Alle Energia";
+const ALLE_PROFILE_HANDLE = "@alleenergia";
+const ALLE_PROFILE_AVATAR_URL = "/alle-avatar.png";
+
+const FONT_OPTIONS = [
+  { id: "default", label: "Padrão (Arial)", value: "Arial, Helvetica, sans-serif" },
+  { id: "serif", label: "Serifada (Georgia)", value: "Georgia, 'Times New Roman', serif" },
+  { id: "rounded", label: "Arredondada (Verdana)", value: "Verdana, Geneva, sans-serif" },
+  { id: "compact", label: "Compacta (Impact)", value: "Impact, 'Arial Narrow', sans-serif" },
+  { id: "mono", label: "Mono (Courier)", value: "'Courier New', Courier, monospace" },
+] as const;
+
+type FontOptionId = (typeof FONT_OPTIONS)[number]["id"];
 
 type ProfileModel = {
   id: string;
@@ -83,9 +155,15 @@ type ProfileModel = {
 const PROFILE_MODELS: ProfileModel[] = [
   { id: "flavio", name: FLAVIO_PROFILE_NAME, handle: FLAVIO_PROFILE_HANDLE, initials: "FV", avatarUrl: FLAVIO_PROFILE_AVATAR_URL },
   { id: "krythos", name: KRYTHOS_PROFILE_NAME, handle: KRYTHOS_PROFILE_HANDLE, initials: "KL", avatarUrl: KRYTHOS_PROFILE_AVATAR_URL },
+  { id: "alle-laranja", name: ALLE_PROFILE_NAME, handle: ALLE_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_PROFILE_AVATAR_URL },
+  { id: "alle-roxo", name: ALLE_PROFILE_NAME, handle: ALLE_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_PROFILE_AVATAR_URL },
 ];
 
-const slideCountOptions = [3, 5, 7, 10];
+const slideCountOptions = [1, 3, 5, 7, 10];
+const carouselFormatOptions = [
+  { id: "feed", label: "Feed", description: "Tamanho atual (4:5)" },
+  { id: "story", label: "Story", description: "9:16 (1080x1920)" },
+] as const;
 
 const deliveryHighlights = [
   {
@@ -128,6 +206,9 @@ type SlideRenderInput = {
   profileHandle?: string;
   profileInitials?: string;
   profileId?: string;
+  fontFamily?: string;
+  accentColor?: string;
+  backgroundColor?: string;
 };
 
 type TemplateDrivenTone = "light" | "dark";
@@ -174,6 +255,133 @@ const ZIP_CRC_TABLE = (() => {
 })();
 
 const embeddedAssetCache = new Map<string, Promise<string | undefined>>();
+
+const DEFAULT_SLIDE_EDITOR_SETTINGS: NormalizedSlideEditorSettings = {
+  titleOffsetX: 0,
+  titleOffsetY: 0,
+  titleScale: 1,
+  bodyOffsetX: 0,
+  bodyOffsetY: 0,
+  bodyScale: 1,
+  imageOffsetX: 0,
+  imageOffsetY: 0,
+  imageScale: 1,
+  imageRotation: 0,
+  imageBrightness: 100,
+  imageContrast: 100,
+  imageSaturate: 100,
+  titleColor: undefined,
+  bodyColor: undefined,
+};
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeOptionalHexColor(value?: string) {
+  if (!value) return undefined;
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : undefined;
+}
+
+function normalizeSlideEditorSettings(
+  settings?: SlideEditorSettings
+): NormalizedSlideEditorSettings {
+  return {
+    titleOffsetX: clampNumber(settings?.titleOffsetX ?? 0, -320, 320),
+    titleOffsetY: clampNumber(settings?.titleOffsetY ?? 0, -320, 320),
+    titleScale: clampNumber(settings?.titleScale ?? 1, 0.7, 1.6),
+    bodyOffsetX: clampNumber(settings?.bodyOffsetX ?? 0, -320, 320),
+    bodyOffsetY: clampNumber(settings?.bodyOffsetY ?? 0, -320, 320),
+    bodyScale: clampNumber(settings?.bodyScale ?? 1, 0.7, 1.6),
+    imageOffsetX: clampNumber(settings?.imageOffsetX ?? 0, -360, 360),
+    imageOffsetY: clampNumber(settings?.imageOffsetY ?? 0, -360, 360),
+    imageScale: clampNumber(settings?.imageScale ?? 1, 0.7, 2),
+    imageRotation: clampNumber(settings?.imageRotation ?? 0, -45, 45),
+    imageBrightness: clampNumber(settings?.imageBrightness ?? 100, 50, 160),
+    imageContrast: clampNumber(settings?.imageContrast ?? 100, 50, 180),
+    imageSaturate: clampNumber(settings?.imageSaturate ?? 100, 0, 200),
+    titleColor: sanitizeOptionalHexColor(settings?.titleColor),
+    bodyColor: sanitizeOptionalHexColor(settings?.bodyColor),
+  };
+}
+
+function buildEditorTransform(
+  offsetX: number,
+  offsetY: number,
+  scale = 1,
+  rotation = 0
+) {
+  return `translate(${offsetX}px, ${offsetY}px) scale(${scale}) rotate(${rotation}deg)`;
+}
+
+function applySlideEditorSettings(svg: string, settings?: SlideEditorSettings) {
+  if (!settings) {
+    return svg;
+  }
+
+  const normalized = normalizeSlideEditorSettings(settings);
+  const styleRules = [
+    `.editor-title-layer{transform-box:fill-box;transform-origin:center center;transform:${buildEditorTransform(
+      normalized.titleOffsetX,
+      normalized.titleOffsetY,
+      normalized.titleScale
+    )};}`,
+    `.editor-body-layer{transform-box:fill-box;transform-origin:center center;transform:${buildEditorTransform(
+      normalized.bodyOffsetX,
+      normalized.bodyOffsetY,
+      normalized.bodyScale
+    )};}`,
+    `.editor-image,.editor-image-layer{transform-box:fill-box;transform-origin:center center;transform:${buildEditorTransform(
+      normalized.imageOffsetX,
+      normalized.imageOffsetY,
+      normalized.imageScale,
+      normalized.imageRotation
+    )};}`,
+    `.editor-image{filter:brightness(${normalized.imageBrightness}%) contrast(${normalized.imageContrast}%) saturate(${normalized.imageSaturate}%);}`,
+    normalized.titleColor
+      ? `.editor-title-layer,.editor-title-layer text,.editor-title-layer tspan{fill:${normalized.titleColor}!important;}`
+      : "",
+    normalized.bodyColor
+      ? `.editor-body-layer,.editor-body-layer text,.editor-body-layer tspan{fill:${normalized.bodyColor}!important;}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  if (!styleRules) {
+    return svg;
+  }
+
+  return svg.replace(/(<svg\b[^>]*>)/, `$1<style>${styleRules}</style>`);
+}
+
+function clearRenderedSlideAsset(slide: CarouselSlide): CarouselSlide {
+  return {
+    ...slide,
+    renderedImageUrl: undefined,
+  };
+}
+
+function clearRenderedSlideAssets(slides: CarouselSlide[]) {
+  return slides.map((slide) => clearRenderedSlideAsset(slide));
+}
+
+function slideSupportsImageEditor(
+  slide: CarouselSlide,
+  index: number,
+  total: number,
+  profileId?: string
+) {
+  if (slide.designTemplateUrl) {
+    return true;
+  }
+
+  if (profileId === "krythos") {
+    return index === 0;
+  }
+
+  return index < total - 1;
+}
 
 function getStyleLabel(style: string) {
   if (!style.trim()) {
@@ -569,15 +777,52 @@ function createZipBlob(entries: ZipEntry[]) {
 }
 
 function buildSlideSvg(input: SlideRenderInput) {
+  if (input.style === "importado") {
+    const url = toAbsoluteClientAssetUrl(input.slide.renderedImageUrl || input.slide.imageUrl) ?? "";
+    return `<div style="width:100%;height:100%;background:url('${url}') center/cover no-repeat;display:block;"></div>`;
+  }
+
+  let svg: string;
   if (input.slide.designTemplateUrl) {
-    return buildTemplateDrivenSlideSvg(input);
+    svg = buildTemplateDrivenSlideSvg(input);
+  } else if (input.profileId === "krythos") {
+    if (input.index === 0) svg = buildKrythosHookSlideSvg(input);
+    else if (input.index === input.total - 1) svg = buildKrythosCTASlideSvg(input);
+    else svg = buildKrythosContentSlideSvg(input);
+  } else if (input.profileId === "alle-laranja" || input.profileId === "alle-roxo") {
+    if (input.index === 0) svg = buildAlleHookSlideSvg(input);
+    else if (input.index === input.total - 1) svg = buildAlleCTASlideSvg(input);
+    else svg = buildAlleContentSlideSvg(input);
+  } else {
+    if (input.index === 0) svg = buildFlavioHookSlideSvg(input);
+    else if (input.index === input.total - 1) svg = buildFlavioCTASlideSvg(input);
+    else svg = buildFlavioContentSlideSvg(input);
   }
 
-  if (input.profileId === "krythos") {
-    return buildKrythosModelSlideSvg(input);
+  const resolvedFont = input.fontFamily ?? input.slide.fontFamily;
+  if (resolvedFont) {
+    svg = svg.replace(/(<svg\b[^>]*>)/, `$1<style>text,tspan{font-family:${resolvedFont}!important}</style>`);
   }
 
-  return buildFlavioModelSlideSvg(input);
+  const resolvedAccent = input.accentColor ?? input.slide.accentColor;
+  const resolvedBg = input.backgroundColor ?? input.slide.backgroundColor;
+  if (resolvedAccent || resolvedBg) {
+    if (input.profileId === "krythos") {
+      if (resolvedAccent) svg = svg.replaceAll("#29d9ff", resolvedAccent).replaceAll("#29D9FF", resolvedAccent);
+      if (resolvedBg) svg = svg.replaceAll("#0d1117", resolvedBg).replaceAll("#0D1117", resolvedBg);
+    } else if (input.profileId === "alle-laranja") {
+      if (resolvedAccent) svg = svg.replaceAll(ALLE_DARK_TEXT, resolvedAccent);
+      if (resolvedBg) svg = svg.replaceAll(ALLE_ORANGE_BG, resolvedBg);
+    } else if (input.profileId === "alle-roxo") {
+      if (resolvedAccent) svg = svg.replaceAll(ALLE_ORANGE_BG, resolvedAccent);
+      if (resolvedBg) svg = svg.replaceAll(ALLE_PURPLE_BG, resolvedBg);
+    } else {
+      if (resolvedAccent) svg = svg.replaceAll(FV_GOLD, resolvedAccent);
+      if (resolvedBg) svg = svg.replaceAll(FV_BLUE, resolvedBg);
+    }
+  }
+
+  return applySlideEditorSettings(svg, input.slide.editorSettings);
 }
 
 function resolveTemplateDrivenTone(styleBrief?: string, templateName?: string): TemplateDrivenTone {
@@ -721,42 +966,46 @@ function buildTemplateDrivenSlideSvg(input: SlideRenderInput) {
 
   <text x="${textX}" y="184" fill="${chipAccent}" font-size="22" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.4" font-weight="700">${escapeXml(topicLabel)}</text>
 
-  <text x="${textX}" y="${titleStartY}" fill="${titleFill}" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
-    ${titleLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+  <g class="editor-title-layer">
+    <text x="${textX}" y="${titleStartY}" fill="${titleFill}" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
+      ${titleLines
+        .map(
+          (line, lineIndex) =>
+            `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
+  </g>
 
-  <text x="${textX}" y="${bodyStartY}" fill="${bodyFill}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
-    ${bodyLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+  <g class="editor-body-layer">
+    <text x="${textX}" y="${bodyStartY}" fill="${bodyFill}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${bodyLines
+        .map(
+          (line, lineIndex) =>
+            `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
 
-  <rect x="${textX}" y="610" width="412" height="62" rx="31" fill="${tone === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(15, 23, 42, 0.06)"}" stroke="${panelStroke}" />
-  <text x="${textX + 206}" y="650" text-anchor="middle" fill="${titleFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.index === input.total - 1 ? "CTA do fechamento" : "Mensagem principal")}</text>
+    <rect x="${textX}" y="610" width="412" height="62" rx="31" fill="${tone === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(15, 23, 42, 0.06)"}" stroke="${panelStroke}" />
+    <text x="${textX + 206}" y="650" text-anchor="middle" fill="${titleFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.index === input.total - 1 ? "CTA do fechamento" : "Mensagem principal")}</text>
 
-  <text x="${textX}" y="${kickerStartY}" fill="${mutedFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="500">
-    ${kickerLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+    <text x="${textX}" y="${kickerStartY}" fill="${mutedFill}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${kickerLines
+        .map(
+          (line, lineIndex) =>
+            `<tspan x="${textX}" dy="${lineIndex === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
+  </g>
 
   <rect x="72" y="792" width="936" height="486" rx="34" fill="${generatedImageUrl ? "rgba(255, 255, 255, 0.12)" : `url(#${imageFallbackGradientId})`}" stroke="${panelStroke}" />
   ${
     generatedImageUrl
       ? `
   <g clip-path="url(#${imageClipId})">
-    <image href="${escapeXml(generatedImageUrl)}" x="72" y="${imageYOffset}" width="936" height="486" preserveAspectRatio="xMidYMid slice" />
+    <image class="editor-image" href="${escapeXml(generatedImageUrl)}" x="72" y="${imageYOffset}" width="936" height="486" preserveAspectRatio="xMidYMid slice" />
     <rect x="72" y="792" width="936" height="486" fill="${imageOverlay}" />
   </g>
       `
@@ -772,205 +1021,836 @@ function buildTemplateDrivenSlideSvg(input: SlideRenderInput) {
   `.trim();
 }
 
-function buildFlavioModelSlideSvg(input: SlideRenderInput) {
-  const idSuffix = hashString(`${input.topic}-${input.index}-${input.slide.title}`);
-  const avatarClipId = `flavioAvatar-${idSuffix}`;
-  const fallbackGradientId = `fallbackImage-${idSuffix}`;
-  const coverImageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
-  const profileAvatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || FLAVIO_PROFILE_AVATAR_URL);
-  const titleSource = input.index === 0 ? input.hook || input.slide.title : input.slide.title;
-  const titleLines = wrapTextLines(titleSource, titleSource.length > 52 ? 17 : 20, 3);
-  const titleFontSize = titleLines.length >= 3 ? 58 : titleLines.some((line) => line.length > 18) ? 66 : 74;
-  const titleLineHeight = Math.round(titleFontSize * 1.28);
-  const summarySource = (
-    input.index === input.total - 1 && input.finalCta ? input.finalCta : input.slide.body
-  )
-    ?.replace(/\s+/g, " ")
-    .trim();
-  const summaryMaxLines = titleLines.length >= 3 ? 3 : 4;
-  const summaryLines = wrapTextLines(summarySource || input.topic, titleLines.length >= 3 ? 38 : 42, summaryMaxLines);
-  const summaryFontSize = summaryLines.length >= 4 ? 30 : summaryLines.length === 3 ? 32 : summaryLines.some((line) => line.length > 38) ? 34 : 38;
-  const summaryLineHeight = Math.round(summaryFontSize * 1.28);
-  const titleBlockHeight = (titleLines.length - 1) * titleLineHeight + titleFontSize;
-  const summaryBlockHeight = summaryLines.length > 0
-    ? (summaryLines.length - 1) * summaryLineHeight + summaryFontSize
-    : 0;
-  const textBlockGap = summaryLines.length > 0 ? (summaryLines.length >= 3 || titleLines.length >= 3 ? 42 : 58) : 0;
-  const textZoneTop = 304;
-  const textZoneBottom = 700;
-  const textBlockHeight = titleBlockHeight + textBlockGap + summaryBlockHeight;
-  const textBlockTop = textZoneTop + Math.max(0, (textZoneBottom - textZoneTop - textBlockHeight) / 2);
-  const titleStartY = Math.round(textBlockTop + titleFontSize * 0.78);
-  const summaryStartY = Math.round(
-    titleStartY + (titleLines.length - 1) * titleLineHeight + textBlockGap + summaryFontSize * 0.78
-  );
-  const summaryTextWidth = 640;
-  const summaryTextX = (1080 - summaryTextWidth) / 2;
-  const summaryMarkup = summaryLines
-    .map((line, lineIndex) => {
-      const shouldJustify =
-        lineIndex < summaryLines.length - 1 && line.split(" ").length > 3 && line.length > 28;
-      const positionAttributes = shouldJustify
-        ? `x="${summaryTextX}" text-anchor="start" textLength="${summaryTextWidth}" lengthAdjust="spacing"`
-        : `x="540" text-anchor="middle"`;
+// Helper: render two-tone title lines as separate <text> elements (one per line)
+// Line index 1 gets its first word in gold, the rest dark navy.
+function flavioTitleSvg(lines: string[], tfs: number, tlh: number, cx: number, startY: number, anchor: "middle" | "start"): string {
+  return lines.map((line, i) => {
+    const y = startY + i * tlh;
+    const xAttr = `x="${cx}"`;
+    const anchor_ = `text-anchor="${anchor}"`;
+    const base = `font-size="${tfs}" font-family="Arial, Helvetica, sans-serif" font-weight="800"`;
+    if (i === 1) {
+      const sp = line.indexOf(" ");
+      if (sp === -1) {
+        return `<text ${xAttr} y="${y}" ${anchor_} ${base} fill="${FV_GOLD}">${escapeXml(line)}</text>`;
+      }
+      const w1 = line.slice(0, sp);
+      const rest = line.slice(sp);
+      return `<text ${xAttr} y="${y}" ${anchor_} ${base}><tspan fill="${FV_GOLD}">${escapeXml(w1)}</tspan><tspan fill="${FV_DARK}">${escapeXml(rest)}</tspan></text>`;
+    }
+    return `<text ${xAttr} y="${y}" ${anchor_} ${base} fill="${FV_DARK}">${escapeXml(line)}</text>`;
+  }).join("\n  ");
+}
 
-      return `<text ${positionAttributes} y="${summaryStartY + lineIndex * summaryLineHeight}" fill="#242424" font-size="${summaryFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(line)}</text>`;
-    })
-    .join("");
-  const imageTop = 750;
-  const fallbackImageMarkup = `
-    <rect x="0" y="${imageTop}" width="1080" height="600" fill="url(#${fallbackGradientId})" />
-    <circle cx="276" cy="1006" r="170" fill="#0f172a" opacity="0.18" />
-    <circle cx="828" cy="932" r="230" fill="#475569" opacity="0.2" />
-    <path d="M0 1190L196 1038L346 1124L536 914L716 1054L868 934L1080 1094V1350H0V1190Z" fill="#111827" opacity="0.34" />
-    <path d="M0 1244L244 1096L410 1180L614 984L812 1132L1080 980V1350H0V1244Z" fill="#030712" opacity="0.38" />
-  `;
-  const imageMarkup = coverImageUrl
-    ? `<image href="${escapeXml(coverImageUrl)}" x="0" y="${imageTop}" width="1080" height="600" preserveAspectRatio="xMidYMid slice" />`
-    : fallbackImageMarkup;
+// ── GANCHO (slide 0) ─────────────────────────────────────────────────────────
+function buildFlavioHookSlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`${input.topic}-fh-${input.index}`);
+  const avClip = `fhAv-${id}`;
+  const imgClip = `fhImg-${id}`;
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || FLAVIO_PROFILE_AVATAR_URL);
+  const imgUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+
+  // Title — two-tone: line-2 first word = gold
+  const rawTitle = (input.hook || input.slide.title || input.topic).replace(/\s+/g, " ").trim();
+  const titleLines = wrapTextLines(rawTitle, 17, 3);
+  const tfs = titleLines.length >= 3 ? 72 : titleLines.length === 2 ? 84 : 90;
+  const tlh = Math.round(tfs * 1.22);
+  const titleBlockH = (titleLines.length - 1) * tlh + tfs;
+
+  // Summary — centered gray subtitle
+  const rawSummary = (input.slide.body || input.topic).replace(/\s+/g, " ").trim();
+  const sumLines = wrapTextLines(rawSummary, 38, 3);
+  const sfs = 32;
+  const slh = 42;
+
+  // Vertical layout
+  const blueY = 768;          // blue section starts here
+  const titleZoneTop = 220;   // below profile+separator
+  const titleZoneBot = blueY - 200; // leave room for underline + summary
+  const titleZoneMid = Math.round((titleZoneTop + titleZoneBot) / 2);
+  const titleTop = titleZoneMid - Math.round(titleBlockH / 2);
+  const titleBaseY = titleTop + Math.round(tfs * 0.78);
+  const titleBotPx = titleTop + titleBlockH;
+  const underlineY = titleBotPx + 28;
+  const sumStartY = underlineY + 8 + 36 + Math.round(sfs * 0.78);
+
+  // Dot grid — left margin, below profile
+  const dots = Array.from({ length: 9 }, (_, r) =>
+    Array.from({ length: 6 }, (_, c) =>
+      `<circle cx="${52 + c * 16}" cy="${440 + r * 18}" r="2.5" fill="#c8c8c8" opacity="0.6" />`
+    ).join("")
+  ).join("\n  ");
+
+  // Decorative quarter-circle arcs — top-right
+  const arcs = [100, 180, 260, 340, 420].map(r =>
+    `<path d="M${1080 - r},0 A${r},${r} 0 0 1 1080,${r}" fill="none" stroke="#e8ddd0" stroke-width="1.5" />`
+  ).join("\n  ");
+
+  // Blue area image markup
+  const imgH = 1350 - blueY;
+  const imgMarkup = imgUrl
+    ? `<image href="${escapeXml(imgUrl)}" x="0" y="${blueY}" width="1080" height="${imgH}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${imgClip})" />`
+    : "";
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
   <defs>
-    <clipPath id="${avatarClipId}">
-      <circle cx="132" cy="138" r="64" />
-    </clipPath>
-    <linearGradient id="${fallbackGradientId}" x1="0" y1="${imageTop}" x2="1080" y2="1350" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#cbd5e1" />
-      <stop offset="0.52" stop-color="#94a3b8" />
-      <stop offset="1" stop-color="#334155" />
-    </linearGradient>
+    <clipPath id="${avClip}"><circle cx="112" cy="108" r="56" /></clipPath>
+    <clipPath id="${imgClip}"><rect x="0" y="${blueY}" width="1080" height="${imgH}" /></clipPath>
+  </defs>
+
+  <!-- White background -->
+  <rect width="1080" height="1350" fill="#ffffff" />
+
+  <!-- Decorative arcs top-right -->
+  ${arcs}
+
+  <!-- Profile: avatar -->
+  <circle cx="112" cy="108" r="56" fill="#e5e7eb" />
+  <text x="112" y="124" text-anchor="middle" fill="${FV_DARK}" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileInitials || "FV")}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="56" y="52" width="112" height="112" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avClip})" />
+  <circle cx="112" cy="108" r="56" fill="none" stroke="#e5e7eb" stroke-width="2" />
+
+  <!-- Profile: name + verified + handle -->
+  <text x="196" y="100" fill="${FV_DARK}" font-size="40" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileName || FLAVIO_PROFILE_NAME)}</text>
+  <circle cx="666" cy="87" r="13" fill="#1d9bf0" />
+  <path d="M659 87.5L664.5 93L674 82" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+  <text x="196" y="142" fill="${FV_GRAY}" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(input.profileHandle || FLAVIO_PROFILE_HANDLE)}</text>
+
+  <g class="editor-title-layer">
+    <!-- Title (two-tone, centered) -->
+    ${flavioTitleSvg(titleLines, tfs, tlh, 540, titleBaseY, "middle")}
+
+    <!-- Gold underline (short, centered) -->
+    <rect x="495" y="${underlineY}" width="90" height="5" rx="2.5" fill="${FV_GOLD}" />
+  </g>
+
+  <g class="editor-body-layer">
+    <!-- Summary text -->
+    ${sumLines.map((l, i) => `<text x="540" y="${sumStartY + i * slh}" text-anchor="middle" fill="${FV_GRAY}" font-size="${sfs}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(l)}</text>`).join("\n  ")}
+  </g>
+
+  <!-- Dot grid (left margin) -->
+  ${dots}
+
+  <!-- Blue image section -->
+  <rect x="0" y="${blueY}" width="1080" height="${imgH}" fill="${FV_BLUE}" />
+  ${imgMarkup.replace("<image ", "<image class=\"editor-image\" ")}
+
+  <!-- Swipe indicator bottom-right -->
+  <text x="976" y="${blueY + imgH - 60}" text-anchor="end" fill="rgba(255,255,255,0.92)" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="400">Arraste para o lado</text>
+  <text x="976" y="${blueY + imgH - 28}" text-anchor="end" fill="rgba(255,255,255,0.92)" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="400">e confira o conte&#250;do</text>
+  <circle cx="1032" cy="${blueY + imgH - 44}" r="26" fill="${FV_DARK}" opacity="0.5" />
+  <text x="1032" y="${blueY + imgH - 36}" text-anchor="middle" fill="#ffffff" font-size="26" font-family="Arial, Helvetica, sans-serif">&#8594;</text>
+</svg>`.trim();
+}
+
+// ── DESENVOLVIMENTO (slides intermediários) ──────────────────────────────────
+function buildFlavioContentSlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`${input.topic}-fc-${input.index}`);
+  const avClip = `fcAv-${id}`;
+  const imgClip = `fcImg-${id}`;
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || FLAVIO_PROFILE_AVATAR_URL);
+  const imgUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+
+  // Title — two-tone, left-aligned
+  const rawTitle = input.slide.title.replace(/\s+/g, " ").trim();
+  const titleLines = wrapTextLines(rawTitle, 15, 3);
+  const tfs = titleLines.length >= 3 ? 52 : titleLines.length === 2 ? 60 : 68;
+  const tlh = Math.round(tfs * 1.2);
+  const titleBlockH = (titleLines.length - 1) * tlh + tfs;
+
+  // Body text — split into sentences for paragraphs / quote / callout
+  const rawBody = (input.slide.body || "").replace(/\s+/g, " ").trim();
+  const sentences = rawBody.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const para1Text = sentences.slice(0, Math.ceil(sentences.length / 3)).join(" ");
+  const quoteText = sentences.slice(Math.ceil(sentences.length / 3), Math.ceil(sentences.length * 2 / 3)).join(" ") || para1Text;
+  const calloutText = sentences.slice(Math.ceil(sentences.length * 2 / 3)).join(" ") || rawTitle;
+
+  const bfs = 28, blh = 42;
+  const para1Lines = wrapTextLines(para1Text, 44, 4);
+  const quoteLines = wrapTextLines(quoteText, 42, 4);
+  const calloutLines = wrapTextLines(calloutText, 46, 2);
+
+  // Layout constants
+  const PL = 80, PR = 80;
+  const CW = 1080 - PL - PR; // 920
+
+  // Profile header
+  const avCy = 74;
+  const sepY = 132;
+
+  // Title block
+  const titleX = PL;
+  const titleY = 162;
+  const titleBaseY = titleY + Math.round(tfs * 0.78);
+  const titleBotY = titleY + titleBlockH;
+
+  // Gold underline (left-aligned, short)
+  const ulY = titleBotY + 16;
+
+  // Document icon + paragraph 1
+  const iconY = ulY + 20;   // top of content row
+  const iconCx = PL + 22;
+  const iconCy = iconY + 30;
+  const para1X = PL + 58;
+  const para1Y = iconY + Math.round(bfs * 0.82);
+  const para1H = para1Lines.length * blh;
+
+  // Quote block
+  const quoteTopY = Math.max(iconY + para1H + 20, iconY + 100);
+  const quotePad = 22;
+  const quoteH = Math.max(80, quoteLines.length * blh + quotePad * 2);
+  const quoteBotY = quoteTopY + quoteH;
+
+  // Callout row (icon circle + separator + text)
+  const calloutY = quoteBotY + 24;
+  const calloutH = calloutLines.length > 1 ? 80 : 58;
+  const calloutBotY = calloutY + calloutH;
+
+  // Blue rounded image at bottom
+  const imgTopY = Math.max(calloutBotY + 28, 920);
+  const imgH = 1310 - imgTopY;
+  const imgRx = 24;
+
+  const imgMarkup = imgUrl
+    ? `<image href="${escapeXml(imgUrl)}" x="${PL}" y="${imgTopY}" width="${CW}" height="${imgH}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${imgClip})" />`
+    : "";
+
+  // Document icon SVG (gold outline, centered at iconCx, iconCy)
+  const docIcon = `
+  <rect x="${iconCx - 18}" y="${iconCy - 22}" width="36" height="46" rx="5" fill="none" stroke="${FV_GOLD}" stroke-width="2.2" />
+  <line x1="${iconCx - 10}" y1="${iconCy - 9}" x2="${iconCx + 10}" y2="${iconCy - 9}" stroke="${FV_GOLD}" stroke-width="1.8" />
+  <line x1="${iconCx - 10}" y1="${iconCy}" x2="${iconCx + 10}" y2="${iconCy}" stroke="${FV_GOLD}" stroke-width="1.8" />
+  <circle cx="${iconCx + 5}" cy="${iconCy + 14}" r="8" fill="none" stroke="${FV_GOLD}" stroke-width="1.8" />
+  <line x1="${iconCx + 11}" y1="${iconCy + 20}" x2="${iconCx + 17}" y2="${iconCy + 26}" stroke="${FV_GOLD}" stroke-width="1.8" stroke-linecap="round" />`;
+
+  // Target/goal icon (gold, centered at callout left)
+  const tgtCx = PL + 24;
+  const tgtCy = calloutY + Math.round(calloutH / 2);
+  const tgtIcon = `
+  <circle cx="${tgtCx}" cy="${tgtCy}" r="20" fill="none" stroke="${FV_GOLD}" stroke-width="2" />
+  <circle cx="${tgtCx}" cy="${tgtCy}" r="12" fill="none" stroke="${FV_GOLD}" stroke-width="2" />
+  <circle cx="${tgtCx}" cy="${tgtCy}" r="4" fill="${FV_GOLD}" />
+  <line x1="${tgtCx + 12}" y1="${tgtCy - 12}" x2="${tgtCx + 22}" y2="${tgtCy - 22}" stroke="${FV_GOLD}" stroke-width="2" stroke-linecap="round" />
+  <path d="M${tgtCx + 17},${tgtCy - 25} L${tgtCx + 24},${tgtCy - 22} L${tgtCx + 21},${tgtCy - 15}" fill="none" stroke="${FV_GOLD}" stroke-width="2" stroke-linejoin="round" />`;
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <clipPath id="${avClip}"><circle cx="74" cy="${avCy}" r="44" /></clipPath>
+    <clipPath id="${imgClip}"><rect x="${PL}" y="${imgTopY}" width="${CW}" height="${imgH}" rx="${imgRx}" /></clipPath>
   </defs>
 
   <rect width="1080" height="1350" fill="#ffffff" />
 
-  <circle cx="132" cy="138" r="64" fill="#111827" />
-  <text x="132" y="154" text-anchor="middle" fill="#ffffff" font-size="36" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileInitials || "FV")}</text>
-  <image href="${escapeXml(profileAvatarUrl || "")}" x="68" y="74" width="128" height="128" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avatarClipId})" />
-  <circle cx="132" cy="138" r="64" fill="none" stroke="#e5e7eb" stroke-width="2" />
+  <!-- Compact profile header -->
+  <circle cx="74" cy="${avCy}" r="44" fill="#e5e7eb" />
+  <text x="74" y="${avCy + 12}" text-anchor="middle" fill="${FV_DARK}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileInitials || "FV")}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="30" y="${avCy - 44}" width="88" height="88" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avClip})" />
+  <circle cx="74" cy="${avCy}" r="44" fill="none" stroke="#e5e7eb" stroke-width="1.5" />
+  <text x="138" y="${avCy - 8}" fill="${FV_DARK}" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileName || FLAVIO_PROFILE_NAME)}</text>
+  <circle cx="566" cy="${avCy - 20}" r="11" fill="#1d9bf0" />
+  <path d="M560 ${avCy - 19.5}L565.5 ${avCy - 14}L575 ${avCy - 25}" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <text x="138" y="${avCy + 20}" fill="${FV_GRAY}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(input.profileHandle || FLAVIO_PROFILE_HANDLE)}</text>
+  <text x="${PL + CW}" y="${avCy - 8}" text-anchor="end" fill="${FV_GRAY}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="400">${input.index + 1}/${input.total}</text>
 
-  <text x="222" y="140" fill="#050505" font-size="44" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileName || FLAVIO_PROFILE_NAME)}</text>
-  <circle cx="682" cy="126" r="15" fill="#1d9bf0" />
-  <path d="M675 126.5L680.5 132L690 121" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" />
-  <text x="222" y="185" fill="#9ca3af" font-size="35" font-family="Arial, Helvetica, sans-serif" font-weight="500">${escapeXml(input.profileHandle || FLAVIO_PROFILE_HANDLE)}</text>
+  <!-- Separator -->
+  <line x1="${PL}" y1="${sepY}" x2="${PL + CW}" y2="${sepY}" stroke="#e5e7eb" stroke-width="1.5" />
 
-  <text x="540" y="${titleStartY}" text-anchor="middle" fill="#050505" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
-    ${titleLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="540" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+  <g class="editor-title-layer">
+    <!-- Title (two-tone, left-aligned) -->
+    ${flavioTitleSvg(titleLines, tfs, tlh, titleX, titleBaseY, "start")}
 
-  ${summaryMarkup}
+    <!-- Gold underline (left-aligned, short) -->
+    <rect x="${PL}" y="${ulY}" width="72" height="4" rx="2" fill="${FV_GOLD}" />
+  </g>
 
-  ${imageMarkup}
-  <rect x="0" y="${imageTop}" width="1080" height="2" fill="#f3f4f6" />
-</svg>
-  `.trim();
+  <g class="editor-body-layer">
+    <!-- Document icon -->
+    ${docIcon}
+
+    <!-- Paragraph 1 (to the right of icon) -->
+    ${para1Lines.map((l, i) => `<text x="${para1X}" y="${para1Y + i * blh}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(l)}</text>`).join("\n  ")}
+
+    <!-- Quote block -->
+    <rect x="${PL}" y="${quoteTopY}" width="${CW}" height="${quoteH}" rx="8" fill="#f8f8f8" />
+    <rect x="${PL}" y="${quoteTopY}" width="4" height="${quoteH}" rx="2" fill="${FV_GOLD}" />
+    <text x="${PL + 20}" y="${quoteTopY + 28}" fill="${FV_GOLD}" font-size="36" font-family="Georgia, serif" font-weight="700">&#8220;</text>
+    ${quoteLines.map((l, i) => {
+      // Bold emphasis: first word of first line is bold
+      if (i === 0) {
+        const sp = l.indexOf(" ");
+        if (sp === -1) return `<text x="${PL + 54}" y="${quoteTopY + quotePad + Math.round(bfs * 0.82) + i * blh}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(l)}</text>`;
+        const bold = l.slice(0, sp);
+        const rest = l.slice(sp);
+        return `<text x="${PL + 54}" y="${quoteTopY + quotePad + Math.round(bfs * 0.82) + i * blh}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif"><tspan font-weight="700">${escapeXml(bold)}</tspan><tspan font-weight="400">${escapeXml(rest)}</tspan></text>`;
+      }
+      return `<text x="${PL + 54}" y="${quoteTopY + quotePad + Math.round(bfs * 0.82) + i * blh}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(l)}</text>`;
+    }).join("\n  ")}
+
+    <!-- Target callout row -->
+    ${tgtIcon}
+    <line x1="${tgtCx + 26}" y1="${calloutY + 8}" x2="${tgtCx + 26}" y2="${calloutY + calloutH - 8}" stroke="#e5e7eb" stroke-width="1.5" />
+    ${calloutLines.map((l, i) => {
+      if (i === 0) {
+        const sp = l.indexOf(" ");
+        if (sp === -1) return `<text x="${tgtCx + 38}" y="${calloutY + Math.round(calloutH / 2) - (calloutLines.length > 1 ? 10 : 0) + Math.round(bfs * 0.5)}" fill="${FV_GOLD}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(l)}</text>`;
+        const bold = l.slice(0, sp);
+        const rest = l.slice(sp);
+        const cy = calloutY + Math.round(calloutH / 2) - (calloutLines.length > 1 ? 14 : 0) + Math.round(bfs * 0.5);
+        return `<text x="${tgtCx + 38}" y="${cy}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif"><tspan fill="${FV_GOLD}" font-weight="700">${escapeXml(bold)}</tspan><tspan font-weight="400"> ${escapeXml(rest.trim())}</tspan></text>`;
+      }
+      return `<text x="${tgtCx + 38}" y="${calloutY + Math.round(calloutH / 2) + 20 + Math.round(bfs * 0.5)}" fill="${FV_DARK}" font-size="${bfs}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(l)}</text>`;
+    }).join("\n  ")}
+  </g>
+
+  <!-- Blue rounded image block -->
+  <rect x="${PL}" y="${imgTopY}" width="${CW}" height="${imgH}" rx="${imgRx}" fill="${FV_BLUE}" />
+  <g clip-path="url(#${imgClip})">
+    ${imgMarkup.replace("<image ", "<image class=\"editor-image\" ")}
+  </g>
+</svg>`.trim();
 }
 
-function buildKrythosModelSlideSvg(input: SlideRenderInput) {
-  const idSuffix = hashString(`${input.topic}-${input.index}-${input.slide.title}`);
-  const overlayId = `krOverlay-${idSuffix}`;
-  const fallbackId = `krFallback-${idSuffix}`;
+// ── CTA (último slide) ───────────────────────────────────────────────────────
+function buildFlavioCTASlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`${input.topic}-fcta-${input.index}`);
+  const avClip = `fctaAv-${id}`;
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || FLAVIO_PROFILE_AVATAR_URL);
 
-  const ACCENT_CYAN = "#29d9ff";
-  const imageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
-  const profileAvatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || KRYTHOS_PROFILE_AVATAR_URL);
+  // Profile
+  const avR = 58, avCx = 112, avCy = 248;
+  const nameY = avCy + avR + 56;  // baseline of name
+  const handleY = nameY + 36;
 
-  const rawTitle = (input.index === 0 ? input.hook || input.slide.title : input.slide.title)
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  // Separator with gold center
+  const sepY = handleY + 36;
 
-  const MAX_CHARS = 14;
-  const MAX_LINES = 4;
-  const titleLines = wrapTextLines(rawTitle, MAX_CHARS, MAX_LINES);
+  // Large title (two-tone, left-aligned)
+  const rawCta = (input.finalCta || "Não deixe esse conteúdo se perder.").replace(/\s+/g, " ").trim();
+  const sentences = rawCta.split(/(?<=[.!?])\s+/);
+  const bigTitleRaw = sentences[0] || rawCta;
+  const subtitleRaw = sentences.slice(1).join(" ") || "Salve agora e volte quando precisar aplicar.";
 
-  const FONT_SIZE = titleLines.length >= 4 ? 82 : titleLines.length >= 3 ? 90 : titleLines.length >= 2 ? 100 : 112;
-  const LINE_HEIGHT = Math.round(FONT_SIZE * 1.18);
+  const ctaTitleLines = wrapTextLines(bigTitleRaw, 13, 4);
+  const ctaFs = ctaTitleLines.length >= 4 ? 82 : ctaTitleLines.length >= 3 ? 92 : ctaTitleLines.length === 2 ? 100 : 108;
+  const ctaLh = Math.round(ctaFs * 1.18);
+  const ctaTitleBlockH = (ctaTitleLines.length - 1) * ctaLh + ctaFs;
 
-  const accentStartLine = titleLines.length <= 1 ? 0 : Math.ceil(titleLines.length * 0.62);
+  const titleStartY = sepY + 60;
+  const titleBaseY = titleStartY + Math.round(ctaFs * 0.78);
+  const titleBotY = titleStartY + ctaTitleBlockH;
 
-  const BOTTOM_PADDING = 100;
-  const MAX_TEXT_BOTTOM = 1350 - BOTTOM_PADDING;
-  const titleBlockHeight = (titleLines.length - 1) * LINE_HEIGHT + FONT_SIZE;
+  // Subtitle
+  const subLines = wrapTextLines(subtitleRaw, 30, 2);
+  const subFs = 40, subLh = 52;
+  const subY = titleBotY + 36 + Math.round(subFs * 0.78);
+  const subBotY = subY + (subLines.length - 1) * subLh + subFs * 0.22;
 
-  const PILL_H = 80;
-  const PILL_AVATAR_R = 30;
-  const GAP_PILL_TEXT = 44;
-  const totalBlockHeight = PILL_H + GAP_PILL_TEXT + titleBlockHeight;
-  const CONTENT_CENTER = 1060;
-  const PILL_CY = Math.min(
-    Math.round(CONTENT_CENTER - totalBlockHeight / 2 + PILL_H / 2),
-    Math.round(MAX_TEXT_BOTTOM - titleBlockHeight - GAP_PILL_TEXT - PILL_H / 2)
-  );
+  // 4 icons
+  const iconTopY = Math.round(subBotY) + 64;
+  const iconCy = iconTopY + 52;
+  const iconR = 50;
+  const cols = [136, 406, 676, 946];
+  const sepX = [271, 541, 811];
 
-  const profileHandle = input.profileHandle || "@krythoslab";
-  const profileInitials = input.profileInitials || "K";
-  const handleWidth = profileHandle.length * 23;
-  const PILL_W = PILL_AVATAR_R * 2 + 24 + handleWidth + 32;
-  const PILL_X = (1080 - PILL_W) / 2;
-  const AVATAR_CX = PILL_X + PILL_AVATAR_R + 12;
-  const HANDLE_X = AVATAR_CX + PILL_AVATAR_R + 18;
+  // Icon outlines (gold, stroke-only) and separators
+  const iconData = [
+    {
+      label: "CURTA",
+      desc1: "Se este conteúdo",
+      desc2: "fez sentido para você.",
+      icon: `<path d="M${cols[0]},${iconCy + 16} C${cols[0] - 26},${iconCy - 2} ${cols[0] - 26},${iconCy - 22} ${cols[0]},${iconCy - 10} C${cols[0] + 26},${iconCy - 22} ${cols[0] + 26},${iconCy - 2} ${cols[0]},${iconCy + 16}Z" fill="none" stroke="${FV_GOLD}" stroke-width="2.8" />`
+    },
+    {
+      label: "COMENTE",
+      desc1: "Compartilhe sua",
+      desc2: "opinião ou dúvida.",
+      icon: `<rect x="${cols[1] - 26}" y="${iconCy - 18}" width="52" height="36" rx="8" fill="none" stroke="${FV_GOLD}" stroke-width="2.8" /><path d="M${cols[1] - 10},${iconCy + 18} L${cols[1]},${iconCy + 30} L${cols[1] + 10},${iconCy + 18}" fill="none" stroke="${FV_GOLD}" stroke-width="2.8" stroke-linejoin="round" />`
+    },
+    {
+      label: "COMPARTILHE",
+      desc1: "Envie para alguém",
+      desc2: "que precisa ver isso.",
+      icon: `<path d="M${cols[2] - 24},${iconCy + 16} L${cols[2] + 24},${iconCy - 16} M${cols[2] + 10},${iconCy - 16} L${cols[2] + 24},${iconCy - 16} L${cols[2] + 24},${iconCy - 2}" fill="none" stroke="${FV_GOLD}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />`
+    },
+    {
+      label: "SALVE",
+      desc1: "Guarde para revisar",
+      desc2: "e aplicar depois.",
+      icon: `<path d="M${cols[3] - 18},${iconCy - 22} L${cols[3] + 18},${iconCy - 22} L${cols[3] + 18},${iconCy + 22} L${cols[3]},${iconCy + 10} L${cols[3] - 18},${iconCy + 22}Z" fill="none" stroke="${FV_GOLD}" stroke-width="2.8" stroke-linejoin="round" />`
+    },
+  ];
 
-  const TEXT_ZONE_TOP = PILL_CY + PILL_H / 2 + GAP_PILL_TEXT;
-  const titleStartY = TEXT_ZONE_TOP + FONT_SIZE * 0.82;
-
-  const MAX_TEXT_WIDTH = 1000;
-  const titleMarkup = titleLines
-    .map((line, i) => {
-      const isAccent = i >= accentStartLine;
-      const estimatedWidth = line.length * FONT_SIZE * 0.62;
-      const needsClamp = estimatedWidth > MAX_TEXT_WIDTH;
-      const clampAttr = needsClamp
-        ? ` textLength="${MAX_TEXT_WIDTH}" lengthAdjust="spacingAndGlyphs"`
-        : "";
-      return `<text x="540" y="${titleStartY + i * LINE_HEIGHT}" text-anchor="middle" fill="${isAccent ? ACCENT_CYAN : "#ffffff"}" font-size="${FONT_SIZE}" font-family="Arial Black, Arial, Helvetica, sans-serif" font-weight="900"${clampAttr}>${escapeXml(line)}</text>`;
-    })
-    .join("\n  ");
-
-  const imageMarkup = imageUrl
-    ? `<image href="${escapeXml(imageUrl)}" x="0" y="0" width="1080" height="1350" preserveAspectRatio="xMidYMid slice" />`
-    : `<rect width="1080" height="1350" fill="url(#${fallbackId})" />`;
-
-  const slideLabel = `${input.index + 1}/${input.total}`;
+  const labelY = iconCy + iconR + 32;
+  const desc1Y = labelY + 32;
+  const desc2Y = desc1Y + 28;
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
   <defs>
-    <linearGradient id="${overlayId}" x1="0" y1="0" x2="0" y2="1350" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#000000" stop-opacity="0" />
-      <stop offset="40%" stop-color="#000000" stop-opacity="0.06" />
-      <stop offset="60%" stop-color="#000000" stop-opacity="0.65" />
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.96" />
-    </linearGradient>
-    <linearGradient id="${fallbackId}" x1="0" y1="0" x2="1080" y2="1350" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0d1b2a" />
-      <stop offset="0.5" stop-color="#1b2838" />
-      <stop offset="1" stop-color="#0a3d62" />
-    </linearGradient>
-    <clipPath id="krAvatar-${idSuffix}">
-      <circle cx="${AVATAR_CX}" cy="${PILL_CY}" r="${PILL_AVATAR_R}" />
-    </clipPath>
+    <clipPath id="${avClip}"><circle cx="${avCx}" cy="${avCy}" r="${avR}" /></clipPath>
   </defs>
 
-  ${imageMarkup}
-  <rect width="1080" height="1350" fill="url(#${overlayId})" />
+  <rect width="1080" height="1350" fill="#ffffff" />
 
-  <text x="540" y="64" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="600" letter-spacing="4">${escapeXml(slideLabel)}</text>
+  <!-- Profile -->
+  <circle cx="${avCx}" cy="${avCy}" r="${avR}" fill="#e5e7eb" />
+  <text x="${avCx}" y="${avCy + 14}" text-anchor="middle" fill="${FV_DARK}" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileInitials || "FV")}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="${avCx - avR}" y="${avCy - avR}" width="${avR * 2}" height="${avR * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${avClip})" />
+  <circle cx="${avCx}" cy="${avCy}" r="${avR}" fill="none" stroke="#e5e7eb" stroke-width="2" />
+  <text x="${avCx + avR + 28}" y="${nameY}" fill="${FV_DARK}" font-size="38" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(input.profileName || FLAVIO_PROFILE_NAME)}</text>
+  <circle cx="${avCx + avR + 28 + Math.min((input.profileName || FLAVIO_PROFILE_NAME).length * 22, 420) + 16}" cy="${nameY - 13}" r="13" fill="#1d9bf0" />
+  <text x="${avCx + avR + 28}" y="${handleY}" fill="${FV_GRAY}" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(input.profileHandle || FLAVIO_PROFILE_HANDLE)}</text>
 
-  <rect x="${PILL_X}" y="${PILL_CY - PILL_H / 2}" width="${PILL_W}" height="${PILL_H}" rx="${PILL_H / 2}" fill="rgba(0,0,0,0.60)" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" />
-  <circle cx="${AVATAR_CX}" cy="${PILL_CY}" r="${PILL_AVATAR_R}" fill="#1a1a2e" />
-  <text x="${AVATAR_CX}" y="${PILL_CY + 11}" text-anchor="middle" fill="#ffffff" font-size="26" font-family="Arial Black, Arial, sans-serif" font-weight="900">${escapeXml(profileInitials)}</text>
-  <image href="${escapeXml(profileAvatarUrl || "")}" x="${AVATAR_CX - PILL_AVATAR_R}" y="${PILL_CY - PILL_AVATAR_R}" width="${PILL_AVATAR_R * 2}" height="${PILL_AVATAR_R * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#krAvatar-${idSuffix})" />
-  <text x="${HANDLE_X}" y="${PILL_CY + 14}" fill="#ffffff" font-size="38" font-family="Arial, Helvetica, sans-serif" font-weight="600">${escapeXml(profileHandle)}</text>
+  <!-- Separator with gold center -->
+  <line x1="80" y1="${sepY}" x2="420" y2="${sepY}" stroke="#e5e7eb" stroke-width="1.5" />
+  <rect x="420" y="${sepY - 2}" width="160" height="5" rx="2.5" fill="${FV_GOLD}" />
+  <line x1="580" y1="${sepY}" x2="1000" y2="${sepY}" stroke="#e5e7eb" stroke-width="1.5" />
 
-  ${titleMarkup}
-</svg>
-  `.trim();
+  <g class="editor-title-layer">
+    <!-- Large title (two-tone, left-aligned) -->
+    ${flavioTitleSvg(ctaTitleLines, ctaFs, ctaLh, 80, titleBaseY, "start")}
+  </g>
+
+  <g class="editor-body-layer">
+    <!-- Subtitle -->
+    ${subLines.map((l, i) => `<text x="80" y="${subY + i * subLh}" fill="${FV_GRAY}" font-size="${subFs}" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(l)}</text>`).join("\n  ")}
+  </g>
+
+  <!-- Column separators -->
+  ${sepX.map(sx => `<line x1="${sx}" y1="${iconTopY}" x2="${sx}" y2="${desc2Y + 8}" stroke="#e5e7eb" stroke-width="1.5" />`).join("\n  ")}
+
+  <!-- Icons + labels + descriptions -->
+  ${iconData.map((ic, i) => `
+  ${ic.icon}
+  <text x="${cols[i]}" y="${labelY}" text-anchor="middle" fill="${FV_DARK}" font-size="22" font-family="Arial, Helvetica, sans-serif" font-weight="700">${ic.label}</text>
+  <text x="${cols[i]}" y="${desc1Y}" text-anchor="middle" fill="${FV_GRAY}" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="400">${ic.desc1}</text>
+  <text x="${cols[i]}" y="${desc2Y}" text-anchor="middle" fill="${FV_GRAY}" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="400">${ic.desc2}</text>`).join("\n  ")}
+</svg>`.trim();
+}
+
+function buildKrythosHookSlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`kr-hook-${input.topic}-${input.index}`);
+  const CYAN = "#29d9ff";
+  const TF = "Arial Black, Impact, Arial, Helvetica, sans-serif";
+  const UF = "Arial, Helvetica, sans-serif";
+
+  const imageUrl = toAbsoluteClientAssetUrl(input.slide.imageUrl || input.coverImageUrl);
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || KRYTHOS_PROFILE_AVATAR_URL);
+  const handle = input.profileHandle || "@krythoslab";
+  const initials = input.profileInitials || "K";
+
+  const raw = (input.hook || input.slide.title).toUpperCase().replace(/\s+/g, " ").trim();
+  const lines = wrapTextLines(raw, 14, 4);
+  const FS = lines.length >= 4 ? 82 : lines.length >= 3 ? 90 : lines.length >= 2 ? 100 : 112;
+  const LH = Math.round(FS * 1.18);
+  const accentFrom = lines.length <= 1 ? 0 : Math.ceil(lines.length * 0.62);
+
+  const PH = 76, PR = 28;
+  const PW = PR * 2 + 20 + handle.length * 21 + 30;
+  const PX = 40, PCY = 470;
+  const ACX = PX + PR + 10, HX = ACX + PR + 16;
+
+  const titleY0 = PCY + PH / 2 + 50 + FS * 0.82;
+  const titleEndY = titleY0 + (lines.length - 1) * LH;
+
+  const titleMarkup = lines
+    .map((ln, i) => {
+      const acc = i >= accentFrom;
+      const tl = ln.length * FS * 0.66 > 960 ? ` textLength="960" lengthAdjust="spacingAndGlyphs"` : "";
+      return `<text x="40" y="${titleY0 + i * LH}" fill="${acc ? CYAN : "#fff"}" font-size="${FS}" font-family="${TF}" font-weight="900"${tl}>${escapeXml(ln)}</text>`;
+    })
+    .join("\n  ");
+
+  const firstSentence = (input.slide.body || "").split(/[.!?]/)[0].trim();
+  const subtitleLines = firstSentence ? wrapTextLines(firstSentence.toUpperCase(), 46, 2) : [];
+  const SUBTITLE_LH = 36;
+  const subtitleY = titleEndY + 62;
+  const subtitleMarkup = subtitleLines
+    .map((ln, i) => `<text x="40" y="${subtitleY + i * SUBTITLE_LH}" fill="rgba(255,255,255,0.50)" font-size="24" font-family="${UF}" font-weight="400" letter-spacing="1">${escapeXml(i === 0 ? `– ${ln}` : ln)}</text>`)
+    .join("\n  ");
+  const subtitleBlockH = subtitleLines.length * SUBTITLE_LH;
+  const swipeY = Math.max(subtitleY + (subtitleLines.length ? subtitleBlockH + 46 : 36), 1205);
+
+  const imgMk = imageUrl
+    ? `<image class="editor-image" href="${escapeXml(imageUrl)}" x="0" y="0" width="1080" height="1350" preserveAspectRatio="xMidYMid slice"/>`
+    : `<rect width="1080" height="1350" fill="url(#krFb-${id})"/>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="krOv-${id}" x1="0" y1="0" x2="0" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#000" stop-opacity="0.25"/>
+      <stop offset="35%" stop-color="#000" stop-opacity="0.58"/>
+      <stop offset="65%" stop-color="#000" stop-opacity="0.84"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.97"/>
+    </linearGradient>
+    <linearGradient id="krFb-${id}" x1="0" y1="0" x2="0" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d1117"/><stop offset="1" stop-color="#0a1628"/>
+    </linearGradient>
+    <clipPath id="krAv-${id}"><circle cx="${ACX}" cy="${PCY}" r="${PR}"/></clipPath>
+  </defs>
+  ${imgMk}
+  <rect width="1080" height="1350" fill="url(#krOv-${id})"/>
+  <rect x="0" y="0" width="280" height="5" fill="${CYAN}"/>
+  <text x="40" y="68" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2"><tspan fill="rgba(255,255,255,0.75)">SUA AGÊNCIA DE MARKETING </tspan><tspan fill="${CYAN}">POR IA</tspan></text>
+  <text x="1040" y="68" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2">@KRYTHOSLAB</text>
+  <rect x="${PX}" y="${PCY - PH / 2}" width="${PW}" height="${PH}" rx="${PH / 2}" fill="rgba(255,255,255,0.09)" stroke="rgba(255,255,255,0.22)" stroke-width="1.5"/>
+  <circle cx="${ACX}" cy="${PCY}" r="${PR}" fill="#141c2e"/>
+  <text x="${ACX}" y="${PCY + 10}" text-anchor="middle" fill="#fff" font-size="22" font-family="${TF}" font-weight="900">${escapeXml(initials)}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="${ACX - PR}" y="${PCY - PR}" width="${PR * 2}" height="${PR * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#krAv-${id})"/>
+  <text x="${HX}" y="${PCY + 12}" fill="#fff" font-size="34" font-family="${UF}" font-weight="600">${escapeXml(handle)}</text>
+  <g class="editor-title-layer">
+    ${titleMarkup}
+  </g>
+  <g class="editor-body-layer">
+    ${subtitleMarkup}
+  </g>
+  <circle cx="82" cy="${swipeY}" r="42" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+  <text x="82" y="${swipeY + 15}" text-anchor="middle" fill="rgba(255,255,255,0.60)" font-size="42" font-family="${UF}" font-weight="300">›</text>
+  <text x="144" y="${swipeY - 8}" fill="#fff" font-size="25" font-family="${UF}" font-weight="700" letter-spacing="1">ARRASTE PARA O LADO</text>
+  <text x="144" y="${swipeY + 22}" fill="rgba(255,255,255,0.45)" font-size="21" font-family="${UF}" font-weight="400" letter-spacing="1">E CONFIRA O CONTEÚDO</text>
+  <rect x="40" y="1318" width="1000" height="1.5" fill="rgba(255,255,255,0.15)"/>
+</svg>`;
+}
+
+function buildKrythosContentSlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`kr-content-${input.topic}-${input.index}`);
+  const CYAN = "#29d9ff";
+  const TF = "Arial Black, Impact, Arial, Helvetica, sans-serif";
+  const UF = "Arial, Helvetica, sans-serif";
+
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || KRYTHOS_PROFILE_AVATAR_URL);
+  const handle = input.profileHandle || "@krythoslab";
+  const initials = input.profileInitials || "K";
+
+  const raw = input.slide.title.toUpperCase().replace(/\s+/g, " ").trim();
+  const lines = wrapTextLines(raw, 16, 3);
+  const FS = lines.length >= 3 ? 88 : lines.length >= 2 ? 100 : 112;
+  const LH = Math.round(FS * 1.18);
+  const accentFrom = lines.length <= 1 ? 0 : Math.ceil(lines.length * 0.62);
+
+  const titleY0 = 220 + FS * 0.82;
+  const titleEndY = titleY0 + (lines.length - 1) * LH;
+
+  const titleMarkup = lines
+    .map((ln, i) => {
+      const acc = i >= accentFrom;
+      const tl = ln.length * FS * 0.66 > 960 ? ` textLength="960" lengthAdjust="spacingAndGlyphs"` : "";
+      return `<text x="40" y="${titleY0 + i * LH}" fill="${acc ? CYAN : "#fff"}" font-size="${FS}" font-family="${TF}" font-weight="900"${tl}>${escapeXml(ln)}</text>`;
+    })
+    .join("\n  ");
+
+  const accentY = titleEndY + 38;
+
+  const bodyLines = wrapTextLines(input.slide.body || "", 44, 8);
+  const BS = 34, BH = 54;
+  const bodyY0 = accentY + 56 + BS * 0.82;
+  const bodyMarkup = bodyLines
+    .map((ln, i) => `<text x="60" y="${bodyY0 + i * BH}" fill="rgba(255,255,255,0.85)" font-size="${BS}" font-family="${UF}" font-weight="400">${escapeXml(ln)}</text>`)
+    .join("\n  ");
+
+  const PH = 66, PR = 24;
+  const PW = PR * 2 + 18 + handle.length * 18 + 26;
+  const PX = 40, PCY = 1266;
+  const ACX = PX + PR + 10, HX = ACX + PR + 14;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <clipPath id="krAv-${id}"><circle cx="${ACX}" cy="${PCY}" r="${PR}"/></clipPath>
+  </defs>
+  <rect width="1080" height="1350" fill="#0d1117"/>
+  <rect x="0" y="0" width="280" height="5" fill="${CYAN}"/>
+  <text x="40" y="68" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2"><tspan fill="rgba(255,255,255,0.75)">AGÊNCIA DE MARKETING </tspan><tspan fill="${CYAN}">POR IA</tspan></text>
+  <text x="1040" y="68" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2">@KRYTHOSLAB</text>
+  <g class="editor-title-layer">
+    ${titleMarkup}
+    <rect x="40" y="${accentY}" width="80" height="4" fill="${CYAN}" rx="2"/>
+  </g>
+  <g class="editor-body-layer">
+    ${bodyMarkup}
+  </g>
+  <rect x="${PX}" y="${PCY - PH / 2}" width="${PW}" height="${PH}" rx="${PH / 2}" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)" stroke-width="1.5"/>
+  <circle cx="${ACX}" cy="${PCY}" r="${PR}" fill="#141c2e"/>
+  <text x="${ACX}" y="${PCY + 9}" text-anchor="middle" fill="#fff" font-size="19" font-family="${TF}" font-weight="900">${escapeXml(initials)}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="${ACX - PR}" y="${PCY - PR}" width="${PR * 2}" height="${PR * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#krAv-${id})"/>
+  <text x="${HX}" y="${PCY + 11}" fill="#fff" font-size="28" font-family="${UF}" font-weight="600">${escapeXml(handle)}</text>
+  <g transform="translate(882,${PCY})">
+    <path d="M-10,-22 L10,-22 L10,18 L0,8 L-10,18Z" fill="none" stroke="${CYAN}" stroke-width="2.5" stroke-linejoin="round"/>
+  </g>
+  <text x="1038" y="${PCY - 7}" text-anchor="end" fill="${CYAN}" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="0.5">SALVE ESTE CONTEÚDO</text>
+  <text x="1038" y="${PCY + 18}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="19" font-family="${UF}" font-weight="400">E VOLTE QUANDO PRECISAR</text>
+</svg>`;
+}
+
+function buildKrythosCTASlideSvg(input: SlideRenderInput): string {
+  const id = hashString(`kr-cta-${input.topic}-${input.index}`);
+  const CYAN = "#29d9ff";
+  const TF = "Arial Black, Impact, Arial, Helvetica, sans-serif";
+  const UF = "Arial, Helvetica, sans-serif";
+
+  const avatarUrl = toAbsoluteClientAssetUrl(input.profileAvatarUrl || KRYTHOS_PROFILE_AVATAR_URL);
+  const handle = input.profileHandle || "@krythoslab";
+  const initials = input.profileInitials || "K";
+
+  const raw = (input.finalCta || input.slide.title).toUpperCase().replace(/\s+/g, " ").trim();
+  const lines = wrapTextLines(raw, 14, 3);
+  const FS = lines.length >= 3 ? 88 : lines.length >= 2 ? 96 : 108;
+  const LH = Math.round(FS * 1.18);
+  const accentFrom = lines.length <= 1 ? 0 : Math.ceil(lines.length * 0.62);
+
+  const PH = 76, PR = 28;
+  const PW = PR * 2 + 20 + handle.length * 21 + 30;
+  const PX = 40, PCY = 155;
+  const ACX = PX + PR + 10, HX = ACX + PR + 16;
+
+  const titleY0 = 230 + FS * 0.82;
+  const titleEndY = titleY0 + (lines.length - 1) * LH;
+
+  const titleMarkup = lines
+    .map((ln, i) => {
+      const acc = i >= accentFrom;
+      const tl = ln.length * FS * 0.66 > 960 ? ` textLength="960" lengthAdjust="spacingAndGlyphs"` : "";
+      return `<text x="40" y="${titleY0 + i * LH}" fill="${acc ? CYAN : "#fff"}" font-size="${FS}" font-family="${TF}" font-weight="900"${tl}>${escapeXml(ln)}</text>`;
+    })
+    .join("\n  ");
+
+  const accentY = titleEndY + 40;
+  const bodyLines = wrapTextLines(input.slide.body || "", 42, 4);
+  const BS = 30, BH = 48;
+  const bodyY0 = accentY + 54 + BS * 0.82;
+  const bodyMarkup = bodyLines
+    .map((ln, i) => `<text x="40" y="${bodyY0 + i * BH}" fill="rgba(255,255,255,0.80)" font-size="${BS}" font-family="${UF}" font-weight="400">${escapeXml(ln)}</text>`)
+    .join("\n  ");
+
+  const bodyEndY = bodyY0 + (bodyLines.length - 1) * BH + BS;
+  const sepY = bodyEndY + 48;
+  const icCY = Math.max(sepY + 98, 840);
+
+  const iconData = [
+    { path: "M0,-14 C0,-22 -8,-26 -15,-20 C-22,-14 -22,-6 -15,-1 L0,14 L15,-1 C22,-6 22,-14 15,-20 C8,-26 0,-22 0,-14Z", label: "CURTA", desc1: "Mostre que este conteúdo", desc2: "foi útil para você." },
+    { path: "M-18,-18 C-18,-26 -12,-30 -5,-30 L5,-30 C12,-30 18,-26 18,-18 L18,-8 C18,-2 12,2 5,2 L-1,2 L-10,14 L-10,2 C-15,2 -18,-2 -18,-8Z", label: "COMENTE", desc1: "Compartilhe sua opinião", desc2: "sobre o conteúdo." },
+    { path: "M-20,-20 L20,0 L-20,20 L-10,2 L-20,-20Z", label: "COMPARTILHE", desc1: "Envie para alguém que", desc2: "também precisa ver isso." },
+    { path: "M-12,-22 L12,-22 L12,20 L0,10 L-12,20Z", label: "SALVE", desc1: "Guarde para consultar", desc2: "quando precisar." },
+  ];
+  const cols = [135, 405, 675, 945];
+
+  const iconMarkup = cols
+    .map((cx, i) => {
+      const { path, label, desc1, desc2 } = iconData[i];
+      const labelY = icCY + 62;
+      const d1Y = labelY + 32, d2Y = d1Y + 28;
+      const sep = i < 3 ? `<line x1="${cx + 135}" y1="${icCY - 60}" x2="${cx + 135}" y2="${d2Y + 8}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>` : "";
+      return `<circle cx="${cx}" cy="${icCY}" r="46" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+  <path d="${path}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-linejoin="round" transform="translate(${cx},${icCY})"/>
+  <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#fff" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="1">${label}</text>
+  <text x="${cx}" y="${d1Y}" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="18" font-family="${UF}">${escapeXml(desc1)}</text>
+  <text x="${cx}" y="${d2Y}" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="18" font-family="${UF}">${escapeXml(desc2)}</text>
+  ${sep}`;
+    })
+    .join("\n  ");
+
+  const icEndY = icCY + 62 + 32 + 28 + 8;
+  const boxY = Math.max(icEndY + 30, 1068);
+  const boxH = 132;
+  const boxCY = Math.round(boxY + boxH / 2);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <defs>
+    <clipPath id="krAv-${id}"><circle cx="${ACX}" cy="${PCY}" r="${PR}"/></clipPath>
+  </defs>
+  <rect width="1080" height="1350" fill="#0d1117"/>
+  <rect x="0" y="0" width="280" height="5" fill="${CYAN}"/>
+  <text x="40" y="68" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2"><tspan fill="rgba(255,255,255,0.75)">AGÊNCIA DE MARKETING </tspan><tspan fill="${CYAN}">POR IA</tspan></text>
+  <text x="1040" y="68" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="22" font-family="${UF}" font-weight="700" letter-spacing="2">@KRYTHOSLAB</text>
+  <rect x="${PX}" y="${PCY - PH / 2}" width="${PW}" height="${PH}" rx="${PH / 2}" fill="rgba(255,255,255,0.09)" stroke="rgba(255,255,255,0.22)" stroke-width="1.5"/>
+  <circle cx="${ACX}" cy="${PCY}" r="${PR}" fill="#141c2e"/>
+  <text x="${ACX}" y="${PCY + 10}" text-anchor="middle" fill="#fff" font-size="22" font-family="${TF}" font-weight="900">${escapeXml(initials)}</text>
+  <image href="${escapeXml(avatarUrl || "")}" x="${ACX - PR}" y="${PCY - PR}" width="${PR * 2}" height="${PR * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#krAv-${id})"/>
+  <text x="${HX}" y="${PCY + 12}" fill="#fff" font-size="34" font-family="${UF}" font-weight="600">${escapeXml(handle)}</text>
+  <g class="editor-title-layer">
+    ${titleMarkup}
+    <rect x="40" y="${accentY}" width="80" height="4" fill="${CYAN}" rx="2"/>
+  </g>
+  <g class="editor-body-layer">
+    ${bodyMarkup}
+  </g>
+  <rect x="40" y="${sepY}" width="1000" height="1.5" fill="rgba(255,255,255,0.12)"/>
+  ${iconMarkup}
+  <rect x="40" y="${boxY}" width="1000" height="${boxH}" rx="12" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+  <circle cx="118" cy="${boxCY}" r="44" fill="#3b5bdb"/>
+  <path d="M106,${boxCY - 22} L130,${boxCY - 22} L130,${boxCY + 20} L118,${boxCY + 10} L106,${boxCY + 20}Z" fill="rgba(255,255,255,0.92)"/>
+  <text x="178" y="${boxCY - 8}" fill="#fff" font-size="24" font-family="${UF}" font-weight="700" letter-spacing="0.5">NÃO DEIXE ESSE CONTEÚDO SE PERDER.</text>
+  <text x="178" y="${boxCY + 20}" fill="rgba(255,255,255,0.60)" font-size="19" font-family="${UF}" font-weight="400">Salve agora e volte quando precisar.</text>
+  <g transform="translate(1018,${boxCY})">
+    <path d="M-16,-14 Q8,-14 8,6" fill="none" stroke="${CYAN}" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M1,0 L8,14 L16,2" fill="none" stroke="${CYAN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <rect x="40" y="1318" width="1000" height="1.5" fill="rgba(255,255,255,0.15)"/>
+</svg>`;
+}
+
+// ── ALLE ENERGIA ─────────────────────────────────────────────────────────────
+
+function alleLogo(x: number, y: number, boltFill: string, textFill: string): string {
+  return `<g transform="translate(${x},${y})">
+    <path d="M18,0 L4,34 L15,34 L1,64 L34,24 L22,24 Z" fill="${boltFill}"/>
+    <text x="50" y="48" fill="${textFill}" font-size="38" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="-0.5">alle energia</text>
+  </g>`;
+}
+
+function alleLaranjaBg(): string {
+  return `<rect width="1080" height="1350" fill="${ALLE_ORANGE_BG}"/>
+  <polygon points="720,0 1080,0 1080,740 860,880 640,500" fill="${ALLE_SHAPE_DARK_ORANGE}" opacity="0.45"/>
+  <polygon points="840,0 1080,0 1080,500 960,580 800,240" fill="${ALLE_SHAPE_LIGHT_ORANGE}" opacity="0.50"/>`;
+}
+
+function alleRoxoBg(): string {
+  return `<rect width="1080" height="1350" fill="${ALLE_PURPLE_BG}"/>
+  <polygon points="680,80 900,80 540,620 760,620 340,1280 880,660 660,660" fill="${ALLE_SHAPE_DARK_PURPLE}"/>`;
+}
+
+function buildAlleHookSlideSvg(input: SlideRenderInput): string {
+  const isLaranja = input.profileId === "alle-laranja";
+  const accent = isLaranja ? ALLE_DARK_TEXT : ALLE_ORANGE_BG;
+  const boltColor = isLaranja ? "#fff" : ALLE_ORANGE_BG;
+
+  const rawHook = (input.hook || input.slide.title || "").replace(/\s+/g, " ").trim();
+  const hookWords = rawHook.split(" ");
+  const breakAt = Math.max(1, Math.ceil(hookWords.length * 0.45));
+  const t1raw = hookWords.slice(0, breakAt).join(" ");
+  const t2raw = hookWords.slice(breakAt).join(" ");
+
+  const t1Lines = wrapTextLines(t1raw || " ", 18, 2);
+  const t2Lines = wrapTextLines(t2raw || t1raw, 14, 2);
+  const t1FS = t1Lines.some((l) => l.length > 15) ? 72 : 80;
+  const t2FS = t2Lines.some((l) => l.length > 12) ? 80 : 96;
+  const T1LH = Math.round(t1FS * 1.12);
+  const T2LH = Math.round(t2FS * 1.12);
+
+  const textX = 80;
+  const t1Y = 780;
+  const t2Y = t1Y + t1Lines.length * T1LH + 12;
+  const t3Y = t2Y + t2Lines.length * T2LH + 52;
+
+  const logoY = isLaranja ? 1262 : 80;
+  const counterY = isLaranja ? 88 : 208;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  ${isLaranja ? alleLaranjaBg() : alleRoxoBg()}
+  ${alleLogo(80, logoY, boltColor, "#fff")}
+  <text x="1040" y="${counterY}" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="600">${input.index + 1}/${input.total}</text>
+  <g class="editor-title-layer">
+    <text x="${textX}" y="${t1Y}" fill="#fff" font-size="${t1FS}" font-family="Arial, Helvetica, sans-serif" font-weight="300">
+      ${t1Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T1LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+    <text x="${textX}" y="${t2Y}" fill="${accent}" font-size="${t2FS}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
+      ${t2Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T2LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+  </g>
+  <g class="editor-body-layer">
+    <text x="${textX}" y="${t3Y}" fill="rgba(255,255,255,0.82)" font-size="38" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(clampSentence(input.topic, 52))}</text>
+  </g>
+</svg>`;
+}
+
+function buildAlleContentSlideSvg(input: SlideRenderInput): string {
+  const isLaranja = input.profileId === "alle-laranja";
+  const accent = isLaranja ? ALLE_DARK_TEXT : ALLE_ORANGE_BG;
+  const boltColor = isLaranja ? "#fff" : ALLE_ORANGE_BG;
+
+  const rawTitle = (input.slide.title || "").replace(/\s+/g, " ").trim();
+  const titleWords = rawTitle.split(" ");
+  const breakAt = Math.max(1, Math.ceil(titleWords.length * 0.5));
+  const t1raw = titleWords.slice(0, breakAt).join(" ");
+  const t2raw = titleWords.slice(breakAt).join(" ");
+
+  const t1Lines = wrapTextLines(t1raw || " ", 18, 2);
+  const t2Lines = t2raw ? wrapTextLines(t2raw, 16, 2) : [];
+  const t1FS = t1Lines.some((l) => l.length > 16) ? 64 : 76;
+  const t2FS = t2Lines.some((l) => l.length > 14) ? 72 : 84;
+  const T1LH = Math.round(t1FS * 1.12);
+  const T2LH = Math.round(t2FS * 1.12);
+
+  const bodyLines = wrapTextLines(input.slide.body || "", 44, 4);
+  const BSZ = 38;
+  const BLH = 56;
+
+  const textX = 80;
+  const t1Y = 640;
+  const t2Y = t1Y + t1Lines.length * T1LH + 10;
+  const t3Y = t2Y + Math.max(1, t2Lines.length) * T2LH + 60;
+
+  const logoY = isLaranja ? 1262 : 80;
+  const counterY = isLaranja ? 88 : 208;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  ${isLaranja ? alleLaranjaBg() : alleRoxoBg()}
+  ${alleLogo(80, logoY, boltColor, "#fff")}
+  <text x="1040" y="${counterY}" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="600">${input.index + 1}/${input.total}</text>
+  <g class="editor-title-layer">
+    <text x="${textX}" y="${t1Y}" fill="#fff" font-size="${t1FS}" font-family="Arial, Helvetica, sans-serif" font-weight="300">
+      ${t1Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T1LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+    ${t2Lines.length > 0 ? `<text x="${textX}" y="${t2Y}" fill="${accent}" font-size="${t2FS}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
+      ${t2Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T2LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>` : ""}
+  </g>
+  <g class="editor-body-layer">
+    <text x="${textX}" y="${t3Y}" fill="rgba(255,255,255,0.88)" font-size="${BSZ}" font-family="Arial, Helvetica, sans-serif" font-weight="400">
+      ${bodyLines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : BLH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+  </g>
+</svg>`;
+}
+
+function buildAlleCTASlideSvg(input: SlideRenderInput): string {
+  const isLaranja = input.profileId === "alle-laranja";
+  const accent = isLaranja ? ALLE_DARK_TEXT : ALLE_ORANGE_BG;
+  const boltColor = isLaranja ? "#fff" : ALLE_ORANGE_BG;
+
+  const rawCta = (input.finalCta || input.slide.title || "").replace(/\s+/g, " ").trim().toUpperCase();
+  const ctaWords = rawCta.split(" ");
+  const breakAt = Math.max(1, Math.ceil(ctaWords.length * 0.45));
+  const t1raw = ctaWords.slice(0, breakAt).join(" ");
+  const t2raw = ctaWords.slice(breakAt).join(" ");
+
+  const t1Lines = wrapTextLines(t1raw || " ", 18, 2);
+  const t2Lines = wrapTextLines(t2raw || t1raw, 14, 2);
+  const t1FS = t1Lines.some((l) => l.length > 15) ? 72 : 80;
+  const t2FS = t2Lines.some((l) => l.length > 12) ? 80 : 96;
+  const T1LH = Math.round(t1FS * 1.12);
+  const T2LH = Math.round(t2FS * 1.12);
+
+  const textX = 80;
+  const t1Y = 740;
+  const t2Y = t1Y + t1Lines.length * T1LH + 12;
+  const t3Y = t2Y + t2Lines.length * T2LH + 52;
+
+  const logoY = isLaranja ? 1262 : 80;
+  const counterY = isLaranja ? 88 : 208;
+
+  const followText = input.slide.body
+    ? clampSentence(input.slide.body, 48)
+    : `Siga ${input.profileHandle || ALLE_PROFILE_HANDLE}`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  ${isLaranja ? alleLaranjaBg() : alleRoxoBg()}
+  ${alleLogo(80, logoY, boltColor, "#fff")}
+  <text x="1040" y="${counterY}" text-anchor="end" fill="rgba(255,255,255,0.75)" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="600">${input.index + 1}/${input.total}</text>
+  <g class="editor-title-layer">
+    <text x="${textX}" y="${t1Y}" fill="#fff" font-size="${t1FS}" font-family="Arial, Helvetica, sans-serif" font-weight="300">
+      ${t1Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T1LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+    <text x="${textX}" y="${t2Y}" fill="${accent}" font-size="${t2FS}" font-family="Arial, Helvetica, sans-serif" font-weight="800">
+      ${t2Lines.map((l, i) => `<tspan x="${textX}" dy="${i === 0 ? 0 : T2LH}">${escapeXml(l)}</tspan>`).join("")}
+    </text>
+  </g>
+  <g class="editor-body-layer">
+    <text x="${textX}" y="${t3Y}" fill="rgba(255,255,255,0.80)" font-size="42" font-family="Arial, Helvetica, sans-serif" font-weight="400">${escapeXml(followText)}</text>
+  </g>
+</svg>`;
 }
 
 function buildLegacySlideSvg(input: SlideRenderInput) {
@@ -1152,7 +2032,7 @@ function buildLegacySlideSvg(input: SlideRenderInput) {
         </clipPath>
       </defs>
       <g clip-path="url(#imageClip)">
-        <image href="${escapeXml(coverImageUrl)}" x="${imageBox.x}" y="${imageBox.y}" width="${imageBox.width}" height="${imageBox.height}" preserveAspectRatio="xMidYMid slice" />
+        <image class="editor-image" href="${escapeXml(coverImageUrl)}" x="${imageBox.x}" y="${imageBox.y}" width="${imageBox.width}" height="${imageBox.height}" preserveAspectRatio="xMidYMid slice" />
         <rect x="${imageBox.x}" y="${imageBox.y}" width="${imageBox.width}" height="${imageBox.height}" fill="${hexToRgba(theme.surfaceStrong, isHero ? 0.18 : 0.14)}" />
       </g>
       <rect x="${imageBox.x}" y="${imageBox.y}" width="${imageBox.width}" height="${imageBox.height}" rx="${imageBox.radius}" fill="none" stroke="${hexToRgba(theme.accentSoft, 0.28)}" />
@@ -1216,46 +2096,50 @@ function buildLegacySlideSvg(input: SlideRenderInput) {
   <rect x="916" y="58" width="110" height="46" rx="23" fill="${hexToRgba(theme.surfaceStrong, 0.66)}" stroke="${hexToRgba(theme.accentSoft, 0.18)}" />
   <text x="971" y="88" text-anchor="middle" fill="${theme.text}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${input.index + 1}/${input.total}</text>
 
-  <text x="${panelTextX}" y="${panelTopY}" fill="${theme.accent}" font-size="${isHero ? 26 : 22}" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.2" font-weight="700">${escapeXml(highlightTitle.toUpperCase())}</text>
-  ${
-    titleParts.prefix
-      ? `<text x="${panelTextX}" y="${titleStartY + 4}" fill="${theme.accentSoft}" font-size="${titlePrefixFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(titleParts.prefix)}</text>`
-      : ""
-  }
-  <text x="${titleX}" y="${titleStartY}" fill="${theme.text}" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="700">
-    ${titleLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="${titleX}" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+  <g class="editor-title-layer">
+    <text x="${panelTextX}" y="${panelTopY}" fill="${theme.accent}" font-size="${isHero ? 26 : 22}" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.2" font-weight="700">${escapeXml(highlightTitle.toUpperCase())}</text>
+    ${
+      titleParts.prefix
+        ? `<text x="${panelTextX}" y="${titleStartY + 4}" fill="${theme.accentSoft}" font-size="${titlePrefixFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(titleParts.prefix)}</text>`
+        : ""
+    }
+    <text x="${titleX}" y="${titleStartY}" fill="${theme.text}" font-size="${titleFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+      ${titleLines
+        .map(
+          (line, lineIndex) =>
+            `<tspan x="${titleX}" dy="${lineIndex === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
+  </g>
 
-  <text x="${panelTextX}" y="${bodyStartY}" fill="${theme.muted}" font-size="${isDenseBody ? 24 : 26}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
-    ${visibleBodyLines
-      .map(
-        (line, lineIndex) =>
-          `<tspan x="${panelTextX}" dy="${lineIndex === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`
-      )
-      .join("")}
-  </text>
+  <g class="editor-body-layer">
+    <text x="${panelTextX}" y="${bodyStartY}" fill="${theme.muted}" font-size="${isDenseBody ? 24 : 26}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${visibleBodyLines
+        .map(
+          (line, lineIndex) =>
+            `<tspan x="${panelTextX}" dy="${lineIndex === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
 
-  ${isHero || visibleBulletLayouts.length === 0 ? `` : `<text x="${panelTextX}" y="${bulletHeaderY}" fill="${theme.accentSoft}" font-size="22" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.2" font-weight="700">POR QUE ISSO IMPORTA</text>`}
-  ${bulletMarkup}
+    ${isHero || visibleBulletLayouts.length === 0 ? `` : `<text x="${panelTextX}" y="${bulletHeaderY}" fill="${theme.accentSoft}" font-size="22" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.2" font-weight="700">POR QUE ISSO IMPORTA</text>`}
+    ${bulletMarkup}
 
-  ${
-    isClosing
-      ? `<text x="${panelTextX}" y="${buttonY - 54}" fill="${theme.accentSoft}" font-size="24" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.4" font-weight="700">CTA FINAL</text>
-         <text x="${panelTextX}" y="${buttonY - 10}" fill="${theme.text}" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="500">
-           ${closingSupportLines
-             .map(
-               (line, lineIndex) =>
-                 `<tspan x="${panelTextX}" dy="${lineIndex === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`
-             )
-             .join("")}
-         </text>`
-      : ""
-  }
+    ${
+      isClosing
+        ? `<text x="${panelTextX}" y="${buttonY - 54}" fill="${theme.accentSoft}" font-size="24" font-family="Arial, Helvetica, sans-serif" letter-spacing="2.4" font-weight="700">CTA FINAL</text>
+           <text x="${panelTextX}" y="${buttonY - 10}" fill="${theme.text}" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+             ${closingSupportLines
+               .map(
+                 (line, lineIndex) =>
+                   `<tspan x="${panelTextX}" dy="${lineIndex === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`
+               )
+               .join("")}
+           </text>`
+        : ""
+    }
+  </g>
   <rect x="${panelTextX}" y="${buttonY}" width="${buttonWidth}" height="${buttonHeight}" rx="${Math.round(buttonHeight / 2)}" fill="${isClosing ? "url(#button)" : hexToRgba(theme.surfaceStrong, 0.7)}" stroke="${isClosing ? "none" : hexToRgba(theme.accentSoft, 0.2)}" />
   <text x="${panelTextX + buttonWidth / 2}" y="${buttonTextY}" text-anchor="middle" fill="${isClosing ? "#15100A" : theme.text}" font-size="${isClosing ? 28 : isHero ? 28 : 24}" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(ctaButtonLabel)}</text>
 
@@ -1346,6 +2230,377 @@ async function renderSvgToPngDataUrl(svg: string): Promise<string> {
     };
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(embeddedSvg)}`;
   });
+}
+
+function EditorSliderControl({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix = "",
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  const displayValue =
+    step < 1 ? value.toFixed(2).replace(/\.?0+$/, "") : Math.round(value).toString();
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+        </div>
+        <span className="rounded-full border border-border/50 bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+          {displayValue}
+          {suffix}
+        </span>
+      </div>
+      <Slider
+        value={[value]}
+        min={min}
+        max={max}
+        step={step}
+        onValueChange={(values) => onChange(values[0] ?? value)}
+      />
+    </div>
+  );
+}
+
+function CarouselSlideStudio({
+  slide,
+  slideIndex,
+  totalSlides,
+  supportsImageEditor,
+  settings,
+  imagePanelOpen,
+  isUploadingImage,
+  onToggleImagePanel,
+  onReset,
+  onTitleChange,
+  onBodyChange,
+  onApplyImageUrl,
+  onUploadImage,
+  onSettingChange,
+}: {
+  slide: CarouselSlide;
+  slideIndex: number;
+  totalSlides: number;
+  supportsImageEditor: boolean;
+  settings: NormalizedSlideEditorSettings;
+  imagePanelOpen: boolean;
+  isUploadingImage: boolean;
+  onToggleImagePanel: () => void;
+  onReset: () => void;
+  onTitleChange: (value: string) => void;
+  onBodyChange: (value: string) => void;
+  onApplyImageUrl: (url: string) => void;
+  onUploadImage: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onSettingChange: (key: SlideEditorSettingKey, value: number | string | undefined) => void;
+}) {
+  return (
+    <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-border/30 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Mini editor do slide
+          </p>
+          <h4 className="mt-2 text-lg font-semibold text-foreground">
+            Slide {slideIndex + 1} de {totalSlides}
+          </h4>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ajuste texto, imagem, escala, cor e posicao com preview ao vivo.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-2xl"
+          onClick={onReset}
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Resetar slide
+        </Button>
+      </div>
+
+      <Tabs defaultValue="content" className="mt-5 gap-4">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-2xl bg-muted/60 p-1.5 md:grid-cols-4">
+          <TabsTrigger value="content" className="rounded-xl">
+            <Type className="h-4 w-4" />
+            Texto
+          </TabsTrigger>
+          <TabsTrigger value="image" className="rounded-xl">
+            <Image className="h-4 w-4" />
+            Imagem
+          </TabsTrigger>
+          <TabsTrigger value="style" className="rounded-xl">
+            <Sparkles className="h-4 w-4" />
+            Estilo
+          </TabsTrigger>
+          <TabsTrigger value="layout" className="rounded-xl">
+            <Layers className="h-4 w-4" />
+            Layout
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="content" className="space-y-4">
+          <div className="rounded-2xl border border-border/40 bg-background/70 p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Titulo do slide
+            </p>
+            <Input
+              value={slide.title}
+              onChange={(e) => onTitleChange(e.target.value)}
+              className="h-10 rounded-xl border-border/50 bg-background text-sm"
+            />
+          </div>
+          <div className="rounded-2xl border border-border/40 bg-background/70 p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Corpo do slide
+            </p>
+            <Textarea
+              value={slide.body}
+              onChange={(e) => onBodyChange(e.target.value)}
+              className="min-h-[160px] resize-none rounded-xl border-border/50 bg-background text-sm"
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="image" className="space-y-4">
+          {supportsImageEditor ? (
+            <>
+              <div className="space-y-3 rounded-2xl border border-border/40 bg-background/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Fonte da imagem</p>
+                    <p className="text-xs text-muted-foreground">
+                      Cole uma URL ou envie um arquivo para trocar a imagem deste slide.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onToggleImagePanel}
+                    className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                  >
+                    {isUploadingImage ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Trocar imagem
+                  </button>
+                </div>
+
+                {imagePanelOpen ? (
+                  <div className="space-y-3 rounded-2xl border border-dashed border-border/60 bg-muted/30 p-4">
+                    <div className="flex gap-2">
+                      <Input
+                        key={`editor-image-url-${slideIndex}`}
+                        defaultValue={slide.imageUrl ?? ""}
+                        placeholder="https://..."
+                        className="h-10 rounded-xl border-border/50 bg-background/70 text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const url = (e.target as HTMLInputElement).value.trim();
+                            if (url) onApplyImageUrl(url);
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-10 shrink-0 rounded-xl text-xs"
+                        onClick={(e) => {
+                          const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                          const url = input?.value.trim();
+                          if (url) onApplyImageUrl(url);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/40 bg-background/70 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground">
+                      <Upload className="h-3.5 w-3.5" />
+                      Upload de arquivo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={onUploadImage}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+                  <EditorSliderControl
+                    label="Zoom da imagem"
+                    hint="Aproxime ou afaste a arte dentro do recorte."
+                    value={settings.imageScale}
+                    min={0.7}
+                    max={2}
+                    step={0.05}
+                    onChange={(value) => onSettingChange("imageScale", value)}
+                  />
+                  <EditorSliderControl
+                    label="Mover horizontal"
+                    value={settings.imageOffsetX}
+                    min={-260}
+                    max={260}
+                    onChange={(value) => onSettingChange("imageOffsetX", value)}
+                  />
+                  <EditorSliderControl
+                    label="Mover vertical"
+                    value={settings.imageOffsetY}
+                    min={-260}
+                    max={260}
+                    onChange={(value) => onSettingChange("imageOffsetY", value)}
+                  />
+                </div>
+                <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+                  <EditorSliderControl
+                    label="Rotacao"
+                    value={settings.imageRotation}
+                    min={-35}
+                    max={35}
+                    suffix="°"
+                    onChange={(value) => onSettingChange("imageRotation", value)}
+                  />
+                  <EditorSliderControl
+                    label="Brilho"
+                    value={settings.imageBrightness}
+                    min={50}
+                    max={160}
+                    suffix="%"
+                    onChange={(value) => onSettingChange("imageBrightness", value)}
+                  />
+                  <EditorSliderControl
+                    label="Contraste"
+                    value={settings.imageContrast}
+                    min={50}
+                    max={180}
+                    suffix="%"
+                    onChange={(value) => onSettingChange("imageContrast", value)}
+                  />
+                  <EditorSliderControl
+                    label="Saturacao"
+                    value={settings.imageSaturate}
+                    min={0}
+                    max={200}
+                    suffix="%"
+                    onChange={(value) => onSettingChange("imageSaturate", value)}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border/50 bg-muted/20 p-5">
+              <p className="text-sm font-medium text-foreground">
+                Este slide nao usa uma area de imagem independente neste layout.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Nos slides de fechamento ou modelos mais tipograficos, a parte visual fica concentrada no texto e nas cores.
+              </p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="style" className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-foreground">Cor do titulo</span>
+                <input
+                  type="color"
+                  value={settings.titleColor ?? "#111827"}
+                  onChange={(e) => onSettingChange("titleColor", e.target.value)}
+                  className="h-10 w-12 cursor-pointer rounded-lg border border-border/50 bg-transparent p-0.5"
+                />
+              </label>
+              <EditorSliderControl
+                label="Escala do titulo"
+                value={settings.titleScale}
+                min={0.7}
+                max={1.6}
+                step={0.05}
+                onChange={(value) => onSettingChange("titleScale", value)}
+              />
+            </div>
+            <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-foreground">Cor do corpo</span>
+                <input
+                  type="color"
+                  value={settings.bodyColor ?? "#475467"}
+                  onChange={(e) => onSettingChange("bodyColor", e.target.value)}
+                  className="h-10 w-12 cursor-pointer rounded-lg border border-border/50 bg-transparent p-0.5"
+                />
+              </label>
+              <EditorSliderControl
+                label="Escala do corpo"
+                value={settings.bodyScale}
+                min={0.7}
+                max={1.6}
+                step={0.05}
+                onChange={(value) => onSettingChange("bodyScale", value)}
+              />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="layout" className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+              <p className="text-sm font-medium text-foreground">Posicao do titulo</p>
+              <EditorSliderControl
+                label="Horizontal"
+                value={settings.titleOffsetX}
+                min={-240}
+                max={240}
+                onChange={(value) => onSettingChange("titleOffsetX", value)}
+              />
+              <EditorSliderControl
+                label="Vertical"
+                value={settings.titleOffsetY}
+                min={-240}
+                max={240}
+                onChange={(value) => onSettingChange("titleOffsetY", value)}
+              />
+            </div>
+            <div className="space-y-4 rounded-2xl border border-border/40 bg-background/70 p-4">
+              <p className="text-sm font-medium text-foreground">Posicao do corpo</p>
+              <EditorSliderControl
+                label="Horizontal"
+                value={settings.bodyOffsetX}
+                min={-240}
+                max={240}
+                onChange={(value) => onSettingChange("bodyOffsetX", value)}
+              />
+              <EditorSliderControl
+                label="Vertical"
+                value={settings.bodyOffsetY}
+                min={-240}
+                max={240}
+                onChange={(value) => onSettingChange("bodyOffsetY", value)}
+              />
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }
 
 function CoverImageUpload({
@@ -1482,6 +2737,9 @@ function SlidePreview({
   profileHandle,
   profileInitials,
   profileId,
+  fontFamily,
+  accentColor,
+  backgroundColor,
   className,
 }: {
   slide: CarouselSlide;
@@ -1497,6 +2755,9 @@ function SlidePreview({
   profileHandle?: string;
   profileInitials?: string;
   profileId?: string;
+  fontFamily?: string;
+  accentColor?: string;
+  backgroundColor?: string;
   className?: string;
 }) {
   const previewSvg = buildSlideSvg({
@@ -1513,6 +2774,9 @@ function SlidePreview({
     profileHandle,
     profileInitials,
     profileId,
+    fontFamily,
+    accentColor,
+    backgroundColor,
   });
 
   return (
@@ -1532,6 +2796,7 @@ function SlidePreview({
 function CarouselCard({
   carousel,
   onOpen,
+  onEdit,
   onDownload,
   onPublish,
   onSchedule,
@@ -1543,6 +2808,7 @@ function CarouselCard({
 }: {
   carousel: CarouselItem;
   onOpen: () => void;
+  onEdit: () => void;
   onDownload: () => void;
   onPublish: () => void;
   onSchedule: () => void;
@@ -1557,10 +2823,21 @@ function CarouselCard({
     ? toAbsoluteClientAssetUrl(heroSlide.renderedImageUrl)
     : null;
   const [imgFailed, setImgFailed] = useState(false);
+  const handleCardAction = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    action: () => void
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  };
+  const stopCardActionPropagation = (event: React.SyntheticEvent) => {
+    event.stopPropagation();
+  };
 
   return (
     <div className="group relative overflow-hidden rounded-[30px] border border-border/40 bg-background/75 p-3 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-      <button type="button" onClick={onOpen} className="block w-full text-left">
+      <div className="relative z-0">
         <div className="relative overflow-hidden rounded-[26px]">
           {renderedPreviewUrl && !imgFailed ? (
             <div className="aspect-[4/5] overflow-hidden rounded-[26px]">
@@ -1589,7 +2866,7 @@ function CarouselCard({
               className="rounded-[26px] border-0 shadow-none"
             />
           )}
-          <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white backdrop-blur-md">
+          <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white backdrop-blur-md">
             <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-white/70">
               <span>Carrossel IA</span>
               <span>{carousel.slides.length} slides</span>
@@ -1598,13 +2875,23 @@ function CarouselCard({
               <p className="line-clamp-2 text-sm font-semibold leading-tight text-white">
                 {carousel.topic}
               </p>
-              <ZoomIn className="h-4 w-4 shrink-0 text-white/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+              <button
+                type="button"
+                aria-label={`Abrir preview do carrossel ${carousel.topic}`}
+                onPointerDown={stopCardActionPropagation}
+                onMouseDown={stopCardActionPropagation}
+                onClick={(event) => handleCardAction(event, onOpen)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors duration-150 hover:bg-white/20"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+                Preview
+              </button>
             </div>
           </div>
         </div>
-      </button>
+      </div>
 
-      <div className="space-y-3 px-1 pb-1 pt-4">
+      <div className="relative z-10 space-y-3 px-1 pb-1 pt-4">
         <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
           <span>Gancho</span>
           <span>{formatDateLabel(carousel.createdAt)}</span>
@@ -1616,14 +2903,24 @@ function CarouselCard({
           {carousel.finalCta}
         </p>
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onOpen}>
-            <ZoomIn className="mr-2 h-4 w-4" />
-            Abrir
-          </Button>
           <Button
+            type="button"
             variant="outline"
             className="flex-1 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary"
-            onClick={onDownload}
+            onPointerDown={stopCardActionPropagation}
+            onMouseDown={stopCardActionPropagation}
+            onClick={(event) => handleCardAction(event, onEdit)}
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary"
+            onPointerDown={stopCardActionPropagation}
+            onMouseDown={stopCardActionPropagation}
+            onClick={(event) => handleCardAction(event, onDownload)}
           >
             <Download className="mr-2 h-4 w-4" />
             ZIP
@@ -1631,9 +2928,12 @@ function CarouselCard({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Button
+            type="button"
             variant="outline"
             className="border-emerald-500/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-            onClick={onPublish}
+            onPointerDown={stopCardActionPropagation}
+            onMouseDown={stopCardActionPropagation}
+            onClick={(event) => handleCardAction(event, onPublish)}
             disabled={isPublishing || isScheduling}
           >
             {isPublishing ? (
@@ -1644,9 +2944,12 @@ function CarouselCard({
             Postar
           </Button>
           <Button
+            type="button"
             variant="outline"
             className="border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
-            onClick={onSchedule}
+            onPointerDown={stopCardActionPropagation}
+            onMouseDown={stopCardActionPropagation}
+            onClick={(event) => handleCardAction(event, onSchedule)}
             disabled={isPublishing || isScheduling}
           >
             {isScheduling ? (
@@ -1658,9 +2961,12 @@ function CarouselCard({
           </Button>
         </div>
         <Button
+          type="button"
           variant="outline"
           className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={onDelete}
+          onPointerDown={stopCardActionPropagation}
+          onMouseDown={stopCardActionPropagation}
+          onClick={(event) => handleCardAction(event, onDelete)}
           disabled={isDeleting}
         >
           {isDeleting ? (
@@ -1766,6 +3072,22 @@ async function buildCarouselTemplateSlides(
 
   return Promise.all(
     carousel.slides.map(async (slide, index) => {
+      // Imported carousels already have ready-to-use images — skip SVG rendering
+      if (carousel.style === "importado") {
+        const imageDataUrl = await resolveAssetUrl(slide.renderedImageUrl || slide.imageUrl);
+        return {
+          title: slide.title,
+          body: slide.body,
+          imageUrl: slide.imageUrl,
+          designTemplateName: slide.designTemplateName,
+          designTemplateUrl: slide.designTemplateUrl,
+          designStyleBrief: slide.designStyleBrief,
+          renderedImageDataUrl: imageDataUrl,
+          templateSvgUrl: slide.templateSvgUrl,
+          renderedImageUrl: slide.renderedImageUrl,
+        };
+      }
+
       const ownEmbeddedImageUrl = embeddedSlideImageUrls[index];
       const embeddedSlideImageUrl =
         ownEmbeddedImageUrl && !isCarouselFallbackAssetUrl(ownEmbeddedImageUrl)
@@ -1803,6 +3125,10 @@ async function buildCarouselTemplateSlides(
         renderedImageDataUrl: imageDataUrl,
         templateSvgUrl: slide.templateSvgUrl,
         renderedImageUrl: slide.renderedImageUrl,
+        fontFamily: slide.fontFamily,
+        accentColor: slide.accentColor,
+        backgroundColor: slide.backgroundColor,
+        editorSettings: slide.editorSettings,
       };
     })
   );
@@ -1810,8 +3136,13 @@ async function buildCarouselTemplateSlides(
 
 export default function Carousels() {
   const utils = trpc.useUtils();
+  const [inputMode, setInputMode] = useState<"topic" | "news">("topic");
   const [topic, setTopic] = useState("");
+  const [newsUrl, setNewsUrl] = useState("");
+  const [articleContext, setArticleContext] = useState<string | undefined>(undefined);
+  const [articlePreview, setArticlePreview] = useState<{ title: string; summary: string } | null>(null);
   const [slideCount, setSlideCount] = useState(5);
+  const [carouselFormat, setCarouselFormat] = useState<"feed" | "story">("feed");
   const selectedStyle = DEFAULT_STYLE_ID;
   const [coverImageUrl, setCoverImageUrl] = useState("");
   const [selectedCarouselId, setSelectedCarouselId] = useState<number | null>(null);
@@ -1823,7 +3154,43 @@ export default function Carousels() {
   const selectedProfileRef = useRef<ProfileModel>(PROFILE_MODELS[0]);
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
+  // Import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importTopic, setImportTopic] = useState("");
+  const [importHook, setImportHook] = useState("");
+  const [importCaption, setImportCaption] = useState("");
+  const [importCta, setImportCta] = useState("");
+  const [importSlides, setImportSlides] = useState<Array<{ title: string; dataUrl: string; fileName: string }>>([]);
+  const [importUploading, setImportUploading] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Editor dialog state
+  const [editorCarousel, setEditorCarousel] = useState<CarouselItem | null>(null);
+  const [editorDraft, setEditorDraft] = useState<CarouselItem | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorSlideIndex, setEditorSlideIndex] = useState(0);
+  const [editorFontId, setEditorFontId] = useState<FontOptionId>("default");
+  const [editorAccentColor, setEditorAccentColor] = useState(FV_GOLD);
+  const [editorBgColor, setEditorBgColor] = useState(FV_BLUE);
+  const [editorImagePanelIndex, setEditorImagePanelIndex] = useState<number | null>(null);
+  const [editorUploadingIndex, setEditorUploadingIndex] = useState<number | null>(null);
+  const editorOpenTimeoutRef = useRef<number | null>(null);
+  const editorPrimaryFieldRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewOpenBlockedUntilRef = useRef(0);
+
   const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery();
+
+  const fetchArticleMutation = trpc.carousel.fetchArticle.useMutation({
+    onSuccess: (data) => {
+      setTopic(data.topic);
+      setArticleContext(data.articleContext);
+      setArticlePreview({ title: data.title, summary: data.summary });
+      toast.success("Notícia carregada! Revise o tema e clique em gerar.");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Não foi possível carregar a notícia");
+    },
+  });
 
   const generateCarouselMutation = trpc.carousel.generate.useMutation({
     onSuccess: (carousel) => {
@@ -1832,6 +3199,9 @@ export default function Carousels() {
       setSelectedCarouselId(carousel.id);
       setModalSlide(0);
       setTopic("");
+      setNewsUrl("");
+      setArticleContext(undefined);
+      setArticlePreview(null);
       setCoverImageUrl("");
       toast.success("Carrossel gerado com sucesso!");
       void ensureCarouselDesignAssets(carousel as CarouselItem).catch((error) => {
@@ -1856,6 +3226,40 @@ export default function Carousels() {
       utils.posts.getStats.invalidate();
     },
   });
+  const updateContentMutation = trpc.carousel.updateContent.useMutation({
+    onSuccess: () => {
+      utils.carousel.getAll.invalidate();
+    },
+  });
+  const uploadSlideImageMutation = trpc.carousel.uploadSlideImage.useMutation();
+  const generateCaptionMutation = trpc.carousel.generateCaptionFromImage.useMutation({
+    onSuccess: ({ caption }) => {
+      setImportCaption(caption);
+    },
+    onError: (err) => {
+      toast.error("Erro ao gerar legenda: " + (err.message || "falha desconhecida"));
+    },
+  });
+
+  const importImagesMutation = trpc.carousel.importImages.useMutation({
+    onSuccess: (carousel) => {
+      utils.carousel.getAll.invalidate();
+      utils.carousel.getStats.invalidate();
+      setImportDialogOpen(false);
+      setImportTopic("");
+      setImportHook("");
+      setImportCaption("");
+      setImportCta("");
+      setImportSlides([]);
+      setSelectedCarouselId(carousel.id);
+      setModalSlide(0);
+      toast.success("Carrossel importado com sucesso!");
+    },
+    onError: (err) => {
+      toast.error("Erro ao importar: " + (err.message || "falha desconhecida"));
+    },
+  });
+
   const deleteCarouselMutation = trpc.carousel.delete.useMutation({
     onSuccess: (_result, variables) => {
       utils.carousel.getAll.invalidate();
@@ -1880,6 +3284,28 @@ export default function Carousels() {
     carousels.find((carousel) => carousel.id === selectedCarouselId) ?? null;
   const selectedSlides = selectedCarousel?.slides ?? [];
   const currentSlide = selectedSlides[modalSlide];
+  const currentEditorSlide =
+    editorDraft?.slides[editorSlideIndex] ?? editorDraft?.slides[0] ?? null;
+  const currentEditorSlideSettings = normalizeSlideEditorSettings(
+    currentEditorSlide?.editorSettings
+  );
+  const currentEditorSlideHasImage =
+    editorDraft && currentEditorSlide
+      ? slideSupportsImageEditor(
+          currentEditorSlide,
+          editorSlideIndex,
+          editorDraft.slides.length,
+          selectedProfileRef.current.id
+        )
+      : false;
+
+  useEffect(() => {
+    return () => {
+      if (editorOpenTimeoutRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(editorOpenTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const resolveTemplateAssetUrl = async (url?: string) => {
     const embeddedUrl = await toEmbeddedAssetUrl(url);
@@ -1962,8 +3388,53 @@ export default function Carousels() {
   };
 
   const openCarousel = (carousel: CarouselItem) => {
+    if (Date.now() < previewOpenBlockedUntilRef.current) {
+      return;
+    }
     setSelectedCarouselId(carousel.id);
     setModalSlide(0);
+  };
+
+  const openEditor = (carousel: CarouselItem) => {
+    const fontFromSlides = carousel.slides[0]?.fontFamily;
+    const matchedFont = FONT_OPTIONS.find((f) => f.value === fontFromSlides);
+    const accentFromSlides = carousel.slides[0]?.accentColor;
+    const bgFromSlides = carousel.slides[0]?.backgroundColor;
+    if (editorOpenTimeoutRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(editorOpenTimeoutRef.current);
+      editorOpenTimeoutRef.current = null;
+    }
+    previewOpenBlockedUntilRef.current = Date.now() + 800;
+    setIsEditorOpen(false);
+    setSelectedCarouselId(null);
+    setModalSlide(0);
+    setEditorFontId(matchedFont?.id ?? "default");
+    setEditorAccentColor(accentFromSlides ?? FV_GOLD);
+    setEditorBgColor(bgFromSlides ?? FV_BLUE);
+    setEditorDraft({ ...carousel, slides: carousel.slides.map((s) => ({ ...s })) });
+    setEditorCarousel(carousel);
+    setEditorSlideIndex(0);
+    setEditorImagePanelIndex(null);
+    if (typeof window === "undefined") {
+      setIsEditorOpen(true);
+      return;
+    }
+    editorOpenTimeoutRef.current = window.setTimeout(() => {
+      setIsEditorOpen(true);
+      editorOpenTimeoutRef.current = null;
+    }, 0);
+  };
+
+  const closeEditor = () => {
+    if (editorOpenTimeoutRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(editorOpenTimeoutRef.current);
+      editorOpenTimeoutRef.current = null;
+    }
+    setIsEditorOpen(false);
+    setEditorCarousel(null);
+    setEditorDraft(null);
+    setEditorSlideIndex(0);
+    setEditorImagePanelIndex(null);
   };
 
   const handleGenerate = () => {
@@ -1975,9 +3446,11 @@ export default function Carousels() {
     generateCarouselMutation.mutate({
       topic: topic.trim(),
       slideCount,
+      carouselFormat,
       style: selectedStyle,
       coverImageDataUrl: coverImageUrl || undefined,
       useAiImages,
+      articleContext,
     });
   };
 
@@ -2002,10 +3475,10 @@ export default function Carousels() {
   };
 
   const prepareInstagramCarouselPayload = async (carousel: CarouselItem) => {
-    const preparedCarousel = await ensureCarouselDesignAssets(carousel, {
-      silent: true,
-      force: true,
-    });
+    const isImported = carousel.style === "importado";
+    const preparedCarousel = isImported
+      ? carousel
+      : await ensureCarouselDesignAssets(carousel, { silent: true, force: true });
     const slides = preparedCarousel.slides.map((slide) => ({
       title: slide.title,
       body: slide.body,
@@ -2106,6 +3579,216 @@ export default function Carousels() {
     await copyText(buildCarouselExportText(carousel), "Carrossel completo copiado");
   };
 
+  const handleEditorField = (field: "hook" | "caption" | "finalCta", value: string) => {
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [field]: value,
+        slides:
+          field === "caption" ? prev.slides : clearRenderedSlideAssets(prev.slides),
+      };
+    });
+  };
+
+  const handleEditorSlideText = (index: number, field: "title" | "body", value: string) => {
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      const slides = prev.slides.map((s, i) =>
+        i === index ? { ...clearRenderedSlideAsset(s), [field]: value } : s
+      );
+      return { ...prev, slides };
+    });
+  };
+
+  const handleEditorSlideImageUrl = (index: number, url: string) => {
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      const slides = prev.slides.map((s, i) =>
+        i === index ? { ...s, imageUrl: url, renderedImageUrl: undefined } : s
+      );
+      return { ...prev, slides };
+    });
+    setEditorImagePanelIndex(null);
+  };
+
+  const handleEditorUploadImage = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    slideIndex: number
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setEditorUploadingIndex(slideIndex);
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = (ev) => {
+          const result = ev.target?.result;
+          if (typeof result === "string") resolve(result);
+          else reject(new Error("Falha ao ler o arquivo"));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const { url } = await uploadSlideImageMutation.mutateAsync({ imageDataUrl: dataUrl });
+      handleEditorSlideImageUrl(slideIndex, url);
+      toast.success("Imagem atualizada");
+    } catch {
+      toast.error("Erro ao enviar a imagem");
+    } finally {
+      setEditorUploadingIndex(null);
+    }
+  };
+
+  const handleEditorFontChange = (fontId: FontOptionId) => {
+    setEditorFontId(fontId);
+    const fontValue = FONT_OPTIONS.find((f) => f.id === fontId)?.value;
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        slides: clearRenderedSlideAssets(
+          prev.slides.map((s) => ({ ...s, fontFamily: fontValue }))
+        ),
+      };
+    });
+  };
+
+  const handleEditorAccentColorChange = (color: string) => {
+    setEditorAccentColor(color);
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        slides: clearRenderedSlideAssets(
+          prev.slides.map((s) => ({ ...s, accentColor: color }))
+        ),
+      };
+    });
+  };
+
+  const handleEditorBgColorChange = (color: string) => {
+    setEditorBgColor(color);
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        slides: clearRenderedSlideAssets(
+          prev.slides.map((s) => ({ ...s, backgroundColor: color }))
+        ),
+      };
+    });
+  };
+
+  const handleEditorSlideSetting = (
+    index: number,
+    key: SlideEditorSettingKey,
+    value: number | string | undefined
+  ) => {
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      const slides = prev.slides.map((slide, slideIndex) => {
+        if (slideIndex !== index) {
+          return slide;
+        }
+
+        const currentSettings = normalizeSlideEditorSettings(slide.editorSettings);
+        const nextSettings: SlideEditorSettings = {
+          ...currentSettings,
+          [key]: value,
+        };
+
+        return {
+          ...clearRenderedSlideAsset(slide),
+          editorSettings: nextSettings,
+        };
+      });
+
+      return { ...prev, slides };
+    });
+  };
+
+  const resetCurrentSlideEditorSettings = () => {
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      const slides = prev.slides.map((slide, index) =>
+        index === editorSlideIndex
+          ? {
+              ...clearRenderedSlideAsset(slide),
+              editorSettings: {
+                ...DEFAULT_SLIDE_EDITOR_SETTINGS,
+              },
+            }
+          : slide
+      );
+      return { ...prev, slides };
+    });
+  };
+
+  const handleSaveEditor = async () => {
+    if (!editorDraft) return;
+    try {
+      await updateContentMutation.mutateAsync({
+        id: editorDraft.id,
+        hook: editorDraft.hook,
+        caption: editorDraft.caption,
+        finalCta: editorDraft.finalCta,
+        slides: editorDraft.slides,
+      });
+      closeEditor();
+      toast.success("Carrossel atualizado com sucesso");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error("Erro ao salvar: " + message);
+    }
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    e.target.value = "";
+    const newSlides = await Promise.all(
+      files.map((file) =>
+        new Promise<{ title: string; dataUrl: string; fileName: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const result = ev.target?.result;
+            if (typeof result === "string") {
+              resolve({
+                title: file.name.replace(/\.[^.]+$/, ""),
+                dataUrl: result,
+                fileName: file.name,
+              });
+            } else {
+              reject(new Error("Falha ao ler arquivo"));
+            }
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        })
+      )
+    );
+    setImportSlides((prev) => [...prev, ...newSlides].slice(0, 10));
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importTopic.trim()) { toast.error("Digite o tema do carrossel"); return; }
+    if (!importSlides.length) { toast.error("Selecione pelo menos uma imagem"); return; }
+    setImportUploading(true);
+    try {
+      await importImagesMutation.mutateAsync({
+        topic: importTopic.trim(),
+        hook: importHook.trim() || undefined,
+        caption: importCaption.trim() || undefined,
+        finalCta: importCta.trim() || undefined,
+        slides: importSlides.map((s) => ({ title: s.title, imageDataUrl: s.dataUrl })),
+      });
+    } finally {
+      setImportUploading(false);
+    }
+  };
+
   return (
     <AppLayout activeModule="carousel">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 p-6 lg:p-8">
@@ -2140,19 +3823,118 @@ export default function Carousels() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            {/* Mode toggle */}
+            <div className="flex gap-1 rounded-xl border border-border/40 bg-muted/30 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setInputMode("topic");
+                  setArticleContext(undefined);
+                  setArticlePreview(null);
+                }}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                  inputMode === "topic"
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
                 <Type className="h-3.5 w-3.5" />
-                Tema / Assunto
-              </label>
-              <Textarea
-                value={topic}
-                onChange={(event) => setTopic(event.target.value)}
-                placeholder="Ex: 5 erros que fazem seu conteudo passar despercebido no Instagram"
-                className="min-h-[120px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
-                disabled={isGenerating}
-              />
+                Tema livre
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("news")}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                  inputMode === "news"
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Newspaper className="h-3.5 w-3.5" />
+                A partir de uma notícia
+              </button>
             </div>
+
+            {inputMode === "news" ? (
+              <div className="space-y-3">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  Link da notícia
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newsUrl}
+                    onChange={(e) => setNewsUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="rounded-xl border-border/50 bg-background/70 text-sm"
+                    disabled={fetchArticleMutation.isPending || isGenerating}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newsUrl.trim()) {
+                        fetchArticleMutation.mutate({ url: newsUrl.trim() });
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fetchArticleMutation.mutate({ url: newsUrl.trim() })}
+                    disabled={!newsUrl.trim() || fetchArticleMutation.isPending || isGenerating}
+                    className="shrink-0 rounded-xl"
+                  >
+                    {fetchArticleMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Buscar"
+                    )}
+                  </Button>
+                </div>
+
+                {articlePreview && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Newspaper className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 truncate">
+                        {articlePreview.title}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                      {articlePreview.summary}
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Type className="h-3.5 w-3.5" />
+                    Tema do carrossel
+                    <span className="text-muted-foreground/60">(gerado automaticamente, edite se quiser)</span>
+                  </label>
+                  <Textarea
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Cole o link acima para preencher automaticamente..."
+                    className="min-h-[80px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                    disabled={isGenerating}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Type className="h-3.5 w-3.5" />
+                  Tema / Assunto
+                </label>
+                <Textarea
+                  value={topic}
+                  onChange={(event) => setTopic(event.target.value)}
+                  placeholder="Ex: 5 erros que fazem seu conteudo passar despercebido no Instagram"
+                  className="min-h-[120px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                  disabled={isGenerating}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -2173,6 +3955,37 @@ export default function Carousels() {
                     )}
                   >
                     {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Image className="h-3.5 w-3.5" />
+                Formato do carrossel
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {carouselFormatOptions.map((format) => (
+                  <button
+                    key={format.id}
+                    type="button"
+                    disabled={isGenerating}
+                    onClick={() => setCarouselFormat(format.id)}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-2xl border-2 px-4 py-2.5 transition-all duration-150",
+                      carouselFormat === format.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border/30 hover:border-border"
+                    )}
+                  >
+                    <span className={cn(
+                      "text-sm font-semibold",
+                      carouselFormat === format.id ? "text-primary" : "text-muted-foreground"
+                    )}>
+                      {format.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{format.description}</span>
                   </button>
                 ))}
               </div>
@@ -2264,6 +4077,23 @@ export default function Carousels() {
               </Button>
             </div>
 
+            <div className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-background/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">Importar imagens prontas</p>
+                <p className="text-xs text-muted-foreground">
+                  Envie imagens do computador e poste direto no Instagram, sem passar pela IA.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setImportDialogOpen(true)}
+                className="gap-2 shrink-0"
+              >
+                <Upload className="h-4 w-4" />
+                Importar imagens
+              </Button>
+            </div>
+
             <div className="flex items-center justify-between rounded-2xl border border-border/40 bg-background/60 px-4 py-3">
               <div className="space-y-0.5">
                 <p className="text-sm font-semibold text-foreground">Imagens geradas por IA</p>
@@ -2328,7 +4158,10 @@ export default function Carousels() {
               </h3>
               <div className="mt-5 flex flex-wrap gap-2">
                 <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-muted-foreground">
-                  {slideCount} slides
+                  {slideCount} slide{slideCount !== 1 ? 's' : ''}
+                </span>
+                <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-muted-foreground">
+                  {carouselFormatOptions.find(f => f.id === carouselFormat)?.description}
                 </span>
                 <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-muted-foreground">
                   {coverImageUrl ? "Com imagem propria" : "Imagem automatica"}
@@ -2404,6 +4237,7 @@ export default function Carousels() {
                   key={carousel.id}
                   carousel={carousel}
                   onOpen={() => openCarousel(carousel)}
+                  onEdit={() => openEditor(carousel)}
                   onDownload={() => handleDownload(carousel)}
                   onPublish={() => handlePublishInstagram(carousel)}
                   onSchedule={() => openScheduleDialog(carousel)}
@@ -2441,9 +4275,9 @@ export default function Carousels() {
               <div className="border-b border-border/30 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(244,244,245,0.92)_40%,_rgba(228,228,231,0.88)_100%)] p-6 lg:p-8 xl:w-[560px] xl:border-b-0 xl:border-r">
                 <div className="mx-auto w-full max-w-[420px]">
                   <SlidePreview
-                    slide={currentSlide}
+                    slide={selectedCarousel.slides[modalSlide] ?? selectedCarousel.slides[0]}
                     index={modalSlide}
-                    total={selectedSlides.length}
+                    total={selectedCarousel.slides.length}
                     style={selectedCarousel.style}
                     topic={selectedCarousel.topic}
                     hook={selectedCarousel.hook}
@@ -2454,6 +4288,7 @@ export default function Carousels() {
                     profileHandle={selectedProfileRef.current.handle}
                     profileInitials={selectedProfileRef.current.initials}
                     profileId={selectedProfileRef.current.id}
+                    fontFamily={(selectedCarousel.slides[modalSlide] ?? selectedCarousel.slides[0])?.fontFamily}
                   />
                 </div>
 
@@ -2468,23 +4303,23 @@ export default function Carousels() {
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="w-20 text-center text-xs text-muted-foreground">
-                    {modalSlide + 1} / {selectedSlides.length}
+                    {modalSlide + 1} / {selectedCarousel.slides.length}
                   </span>
                   <Button
                     variant="outline"
                     size="icon"
                     className="h-11 w-11 rounded-2xl bg-background/80"
                     onClick={() =>
-                      setModalSlide((value) => Math.min(selectedSlides.length - 1, value + 1))
+                      setModalSlide((value) => Math.min(selectedCarousel.slides.length - 1, value + 1))
                     }
-                    disabled={modalSlide === selectedSlides.length - 1}
+                    disabled={modalSlide === selectedCarousel.slides.length - 1}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {selectedSlides.map((slide, index) => (
+                  {selectedCarousel.slides.map((slide, index) => (
                     <button
                       key={index}
                       type="button"
@@ -2502,7 +4337,9 @@ export default function Carousels() {
                 </div>
               </div>
 
+              {/* ── Right panel ─────────────────────────────────────────────── */}
               <div className="flex min-h-0 flex-1 flex-col">
+                {/* Header */}
                 <div className="flex items-start justify-between gap-6 border-b border-border/30 p-6 lg:p-8">
                   <div className="space-y-1">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -2512,24 +4349,32 @@ export default function Carousels() {
                       {selectedCarousel.topic}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {selectedSlides.length} slides | pronto para design e postagem
-                    </p>
-                    <p className="hidden">
-                      {selectedSlides.length} slides · {selectedCarousel.style}
+                      {selectedCarousel.slides.length} slides | pronto para design e postagem
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/40 bg-background/70 transition-colors hover:bg-accent"
-                    onClick={() => {
-                      setSelectedCarouselId(null);
-                      setModalSlide(0);
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 rounded-2xl border border-border/40 bg-background/70 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={() => openEditor(selectedCarousel)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/40 bg-background/70 transition-colors hover:bg-accent"
+                      onClick={() => {
+                        setSelectedCarouselId(null);
+                        setModalSlide(0);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
+                {/* Body — view mode */}
                 <div className="flex-1 space-y-5 overflow-y-auto p-6 lg:p-8">
                   <div className="grid gap-4">
                     <div className="rounded-[28px] border border-border/40 bg-background/60 p-6">
@@ -2616,7 +4461,7 @@ export default function Carousels() {
                     </p>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="hidden" aria-hidden="true">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Todos os slides
                     </p>
@@ -2645,6 +4490,7 @@ export default function Carousels() {
                   </div>
                 </div>
 
+                {/* Footer */}
                 <div className="flex flex-wrap gap-3 border-t border-border/30 p-6 lg:p-8">
                   <Button
                     onClick={() => handleDownload(selectedCarousel)}
@@ -2652,6 +4498,13 @@ export default function Carousels() {
                   >
                     <Download className="h-4 w-4" />
                     Baixar .zip
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => openEditor(selectedCarousel)}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Editar conteúdo
                   </Button>
                   <Button
                     variant="outline"
@@ -2697,6 +4550,590 @@ export default function Carousels() {
             </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Editor Dialog ─────────────────────────────────────────────────────── */}
+      <Dialog
+        open={isEditorOpen && !!editorCarousel}
+        onOpenChange={(open) => {
+          if (!open) closeEditor();
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            if (typeof window === "undefined") return;
+            window.requestAnimationFrame(() => {
+              editorPrimaryFieldRef.current?.focus();
+              editorPrimaryFieldRef.current?.scrollIntoView({
+                block: "nearest",
+                inline: "nearest",
+              });
+            });
+          }}
+          className="!w-[min(96vw,1180px)] !max-w-[1180px] flex h-[min(92vh,860px)] flex-col gap-0 overflow-hidden rounded-[30px] border-border/50 bg-background p-0 shadow-2xl"
+        >
+          {editorCarousel && editorDraft ? (
+            <>
+            <DialogTitle className="sr-only">Editor: {editorCarousel.topic}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Edite textos, fontes, cores e imagens do carrossel.
+            </DialogDescription>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="border-b border-border/30 bg-background/95 px-5 py-5 backdrop-blur sm:px-6 sm:py-6 lg:px-7">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      <span className="rounded-full border border-border/40 bg-background/80 px-3 py-1.5">
+                        Editor do carrossel
+                      </span>
+                      <span>
+                        Slide {editorSlideIndex + 1} de {editorDraft.slides.length}
+                      </span>
+                    </div>
+                    <h3 className="max-w-3xl text-2xl font-semibold leading-tight text-foreground sm:text-3xl lg:text-[2.4rem]">
+                      {editorCarousel.topic}
+                    </h3>
+                    <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                      Ajuste textos, fonte, cores, imagem e posicao com preview ao vivo em um layout mais limpo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border/40 bg-background/80 transition-colors hover:bg-accent"
+                    onClick={closeEditor}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
+              {/* Left — live preview */}
+              <div className="min-w-0 overflow-y-auto border-b border-border/30 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(244,244,245,0.92)_40%,_rgba(228,228,231,0.88)_100%)] p-4 sm:p-6 lg:p-7 xl:w-[410px] xl:shrink-0 xl:border-b-0 xl:border-r">
+                <div className="mx-auto w-full max-w-[320px] sm:max-w-[360px] lg:max-w-[400px]">
+                  <div className="mb-4 flex items-center justify-between rounded-2xl border border-white/40 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 backdrop-blur">
+                    <span>Preview ao vivo</span>
+                    <span>{editorSlideIndex + 1} / {editorDraft.slides.length}</span>
+                  </div>
+                  <SlidePreview
+                    slide={editorDraft.slides[editorSlideIndex] ?? editorDraft.slides[0]}
+                    index={editorSlideIndex}
+                    total={editorDraft.slides.length}
+                    style={editorDraft.style}
+                    topic={editorDraft.topic}
+                    hook={editorDraft.hook}
+                    finalCta={editorDraft.finalCta}
+                    coverImageUrl={editorDraft.coverImageUrl ?? undefined}
+                    profileAvatarUrl={selectedProfileRef.current.avatarUrl}
+                    profileName={selectedProfileRef.current.name}
+                    profileHandle={selectedProfileRef.current.handle}
+                    profileInitials={selectedProfileRef.current.initials}
+                    profileId={selectedProfileRef.current.id}
+                    fontFamily={FONT_OPTIONS.find((f) => f.id === editorFontId)?.value}
+                    accentColor={editorAccentColor}
+                    backgroundColor={editorBgColor}
+                  />
+                </div>
+
+                <div className="mt-5 flex items-center justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 rounded-2xl bg-background/80"
+                    onClick={() => setEditorSlideIndex((v) => Math.max(0, v - 1))}
+                    disabled={editorSlideIndex === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="w-20 text-center text-xs text-muted-foreground">
+                    {editorSlideIndex + 1} / {editorDraft.slides.length}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 rounded-2xl bg-background/80"
+                    onClick={() => setEditorSlideIndex((v) => Math.min(editorDraft.slides.length - 1, v + 1))}
+                    disabled={editorSlideIndex === editorDraft.slides.length - 1}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-5 overflow-x-auto pb-1">
+                  <div className="flex min-w-max gap-2">
+                    {editorDraft.slides.map((slide, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setEditorSlideIndex(index)}
+                        className={cn(
+                          "shrink-0 rounded-full border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all duration-150",
+                          editorSlideIndex === index
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/40 bg-background/70 text-muted-foreground hover:border-border hover:text-foreground"
+                        )}
+                      >
+                        Slide {index + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-3xl border border-white/40 bg-white/70 px-4 py-3 text-center backdrop-blur">
+                  <p className="text-sm font-semibold text-foreground">
+                    {editorDraft.slides[editorSlideIndex]?.title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Troque de slide acima para ajustar cada parte do carrossel sem baguncar o painel.
+                  </p>
+                </div>
+              </div>
+
+              {/* Right — controls */}
+              <div className="min-w-0 min-h-0 flex-1 bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0)_28%)]">
+                <div className="h-full space-y-6 overflow-y-auto p-5 sm:p-6 lg:p-7">
+                  <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Aparencia geral
+                        </p>
+                        <h4 className="mt-2 text-lg font-semibold text-foreground">
+                          Fonte, destaque e base do carrossel
+                        </h4>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Esses ajustes valem para todos os slides. O ajuste fino fica por slide logo abaixo.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-border/40 bg-background/70 px-3 py-2">
+                          <input
+                            type="color"
+                            value={editorAccentColor}
+                            onChange={(e) => handleEditorAccentColorChange(e.target.value)}
+                            className="h-9 w-9 cursor-pointer rounded-lg border border-border/50 bg-transparent p-0.5"
+                          />
+                          <span className="text-xs text-muted-foreground">Destaque</span>
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-border/40 bg-background/70 px-3 py-2">
+                          <input
+                            type="color"
+                            value={editorBgColor}
+                            onChange={(e) => handleEditorBgColorChange(e.target.value)}
+                            className="h-9 w-9 cursor-pointer rounded-lg border border-border/50 bg-transparent p-0.5"
+                          />
+                          <span className="text-xs text-muted-foreground">Fundo</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {FONT_OPTIONS.map((font) => (
+                        <button
+                          key={font.id}
+                          type="button"
+                          onClick={() => handleEditorFontChange(font.id)}
+                          style={{ fontFamily: font.value }}
+                          className={cn(
+                            "rounded-xl border px-3 py-1.5 text-xs font-medium transition-all",
+                            editorFontId === font.id
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
+                          )}
+                        >
+                          {font.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {currentEditorSlide ? (
+                    <CarouselSlideStudio
+                      slide={currentEditorSlide}
+                      slideIndex={editorSlideIndex}
+                      totalSlides={editorDraft.slides.length}
+                      supportsImageEditor={currentEditorSlideHasImage}
+                      settings={currentEditorSlideSettings}
+                      imagePanelOpen={editorImagePanelIndex === editorSlideIndex}
+                      isUploadingImage={editorUploadingIndex === editorSlideIndex}
+                      onToggleImagePanel={() =>
+                        setEditorImagePanelIndex(
+                          editorImagePanelIndex === editorSlideIndex ? null : editorSlideIndex
+                        )
+                      }
+                      onReset={resetCurrentSlideEditorSettings}
+                      onTitleChange={(value) =>
+                        handleEditorSlideText(editorSlideIndex, "title", value)
+                      }
+                      onBodyChange={(value) =>
+                        handleEditorSlideText(editorSlideIndex, "body", value)
+                      }
+                      onApplyImageUrl={(url) =>
+                        handleEditorSlideImageUrl(editorSlideIndex, url)
+                      }
+                      onUploadImage={(e) => handleEditorUploadImage(e, editorSlideIndex)}
+                      onSettingChange={(key, value) =>
+                        handleEditorSlideSetting(editorSlideIndex, key, value)
+                      }
+                    />
+                  ) : null}
+
+                  {/* Gancho */}
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
+                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Gancho</p>
+                      <Textarea
+                        ref={editorPrimaryFieldRef}
+                        value={editorDraft.hook}
+                        onChange={(e) => handleEditorField("hook", e.target.value)}
+                        className="min-h-[120px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                      />
+                    </div>
+
+                    <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
+                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">CTA final</p>
+                      <Textarea
+                        value={editorDraft.finalCta}
+                        onChange={(e) => handleEditorField("finalCta", e.target.value)}
+                        className="min-h-[120px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Legenda</p>
+                    <Textarea
+                      value={editorDraft.caption}
+                      onChange={(e) => handleEditorField("caption", e.target.value)}
+                      className="min-h-[160px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                    />
+                  </div>
+
+                  {/* Slides */}
+                  <div className="hidden" aria-hidden="true">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slides</p>
+                    {editorDraft.slides.map((slide, index) => (
+                      <div
+                        key={index}
+                        className={cn(
+                          "rounded-[28px] border bg-background/60 p-5 transition-all",
+                          editorSlideIndex === index ? "border-primary/40" : "border-border/40"
+                        )}
+                      >
+                        <div className="mb-4 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => setEditorSlideIndex(index)}
+                            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                          >
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold">
+                              {index + 1}
+                            </span>
+                            Slide {index + 1}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditorImagePanelIndex(editorImagePanelIndex === index ? null : index)
+                            }
+                            className="flex items-center gap-1.5 rounded-xl border border-border/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                          >
+                            {editorUploadingIndex === index ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            Trocar imagem
+                          </button>
+                        </div>
+
+                        {editorImagePanelIndex === index && (
+                          <div className="mb-4 space-y-3 rounded-2xl border border-dashed border-border/60 bg-muted/30 p-4">
+                            <p className="text-[11px] font-medium text-muted-foreground">
+                              Cole uma URL ou faça upload
+                            </p>
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="https://..."
+                                className="h-9 rounded-xl border-border/50 bg-background/70 text-sm"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const url = (e.target as HTMLInputElement).value.trim();
+                                    if (url) handleEditorSlideImageUrl(index, url);
+                                  }
+                                }}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-9 shrink-0 rounded-xl text-xs"
+                                onClick={(e) => {
+                                  const inp = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                  const url = inp?.value.trim();
+                                  if (url) handleEditorSlideImageUrl(index, url);
+                                }}
+                              >
+                                OK
+                              </Button>
+                            </div>
+                            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/40 bg-background/70 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground">
+                              <Upload className="h-3.5 w-3.5" />
+                              Upload de arquivo
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleEditorUploadImage(e, index)}
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        <div className="mb-3">
+                          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Título
+                          </p>
+                          <Input
+                            value={slide.title}
+                            onChange={(e) => handleEditorSlideText(index, "title", e.target.value)}
+                            className="h-9 rounded-xl border-border/50 bg-background/70 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Corpo
+                          </p>
+                          <Textarea
+                            value={slide.body}
+                            onChange={(e) => handleEditorSlideText(index, "body", e.target.value)}
+                            className="min-h-[80px] resize-none rounded-xl border-border/50 bg-background/70 text-sm"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+              <div className="shrink-0 border-t border-border/30 bg-background/95 px-5 py-4 backdrop-blur sm:px-6 lg:px-7">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <Button
+                    onClick={handleSaveEditor}
+                    disabled={updateContentMutation.isPending}
+                    className="min-w-[190px] gap-2 border-0 bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white hover:opacity-90"
+                  >
+                    {updateContentMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    Salvar alterações
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={closeEditor}
+                    disabled={updateContentMutation.isPending}
+                    className="min-w-[140px]"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Import Images Dialog ──────────────────────────────────────────── */}
+      <Dialog
+        open={importDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setImportDialogOpen(false);
+            setImportSlides([]);
+            setImportTopic("");
+            setImportHook("");
+            setImportCaption("");
+            setImportCta("");
+          }
+        }}
+      >
+        <DialogContent className="w-[min(96vw,780px)] max-w-none overflow-hidden border-border/50 bg-background p-0">
+          <div className="flex max-h-[90vh] flex-col">
+            <div className="border-b border-border/30 p-6">
+              <DialogTitle className="text-xl font-semibold">Importar imagens do computador</DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-muted-foreground">
+                Selecione até 10 imagens. Elas serão salvas como carrossel e podem ser postadas direto no Instagram.
+              </DialogDescription>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto p-6">
+              {/* File picker */}
+              <div>
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImportFileChange}
+                />
+                {importSlides.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => importFileInputRef.current?.click()}
+                    className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border/50 bg-muted/20 p-10 text-center transition hover:border-primary/40 hover:bg-muted/30"
+                  >
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Clique para selecionar imagens</p>
+                      <p className="text-xs text-muted-foreground">JPG, PNG, WEBP — até 10 imagens</p>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {importSlides.map((slide, index) => (
+                        <div key={index} className="group relative">
+                          <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-border/40 bg-muted">
+                            <img
+                              src={slide.dataUrl}
+                              alt={slide.title}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setImportSlides((prev) => prev.filter((_, i) => i !== index))
+                            }
+                            className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <p className="mt-1.5 truncate text-center text-[11px] text-muted-foreground">
+                            {index + 1}. {slide.fileName}
+                          </p>
+                        </div>
+                      ))}
+                      {importSlides.length < 10 && (
+                        <button
+                          type="button"
+                          onClick={() => importFileInputRef.current?.click()}
+                          className="flex aspect-[4/5] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/40 bg-muted/20 text-center transition hover:border-primary/40"
+                        >
+                          <Upload className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-[11px] text-muted-foreground">Adicionar</span>
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-right text-xs text-muted-foreground">
+                      {importSlides.length}/10 imagens
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Metadata */}
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Tema <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    placeholder="Ex: Lançamento do produto X"
+                    value={importTopic}
+                    onChange={(e) => setImportTopic(e.target.value)}
+                    className="rounded-2xl border-border/50 bg-background/70"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Gancho / Título do post
+                  </label>
+                  <Input
+                    placeholder="Ex: Descubra o segredo..."
+                    value={importHook}
+                    onChange={(e) => setImportHook(e.target.value)}
+                    className="rounded-2xl border-border/50 bg-background/70"
+                  />
+                </div>
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Legenda
+                    </label>
+                    <button
+                      type="button"
+                      disabled={importSlides.length === 0 || generateCaptionMutation.isPending}
+                      onClick={() => {
+                        const first = importSlides[0];
+                        if (first) generateCaptionMutation.mutate({ imageDataUrl: first.dataUrl });
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl border border-border/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      {generateCaptionMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      Gerar com IA
+                    </button>
+                  </div>
+                  <Textarea
+                    placeholder="Legenda para o post no Instagram..."
+                    value={importCaption}
+                    onChange={(e) => setImportCaption(e.target.value)}
+                    className="min-h-[80px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    CTA final
+                  </label>
+                  <Input
+                    placeholder="Ex: Salve para não esquecer!"
+                    value={importCta}
+                    onChange={(e) => setImportCta(e.target.value)}
+                    className="rounded-2xl border-border/50 bg-background/70"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-border/30 p-6">
+              <Button
+                onClick={handleImportSubmit}
+                disabled={importUploading || !importTopic.trim() || importSlides.length === 0}
+                className="gap-2 border-0 bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white hover:opacity-90"
+              >
+                {importUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Salvar carrossel
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setImportDialogOpen(false)}
+                disabled={importUploading}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

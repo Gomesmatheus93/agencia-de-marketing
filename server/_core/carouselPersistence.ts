@@ -30,6 +30,10 @@ type PersistCarouselDesignAssetsInput = {
     renderedImageDataUrl?: string;
     templateSvgUrl?: string;
     renderedImageUrl?: string;
+    fontFamily?: string;
+    accentColor?: string;
+    backgroundColor?: string;
+    editorSettings?: CarouselSlideData["editorSettings"];
   }>;
 };
 
@@ -275,6 +279,10 @@ export async function persistCarouselDesignAssets(
       designStyleBrief: slide.designStyleBrief,
       templateSvgUrl: slide.templateSvgUrl,
       renderedImageUrl,
+      fontFamily: slide.fontFamily,
+      accentColor: slide.accentColor,
+      backgroundColor: slide.backgroundColor,
+      editorSettings: slide.editorSettings,
     });
   }
 
@@ -285,4 +293,18 @@ export async function getCarouselAssetDataUrl(assetUrl: string) {
   const asset = await resolveAnyAsset(assetUrl);
   if (!asset) return undefined;
   return `data:${asset.contentType};base64,${asset.data.toString("base64")}`;
+}
+
+export async function persistSingleCarouselImage(input: {
+  userId: number;
+  imageDataUrl: string;
+}): Promise<string> {
+  const asset = parseDataUrl(input.imageDataUrl);
+  if (!asset) throw new Error("Invalid image data URL");
+  return writeUploadsAsset({
+    asset,
+    batchId: randomUUID(),
+    filePrefix: "editor-image",
+    userId: input.userId,
+  });
 }

@@ -36,6 +36,9 @@ export const translations = {
     language: "Idioma",
     langPt: "PT",
     langEn: "EN",
+    // Admin
+    admin: "Admin",
+    adminDesc: "Área restrita",
   },
   en: {
     dashboard: "Dashboard",
@@ -65,6 +68,9 @@ export const translations = {
     language: "Language",
     langPt: "PT",
     langEn: "EN",
+    // Admin
+    admin: "Admin",
+    adminDesc: "Restricted area",
   },
 } as const;
 

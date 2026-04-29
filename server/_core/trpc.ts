@@ -90,3 +90,22 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+// Procedure restrita ao proprietário da plataforma (identificado pelo nome "Matheus")
+export const ownerProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    const isOwner = ctx.user?.name?.toLowerCase().includes("matheus") ?? false;
+    if (!ctx.user || !isOwner) {
+      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
+    });
+  }),
+);

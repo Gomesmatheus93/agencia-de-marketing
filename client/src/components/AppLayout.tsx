@@ -55,7 +55,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { user, isAuthenticated, loading } = useAuth();
   const { theme, toggleTheme, switchable } = useTheme();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDarkTheme = theme === "dark";
@@ -181,10 +181,14 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           <NavButton key={item.id} item={item} />
         ))}
 
-        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
-          {t("system")}
-        </div>
-        <NavButton item={settingsItem} />
+        {user?.name?.toLowerCase().includes("matheus") && (
+          <>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
+              {t("system")}
+            </div>
+            <NavButton item={settingsItem} />
+          </>
+        )}
       </nav>
 
       {/* User profile */}
@@ -214,37 +218,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               )}
             />
           </button>
-        </div>
-
-        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
-          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-muted-foreground">
-            {language.toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{t("language")}</div>
-          </div>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => setLanguage("pt")}
-              className={cn(
-                "px-2 py-1 rounded-md text-[11px] font-semibold transition-colors",
-                language === "pt" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:text-foreground"
-              )}
-            >
-              PT
-            </button>
-            <button
-              type="button"
-              onClick={() => setLanguage("en")}
-              className={cn(
-                "px-2 py-1 rounded-md text-[11px] font-semibold transition-colors",
-                language === "en" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:text-foreground"
-              )}
-            >
-              EN
-            </button>
-          </div>
         </div>
 
         <DropdownMenu>

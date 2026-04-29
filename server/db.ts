@@ -17,6 +17,7 @@ import {
   avatarVideos,
   socialPosts,
   instagramConnections,
+  featureFlags,
   type ChatConversation,
   type ChatMessage,
   type GeneratedImage,
@@ -28,6 +29,7 @@ import {
   type SocialPost,
   type InstagramConnection,
   type InsertInstagramConnection,
+  type FeatureFlag,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -35,6 +37,7 @@ let _carouselTableReady: Promise<void> | null = null;
 let _carouselTemplateTableReady: Promise<void> | null = null;
 let _avatarVideoTableReady: Promise<void> | null = null;
 let _socialPostsMetadataReady: Promise<void> | null = null;
+let _featureFlagsTableReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -66,6 +69,80 @@ function parseCarouselSlides(value: unknown): CarouselSlideData[] {
           typeof item.templateSvgUrl === "string" ? item.templateSvgUrl : undefined,
         renderedImageUrl:
           typeof item.renderedImageUrl === "string" ? item.renderedImageUrl : undefined,
+        fontFamily:
+          typeof item.fontFamily === "string" ? item.fontFamily : undefined,
+        accentColor:
+          typeof item.accentColor === "string" ? item.accentColor : undefined,
+        backgroundColor:
+          typeof item.backgroundColor === "string" ? item.backgroundColor : undefined,
+        editorSettings:
+          typeof item.editorSettings === "object" && item.editorSettings !== null
+            ? (() => {
+                const editorSettings = item.editorSettings as Record<string, unknown>;
+                return {
+                  titleOffsetX:
+                    typeof editorSettings.titleOffsetX === "number"
+                      ? editorSettings.titleOffsetX
+                      : undefined,
+                  titleOffsetY:
+                    typeof editorSettings.titleOffsetY === "number"
+                      ? editorSettings.titleOffsetY
+                      : undefined,
+                  titleScale:
+                    typeof editorSettings.titleScale === "number"
+                      ? editorSettings.titleScale
+                      : undefined,
+                  bodyOffsetX:
+                    typeof editorSettings.bodyOffsetX === "number"
+                      ? editorSettings.bodyOffsetX
+                      : undefined,
+                  bodyOffsetY:
+                    typeof editorSettings.bodyOffsetY === "number"
+                      ? editorSettings.bodyOffsetY
+                      : undefined,
+                  bodyScale:
+                    typeof editorSettings.bodyScale === "number"
+                      ? editorSettings.bodyScale
+                      : undefined,
+                  imageOffsetX:
+                    typeof editorSettings.imageOffsetX === "number"
+                      ? editorSettings.imageOffsetX
+                      : undefined,
+                  imageOffsetY:
+                    typeof editorSettings.imageOffsetY === "number"
+                      ? editorSettings.imageOffsetY
+                      : undefined,
+                  imageScale:
+                    typeof editorSettings.imageScale === "number"
+                      ? editorSettings.imageScale
+                      : undefined,
+                  imageRotation:
+                    typeof editorSettings.imageRotation === "number"
+                      ? editorSettings.imageRotation
+                      : undefined,
+                  imageBrightness:
+                    typeof editorSettings.imageBrightness === "number"
+                      ? editorSettings.imageBrightness
+                      : undefined,
+                  imageContrast:
+                    typeof editorSettings.imageContrast === "number"
+                      ? editorSettings.imageContrast
+                      : undefined,
+                  imageSaturate:
+                    typeof editorSettings.imageSaturate === "number"
+                      ? editorSettings.imageSaturate
+                      : undefined,
+                  titleColor:
+                    typeof editorSettings.titleColor === "string"
+                      ? editorSettings.titleColor
+                      : undefined,
+                  bodyColor:
+                    typeof editorSettings.bodyColor === "string"
+                      ? editorSettings.bodyColor
+                      : undefined,
+                };
+              })()
+            : undefined,
       }));
   }
 
@@ -525,6 +602,34 @@ export async function updateCarouselSlides(
   return hydrateCarousel(updated[0] as Omit<Carousel, "slides"> & { slides: unknown });
 }
 
+export async function updateCarouselContent(
+  id: number,
+  userId: number,
+  data: {
+    hook: string;
+    caption: string;
+    finalCta: string;
+    slides: CarouselSlideData[];
+  }
+): Promise<Carousel | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureCarouselTable();
+  await db.update(carousels).set({
+    hook: data.hook,
+    caption: data.caption,
+    finalCta: data.finalCta,
+    slides: JSON.stringify(data.slides),
+    updatedAt: new Date(),
+  }).where(and(eq(carousels.id, id), eq(carousels.userId, userId)));
+
+  const updated = await db.select().from(carousels)
+    .where(and(eq(carousels.id, id), eq(carousels.userId, userId))).limit(1);
+
+  if (!updated[0]) return undefined;
+  return hydrateCarousel(updated[0] as Omit<Carousel, "slides"> & { slides: unknown });
+}
+
 export async function getCarouselCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
@@ -809,4 +914,93 @@ export async function deleteInstagramConnection(userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.delete(instagramConnections).where(eq(instagramConnections.userId, userId));
+}
+
+// ─── Admin: All Users ─────────────────────────────────────────────────────────
+export async function listAllUsers(): Promise<Omit<typeof users.$inferSelect, "passwordHash">[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: users.id,
+    openId: users.openId,
+    name: users.name,
+    email: users.email,
+    loginMethod: users.loginMethod,
+    role: users.role,
+    createdAt: users.createdAt,
+    updatedAt: users.updatedAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.createdAt));
+}
+
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+async function ensureFeatureFlagsTable(): Promise<void> {
+  if (!_featureFlagsTableReady) {
+    _featureFlagsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`feature_flags\` (
+          \`id\` int AUTO_INCREMENT NOT NULL,
+          \`key\` varchar(128) NOT NULL,
+          \`label\` varchar(255) NOT NULL,
+          \`description\` text,
+          \`enabled\` boolean NOT NULL DEFAULT false,
+          \`createdAt\` timestamp NOT NULL DEFAULT (now()),
+          \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`feature_flags_id\` PRIMARY KEY(\`id\`),
+          CONSTRAINT \`feature_flags_key_unique\` UNIQUE(\`key\`)
+        )
+      `);
+    })();
+  }
+  return _featureFlagsTableReady;
+}
+
+export async function getFeatureFlags(): Promise<FeatureFlag[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureFeatureFlagsTable();
+  return db.select().from(featureFlags).orderBy(asc(featureFlags.createdAt));
+}
+
+export async function getFeatureFlagByKey(key: string): Promise<FeatureFlag | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureFeatureFlagsTable();
+  const [row] = await db.select().from(featureFlags).where(eq(featureFlags.key, key));
+  return row ?? null;
+}
+
+export async function upsertFeatureFlag(
+  key: string,
+  label: string,
+  description: string | undefined,
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureFeatureFlagsTable();
+  const existing = await getFeatureFlagByKey(key);
+  if (existing) {
+    await db.update(featureFlags)
+      .set({ label, description: description ?? null, enabled })
+      .where(eq(featureFlags.key, key));
+  } else {
+    await db.insert(featureFlags).values({ key, label, description: description ?? null, enabled });
+  }
+}
+
+export async function toggleFeatureFlag(key: string, enabled: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureFeatureFlagsTable();
+  await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, key));
+}
+
+export async function deleteFeatureFlag(key: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureFeatureFlagsTable();
+  await db.delete(featureFlags).where(eq(featureFlags.key, key));
 }

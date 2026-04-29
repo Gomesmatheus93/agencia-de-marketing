@@ -33,6 +33,7 @@ export const ENV = {
   unsplashAccessKey: process.env.UNSPLASH_ACCESS_KEY ?? "",
   pexelsApiKey: process.env.PEXELS_API_KEY ?? "",
   pixabayApiKey: process.env.PIXABAY_API_KEY ?? "",
+  serperApiKey: process.env.SERPER_API_KEY ?? "",
   metaGraphApiBaseUrl: process.env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com",
   metaGraphApiVersion: process.env.META_GRAPH_API_VERSION ?? "v25.0",
   metaAppId: process.env.META_APP_ID ?? "",
