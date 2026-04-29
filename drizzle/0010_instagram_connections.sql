@@ -13,5 +13,3 @@ CREATE TABLE IF NOT EXISTS `instagram_connections` (
   CONSTRAINT `instagram_connections_id` PRIMARY KEY(`id`),
   CONSTRAINT `instagram_connections_userId_unique` UNIQUE(`userId`)
 );
-
-CREATE INDEX `idx_instagram_connections_userId` ON `instagram_connections` (`userId`);
