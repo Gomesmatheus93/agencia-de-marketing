@@ -106,6 +106,23 @@ export type CarouselSlideData = {
   title: string;
   body: string;
   imageUrl?: string;
+  profileId?: string;
+  // Agent-generated metadata (stored in JSON, no DB migration required)
+  slideType?: "hook" | "development" | "cta";
+  shortText?: string;
+  imagePrompt?: string;
+  backgroundPrompt?: string;
+  visualDirection?: string;
+  layoutNotes?: string;
+  highlightWords?: string[];
+  editableFields?: {
+    title: boolean;
+    text: boolean;
+    image: boolean;
+    background: boolean;
+    cta: boolean;
+  };
+  // Design/template fields
   designTemplateName?: string;
   designTemplateUrl?: string;
   designStyleBrief?: string;

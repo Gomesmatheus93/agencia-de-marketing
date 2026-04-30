@@ -43,6 +43,21 @@ interface CarouselSlide {
   title: string;
   body: string;
   imageUrl?: string;
+  profileId?: string;
+  slideType?: "hook" | "development" | "cta";
+  shortText?: string;
+  imagePrompt?: string;
+  backgroundPrompt?: string;
+  visualDirection?: string;
+  layoutNotes?: string;
+  highlightWords?: string[];
+  editableFields?: {
+    title: boolean;
+    text: boolean;
+    image: boolean;
+    background: boolean;
+    cta: boolean;
+  };
   designTemplateName?: string;
   designTemplateUrl?: string;
   designStyleBrief?: string;
@@ -124,6 +139,15 @@ const FV_GRAY = "#6b7280";
 const KRYTHOS_PROFILE_NAME = "krythoslab";
 const KRYTHOS_PROFILE_HANDLE = "@krythoslab";
 const KRYTHOS_PROFILE_AVATAR_URL = "/krythoslab-avatar.png";
+const CLAUDE_MINIMAL_PROFILE_NAME = "Claude Minimalista";
+const CLAUDE_MINIMAL_PROFILE_HANDLE = "@claude.design";
+const CLAUDE_MINIMAL_PROFILE_AVATAR_URL = KRYTHOS_PROFILE_AVATAR_URL;
+const CLAUDE_MINIMAL_BG = "#050505";
+const CLAUDE_MINIMAL_PANEL = "#141414";
+const CLAUDE_MINIMAL_ACCENT = "#d7d7d7";
+const CLAUDE_MINIMAL_TEXT = "#f4f4f5";
+const CLAUDE_MINIMAL_MUTED = "#b8b8b8";
+const CLAUDE_MINIMAL_STROKE = "#2a2a2a";
 const ALLE_ORANGE_BG = "#F47B20";
 const ALLE_PURPLE_BG = "#7B2FBE";
 const ALLE_DARK_TEXT = "#1E0A01";
@@ -133,6 +157,15 @@ const ALLE_SHAPE_DARK_PURPLE = "#5B1D9A";
 const ALLE_PROFILE_NAME = "Alle Energia";
 const ALLE_PROFILE_HANDLE = "@alleenergia";
 const ALLE_PROFILE_AVATAR_URL = "/alle-avatar.png";
+const ALLE_MINIMAL_PROFILE_NAME = "Alle Energia Minimalista";
+const ALLE_MINIMAL_PROFILE_HANDLE = ALLE_PROFILE_HANDLE;
+const ALLE_MINIMAL_PROFILE_AVATAR_URL = ALLE_PROFILE_AVATAR_URL;
+const ALLE_MINIMAL_BG = "#44015e";
+const ALLE_MINIMAL_PANEL = "#7c00ae";
+const ALLE_MINIMAL_ACCENT = "#ff6600";
+const ALLE_MINIMAL_TEXT = "#ffffff";
+const ALLE_MINIMAL_MUTED = "rgba(255,255,255,0.84)";
+const ALLE_MINIMAL_STROKE = "rgba(255,102,0,0.45)";
 
 const FONT_OPTIONS = [
   { id: "default", label: "Padrão (Arial)", value: "Arial, Helvetica, sans-serif" },
@@ -155,9 +188,84 @@ type ProfileModel = {
 const PROFILE_MODELS: ProfileModel[] = [
   { id: "flavio", name: FLAVIO_PROFILE_NAME, handle: FLAVIO_PROFILE_HANDLE, initials: "FV", avatarUrl: FLAVIO_PROFILE_AVATAR_URL },
   { id: "krythos", name: KRYTHOS_PROFILE_NAME, handle: KRYTHOS_PROFILE_HANDLE, initials: "KL", avatarUrl: KRYTHOS_PROFILE_AVATAR_URL },
+  { id: "claude-minimalista", name: CLAUDE_MINIMAL_PROFILE_NAME, handle: CLAUDE_MINIMAL_PROFILE_HANDLE, initials: "CM", avatarUrl: CLAUDE_MINIMAL_PROFILE_AVATAR_URL },
+  { id: "alle-minimalista", name: ALLE_MINIMAL_PROFILE_NAME, handle: ALLE_MINIMAL_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_MINIMAL_PROFILE_AVATAR_URL },
   { id: "alle-laranja", name: ALLE_PROFILE_NAME, handle: ALLE_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_PROFILE_AVATAR_URL },
   { id: "alle-roxo", name: ALLE_PROFILE_NAME, handle: ALLE_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_PROFILE_AVATAR_URL },
 ];
+
+type MinimalCarouselTheme = {
+  profileName: string;
+  profileHandle: string;
+  bg: string;
+  panel: string;
+  accent: string;
+  text: string;
+  muted: string;
+  stroke: string;
+  placeholderFill: string;
+  ctaSupportText: string;
+};
+
+function isMinimalCarouselProfile(profileId?: string) {
+  return profileId === "claude-minimalista" || profileId === "alle-minimalista";
+}
+
+function getMinimalCarouselTheme(profileId?: string): MinimalCarouselTheme {
+  if (profileId === "alle-minimalista") {
+    return {
+      profileName: ALLE_MINIMAL_PROFILE_NAME,
+      profileHandle: ALLE_MINIMAL_PROFILE_HANDLE,
+      bg: ALLE_MINIMAL_BG,
+      panel: ALLE_MINIMAL_PANEL,
+      accent: ALLE_MINIMAL_ACCENT,
+      text: ALLE_MINIMAL_TEXT,
+      muted: ALLE_MINIMAL_MUTED,
+      stroke: ALLE_MINIMAL_STROKE,
+      placeholderFill: ALLE_MINIMAL_BG,
+      ctaSupportText: "Compartilhe com quem precisa economizar energia.",
+    };
+  }
+
+  return {
+    profileName: CLAUDE_MINIMAL_PROFILE_NAME,
+    profileHandle: CLAUDE_MINIMAL_PROFILE_HANDLE,
+    bg: CLAUDE_MINIMAL_BG,
+    panel: CLAUDE_MINIMAL_PANEL,
+    accent: CLAUDE_MINIMAL_ACCENT,
+    text: CLAUDE_MINIMAL_TEXT,
+    muted: CLAUDE_MINIMAL_MUTED,
+    stroke: CLAUDE_MINIMAL_STROKE,
+    placeholderFill: "#101010",
+    ctaSupportText: "Compartilhe com quem ainda esta atras de quem usa IA.",
+  };
+}
+
+function getProfileModelById(profileId?: string): ProfileModel {
+  return PROFILE_MODELS.find((profile) => profile.id === profileId) ?? PROFILE_MODELS[0];
+}
+
+function getCarouselProfileId(carousel?: { slides: CarouselSlide[] } | null) {
+  return carousel?.slides.find((slide) => slide.profileId)?.profileId;
+}
+
+function getCarouselProfileModel(
+  carousel?: { slides: CarouselSlide[] } | null,
+  fallbackProfileId?: string
+) {
+  return getProfileModelById(getCarouselProfileId(carousel) ?? fallbackProfileId);
+}
+
+function getSlideType(
+  slide: CarouselSlide,
+  slideIndex: number,
+  totalSlides: number
+): "hook" | "development" | "cta" {
+  if (slide.slideType) return slide.slideType;
+  if (slideIndex === 0) return "hook";
+  if (slideIndex === totalSlides - 1) return "cta";
+  return "development";
+}
 
 const slideCountOptions = [1, 3, 5, 7, 10];
 const carouselFormatOptions = [
@@ -493,6 +601,34 @@ function wrapTextLines(text: string, maxChars: number, maxLines: number) {
   return lines;
 }
 
+function wrapTextLinesWithoutTruncation(text: string, maxChars: number) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const words = normalized.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (nextLine.length <= maxChars || currentLine.length === 0) {
+      currentLine = nextLine;
+      continue;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
 function splitBulletPoints(text: string, maxItems: number) {
   const parts = text
     .split(/\n|[.;!?](?:\s+|$)/)
@@ -785,6 +921,10 @@ function buildSlideSvg(input: SlideRenderInput) {
   let svg: string;
   if (input.slide.designTemplateUrl) {
     svg = buildTemplateDrivenSlideSvg(input);
+  } else if (isMinimalCarouselProfile(input.profileId)) {
+    if (input.index === 0) svg = buildClaudeMinimalHookSlideSvg(input);
+    else if (input.index === input.total - 1) svg = buildClaudeMinimalCTASlideSvg(input);
+    else svg = buildClaudeMinimalContentSlideSvg(input);
   } else if (input.profileId === "krythos") {
     if (input.index === 0) svg = buildKrythosHookSlideSvg(input);
     else if (input.index === input.total - 1) svg = buildKrythosCTASlideSvg(input);
@@ -807,7 +947,11 @@ function buildSlideSvg(input: SlideRenderInput) {
   const resolvedAccent = input.accentColor ?? input.slide.accentColor;
   const resolvedBg = input.backgroundColor ?? input.slide.backgroundColor;
   if (resolvedAccent || resolvedBg) {
-    if (input.profileId === "krythos") {
+    if (isMinimalCarouselProfile(input.profileId)) {
+      const minimalTheme = getMinimalCarouselTheme(input.profileId);
+      if (resolvedAccent) svg = svg.replaceAll(minimalTheme.accent, resolvedAccent);
+      if (resolvedBg) svg = svg.replaceAll(minimalTheme.bg, resolvedBg);
+    } else if (input.profileId === "krythos") {
       if (resolvedAccent) svg = svg.replaceAll("#29d9ff", resolvedAccent).replaceAll("#29D9FF", resolvedAccent);
       if (resolvedBg) svg = svg.replaceAll("#0d1117", resolvedBg).replaceAll("#0D1117", resolvedBg);
     } else if (input.profileId === "alle-laranja") {
@@ -1693,6 +1837,201 @@ function buildKrythosCTASlideSvg(input: SlideRenderInput): string {
 
 // ── ALLE ENERGIA ─────────────────────────────────────────────────────────────
 
+function buildClaudeMinimalFooter(input: SlideRenderInput, actionLabel?: string) {
+  const theme = getMinimalCarouselTheme(input.profileId);
+  const leftLabel = escapeXml(clampSentence(input.profileName || theme.profileName, 18));
+  const rightLabel = escapeXml(actionLabel || (input.index === input.total - 1 ? "salve ->" : "arraste ->"));
+  const dotCount = Math.max(3, Math.min(input.total, 7));
+  const dotStartX = 540 - ((dotCount - 1) * 22) / 2;
+  const activeIndex = dotCount === input.total
+    ? input.index
+    : Math.round((input.index / Math.max(1, input.total - 1)) * (dotCount - 1));
+
+  return `
+  <text x="84" y="1248" fill="${theme.text}" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700">${leftLabel}</text>
+  ${Array.from({ length: dotCount }, (_, index) => {
+    const cx = dotStartX + index * 22;
+    const fill = index === activeIndex ? theme.text : theme.stroke;
+    return `<circle cx="${cx}" cy="1240" r="3.5" fill="${fill}" />`;
+  }).join("\n  ")}
+  <text x="994" y="1248" text-anchor="end" fill="${theme.muted}" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700">${rightLabel}</text>`;
+}
+
+function buildClaudeMinimalHeader(input: SlideRenderInput) {
+  const theme = getMinimalCarouselTheme(input.profileId);
+  const handle = escapeXml(input.profileHandle || theme.profileHandle);
+
+  return `
+  <rect x="24" y="24" width="1032" height="1302" rx="34" fill="none" stroke="${theme.stroke}" stroke-width="2" />
+  <rect x="42" y="42" width="54" height="34" rx="10" fill="${theme.panel}" stroke="${theme.stroke}" />
+  <text x="69" y="64" text-anchor="middle" fill="${theme.text}" font-size="16" font-family="Arial, Helvetica, sans-serif" font-weight="700">#${input.index + 1}</text>
+  <text x="108" y="108" fill="${theme.text}" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700">${handle}</text>
+  <text x="972" y="108" text-anchor="end" fill="${theme.text}" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700">Carrosseis com IA</text>`;
+}
+
+function buildClaudeMinimalImageBlock(input: {
+  id: string;
+  imageUrl?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+  theme: MinimalCarouselTheme;
+}) {
+  const clipId = `cmClip-${input.id}`;
+  const imageUrl = toAbsoluteClientAssetUrl(input.imageUrl);
+
+  return `
+  <defs>
+    <clipPath id="${clipId}">
+      <rect x="${input.x}" y="${input.y}" width="${input.width}" height="${input.height}" rx="${input.radius}" />
+    </clipPath>
+  </defs>
+  <g class="editor-image-layer">
+    <rect x="${input.x}" y="${input.y}" width="${input.width}" height="${input.height}" rx="${input.radius}" fill="${input.theme.panel}" stroke="${input.theme.stroke}" />
+    ${
+      imageUrl
+        ? `
+    <g clip-path="url(#${clipId})">
+      <image class="editor-image" href="${escapeXml(imageUrl)}" x="${input.x}" y="${input.y}" width="${input.width}" height="${input.height}" preserveAspectRatio="xMidYMid slice" />
+      <rect x="${input.x}" y="${input.y}" width="${input.width}" height="${input.height}" fill="rgba(0,0,0,0.12)" />
+    </g>`
+        : `
+    <rect x="${input.x + 28}" y="${input.y + 28}" width="${input.width - 56}" height="${input.height - 56}" rx="${Math.max(18, input.radius - 10)}" fill="${input.theme.placeholderFill}" />
+    <circle cx="${input.x + input.width - 86}" cy="${input.y + 74}" r="7" fill="${input.theme.accent}" opacity="0.9" />
+    <circle cx="${input.x + input.width - 58}" cy="${input.y + 74}" r="7" fill="${input.theme.stroke}" />
+    <rect x="${input.x + 44}" y="${input.y + input.height - 94}" width="${input.width * 0.52}" height="14" rx="7" fill="${input.theme.stroke}" />
+    <rect x="${input.x + 44}" y="${input.y + input.height - 62}" width="${input.width * 0.36}" height="14" rx="7" fill="${input.theme.stroke}" />`
+    }
+  </g>`;
+}
+
+function buildClaudeMinimalHookSlideSvg(input: SlideRenderInput): string {
+  const theme = getMinimalCarouselTheme(input.profileId);
+  const id = hashString(`cm-hook-${input.topic}-${input.index}`);
+  const title = (input.hook || input.slide.title || input.topic).toUpperCase().replace(/\s+/g, " ").trim();
+  const titleLines = wrapTextLines(title, 15, 4);
+  const titleFontSize =
+    titleLines.length >= 4 ? 70 : titleLines.length === 3 ? 80 : titleLines.length === 2 ? 92 : 102;
+  const titleLineHeight = Math.round(titleFontSize * 0.96);
+  const titleStartY = 690;
+  const bodyLines = wrapTextLinesWithoutTruncation(input.slide.body || input.topic, 40);
+  const bodyFontSize =
+    bodyLines.length >= 8 ? 18 : bodyLines.length >= 6 ? 20 : bodyLines.length >= 4 ? 22 : 26;
+  const bodyLineHeight = Math.round(bodyFontSize * 1.3);
+  const bodyY = titleStartY + titleLines.length * titleLineHeight + 56;
+  const imageBlock = buildClaudeMinimalImageBlock({
+    id,
+    imageUrl: input.slide.imageUrl || input.coverImageUrl,
+    x: 222,
+    y: 182,
+    width: 636,
+    height: 368,
+    radius: 28,
+    theme,
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <rect width="1080" height="1350" fill="${theme.bg}"/>
+  ${buildClaudeMinimalHeader(input)}
+  ${imageBlock}
+  <g class="editor-title-layer">
+    <text x="540" y="${titleStartY}" text-anchor="middle" fill="${theme.text}" font-size="${titleFontSize}" font-family="Arial Black, Impact, Arial, Helvetica, sans-serif" font-weight="900">
+      ${titleLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  <g class="editor-body-layer">
+    <text x="540" y="${bodyY}" text-anchor="middle" fill="${theme.muted}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${bodyLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  ${buildClaudeMinimalFooter(input, "arraste ->")}
+</svg>`;
+}
+
+function buildClaudeMinimalContentSlideSvg(input: SlideRenderInput): string {
+  const theme = getMinimalCarouselTheme(input.profileId);
+  const id = hashString(`cm-content-${input.topic}-${input.index}`);
+  const title = (input.slide.title || input.topic).toUpperCase().replace(/\s+/g, " ").trim();
+  const titleLines = wrapTextLines(title, 18, 3);
+  const titleFontSize = titleLines.length >= 3 ? 66 : titleLines.length === 2 ? 76 : 86;
+  const titleLineHeight = Math.round(titleFontSize * 0.96);
+  const titleY = 214;
+  const bodyLines = wrapTextLinesWithoutTruncation(input.slide.body || input.topic, 42);
+  const bodyFontSize =
+    bodyLines.length >= 9 ? 17 : bodyLines.length >= 7 ? 19 : bodyLines.length >= 5 ? 21 : 25;
+  const bodyLineHeight = Math.round(bodyFontSize * 1.32);
+  const bodyY = titleY + titleLines.length * titleLineHeight + 54;
+  const kicker = escapeXml((input.slide.shortText || input.slide.highlightWords?.[0] || "IDEIA CENTRAL").toUpperCase());
+  const imageBlock = buildClaudeMinimalImageBlock({
+    id,
+    imageUrl: input.slide.imageUrl || input.coverImageUrl,
+    x: 172,
+    y: 468,
+    width: 736,
+    height: 396,
+    radius: 26,
+    theme,
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <rect width="1080" height="1350" fill="${theme.bg}"/>
+  ${buildClaudeMinimalHeader(input)}
+  <text x="540" y="156" text-anchor="middle" fill="${theme.accent}" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="2.8">${kicker}</text>
+  <g class="editor-title-layer">
+    <text x="540" y="${titleY}" text-anchor="middle" fill="${theme.text}" font-size="${titleFontSize}" font-family="Arial Black, Impact, Arial, Helvetica, sans-serif" font-weight="900">
+      ${titleLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  <g class="editor-body-layer">
+    <text x="540" y="${bodyY}" text-anchor="middle" fill="${theme.muted}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${bodyLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  ${imageBlock}
+  ${buildClaudeMinimalFooter(input, "continue ->")}
+</svg>`;
+}
+
+function buildClaudeMinimalCTASlideSvg(input: SlideRenderInput): string {
+  const theme = getMinimalCarouselTheme(input.profileId);
+  const title = (input.finalCta || input.slide.title || "SALVE E COMPARTILHE").toUpperCase().replace(/\s+/g, " ").trim();
+  const titleLines = wrapTextLines(title, 17, 3);
+  const titleFontSize = titleLines.length >= 3 ? 72 : titleLines.length === 2 ? 82 : 92;
+  const titleLineHeight = Math.round(titleFontSize * 0.96);
+  const titleY = 272;
+  const bodyLines = wrapTextLinesWithoutTruncation(
+    input.slide.body || "Salve este carrossel e envie para quem ainda esta criando no manual.",
+    42
+  );
+  const bodyFontSize =
+    bodyLines.length >= 8 ? 18 : bodyLines.length >= 6 ? 20 : bodyLines.length >= 5 ? 22 : 26;
+  const bodyLineHeight = Math.round(bodyFontSize * 1.3);
+  const bodyY = titleY + titleLines.length * titleLineHeight + 58;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="100%" height="100%" fill="none">
+  <rect width="1080" height="1350" fill="${theme.bg}"/>
+  ${buildClaudeMinimalHeader(input)}
+  <g class="editor-title-layer">
+    <text x="540" y="${titleY}" text-anchor="middle" fill="${theme.text}" font-size="${titleFontSize}" font-family="Arial Black, Impact, Arial, Helvetica, sans-serif" font-weight="900">
+      ${titleLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : titleLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  <g class="editor-body-layer">
+    <text x="540" y="${bodyY}" text-anchor="middle" fill="${theme.muted}" font-size="${bodyFontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="500">
+      ${bodyLines.map((line, index) => `<tspan x="540" dy="${index === 0 ? 0 : bodyLineHeight}">${escapeXml(line)}</tspan>`).join("")}
+    </text>
+  </g>
+  <rect x="214" y="742" width="652" height="148" rx="28" fill="${theme.panel}" stroke="${theme.stroke}" />
+  <text x="540" y="806" text-anchor="middle" fill="${theme.text}" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="1.1">SALVE ESTE CARROSSEL</text>
+  <text x="540" y="850" text-anchor="middle" fill="${theme.muted}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="500">${theme.ctaSupportText}</text>
+  <rect x="326" y="958" width="428" height="68" rx="22" fill="none" stroke="${theme.accent}" />
+  <text x="540" y="1002" text-anchor="middle" fill="${theme.text}" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">COMENTAR  |  SALVAR  |  ENVIAR</text>
+  ${buildClaudeMinimalFooter(input, "salve ->")}
+</svg>`;
+}
+
 function alleLogo(x: number, y: number, boltFill: string, textFill: string): string {
   return `<g transform="translate(${x},${y})">
     <path d="M18,0 L4,34 L15,34 L1,64 L34,24 L22,24 Z" fill="${boltFill}"/>
@@ -2281,12 +2620,19 @@ function CarouselSlideStudio({
   slide,
   slideIndex,
   totalSlides,
+  slideType,
   supportsImageEditor,
   settings,
   imagePanelOpen,
   isUploadingImage,
+  isRegeneratingSlide,
+  isRegeneratingText,
+  isRegeneratingImage,
   onToggleImagePanel,
   onReset,
+  onRegenerateSlide,
+  onRegenerateText,
+  onRegenerateImage,
   onTitleChange,
   onBodyChange,
   onApplyImageUrl,
@@ -2296,18 +2642,32 @@ function CarouselSlideStudio({
   slide: CarouselSlide;
   slideIndex: number;
   totalSlides: number;
+  slideType: "hook" | "development" | "cta";
   supportsImageEditor: boolean;
   settings: NormalizedSlideEditorSettings;
   imagePanelOpen: boolean;
   isUploadingImage: boolean;
+  isRegeneratingSlide: boolean;
+  isRegeneratingText: boolean;
+  isRegeneratingImage: boolean;
   onToggleImagePanel: () => void;
   onReset: () => void;
+  onRegenerateSlide: () => void;
+  onRegenerateText: () => void;
+  onRegenerateImage: () => void;
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onApplyImageUrl: (url: string) => void;
   onUploadImage: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSettingChange: (key: SlideEditorSettingKey, value: number | string | undefined) => void;
 }) {
+  const hasAgentMetadata = Boolean(
+    slide.shortText ||
+    slide.visualDirection ||
+    slide.layoutNotes ||
+    slide.highlightWords?.length
+  );
+
   return (
     <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
       <div className="flex flex-col gap-3 border-b border-border/30 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2322,15 +2682,32 @@ function CarouselSlideStudio({
             Ajuste texto, imagem, escala, cor e posicao com preview ao vivo.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="rounded-2xl"
-          onClick={onReset}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Resetar slide
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-2xl"
+            onClick={onRegenerateSlide}
+            disabled={isRegeneratingSlide || isRegeneratingText || isRegeneratingImage}
+          >
+            {isRegeneratingSlide ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Wand2 className="mr-2 h-4 w-4" />
+            )}
+            Regenerar slide
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-2xl"
+            onClick={onReset}
+            disabled={isRegeneratingSlide}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Resetar slide
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="content" className="mt-5 gap-4">
@@ -2354,10 +2731,68 @@ function CarouselSlideStudio({
         </TabsList>
 
         <TabsContent value="content" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary">
+              {slideType}
+            </span>
+            {slide.highlightWords?.map((word) => (
+              <span
+                key={word}
+                className="rounded-full border border-border/50 bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground"
+              >
+                {word}
+              </span>
+            ))}
+          </div>
+          {hasAgentMetadata ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {slide.shortText ? (
+                <div className="rounded-2xl border border-border/40 bg-background/70 p-4">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Resumo curto
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{slide.shortText}</p>
+                </div>
+              ) : null}
+              {slide.visualDirection ? (
+                <div className="rounded-2xl border border-border/40 bg-background/70 p-4">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Direcao visual
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{slide.visualDirection}</p>
+                </div>
+              ) : null}
+              {slide.layoutNotes ? (
+                <div className="rounded-2xl border border-border/40 bg-background/70 p-4 md:col-span-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Observacoes de layout
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{slide.layoutNotes}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="rounded-2xl border border-border/40 bg-background/70 p-4">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Titulo do slide
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Titulo do slide
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-[11px]"
+                onClick={onRegenerateText}
+                disabled={isRegeneratingText || isRegeneratingSlide}
+              >
+                {isRegeneratingText ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Reescrever texto
+              </Button>
+            </div>
             <Input
               value={slide.title}
               onChange={(e) => onTitleChange(e.target.value)}
@@ -2387,18 +2822,34 @@ function CarouselSlideStudio({
                       Cole uma URL ou envie um arquivo para trocar a imagem deste slide.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onToggleImagePanel}
-                    className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-                  >
-                    {isUploadingImage ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    )}
-                    Trocar imagem
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 rounded-xl text-xs"
+                      onClick={onRegenerateImage}
+                      disabled={isRegeneratingImage || isRegeneratingSlide}
+                    >
+                      {isRegeneratingImage ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Nova imagem com IA
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={onToggleImagePanel}
+                      className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
+                    >
+                      {isUploadingImage ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                      Trocar imagem
+                    </button>
+                  </div>
                 </div>
 
                 {imagePanelOpen ? (
@@ -2804,7 +3255,7 @@ function CarouselCard({
   isPublishing,
   isScheduling,
   isDeleting,
-  profileId,
+  profile,
 }: {
   carousel: CarouselItem;
   onOpen: () => void;
@@ -2816,7 +3267,7 @@ function CarouselCard({
   isPublishing: boolean;
   isScheduling: boolean;
   isDeleting: boolean;
-  profileId?: string;
+  profile: ProfileModel;
 }) {
   const heroSlide = carousel.slides[0];
   const renderedPreviewUrl = heroSlide?.renderedImageUrl
@@ -2858,11 +3309,11 @@ function CarouselCard({
               hook={carousel.hook}
               finalCta={carousel.finalCta}
               coverImageUrl={carousel.coverImageUrl ?? undefined}
-              profileId={profileId}
-              profileHandle={profileId === "krythos" ? KRYTHOS_PROFILE_HANDLE : FLAVIO_PROFILE_HANDLE}
-              profileName={profileId === "krythos" ? KRYTHOS_PROFILE_NAME : FLAVIO_PROFILE_NAME}
-              profileInitials={profileId === "krythos" ? "KL" : "FV"}
-              profileAvatarUrl={profileId === "krythos" ? KRYTHOS_PROFILE_AVATAR_URL : FLAVIO_PROFILE_AVATAR_URL}
+              profileId={profile.id}
+              profileHandle={profile.handle}
+              profileName={profile.name}
+              profileInitials={profile.initials}
+              profileAvatarUrl={profile.avatarUrl}
               className="rounded-[26px] border-0 shadow-none"
             />
           )}
@@ -3076,15 +3527,8 @@ async function buildCarouselTemplateSlides(
       if (carousel.style === "importado") {
         const imageDataUrl = await resolveAssetUrl(slide.renderedImageUrl || slide.imageUrl);
         return {
-          title: slide.title,
-          body: slide.body,
-          imageUrl: slide.imageUrl,
-          designTemplateName: slide.designTemplateName,
-          designTemplateUrl: slide.designTemplateUrl,
-          designStyleBrief: slide.designStyleBrief,
+          ...slide,
           renderedImageDataUrl: imageDataUrl,
-          templateSvgUrl: slide.templateSvgUrl,
-          renderedImageUrl: slide.renderedImageUrl,
         };
       }
 
@@ -3116,15 +3560,8 @@ async function buildCarouselTemplateSlides(
       const imageDataUrl = await renderSvgToPngDataUrl(svg);
 
       return {
-        title: slide.title,
-        body: slide.body,
-        imageUrl: slide.imageUrl,
-        designTemplateName: slide.designTemplateName,
-        designTemplateUrl: slide.designTemplateUrl,
-        designStyleBrief: slide.designStyleBrief,
+        ...slide,
         renderedImageDataUrl: imageDataUrl,
-        templateSvgUrl: slide.templateSvgUrl,
-        renderedImageUrl: slide.renderedImageUrl,
         fontFamily: slide.fontFamily,
         accentColor: slide.accentColor,
         backgroundColor: slide.backgroundColor,
@@ -3151,7 +3588,6 @@ export default function Carousels() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState<string>(PROFILE_MODELS[0].id);
   const [useAiImages, setUseAiImages] = useState(false);
-  const selectedProfileRef = useRef<ProfileModel>(PROFILE_MODELS[0]);
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
   // Import dialog state
@@ -3232,6 +3668,10 @@ export default function Carousels() {
     },
   });
   const uploadSlideImageMutation = trpc.carousel.uploadSlideImage.useMutation();
+  const regenerateSlideMutation = trpc.carousel.regenerateSlide.useMutation();
+  const regenerateSlideTextMutation = trpc.carousel.regenerateSlideText.useMutation();
+  const regenerateSlideImageMutation = trpc.carousel.regenerateSlideImage.useMutation();
+  const regenerateCaptionMutation = trpc.carousel.regenerateCaption.useMutation();
   const generateCaptionMutation = trpc.carousel.generateCaptionFromImage.useMutation({
     onSuccess: ({ caption }) => {
       setImportCaption(caption);
@@ -3284,8 +3724,14 @@ export default function Carousels() {
     carousels.find((carousel) => carousel.id === selectedCarouselId) ?? null;
   const selectedSlides = selectedCarousel?.slides ?? [];
   const currentSlide = selectedSlides[modalSlide];
+  const selectedCarouselProfile = getCarouselProfileModel(selectedCarousel, selectedProfileId);
+  const editorProfile = getCarouselProfileModel(editorDraft ?? editorCarousel, selectedProfileId);
   const currentEditorSlide =
     editorDraft?.slides[editorSlideIndex] ?? editorDraft?.slides[0] ?? null;
+  const currentEditorSlideType =
+    currentEditorSlide && editorDraft
+      ? getSlideType(currentEditorSlide, editorSlideIndex, editorDraft.slides.length)
+      : "development";
   const currentEditorSlideSettings = normalizeSlideEditorSettings(
     currentEditorSlide?.editorSettings
   );
@@ -3295,7 +3741,7 @@ export default function Carousels() {
           currentEditorSlide,
           editorSlideIndex,
           editorDraft.slides.length,
-          selectedProfileRef.current.id
+          editorProfile.id
         )
       : false;
 
@@ -3352,7 +3798,11 @@ export default function Carousels() {
       }
 
       try {
-        const slides = await buildCarouselTemplateSlides(carousel, resolveTemplateAssetUrl, selectedProfileRef.current);
+        const slides = await buildCarouselTemplateSlides(
+          carousel,
+          resolveTemplateAssetUrl,
+          getCarouselProfileModel(carousel, selectedProfileId)
+        );
         const updated = await saveDesignAssetsMutation.mutateAsync({
           id: carousel.id,
           slides,
@@ -3448,6 +3898,7 @@ export default function Carousels() {
       slideCount,
       carouselFormat,
       style: selectedStyle,
+      profileId: selectedProfileId,
       coverImageDataUrl: coverImageUrl || undefined,
       useAiImages,
       articleContext,
@@ -3460,7 +3911,10 @@ export default function Carousels() {
 
   const handleDownload = (carousel: CarouselItem) => {
     try {
-      const zipEntries = buildCarouselZipEntries(carousel, selectedProfileRef.current);
+      const zipEntries = buildCarouselZipEntries(
+        carousel,
+        getCarouselProfileModel(carousel, selectedProfileId)
+      );
       const blob = createZipBlob(zipEntries);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -3744,6 +4198,126 @@ export default function Carousels() {
     }
   };
 
+  const mergeSavedCarouselIntoEditor = (
+    savedCarousel: CarouselItem,
+    options?: { preserveDraftContent?: boolean }
+  ) => {
+    setEditorCarousel(savedCarousel);
+    setEditorDraft((prev) => {
+      if (!prev) return savedCarousel;
+      if (!options?.preserveDraftContent) {
+        return savedCarousel;
+      }
+
+      return {
+        ...savedCarousel,
+        hook: prev.hook,
+        caption: prev.caption,
+        finalCta: prev.finalCta,
+      };
+    });
+    void utils.carousel.getAll.invalidate();
+  };
+
+  const handleRegenerateCurrentSlide = async () => {
+    if (!editorDraft || !currentEditorSlide) return;
+
+    try {
+      const savedCarousel = await regenerateSlideMutation.mutateAsync({
+        carouselId: editorDraft.id,
+        slideIndex: editorSlideIndex,
+        topic: editorDraft.topic,
+        hook: editorDraft.hook,
+        totalSlides: editorDraft.slides.length,
+        slideType: currentEditorSlideType,
+        currentSlides: editorDraft.slides,
+        profileId: editorProfile.id,
+        format: carouselFormat,
+        style: editorDraft.style,
+        useAiImages,
+      });
+      mergeSavedCarouselIntoEditor(savedCarousel as CarouselItem, {
+        preserveDraftContent: true,
+      });
+      toast.success("Slide regenerado com IA");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Nao foi possivel regenerar o slide: " + message);
+    }
+  };
+
+  const handleRegenerateCurrentSlideText = async () => {
+    if (!editorDraft || !currentEditorSlide) return;
+
+    try {
+      const result = await regenerateSlideTextMutation.mutateAsync({
+        carouselId: editorDraft.id,
+        slideIndex: editorSlideIndex,
+        topic: editorDraft.topic,
+        hook: editorDraft.hook,
+        slideType: currentEditorSlideType,
+        currentTitle: currentEditorSlide.title,
+        currentBody: currentEditorSlide.body,
+        currentSlides: editorDraft.slides,
+        profileId: editorProfile.id,
+      });
+      mergeSavedCarouselIntoEditor(result.carousel as CarouselItem, {
+        preserveDraftContent: true,
+      });
+      toast.success("Texto do slide atualizado com IA");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Nao foi possivel reescrever o slide: " + message);
+    }
+  };
+
+  const handleRegenerateCurrentSlideImage = async () => {
+    if (!editorDraft || !currentEditorSlide) return;
+
+    try {
+      const result = await regenerateSlideImageMutation.mutateAsync({
+        carouselId: editorDraft.id,
+        slideIndex: editorSlideIndex,
+        topic: editorDraft.topic,
+        hook: editorDraft.hook,
+        slideTitle: currentEditorSlide.title,
+        slideBody: currentEditorSlide.body,
+        currentSlides: editorDraft.slides,
+        imagePrompt: currentEditorSlide.imagePrompt,
+        profileId: editorProfile.id,
+        useAiImages,
+      });
+      mergeSavedCarouselIntoEditor(result.carousel as CarouselItem, {
+        preserveDraftContent: true,
+      });
+      toast.success("Imagem do slide atualizada com IA");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Nao foi possivel gerar uma nova imagem: " + message);
+    }
+  };
+
+  const handleRegenerateCaptionAndCta = async () => {
+    if (!editorDraft) return;
+
+    try {
+      const result = await regenerateCaptionMutation.mutateAsync({
+        carouselId: editorDraft.id,
+        topic: editorDraft.topic,
+        hook: editorDraft.hook,
+        finalCta: editorDraft.finalCta,
+        slides: editorDraft.slides,
+        currentSlides: editorDraft.slides,
+        profileId: editorProfile.id,
+      });
+      mergeSavedCarouselIntoEditor(result.carousel as CarouselItem);
+      toast.success("Legenda e CTA atualizados com IA");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error("Nao foi possivel atualizar a legenda: " + message);
+    }
+  };
+
   const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
@@ -3782,6 +4356,7 @@ export default function Carousels() {
         hook: importHook.trim() || undefined,
         caption: importCaption.trim() || undefined,
         finalCta: importCta.trim() || undefined,
+        profileId: selectedProfileId,
         slides: importSlides.map((s) => ({ title: s.title, imageDataUrl: s.dataUrl })),
       });
     } finally {
@@ -4004,7 +4579,6 @@ export default function Carousels() {
                     disabled={isGenerating}
                     onClick={() => {
                       setSelectedProfileId(profile.id);
-                      selectedProfileRef.current = profile;
                     }}
                     className={cn(
                       "flex items-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-medium transition-all duration-150",
@@ -4236,6 +4810,7 @@ export default function Carousels() {
                 <CarouselCard
                   key={carousel.id}
                   carousel={carousel}
+                  profile={getCarouselProfileModel(carousel, selectedProfileId)}
                   onOpen={() => openCarousel(carousel)}
                   onEdit={() => openEditor(carousel)}
                   onDownload={() => handleDownload(carousel)}
@@ -4245,7 +4820,6 @@ export default function Carousels() {
                   isPublishing={isPublishingCarousel}
                   isScheduling={isSchedulingCarousel}
                   isDeleting={deleteCarouselMutation.isPending && deleteCarouselMutation.variables?.id === carousel.id}
-                  profileId={selectedProfileId}
                 />
               ))}
             </div>
@@ -4283,11 +4857,11 @@ export default function Carousels() {
                     hook={selectedCarousel.hook}
                     finalCta={selectedCarousel.finalCta}
                     coverImageUrl={selectedCarousel.coverImageUrl ?? undefined}
-                    profileAvatarUrl={selectedProfileRef.current.avatarUrl}
-                    profileName={selectedProfileRef.current.name}
-                    profileHandle={selectedProfileRef.current.handle}
-                    profileInitials={selectedProfileRef.current.initials}
-                    profileId={selectedProfileRef.current.id}
+                    profileAvatarUrl={selectedCarouselProfile.avatarUrl}
+                    profileName={selectedCarouselProfile.name}
+                    profileHandle={selectedCarouselProfile.handle}
+                    profileInitials={selectedCarouselProfile.initials}
+                    profileId={selectedCarouselProfile.id}
                     fontFamily={(selectedCarousel.slides[modalSlide] ?? selectedCarousel.slides[0])?.fontFamily}
                   />
                 </div>
@@ -4627,11 +5201,11 @@ export default function Carousels() {
                     hook={editorDraft.hook}
                     finalCta={editorDraft.finalCta}
                     coverImageUrl={editorDraft.coverImageUrl ?? undefined}
-                    profileAvatarUrl={selectedProfileRef.current.avatarUrl}
-                    profileName={selectedProfileRef.current.name}
-                    profileHandle={selectedProfileRef.current.handle}
-                    profileInitials={selectedProfileRef.current.initials}
-                    profileId={selectedProfileRef.current.id}
+                    profileAvatarUrl={editorProfile.avatarUrl}
+                    profileName={editorProfile.name}
+                    profileHandle={editorProfile.handle}
+                    profileInitials={editorProfile.initials}
+                    profileId={editorProfile.id}
                     fontFamily={FONT_OPTIONS.find((f) => f.id === editorFontId)?.value}
                     accentColor={editorAccentColor}
                     backgroundColor={editorBgColor}
@@ -4755,16 +5329,23 @@ export default function Carousels() {
                       slide={currentEditorSlide}
                       slideIndex={editorSlideIndex}
                       totalSlides={editorDraft.slides.length}
+                      slideType={currentEditorSlideType}
                       supportsImageEditor={currentEditorSlideHasImage}
                       settings={currentEditorSlideSettings}
                       imagePanelOpen={editorImagePanelIndex === editorSlideIndex}
                       isUploadingImage={editorUploadingIndex === editorSlideIndex}
+                      isRegeneratingSlide={regenerateSlideMutation.isPending}
+                      isRegeneratingText={regenerateSlideTextMutation.isPending}
+                      isRegeneratingImage={regenerateSlideImageMutation.isPending}
                       onToggleImagePanel={() =>
                         setEditorImagePanelIndex(
                           editorImagePanelIndex === editorSlideIndex ? null : editorSlideIndex
                         )
                       }
                       onReset={resetCurrentSlideEditorSettings}
+                      onRegenerateSlide={handleRegenerateCurrentSlide}
+                      onRegenerateText={handleRegenerateCurrentSlideText}
+                      onRegenerateImage={handleRegenerateCurrentSlideImage}
                       onTitleChange={(value) =>
                         handleEditorSlideText(editorSlideIndex, "title", value)
                       }
@@ -4804,7 +5385,24 @@ export default function Carousels() {
                   </div>
 
                   <div className="rounded-[30px] border border-border/40 bg-background/80 p-5 shadow-sm">
-                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Legenda</p>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Legenda</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-[11px]"
+                        onClick={handleRegenerateCaptionAndCta}
+                        disabled={regenerateCaptionMutation.isPending}
+                      >
+                        {regenerateCaptionMutation.isPending ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        Atualizar legenda + CTA
+                      </Button>
+                    </div>
                     <Textarea
                       value={editorDraft.caption}
                       onChange={(e) => handleEditorField("caption", e.target.value)}

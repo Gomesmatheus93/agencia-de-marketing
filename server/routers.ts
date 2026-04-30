@@ -7,7 +7,13 @@ import { aiProcedure, protectedProcedure, publicProcedure, router } from "./_cor
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
-import { generateCarouselWithAgent } from "./_core/carouselAgent";
+import {
+  generateCarouselWithAgent,
+  regenerateSlide,
+  regenerateSlideText,
+  regenerateSlideImage,
+  regenerateCaption,
+} from "./_core/carouselAgent";
 import { saveCarouselTemplateAsset } from "./_core/carouselTemplateAgent";
 import { generateArticleCoverWithDesigner } from "./_core/articleDesignerAgent";
 import {
@@ -1311,6 +1317,23 @@ const carouselSlideSchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   imageUrl: z.string().optional(),
+  profileId: z.string().optional(),
+  // Agent-generated metadata (round-trips through frontend)
+  slideType: z.enum(["hook", "development", "cta"]).optional(),
+  shortText: z.string().optional(),
+  imagePrompt: z.string().optional(),
+  backgroundPrompt: z.string().optional(),
+  visualDirection: z.string().optional(),
+  layoutNotes: z.string().optional(),
+  highlightWords: z.array(z.string()).optional(),
+  editableFields: z.object({
+    title: z.boolean(),
+    text: z.boolean(),
+    image: z.boolean(),
+    background: z.boolean(),
+    cta: z.boolean(),
+  }).optional(),
+  // Design/template fields
   designTemplateName: z.string().optional(),
   designTemplateUrl: z.string().optional(),
   designStyleBrief: z.string().optional(),
@@ -1432,6 +1455,7 @@ const carouselRouter = router({
         slideCount: z.number().int().min(1).max(10),
         carouselFormat: z.enum(["feed", "story"]).optional(),
         style: z.string().min(1).max(100),
+        profileId: z.string().optional(),
         templateId: z.number().int().positive().optional(),
         coverImageUrl: z.string().optional(),
         coverImageDataUrl: z.string().optional(),
@@ -1462,6 +1486,7 @@ const carouselRouter = router({
           slideCount: input.slideCount,
           carouselFormat: input.carouselFormat ?? "feed",
           style: selectedStyle,
+          profileId: input.profileId,
           coverImageUrl: input.coverImageUrl,
           coverImageDataUrl: input.coverImageDataUrl,
           templateName: selectedTemplate?.name,
@@ -1480,6 +1505,7 @@ const carouselRouter = router({
 
         const slides = persistedAssets.slides.map((slide) => ({
           ...slide,
+          profileId: input.profileId,
           designTemplateName: selectedTemplate?.name,
           designTemplateUrl: selectedTemplate?.imageUrl,
           designStyleBrief: selectedTemplate?.styleBrief ?? undefined,
@@ -1605,6 +1631,7 @@ const carouselRouter = router({
         hook: z.string().max(1000).optional(),
         caption: z.string().max(5000).optional(),
         finalCta: z.string().max(500).optional(),
+        profileId: z.string().optional(),
         slides: z
           .array(
             z.object({
@@ -1626,6 +1653,7 @@ const carouselRouter = router({
           return {
             title: slide.title,
             body: "",
+            profileId: input.profileId,
             renderedImageUrl: url,
             imageUrl: url,
           } as import("../drizzle/schema").CarouselSlideData;
@@ -1811,6 +1839,174 @@ const carouselRouter = router({
     const count = await db.getCarouselCount(ctx.user.id);
     return { count };
   }),
+
+  // ── Regeneration endpoints ────────────────────────────────────────────────
+
+  regenerateSlide: aiProcedure
+    .input(z.object({
+      carouselId: z.number().int().positive(),
+      slideIndex: z.number().int().min(0).max(9),
+      topic: z.string().min(1).max(500),
+      hook: z.string().max(500),
+      totalSlides: z.number().int().min(1).max(10),
+      slideType: z.enum(["hook", "development", "cta"]),
+      currentSlides: z.array(carouselSlideSchema).min(1).max(10),
+      profileId: z.string().optional(),
+      format: z.enum(["feed", "story"]).optional(),
+      style: z.string().optional(),
+      useAiImages: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const newSlide = await regenerateSlide({
+        topic: input.topic,
+        hook: input.hook,
+        totalSlides: input.totalSlides,
+        slideIndex: input.slideIndex,
+        slideType: input.slideType,
+        profileId: input.profileId,
+        format: input.format,
+        style: input.style,
+        useAiImages: input.useAiImages ?? false,
+      });
+
+      const updatedSlides = input.currentSlides.map((s, i) =>
+        i === input.slideIndex
+          ? { ...s, ...newSlide, profileId: s.profileId ?? input.profileId }
+          : s
+      );
+
+      const saved = await db.updateCarouselSlides(
+        input.carouselId,
+        ctx.user.id,
+        updatedSlides as import("../drizzle/schema").CarouselSlideData[]
+      );
+
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+      return saved;
+    }),
+
+  regenerateSlideText: aiProcedure
+    .input(z.object({
+      carouselId: z.number().int().positive(),
+      slideIndex: z.number().int().min(0).max(9),
+      topic: z.string().min(1).max(500),
+      hook: z.string().max(500),
+      slideType: z.enum(["hook", "development", "cta"]),
+      currentTitle: z.string().max(500),
+      currentBody: z.string().max(1000),
+      currentSlides: z.array(carouselSlideSchema).min(1).max(10),
+      profileId: z.string().optional(),
+      instruction: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const newText = await regenerateSlideText({
+        topic: input.topic,
+        hook: input.hook,
+        slideType: input.slideType,
+        currentTitle: input.currentTitle,
+        currentBody: input.currentBody,
+        profileId: input.profileId,
+        instruction: input.instruction,
+      });
+
+      const updatedSlides = input.currentSlides.map((s, i) =>
+        i === input.slideIndex
+          ? {
+              ...s,
+              profileId: s.profileId ?? input.profileId,
+              title: newText.title,
+              body: newText.body,
+              shortText: newText.shortText,
+              highlightWords: newText.highlightWords,
+            }
+          : s
+      );
+
+      const saved = await db.updateCarouselSlides(
+        input.carouselId,
+        ctx.user.id,
+        updatedSlides as import("../drizzle/schema").CarouselSlideData[]
+      );
+
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+      return { carousel: saved, newText };
+    }),
+
+  regenerateSlideImage: aiProcedure
+    .input(z.object({
+      carouselId: z.number().int().positive(),
+      slideIndex: z.number().int().min(0).max(9),
+      topic: z.string().min(1).max(500),
+      hook: z.string().max(500),
+      slideTitle: z.string().max(500),
+      slideBody: z.string().max(1000),
+      currentSlides: z.array(carouselSlideSchema).min(1).max(10),
+      imagePrompt: z.string().optional(),
+      profileId: z.string().optional(),
+      useAiImages: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await regenerateSlideImage({
+        topic: input.topic,
+        hook: input.hook,
+        slideTitle: input.slideTitle,
+        slideBody: input.slideBody,
+        slideIndex: input.slideIndex,
+        imagePrompt: input.imagePrompt,
+        profileId: input.profileId,
+        useAiImages: input.useAiImages ?? false,
+      });
+
+      const updatedSlides = input.currentSlides.map((s, i) =>
+        i === input.slideIndex
+          ? {
+              ...s,
+              profileId: s.profileId ?? input.profileId,
+              imageUrl: result.imageUrl,
+              imagePrompt: result.imagePrompt,
+            }
+          : s
+      );
+
+      const saved = await db.updateCarouselSlides(
+        input.carouselId,
+        ctx.user.id,
+        updatedSlides as import("../drizzle/schema").CarouselSlideData[]
+      );
+
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+      return { carousel: saved, imageUrl: result.imageUrl, imagePrompt: result.imagePrompt };
+    }),
+
+  regenerateCaption: aiProcedure
+    .input(z.object({
+      carouselId: z.number().int().positive(),
+      topic: z.string().min(1).max(500),
+      hook: z.string().max(500),
+      finalCta: z.string().max(500),
+      slides: z.array(z.object({ title: z.string(), body: z.string().optional() })).min(1).max(10),
+      currentSlides: z.array(carouselSlideSchema).min(1).max(10),
+      profileId: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await regenerateCaption({
+        topic: input.topic,
+        hook: input.hook,
+        slides: input.slides.map((s) => ({ title: s.title, body: s.body ?? "" })),
+        profileId: input.profileId,
+        cta: input.finalCta,
+      });
+
+      const saved = await db.updateCarouselContent(input.carouselId, ctx.user.id, {
+        hook: input.hook,
+        caption: result.caption,
+        finalCta: result.cta,
+        slides: input.currentSlides as import("../drizzle/schema").CarouselSlideData[],
+      });
+
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+      return { carousel: saved, caption: result.caption, hashtags: result.hashtags, cta: result.cta };
+    }),
 });
 
 const postsRouter = router({

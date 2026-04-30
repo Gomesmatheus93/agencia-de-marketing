@@ -1,6 +1,22 @@
 import { generateImage } from "./imageGeneration";
-import { invokeLLM, type MessageContent } from "./llm";
+import {
+  invokeAnthropicLLM,
+  parseClaudeJsonResponse,
+  buildAnthropicImageContent,
+  type AnthropicContent,
+} from "./anthropicClient";
 import { ENV } from "./env";
+
+// ─── Profile contexts ─────────────────────────────────────────────────────────
+
+const PROFILE_CONTEXTS: Record<string, string> = {
+  flavio: `Perfil: Flávio Vasconcelos (@comflavio). Visual premium em azul-marinho (#0f172a) com acentos dourados (#c9a227) e azul vibrante (#2196F3). Tom: inspirador, direto, autoridade em coaching e liderança. Sem gírias. Frases curtas e impactantes. Público: empreendedores e líderes. PROIBIDO: clichês de autoajuda, linguagem casual, emojis.`,
+  krythos: `Perfil: KrythosLab (@krythoslab). Visual tech dark: fundo preto (#0d1117), acentos ciano neon (#29d9ff). Tom: técnico, inovador, direto. Linguagem de agência digital criativa. Pode usar termos em inglês quando pertinente. Público: founders, devs, designers e profissionais de marketing digital. PROIBIDO: linguagem muito formal, termos genéricos sem substância.`,
+  "alle-laranja": `Perfil: Alle Energia (@alleenergia). Visual em laranja vibrante (#F47B20) com formas dinâmicas e bold. Tom: próximo, acessível, econômico. Destaca benefícios práticos na conta de luz. Linguagem simples para o consumidor médio. Público: donos de imóvel, pequenos empresários. PROIBIDO: jargão técnico, linguagem muito formal.`,
+  "alle-roxo": `Perfil: Alle Energia (@alleenergia) — variante premium. Visual em roxo intenso (#7B2FBE) com acentos laranja. Tom: confiável, moderno, premium. Destaca credibilidade e inovação. Público: empresas médias e grandes, tomadores de decisão em energia. PROIBIDO: linguagem muito popular, imprecisão técnica.`,
+  "alle-minimalista": `Perfil: Alle Energia Minimalista (@alleenergia). Use o mesmo layout editorial minimalista do modelo Claude Minimalista, adaptado para a marca Alle Energia. Paleta obrigatoria: fundo roxo escuro #44015e, paines/areas de apoio em #7c00ae, acentos em laranja #ff6600 e texto branco #ffffff. Composicao centrada, limpa, premium e com muito respiro. Primeiro slide com imagem destacada e titulo forte em caixa alta. Slides internos com titulo centralizado, texto curto e bloco visual limpo. Ultimo slide com CTA elegante e direto. Tom: confiavel, estrategico, claro e comercial. Frases curtas. Sem emojis. PROIBIDO: excesso de texto, floreios visuais, jargao tecnico desnecessario, degrades chamativos fora da paleta e promessas vagas.`,
+  "claude-minimalista": `Perfil: Claude Minimalista (@claude.design). Visual editorial minimalista inspirado em ferramentas premium de carrossel: fundo preto absoluto (#050505), molduras cinza-escuro, tipografia branca bold, composicao centrada e muito respiro. Primeiro slide com imagem destacada no topo e titulo forte em caixa alta. Slides internos com titulo centralizado, texto curto e bloco visual limpo. Ultimo slide com CTA elegante e direto. Tom: estrategico, seco, confiante e rapido. Frases curtas. Sem emojis. PROIBIDO: excesso de texto, floreios visuais, jargao vazio, degrades chamativos e promessas genericas.`,
+};
 
 const DESIGNER_AGENT_SYSTEM_PROMPT = `
 Você é um Agente Designer Sênior da agência KrythosLab, especializado em carrosséis profissionais para Instagram.
@@ -21,37 +37,48 @@ REGRAS PRINCIPAIS:
 11. O último slide deve ter um CTA claro e elegante.
 
 COMPORTAMENTO:
-- Pense como designer, copywriter e social media.
-- Seja criterioso com estética.
-- Priorize clareza visual.
-- Evite clichês visuais.
+- Pense como designer, copywriter e social media sênior.
+- Seja criterioso com estética e clareza visual.
 - Entregue algo pronto para produção.
-- Quando faltar alguma informação, assuma uma solução profissional em vez de travar.
+- Quando faltar informação, assuma uma solução profissional em vez de travar.
 
-Quando existir um template visual enviado pelo usuário, preserve essa família visual como referência.
+PROIBIDO nos textos: "Você sabia?", "No mundo atual", "Em um cenário cada vez mais digital", clichês genéricos de autoajuda.
 
-Quando receber uma seção "=== Pesquisa sobre o tema ===", use os dados como base factual para enriquecer os slides de desenvolvimento. Incorpore fatos, números e conceitos naturalmente — sem citar a fonte.
+Quando existir template visual enviado, preserve essa família visual como referência.
+Quando receber "=== Pesquisa sobre o tema ===", use os dados para enriquecer slides de desenvolvimento. Incorpore naturalmente, sem citar fonte.
 
-FORMATO DE RESPOSTA:
-Retorne sempre um JSON com os campos abaixo. Inclua também "caption" (legenda completa pronta para postagem) e "imageSearchQuery" (consulta geral em inglês, 3–8 palavras, para fotografia editorial do tema central):
+Retorne APENAS o JSON abaixo, sem texto antes ou depois:
 {
-  "carouselTitle": string,
-  "visualDirection": string,
-  "caption": string,
-  "imageSearchQuery": string,
+  "carouselTitle": "título interno descritivo",
+  "caption": "legenda completa para o post no Instagram",
+  "imageSearchQuery": "3 a 8 palavras em inglês para buscar imagem editorial do tema central",
+  "hashtags": ["hashtag1", "hashtag2"],
+  "cta": "chamada para ação final",
   "slides": [
     {
-      "slideNumber": number,
-      "type": "hook" | "development" | "cta",
-      "mainText": string,
-      "secondaryText": string,
-      "layoutInstructions": string,
-      "designNotes": string,
-      "imageSearchQuery": string
+      "id": 1,
+      "type": "hook",
+      "title": "título curto do slide",
+      "text": "texto principal do slide (até 150 chars)",
+      "shortText": "versão ultra-resumida (até 50 chars)",
+      "imagePrompt": "detailed English prompt for the slide hero image — lighting, composition, mood",
+      "backgroundPrompt": "English prompt for slide background — gradient, texture or photo",
+      "visualDirection": "explicação curta do visual esperado para o designer",
+      "layoutNotes": "observações de layout",
+      "imageSearchQuery": "4 a 10 palavras em inglês para buscar imagem deste slide",
+      "highlightWords": ["palavra-chave1", "palavra-chave2"],
+      "editableFields": { "title": true, "text": true, "image": true, "background": true, "cta": false }
     }
   ],
-  "generalDesignRules": string[],
-  "qualityChecklist": string[]
+  "generalDesignRules": ["regra geral 1"],
+  "qualityChecklist": {
+    "textsFitTemplate": true,
+    "strongHook": true,
+    "clearProgression": true,
+    "profileToneRespected": true,
+    "formatRespected": true,
+    "editableOutput": true
+  }
 }
 `;
 
@@ -92,7 +119,7 @@ async function researchTopicContext(topic: string): Promise<string | null> {
         },
         body: JSON.stringify({ q: topic, gl: "br", hl: "pt", num: 6 }),
       },
-      6000
+      3000
     );
     if (!res.ok) return null;
 
@@ -142,11 +169,20 @@ const STYLE_GUIDE: Record<string, string> = {
 
 const FALLBACK_CTA = "Salve este carrossel e compartilhe com quem precisa ver isso hoje.";
 
+function assertAnthropicCarouselConfigured() {
+  if (!ENV.anthropicApiKey.trim()) {
+    throw new Error(
+      "ANTHROPIC_API_KEY e obrigatoria para gerar ou regenerar carrosseis. A OpenAI continua sendo usada apenas para as imagens."
+    );
+  }
+}
+
 export type CarouselAgentInput = {
   topic: string;
   slideCount: number;
   carouselFormat?: "feed" | "story";
   style: string;
+  profileId?: string;
   coverImageDataUrl?: string;
   coverImageUrl?: string;
   templateName?: string;
@@ -157,10 +193,26 @@ export type CarouselAgentInput = {
   articleContext?: string;
 };
 
+export type SlideEditableFields = {
+  title: boolean;
+  text: boolean;
+  image: boolean;
+  background: boolean;
+  cta: boolean;
+};
+
 export type CarouselAgentSlide = {
   title: string;
   body: string;
   imageUrl?: string;
+  slideType?: "hook" | "development" | "cta";
+  shortText?: string;
+  imagePrompt?: string;
+  backgroundPrompt?: string;
+  visualDirection?: string;
+  layoutNotes?: string;
+  highlightWords?: string[];
+  editableFields?: SlideEditableFields;
 };
 
 export type CarouselAgentResult = {
@@ -169,24 +221,39 @@ export type CarouselAgentResult = {
   hook: string;
   caption: string;
   finalCta: string;
+  hashtags?: string[];
+  profileId?: string;
 };
 
 type CarouselAgentPayload = {
   carouselTitle?: string;
-  visualDirection?: string;
   caption?: string;
   imageSearchQuery?: string;
+  hashtags?: string[];
+  cta?: string;
   slides?: Array<{
-    slideNumber?: number;
+    id?: number;
     type?: "hook" | "development" | "cta";
-    mainText?: string;
-    secondaryText?: string;
-    layoutInstructions?: string;
-    designNotes?: string;
+    title?: string;
+    text?: string;
+    shortText?: string;
+    imagePrompt?: string;
+    backgroundPrompt?: string;
+    visualDirection?: string;
+    layoutNotes?: string;
     imageSearchQuery?: string;
+    highlightWords?: string[];
+    editableFields?: SlideEditableFields;
   }>;
   generalDesignRules?: string[];
-  qualityChecklist?: string[];
+  qualityChecklist?: {
+    textsFitTemplate?: boolean;
+    strongHook?: boolean;
+    clearProgression?: boolean;
+    profileToneRespected?: boolean;
+    formatRespected?: boolean;
+    editableOutput?: boolean;
+  };
 };
 
 type WikimediaImageInfo = {
@@ -470,20 +537,20 @@ async function resolveCarouselCoverImage(input: {
     }
   }
 
-  const stockSources: Array<{ name: string; fn: () => Promise<string | undefined> }> = [
-    { name: "Unsplash", fn: () => searchUnsplashImage(query) },
-    { name: "Pexels", fn: () => searchPexelsImage(query) },
-    { name: "Pixabay", fn: () => searchPixabayImage(query) },
-    { name: "Wikimedia", fn: () => searchWikimediaImage(query) },
-  ];
+  const stockSources = [
+    searchUnsplashImage(query),
+    searchPexelsImage(query),
+    searchPixabayImage(query),
+    searchWikimediaImage(query),
+  ].map((p) => p.then((url) => {
+    if (!url) throw new Error("no result");
+    return url;
+  }));
 
-  for (const source of stockSources) {
-    try {
-      const result = await source.fn();
-      if (result) return result;
-    } catch (err) {
-      console.warn(`[CarouselAgent] ${source.name} failed:`, err);
-    }
+  try {
+    return await Promise.any(stockSources);
+  } catch {
+    // all sources failed
   }
 
   return buildFallbackImageDataUrl(`${input.topic} ${input.slideTitle}`);
@@ -492,6 +559,8 @@ async function resolveCarouselCoverImage(input: {
 export async function generateCarouselWithAgent(
   input: CarouselAgentInput
 ): Promise<CarouselAgentResult> {
+  assertAnthropicCarouselConfigured();
+
   const referenceImageUrl = input.coverImageDataUrl || input.coverImageUrl;
   const templateImageUrl = input.templateImageDataUrl || input.templateImageUrl;
   const styleGuide = input.templateStyleBrief?.trim()
@@ -514,22 +583,25 @@ export async function generateCarouselWithAgent(
     ? "Story (9:16, 1080x1920) — formato vertical extendido do Instagram Stories"
     : "Feed (4:5, 1080x1350) — formato padrão de posts no feed";
 
+  const profileContext = input.profileId
+    ? PROFILE_CONTEXTS[input.profileId] ?? ""
+    : "";
+
   const userPrompt = [
+    profileContext ? `=== Perfil do Instagram ===\n${profileContext}\n` : undefined,
     `Tema do carrossel: ${input.topic}`,
     `Quantidade exata de slides: ${input.slideCount}`,
     `Formato: ${formatInfo}`,
     `Direcao visual: ${styleGuide}`,
     input.templateName ? `Nome do template visual: ${input.templateName}` : undefined,
     `MAPA DE SLIDES (siga obrigatoriamente):`,
-    `  Slide 1: GANCHO — para o scroll, gera curiosidade, promessa ou dor. NAO entrega o conteudo ainda.`,
+    `  Slide 1 (id:1, type:"hook"): GANCHO — para o scroll, gera curiosidade, promessa ou dor. NAO entrega o conteudo ainda.`,
     input.slideCount > 2
-      ? `  Slides 2 a ${lastSlideIndex - 1}: DESENVOLVIMENTO — cada um aprofunda um aspecto diferente do tema com dados, contraste ou descoberta.`
+      ? `  Slides 2 a ${lastSlideIndex - 1} (type:"development"): cada um aprofunda um aspecto diferente do tema com dados, contraste ou descoberta.`
       : undefined,
-    `  Slide ${lastSlideIndex}: CTA DE ENGAJAMENTO — pede curtida, comentario e compartilhamento de forma natural e direta.`,
-    "Gere uma legenda completa pronta para postagem, com o gancho, os pontos principais e o CTA.",
-    "Gere imageSearchQuery geral em ingles, com 3 a 8 palavras, para fotografia editorial do tema central.",
-    "Para cada slide, gere imageSearchQuery em ingles especifico daquele slide, com 4 a 10 palavras.",
-    "Toda imageSearchQuery deve mencionar o assunto central em ingles e acrescentar apenas o foco do slide.",
+    `  Slide ${lastSlideIndex} (id:${lastSlideIndex}, type:"cta"): CTA DE ENGAJAMENTO — pede curtida, comentario e compartilhamento de forma natural e direta.`,
+    "Gere imageSearchQuery geral em ingles (3-8 palavras) para fotografia editorial do tema central.",
+    "Para cada slide, gere imageSearchQuery em ingles especifico (4-10 palavras) e imagePrompt detalhado em ingles.",
     "Nao use consultas abstratas como transformation, growth, future ou innovation sem objeto concreto do tema.",
     topicResearch
       ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch}`
@@ -538,106 +610,40 @@ export async function generateCarouselWithAgent(
     .filter(Boolean)
     .join("\n");
 
-  const userContentParts: MessageContent[] = [
-    {
-      type: "text",
-      text: userPrompt,
-    },
-  ];
-
+  // ── Build Anthropic content (supports images) ───────────────────────────────
+  const anthropicParts: AnthropicContent[] = [{ type: "text", text: userPrompt }];
   if (templateImageUrl) {
-    userContentParts.push({
-      type: "text",
-      text: "Imagem de referencia 1: template visual do usuario. Preserve a familia visual, o clima, a composicao e o acabamento desse modelo.",
-    });
-    userContentParts.push({
-      type: "image_url",
-      image_url: {
-        url: templateImageUrl,
-        detail: "low",
-      },
-    });
+    anthropicParts.push({ type: "text", text: "Template visual de referencia — preserve a familia visual." });
+    const img = buildAnthropicImageContent(templateImageUrl);
+    if (img) anthropicParts.push(img);
   }
-
   if (referenceImageUrl) {
-    userContentParts.push({
-      type: "text",
-      text: "Imagem de referencia 2: imagem opcional para o bloco inferior. Use como referencia de conteudo quando fizer sentido.",
-    });
-    userContentParts.push({
-      type: "image_url",
-      image_url: {
-        url: referenceImageUrl,
-        detail: "auto",
-      },
-    });
+    anthropicParts.push({ type: "text", text: "Imagem de referencia de conteudo — use quando fizer sentido." });
+    const img = buildAnthropicImageContent(referenceImageUrl);
+    if (img) anthropicParts.push(img);
   }
 
-  const userContent: MessageContent | MessageContent[] =
-    userContentParts.length === 1 ? userPrompt : userContentParts;
+  // ── Build OpenAI content (fallback) ────────────────────────────────────────
 
-  const response = await invokeLLM({
-    messages: [
-      {
-        role: "system",
-        content: DESIGNER_AGENT_SYSTEM_PROMPT,
-      },
-      {
-        role: "user",
-        content: userContent,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "instagram_carousel_agent_output",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            carouselTitle: { type: "string" },
-            visualDirection: { type: "string" },
-            caption: { type: "string" },
-            imageSearchQuery: { type: "string" },
-            slides: {
-              type: "array",
-              minItems: input.slideCount,
-              maxItems: input.slideCount,
-              items: {
-                type: "object",
-                properties: {
-                  slideNumber: { type: "number" },
-                  type: { type: "string", enum: ["hook", "development", "cta"] },
-                  mainText: { type: "string" },
-                  secondaryText: { type: "string" },
-                  layoutInstructions: { type: "string" },
-                  designNotes: { type: "string" },
-                  imageSearchQuery: { type: "string" },
-                },
-                required: ["slideNumber", "type", "mainText", "secondaryText", "layoutInstructions", "designNotes", "imageSearchQuery"],
-                additionalProperties: false,
-              },
-            },
-            generalDesignRules: { type: "array", items: { type: "string" } },
-            qualityChecklist: { type: "array", items: { type: "string" } },
-          },
-          required: ["carouselTitle", "visualDirection", "caption", "imageSearchQuery", "slides", "generalDesignRules", "qualityChecklist"],
-          additionalProperties: false,
-        },
-      },
-    },
+  // ── Invoke LLM: Anthropic first, OpenAI/Gemini as fallback ─────────────────
+  const raw = await invokeAnthropicLLM({
+    system: DESIGNER_AGENT_SYSTEM_PROMPT,
+    userContent: anthropicParts.length === 1 ? userPrompt : anthropicParts,
   });
-
-  const rawContent = response.choices[0]?.message?.content;
-  const parsed = JSON.parse(
-    (typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent)) || "{}"
-  ) as CarouselAgentPayload;
+  const parsed = parseClaudeJsonResponse<CarouselAgentPayload>(raw, { slides: [] });
 
   const slides = (parsed.slides || []).map((slide, index) => ({
-    title: cleanText(slide?.mainText, `Slide ${index + 1}`),
-    body: cleanText(slide?.secondaryText),
+    title: cleanText(slide?.title, `Slide ${index + 1}`),
+    body: cleanText(slide?.text),
     imageSearchQuery: cleanText(slide?.imageSearchQuery),
-    type: slide?.type,
+    slideType: slide?.type,
+    shortText: slide?.shortText,
+    imagePrompt: slide?.imagePrompt,
+    backgroundPrompt: slide?.backgroundPrompt,
+    visualDirection: slide?.visualDirection,
+    layoutNotes: slide?.layoutNotes,
+    highlightWords: slide?.highlightWords ?? [],
+    editableFields: slide?.editableFields,
   }));
 
   if (slides.length !== input.slideCount) {
@@ -645,45 +651,52 @@ export async function generateCarouselWithAgent(
   }
 
   const hook = cleanText(
-    parsed.slides?.find((s) => s.type === "hook")?.mainText,
+    parsed.slides?.find((s) => s.type === "hook")?.title,
     slides[0]?.title || input.topic
   );
   const finalCta = cleanText(
-    parsed.slides?.find((s) => s.type === "cta")?.mainText,
+    parsed.cta ?? parsed.slides?.find((s) => s.type === "cta")?.title,
     FALLBACK_CTA
   );
   const caption = cleanText(
     parsed.caption,
     `${hook}\n\n${slides.map((slide) => `${slide.title}: ${slide.body}`).join("\n\n")}\n\n${finalCta}`
   );
-  const slidesWithImage: CarouselAgentSlide[] = [];
+  const slidesWithImage: CarouselAgentSlide[] = await Promise.all(
+    slides.map(async (slide, index) => {
+      const slideImageUrl =
+        referenceImageUrl ||
+        (await resolveCarouselCoverImage({
+          topic: input.topic,
+          hook,
+          imageSearchQuery: cleanText(
+            slide.imageSearchQuery,
+            `${parsed.imageSearchQuery || input.topic} ${slide.title}`
+          ),
+          slideTitle: slide.title,
+          slideBody: slide.body,
+          slideIndex: index,
+          templateName: input.templateName,
+          templateStyleBrief: input.templateStyleBrief,
+          referenceImageUrl: templateImageUrl,
+          useAiImages: input.useAiImages ?? false,
+        }));
 
-  for (let index = 0; index < slides.length; index += 1) {
-    const slide = slides[index];
-    const slideImageUrl =
-      referenceImageUrl ||
-      (await resolveCarouselCoverImage({
-        topic: input.topic,
-        hook,
-        imageSearchQuery: cleanText(
-          slide.imageSearchQuery,
-          `${parsed.imageSearchQuery || input.topic} ${slide.title}`
-        ),
-        slideTitle: slide.title,
-        slideBody: slide.body,
-        slideIndex: index,
-        templateName: input.templateName,
-        templateStyleBrief: input.templateStyleBrief,
-        referenceImageUrl: templateImageUrl,
-        useAiImages: input.useAiImages ?? false,
-      }));
-
-    slidesWithImage.push({
-      title: slide.title,
-      body: slide.body,
-      imageUrl: slideImageUrl,
-    });
-  }
+      return {
+        title: slide.title,
+        body: slide.body,
+        imageUrl: slideImageUrl,
+        slideType: slide.slideType,
+        shortText: slide.shortText,
+        imagePrompt: slide.imagePrompt,
+        backgroundPrompt: slide.backgroundPrompt,
+        visualDirection: slide.visualDirection,
+        layoutNotes: slide.layoutNotes,
+        highlightWords: slide.highlightWords,
+        editableFields: slide.editableFields,
+      };
+    })
+  );
 
   const sharedImageUrl =
     [referenceImageUrl, ...slidesWithImage.map((slide) => slide.imageUrl)].find(
@@ -704,5 +717,173 @@ export async function generateCarouselWithAgent(
     hook,
     caption,
     finalCta,
+    hashtags: parsed.hashtags ?? [],
+    profileId: input.profileId,
   };
+}
+
+// ─── Regeneration helpers ──────────────────────────────────────────────────────
+
+const REGEN_SYSTEM = `Você é um social media sênior e copywriter especializado em carrosséis de Instagram. Retorne APENAS JSON válido, sem texto antes ou depois.`;
+
+async function callRegenLLM(userPrompt: string, fallback: CarouselAgentPayload): Promise<CarouselAgentPayload> {
+  assertAnthropicCarouselConfigured();
+  const raw = await invokeAnthropicLLM({ system: REGEN_SYSTEM, userContent: userPrompt });
+  return parseClaudeJsonResponse<CarouselAgentPayload>(raw, fallback);
+}
+
+export async function regenerateSlide(params: {
+  topic: string;
+  hook: string;
+  totalSlides: number;
+  slideIndex: number;
+  slideType: "hook" | "development" | "cta";
+  profileId?: string;
+  format?: "feed" | "story";
+  style?: string;
+  useAiImages?: boolean;
+}): Promise<CarouselAgentSlide> {
+  const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const prompt = [
+    profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    `Tema: ${params.topic}`,
+    `Formato: ${params.format ?? "feed"}. Estilo: ${params.style ?? "signature"}.`,
+    `Carrossel tem ${params.totalSlides} slides. Você deve regenerar o slide ${params.slideIndex + 1} (tipo: ${params.slideType}).`,
+    `Retorne JSON com um único objeto no formato:`,
+    `{"id":${params.slideIndex + 1},"type":"${params.slideType}","title":"...","text":"...","shortText":"...","imagePrompt":"...","backgroundPrompt":"...","visualDirection":"...","layoutNotes":"...","imageSearchQuery":"...","highlightWords":[],"editableFields":{"title":true,"text":true,"image":true,"background":true,"cta":false}}`,
+  ].filter(Boolean).join("\n");
+
+  const result = await callRegenLLM(prompt, {});
+  const s = (result as unknown as Record<string, unknown>);
+
+  const slideData: CarouselAgentSlide = {
+    title: cleanText(s.title, `Slide ${params.slideIndex + 1}`),
+    body: cleanText(s.text),
+    slideType: params.slideType,
+    shortText: typeof s.shortText === "string" ? s.shortText : undefined,
+    imagePrompt: typeof s.imagePrompt === "string" ? s.imagePrompt : undefined,
+    backgroundPrompt: typeof s.backgroundPrompt === "string" ? s.backgroundPrompt : undefined,
+    visualDirection: typeof s.visualDirection === "string" ? s.visualDirection : undefined,
+    layoutNotes: typeof s.layoutNotes === "string" ? s.layoutNotes : undefined,
+    highlightWords: Array.isArray(s.highlightWords) ? (s.highlightWords as string[]) : [],
+    editableFields: typeof s.editableFields === "object" && s.editableFields !== null
+      ? (s.editableFields as SlideEditableFields)
+      : { title: true, text: true, image: true, background: true, cta: false },
+  };
+
+  const imageSearchQuery = cleanText(s.imageSearchQuery, `${params.topic} ${slideData.title}`);
+  slideData.imageUrl = await resolveCarouselCoverImage({
+    topic: params.topic,
+    hook: params.hook,
+    imageSearchQuery,
+    slideTitle: slideData.title,
+    slideBody: slideData.body,
+    slideIndex: params.slideIndex,
+    useAiImages: params.useAiImages ?? false,
+  });
+
+  return slideData;
+}
+
+export async function regenerateSlideText(params: {
+  topic: string;
+  hook: string;
+  slideType: "hook" | "development" | "cta";
+  currentTitle: string;
+  currentBody: string;
+  profileId?: string;
+  instruction?: string;
+}): Promise<{ title: string; body: string; shortText: string; highlightWords: string[] }> {
+  const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const prompt = [
+    profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    `Tema geral: ${params.topic}. Gancho do carrossel: ${params.hook}.`,
+    `Slide atual (tipo: ${params.slideType}): Título: "${params.currentTitle}" | Texto: "${params.currentBody}"`,
+    params.instruction ? `Instrução do usuário: ${params.instruction}` : "Melhore o texto para ser mais impactante e natural.",
+    `Retorne JSON: {"title":"...","text":"...","shortText":"...","highlightWords":[]}`,
+  ].filter(Boolean).join("\n");
+
+  const result = await callRegenLLM(prompt, {});
+  const s = result as unknown as Record<string, unknown>;
+  return {
+    title: cleanText(s.title, params.currentTitle),
+    body: cleanText(s.text, params.currentBody),
+    shortText: typeof s.shortText === "string" ? s.shortText : "",
+    highlightWords: Array.isArray(s.highlightWords) ? (s.highlightWords as string[]) : [],
+  };
+}
+
+export async function regenerateSlideImage(params: {
+  topic: string;
+  hook: string;
+  slideTitle: string;
+  slideBody: string;
+  slideIndex: number;
+  imagePrompt?: string;
+  profileId?: string;
+  useAiImages?: boolean;
+}): Promise<{ imageUrl: string; imagePrompt: string }> {
+  const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  let imagePrompt = params.imagePrompt ?? "";
+
+  if (!imagePrompt) {
+    const prompt = [
+      profileCtx ? `Perfil visual: ${profileCtx}` : undefined,
+      `Tema: ${params.topic}. Slide: "${params.slideTitle}" — ${params.slideBody}`,
+      `Gere um imagePrompt em inglês detalhado (lighting, composition, mood) para uma foto profissional deste slide.`,
+      `Retorne JSON: {"imagePrompt":"...","imageSearchQuery":"..."}`,
+    ].filter(Boolean).join("\n");
+
+    const result = await callRegenLLM(prompt, {});
+    const s = result as unknown as Record<string, unknown>;
+    imagePrompt = cleanText(s.imagePrompt, `${params.topic} ${params.slideTitle}`);
+  }
+
+  const imageUrl = await resolveCarouselCoverImage({
+    topic: params.topic,
+    hook: params.hook,
+    imageSearchQuery: `${params.topic} ${params.slideTitle}`,
+    slideTitle: params.slideTitle,
+    slideBody: params.slideBody,
+    slideIndex: params.slideIndex,
+    useAiImages: params.useAiImages ?? false,
+  });
+
+  return { imageUrl, imagePrompt };
+}
+
+export async function regenerateCaption(params: {
+  topic: string;
+  hook: string;
+  slides: Array<{ title: string; body: string }>;
+  profileId?: string;
+  cta: string;
+}): Promise<{ caption: string; hashtags: string[]; cta: string }> {
+  const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const slidesSummary = params.slides
+    .map((s, i) => `Slide ${i + 1}: ${s.title} — ${s.body}`)
+    .join("\n");
+
+  const prompt = [
+    profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    `Tema: ${params.topic}. Gancho: ${params.hook}.`,
+    `Slides:\n${slidesSummary}`,
+    `CTA atual: ${params.cta}`,
+    `Gere uma legenda completa para o Instagram e hashtags relevantes.`,
+    `Retorne JSON: {"caption":"...","hashtags":["hashtag1","hashtag2"],"cta":"..."}`,
+  ].filter(Boolean).join("\n");
+
+  const result = await callRegenLLM(prompt, {});
+  const s = result as unknown as Record<string, unknown>;
+  return {
+    caption: cleanText(s.caption, `${params.hook}\n\n${params.cta}`),
+    hashtags: Array.isArray(s.hashtags) ? (s.hashtags as string[]) : [],
+    cta: cleanText(s.cta, params.cta),
+  };
+}
+
+export function validateCarouselOutput(result: CarouselAgentResult, expectedSlideCount: number): boolean {
+  if (result.slides.length !== expectedSlideCount) return false;
+  if (!result.hook || !result.caption) return false;
+  return result.slides.every((s) => s.title && s.body !== undefined);
 }
