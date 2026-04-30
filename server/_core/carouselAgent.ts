@@ -16,7 +16,10 @@ const PROFILE_CONTEXTS: Record<string, string> = {
   "alle-roxo": `Perfil: Alle Energia (@alleenergia) — variante premium. Visual em roxo intenso (#7B2FBE) com acentos laranja. Tom: confiável, moderno, premium. Destaca credibilidade e inovação. Público: empresas médias e grandes, tomadores de decisão em energia. PROIBIDO: linguagem muito popular, imprecisão técnica.`,
   "alle-minimalista": `Perfil: Alle Energia Minimalista (@alleenergia). Use o mesmo layout editorial minimalista do modelo Claude Minimalista, adaptado para a marca Alle Energia. Paleta obrigatoria: fundo roxo escuro #44015e, paines/areas de apoio em #7c00ae, acentos em laranja #ff6600 e texto branco #ffffff. Composicao centrada, limpa, premium e com muito respiro. Primeiro slide com imagem destacada e titulo forte em caixa alta. Slides internos com titulo centralizado, texto curto e bloco visual limpo. Ultimo slide com CTA elegante e direto. Tom: confiavel, estrategico, claro e comercial. Frases curtas. Sem emojis. PROIBIDO: excesso de texto, floreios visuais, jargao tecnico desnecessario, degrades chamativos fora da paleta e promessas vagas.`,
   "claude-minimalista": `Perfil: Claude Minimalista (@claude.design). Visual editorial minimalista inspirado em ferramentas premium de carrossel: fundo preto absoluto (#050505), molduras cinza-escuro, tipografia branca bold, composicao centrada e muito respiro. Primeiro slide com imagem destacada no topo e titulo forte em caixa alta. Slides internos com titulo centralizado, texto curto e bloco visual limpo. Ultimo slide com CTA elegante e direto. Tom: estrategico, seco, confiante e rapido. Frases curtas. Sem emojis. PROIBIDO: excesso de texto, floreios visuais, jargao vazio, degrades chamativos e promessas genericas.`,
+  "brandsdecoded-claude": `Perfil: BrandsDecoded Claude (@brandsdecoded). Sistema editorial inspirado na comunicacao publica da BrandsDecoded: copy provocadora, autoridade imediata, headlines memoraveis e estetica premium. Visual base: fundo preto ou quase preto, tipografia branca bold, acentos quentes discretos, composicao limpa e alto contraste. O conteudo deve parecer diagnostico de mercado, nao post motivacional. Frases curtas, tensao real, clareza comercial. Priorize ganchos que parem o scroll e slides com progressao estrategica. Quando o tema vier de noticia, transforme o fato em leitura de negocio ou oportunidade concreta. Sem emojis. PROIBIDO: linguagem coach, generica ou vazia; excesso de texto; promessas vagas; frases mornas; cliches de marketing.`,
 };
+
+const BRANDSDECODED_PROFILE_ID = "brandsdecoded-claude";
 
 const DESIGNER_AGENT_SYSTEM_PROMPT = `
 Você é um Agente Designer Sênior da agência KrythosLab, especializado em carrosséis profissionais para Instagram.
@@ -168,6 +171,74 @@ const STYLE_GUIDE: Record<string, string> = {
 };
 
 const FALLBACK_CTA = "Salve este carrossel e compartilhe com quem precisa ver isso hoje.";
+
+function getProfileGenerationBlueprint(input: {
+  profileId?: string;
+  articleBased?: boolean;
+  slideCount: number;
+}) {
+  if (input.profileId !== BRANDSDECODED_PROFILE_ID) return "";
+
+  const lastDevelopmentSlide = Math.max(2, input.slideCount - 1);
+  const developmentRange =
+    input.slideCount > 2
+      ? `Slides 2 a ${lastDevelopmentSlide}`
+      : "Slides internos";
+  const sourceInstruction = input.articleBased
+    ? "Quando houver noticia ou artigo, nao reescreva a manchete. Reenquadre o fato como impacto real para o leitor: o que mudou, por que importa, quem perde ignorando isso e qual movimento faz sentido agora."
+    : "Quando o tema for livre, transforme o assunto em uma tese clara de mercado, comportamento ou oportunidade. Evite tratar o assunto como lista escolar.";
+
+  return [
+    "Framework BrandsDecoded (inferido publicamente): carrossel de autoridade, copy provocadora e estetica premium.",
+    "Cada slide deve defender uma unica ideia forte. Corte qualquer linha que nao aumente tensao, clareza ou autoridade.",
+    "Slide 1: hook de tensao, contraste, diagnostico ou reframe. Prefira estruturas como 'o erro', 'a verdade', 'enquanto voce...', 'o que mudou', 'por que ...'.",
+    `${developmentRange}: siga a progressao diagnostico -> causa ou mecanismo -> implicacao, prova ou oportunidade -> orientacao pratica.`,
+    "Ultimo slide: CTA curto, direto e elegante. Priorize salvar, compartilhar, comentar ou chamar no direct quando fizer sentido.",
+    sourceInstruction,
+    "Prefira palavras concretas, verbos fortes e leitura de operador experiente. Nunca soe como social media generico.",
+    "Proibido: abertura tipo 'voce sabia?', frases motivacionais, jargao sem prova, enrolacao ou conselhos obvios.",
+  ].join("\n");
+}
+
+function getProfileRegenBlueprint(input: {
+  profileId?: string;
+  slideType: "hook" | "development" | "cta";
+}) {
+  if (input.profileId !== BRANDSDECODED_PROFILE_ID) return "";
+
+  const slideSpecificInstruction =
+    input.slideType === "hook"
+      ? "Este slide precisa abrir com uma tese memoravel e tensionada. A headline deve soar como algo que um operador experiente publicaria, nao como texto de copy generica."
+      : input.slideType === "cta"
+        ? "Este slide precisa fechar o raciocinio com uma acao clara e elegante. Nada de CTA infantil ou desesperado."
+        : "Este slide deve aprofundar o raciocinio com diagnostico, mecanismo, prova, impacto ou oportunidade concreta.";
+
+  return [
+    "Mantenha o estilo BrandsDecoded: autoridade imediata, copy provocadora e pouca gordura verbal.",
+    slideSpecificInstruction,
+    "Seja especifico, direto e comercial sem perder elegancia.",
+  ].join("\n");
+}
+
+function getProfileCaptionBlueprint(profileId?: string) {
+  if (profileId !== BRANDSDECODED_PROFILE_ID) return "";
+
+  return [
+    "Legenda no estilo editorial: abra com uma tese forte ou reframe.",
+    "Desenvolva em 2 ou 3 blocos curtos com causa, impacto e conclusao pratica.",
+    "Feche com CTA objetivo e hashtags enxutas. A legenda deve soar humana, estrategica e afiada.",
+  ].join("\n");
+}
+
+function getProfileImageArtDirection(profileId?: string) {
+  if (profileId !== BRANDSDECODED_PROFILE_ID) return "";
+
+  return [
+    "Aesthetic: premium editorial authority, inspired by magazine-cover business and culture photography.",
+    "Prefer concrete scenes with real human tension, strategy-room energy, news-desk atmosphere, or symbolic but specific business situations.",
+    "Leave clean negative space for bold typography and avoid generic futuristic visuals unless the topic explicitly requires it.",
+  ].join("\n");
+}
 
 function assertAnthropicCarouselConfigured() {
   if (!ENV.anthropicApiKey.trim()) {
@@ -401,8 +472,11 @@ function buildCarouselImagePrompt(input: {
   slideIndex: number;
   templateName?: string;
   templateStyleBrief?: string;
+  imagePrompt?: string;
+  profileId?: string;
 }) {
   const isHook = input.slideIndex === 0;
+  const profileImageDirection = getProfileImageArtDirection(input.profileId);
 
   return [
     // ── Intent ──────────────────────────────────────────────────────────────
@@ -414,6 +488,7 @@ function buildCarouselImagePrompt(input: {
     `This slide: ${input.slideTitle}`,
     input.slideBody ? `Slide context: ${input.slideBody}` : undefined,
     `Visual direction: ${input.imageSearchQuery || input.hook}`,
+    input.imagePrompt ? `Slide-specific art direction from the strategy model: ${input.imagePrompt}` : undefined,
 
     // ── Camera & lens ────────────────────────────────────────────────────────
     "Camera: full-frame mirrorless (Sony A7R V or Canon R5 equivalent). Lens: 24–50mm prime, f/1.4–f/2.8. Shallow depth of field with smooth bokeh background. Tack-sharp foreground subject.",
@@ -434,6 +509,7 @@ function buildCarouselImagePrompt(input: {
     input.templateStyleBrief
       ? `Visual style reference: ${input.templateStyleBrief}`
       : "Visual palette: dark navy/charcoal tones, compatible with a dark-themed carousel card design.",
+    profileImageDirection,
 
     // ── Specificity requirement ──────────────────────────────────────────────
     "This image must be uniquely composed for this specific slide — not a generic stock cover. The scene, subject, and framing must directly represent the slide's message and energy.",
@@ -510,6 +586,8 @@ async function resolveCarouselCoverImage(input: {
   templateStyleBrief?: string;
   referenceImageUrl?: string;
   useAiImages?: boolean;
+  imagePrompt?: string;
+  profileId?: string;
 }) {
   const query = buildCentralThemeImageQuery(input);
 
@@ -525,6 +603,8 @@ async function resolveCarouselCoverImage(input: {
           slideIndex: input.slideIndex,
           templateName: input.templateName,
           templateStyleBrief: input.templateStyleBrief,
+          imagePrompt: input.imagePrompt,
+          profileId: input.profileId,
         }),
         referenceImageUrl: input.referenceImageUrl,
       });
@@ -565,6 +645,8 @@ export async function generateCarouselWithAgent(
   const templateImageUrl = input.templateImageDataUrl || input.templateImageUrl;
   const styleGuide = input.templateStyleBrief?.trim()
     ? `Template escolhido: ${input.templateName || input.style}. ${input.templateStyleBrief.trim()}`
+    : input.profileId === BRANDSDECODED_PROFILE_ID
+      ? "Visual editorial premium, dark, minimal and high-contrast. Background preto ou quase preto, tipografia branca bold, respiro generoso e acento quente discreto."
     : STYLE_GUIDE[input.style] || `Estilo visual: ${input.style}.`;
 
   // Use article content when provided; otherwise fall back to Google search
@@ -586,9 +668,16 @@ export async function generateCarouselWithAgent(
   const profileContext = input.profileId
     ? PROFILE_CONTEXTS[input.profileId] ?? ""
     : "";
+  const profileBlueprint = getProfileGenerationBlueprint({
+    profileId: input.profileId,
+    articleBased: Boolean(input.articleContext),
+    slideCount: input.slideCount,
+  });
+  const captionBlueprint = getProfileCaptionBlueprint(input.profileId);
 
   const userPrompt = [
     profileContext ? `=== Perfil do Instagram ===\n${profileContext}\n` : undefined,
+    profileBlueprint ? `=== Framework estrategico ===\n${profileBlueprint}\n` : undefined,
     `Tema do carrossel: ${input.topic}`,
     `Quantidade exata de slides: ${input.slideCount}`,
     `Formato: ${formatInfo}`,
@@ -603,6 +692,7 @@ export async function generateCarouselWithAgent(
     "Gere imageSearchQuery geral em ingles (3-8 palavras) para fotografia editorial do tema central.",
     "Para cada slide, gere imageSearchQuery em ingles especifico (4-10 palavras) e imagePrompt detalhado em ingles.",
     "Nao use consultas abstratas como transformation, growth, future ou innovation sem objeto concreto do tema.",
+    captionBlueprint ? `Legenda: ${captionBlueprint}` : undefined,
     topicResearch
       ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch}`
       : undefined,
@@ -680,6 +770,8 @@ export async function generateCarouselWithAgent(
           templateStyleBrief: input.templateStyleBrief,
           referenceImageUrl: templateImageUrl,
           useAiImages: input.useAiImages ?? false,
+          imagePrompt: slide.imagePrompt,
+          profileId: input.profileId,
         }));
 
       return {
@@ -744,8 +836,13 @@ export async function regenerateSlide(params: {
   useAiImages?: boolean;
 }): Promise<CarouselAgentSlide> {
   const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const profileBlueprint = getProfileRegenBlueprint({
+    profileId: params.profileId,
+    slideType: params.slideType,
+  });
   const prompt = [
     profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    profileBlueprint ? `Framework: ${profileBlueprint}` : undefined,
     `Tema: ${params.topic}`,
     `Formato: ${params.format ?? "feed"}. Estilo: ${params.style ?? "signature"}.`,
     `Carrossel tem ${params.totalSlides} slides. Você deve regenerar o slide ${params.slideIndex + 1} (tipo: ${params.slideType}).`,
@@ -780,6 +877,8 @@ export async function regenerateSlide(params: {
     slideBody: slideData.body,
     slideIndex: params.slideIndex,
     useAiImages: params.useAiImages ?? false,
+    imagePrompt: slideData.imagePrompt,
+    profileId: params.profileId,
   });
 
   return slideData;
@@ -795,8 +894,13 @@ export async function regenerateSlideText(params: {
   instruction?: string;
 }): Promise<{ title: string; body: string; shortText: string; highlightWords: string[] }> {
   const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const profileBlueprint = getProfileRegenBlueprint({
+    profileId: params.profileId,
+    slideType: params.slideType,
+  });
   const prompt = [
     profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    profileBlueprint ? `Framework: ${profileBlueprint}` : undefined,
     `Tema geral: ${params.topic}. Gancho do carrossel: ${params.hook}.`,
     `Slide atual (tipo: ${params.slideType}): Título: "${params.currentTitle}" | Texto: "${params.currentBody}"`,
     params.instruction ? `Instrução do usuário: ${params.instruction}` : "Melhore o texto para ser mais impactante e natural.",
@@ -824,11 +928,16 @@ export async function regenerateSlideImage(params: {
   useAiImages?: boolean;
 }): Promise<{ imageUrl: string; imagePrompt: string }> {
   const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const profileBlueprint = getProfileRegenBlueprint({
+    profileId: params.profileId,
+    slideType: "development",
+  });
   let imagePrompt = params.imagePrompt ?? "";
 
   if (!imagePrompt) {
     const prompt = [
       profileCtx ? `Perfil visual: ${profileCtx}` : undefined,
+      profileBlueprint ? `Framework: ${profileBlueprint}` : undefined,
       `Tema: ${params.topic}. Slide: "${params.slideTitle}" — ${params.slideBody}`,
       `Gere um imagePrompt em inglês detalhado (lighting, composition, mood) para uma foto profissional deste slide.`,
       `Retorne JSON: {"imagePrompt":"...","imageSearchQuery":"..."}`,
@@ -847,6 +956,8 @@ export async function regenerateSlideImage(params: {
     slideBody: params.slideBody,
     slideIndex: params.slideIndex,
     useAiImages: params.useAiImages ?? false,
+    imagePrompt,
+    profileId: params.profileId,
   });
 
   return { imageUrl, imagePrompt };
@@ -860,12 +971,14 @@ export async function regenerateCaption(params: {
   cta: string;
 }): Promise<{ caption: string; hashtags: string[]; cta: string }> {
   const profileCtx = params.profileId ? (PROFILE_CONTEXTS[params.profileId] ?? "") : "";
+  const captionBlueprint = getProfileCaptionBlueprint(params.profileId);
   const slidesSummary = params.slides
     .map((s, i) => `Slide ${i + 1}: ${s.title} — ${s.body}`)
     .join("\n");
 
   const prompt = [
     profileCtx ? `Perfil: ${profileCtx}` : undefined,
+    captionBlueprint ? `Framework da legenda: ${captionBlueprint}` : undefined,
     `Tema: ${params.topic}. Gancho: ${params.hook}.`,
     `Slides:\n${slidesSummary}`,
     `CTA atual: ${params.cta}`,

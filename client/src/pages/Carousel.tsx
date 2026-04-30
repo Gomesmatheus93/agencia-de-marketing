@@ -139,6 +139,17 @@ const FV_GRAY = "#6b7280";
 const KRYTHOS_PROFILE_NAME = "krythoslab";
 const KRYTHOS_PROFILE_HANDLE = "@krythoslab";
 const KRYTHOS_PROFILE_AVATAR_URL = "/krythoslab-avatar.png";
+const BRANDSDECODED_PROFILE_ID = "brandsdecoded-claude";
+const BRANDSDECODED_PROFILE_NAME = "BrandsDecoded Claude";
+const BRANDSDECODED_PROFILE_HANDLE = "@brandsdecoded";
+const BRANDSDECODED_PROFILE_AVATAR_URL = KRYTHOS_PROFILE_AVATAR_URL;
+const BRANDSDECODED_BG = "#050505";
+const BRANDSDECODED_PANEL = "#111111";
+const BRANDSDECODED_ACCENT = "#ff7a00";
+const BRANDSDECODED_TEXT = "#f8f8f8";
+const BRANDSDECODED_MUTED = "#d4d4d8";
+const BRANDSDECODED_STROKE = "rgba(255,122,0,0.36)";
+const DEFAULT_PROFILE_ID = BRANDSDECODED_PROFILE_ID;
 const CLAUDE_MINIMAL_PROFILE_NAME = "Claude Minimalista";
 const CLAUDE_MINIMAL_PROFILE_HANDLE = "@claude.design";
 const CLAUDE_MINIMAL_PROFILE_AVATAR_URL = KRYTHOS_PROFILE_AVATAR_URL;
@@ -188,6 +199,7 @@ type ProfileModel = {
 const PROFILE_MODELS: ProfileModel[] = [
   { id: "flavio", name: FLAVIO_PROFILE_NAME, handle: FLAVIO_PROFILE_HANDLE, initials: "FV", avatarUrl: FLAVIO_PROFILE_AVATAR_URL },
   { id: "krythos", name: KRYTHOS_PROFILE_NAME, handle: KRYTHOS_PROFILE_HANDLE, initials: "KL", avatarUrl: KRYTHOS_PROFILE_AVATAR_URL },
+  { id: BRANDSDECODED_PROFILE_ID, name: BRANDSDECODED_PROFILE_NAME, handle: BRANDSDECODED_PROFILE_HANDLE, initials: "BD", avatarUrl: BRANDSDECODED_PROFILE_AVATAR_URL },
   { id: "claude-minimalista", name: CLAUDE_MINIMAL_PROFILE_NAME, handle: CLAUDE_MINIMAL_PROFILE_HANDLE, initials: "CM", avatarUrl: CLAUDE_MINIMAL_PROFILE_AVATAR_URL },
   { id: "alle-minimalista", name: ALLE_MINIMAL_PROFILE_NAME, handle: ALLE_MINIMAL_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_MINIMAL_PROFILE_AVATAR_URL },
   { id: "alle-laranja", name: ALLE_PROFILE_NAME, handle: ALLE_PROFILE_HANDLE, initials: "AE", avatarUrl: ALLE_PROFILE_AVATAR_URL },
@@ -208,10 +220,25 @@ type MinimalCarouselTheme = {
 };
 
 function isMinimalCarouselProfile(profileId?: string) {
-  return profileId === "claude-minimalista" || profileId === "alle-minimalista";
+  return profileId === BRANDSDECODED_PROFILE_ID || profileId === "claude-minimalista" || profileId === "alle-minimalista";
 }
 
 function getMinimalCarouselTheme(profileId?: string): MinimalCarouselTheme {
+  if (profileId === BRANDSDECODED_PROFILE_ID) {
+    return {
+      profileName: BRANDSDECODED_PROFILE_NAME,
+      profileHandle: BRANDSDECODED_PROFILE_HANDLE,
+      bg: BRANDSDECODED_BG,
+      panel: BRANDSDECODED_PANEL,
+      accent: BRANDSDECODED_ACCENT,
+      text: BRANDSDECODED_TEXT,
+      muted: BRANDSDECODED_MUTED,
+      stroke: BRANDSDECODED_STROKE,
+      placeholderFill: "#0b0b0b",
+      ctaSupportText: "Compartilhe com quem precisa transformar conteudo em autoridade.",
+    };
+  }
+
   if (profileId === "alle-minimalista") {
     return {
       profileName: ALLE_MINIMAL_PROFILE_NAME,
@@ -3586,8 +3613,8 @@ export default function Carousels() {
   const [modalSlide, setModalSlide] = useState(0);
   const [scheduleCarousel, setScheduleCarousel] = useState<CarouselItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
-  const [selectedProfileId, setSelectedProfileId] = useState<string>(PROFILE_MODELS[0].id);
-  const [useAiImages, setUseAiImages] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(DEFAULT_PROFILE_ID);
+  const [useAiImages, setUseAiImages] = useState(true);
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
   // Import dialog state
@@ -4597,6 +4624,12 @@ export default function Carousels() {
                   </button>
                 ))}
               </div>
+              {selectedProfileId === BRANDSDECODED_PROFILE_ID ? (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Modo BrandsDecoded: o agente prioriza hook de autoridade, leitura de negocio,
+                  progressao de diagnostico para impacto e imagem editorial premium.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
