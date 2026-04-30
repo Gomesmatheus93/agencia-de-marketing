@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 function fmt(n: number) {
@@ -227,12 +227,51 @@ function InstagramSetupGuide() {
   );
 }
 
+const MEDIA_POLL_MS = 60_000;   // post-level metrics every 60 s
+const PROFILE_POLL_MS = 120_000; // follower count / insights every 2 min
+
+function useLastUpdated(isFetching: boolean) {
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const prevFetching = useRef(false);
+
+  useEffect(() => {
+    if (prevFetching.current && !isFetching) {
+      setLastUpdated(new Date());
+    }
+    prevFetching.current = isFetching;
+  }, [isFetching]);
+
+  return lastUpdated;
+}
+
 function InstagramTab() {
-  const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1 });
+  const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, {
+    retry: 1,
+    refetchInterval: PROFILE_POLL_MS,
+    refetchIntervalInBackground: false,
+  });
   const isConnected = connectionQuery.data?.connected === true;
-  const profileQuery = trpc.analytics.getProfile.useQuery(undefined, { enabled: isConnected, retry: 1 });
-  const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, { enabled: isConnected, retry: 1 });
-  const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, { enabled: isConnected, retry: 1 });
+  const profileQuery = trpc.analytics.getProfile.useQuery(undefined, {
+    enabled: isConnected,
+    retry: 1,
+    refetchInterval: PROFILE_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+  const insightsQuery = trpc.analytics.getInsights.useQuery({ days: 30 }, {
+    enabled: isConnected,
+    retry: 1,
+    refetchInterval: PROFILE_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+  const mediaQuery = trpc.analytics.getMedia.useQuery({ limit: 12 }, {
+    enabled: isConnected,
+    retry: 1,
+    refetchInterval: MEDIA_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
   const disconnectMutation = trpc.analytics.disconnectInstagram.useMutation({
     onSuccess: () => { toast.success("Instagram desconectado."); void connectionQuery.refetch(); },
   });
@@ -244,6 +283,9 @@ function InstagramTab() {
     void mediaQuery.refetch();
   };
 
+  const isFetching = profileQuery.isFetching || insightsQuery.isFetching || mediaQuery.isFetching;
+  const lastUpdated = useLastUpdated(isFetching);
+
   const insights: InsightMetric[] = insightsQuery.data ?? [];
   const profile = profileQuery.data;
   const chartData = buildChartData(insights);
@@ -253,7 +295,6 @@ function InstagramTab() {
   const followerChange = sumMetric(insights, "follower_count");
 
   const isLoading = profileQuery.isLoading || insightsQuery.isLoading;
-  const isFetching = profileQuery.isFetching || insightsQuery.isFetching || mediaQuery.isFetching;
   const hasError = profileQuery.isError || insightsQuery.isError;
   const notConnected = connectionQuery.isSuccess && !isConnected;
   const oauthNoAccount = new URLSearchParams(window.location.search).get("ig_connect") === "no_account";
@@ -270,7 +311,12 @@ function InstagramTab() {
             <p className="text-xs text-muted-foreground">Painel de desempenho em tempo real</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {lastUpdated && !isFetching && (
+            <span className="text-[10px] text-muted-foreground hidden sm:block">
+              Atualizado às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+          )}
           {isConnected && (
             <Button variant="outline" size="sm" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="gap-2 rounded-xl text-destructive hover:text-destructive">
               Desconectar
@@ -278,7 +324,7 @@ function InstagramTab() {
           )}
           <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
             <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-            Atualizar
+            {isFetching ? "Atualizando…" : "Atualizar"}
           </Button>
         </div>
       </div>

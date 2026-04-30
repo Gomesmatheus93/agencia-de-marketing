@@ -2,26 +2,58 @@ import { generateImage } from "./imageGeneration";
 import { invokeLLM, type MessageContent } from "./llm";
 import { ENV } from "./env";
 
-const CAROUSEL_AGENT_PROMPT = `Voce e um especialista em criacao de conteudo para Instagram, focado em carrosseis altamente virais, estrategicos e visualmente atrativos.
+const DESIGNER_AGENT_SYSTEM_PROMPT = `
+Você é um Agente Designer Sênior da agência KrythosLab, especializado em carrosséis profissionais para Instagram.
 
-ESTRUTURA OBRIGATORIA DOS SLIDES — siga exatamente esta ordem:
+Sua missão é transformar um template base enviado pelo usuário em um carrossel visualmente natural, estratégico e profissional, como se tivesse sido criado por um designer humano experiente.
 
-SLIDE 1 — GANCHO: Unica funcao e parar o scroll. Deve gerar curiosidade imediata, provocar uma dor, revelar algo surpreendente ou fazer uma promessa irresistivel. Titulo impactante, corpo que amplifica a tensao e faz o leitor querer ver o proximo slide. NAO antecipe o conteudo, apenas crie urgencia de continuar.
+REGRAS PRINCIPAIS:
+1. Não copie o template de forma rígida. Use-o como referência de estrutura, estilo e intenção visual.
+2. Preserve a identidade visual do template: cores, hierarquia, estilo gráfico, ritmo visual e proporção.
+3. Ajuste textos, quebras de linha, espaçamentos e composição para parecer natural.
+4. Evite aparência genérica, robótica ou "feita por IA".
+5. Crie layouts com boa hierarquia, contraste, respiro, alinhamento e equilíbrio.
+6. O conteúdo deve ser adaptado para carrossel, com leitura rápida e impacto visual.
+7. Nunca sobrecarregue os slides com texto.
+8. Caso o texto enviado seja fraco, reescreva para ficar mais claro, persuasivo e profissional.
+9. O primeiro slide deve ter um gancho forte.
+10. Os slides intermediários devem desenvolver a ideia com fluidez.
+11. O último slide deve ter um CTA claro e elegante.
 
-SLIDES INTERMEDIARIOS (do 2 ate o penultimo) — DESENVOLVIMENTO: Cada slide aprofunda um aspecto do tema com clareza, dados, contraste (certo vs errado, antes vs depois) ou descoberta. Mantenha ritmo crescente de valor. Use gatilhos mentais: prova, curiosidade, urgencia, especificidade. Faca o leitor pensar "eu precisava saber disso".
+COMPORTAMENTO:
+- Pense como designer, copywriter e social media.
+- Seja criterioso com estética.
+- Priorize clareza visual.
+- Evite clichês visuais.
+- Entregue algo pronto para produção.
+- Quando faltar alguma informação, assuma uma solução profissional em vez de travar.
 
-ULTIMO SLIDE — CTA DE ENGAJAMENTO: Exclusivamente voltado para engajamento social. Titulo convidativo e direto. Corpo pedindo de forma natural que o seguidor curta, comente e compartilhe — sem soar forcado. Exemplo de corpo: "Se isso te ajudou, curte e compartilha com quem precisa ver isso hoje. Comenta aqui o que voce achou!" Adapte o texto ao tom do tema, mas mantenha o pedido de curtir, comentar e compartilhar.
+Quando existir um template visual enviado pelo usuário, preserve essa família visual como referência.
 
-REGRAS GERAIS:
-- Linguagem simples, direta e persuasiva em portugues brasileiro
-- Titulos curtos e impactantes, idealmente ate 9 palavras
-- Corpo objetivo e pronto para virar resumo visual, com ate 150 caracteres
-- Sem emojis, sem instrucoes visuais dentro do texto, sem texto generico
-- O design segue modelo fixo: cabecalho de perfil, titulo centralizado, resumo abaixo, imagem tematica no bloco inferior
+Quando receber uma seção "=== Pesquisa sobre o tema ===", use os dados como base factual para enriquecer os slides de desenvolvimento. Incorpore fatos, números e conceitos naturalmente — sem citar a fonte.
 
-Quando existir um template visual enviado pelo usuario, preserve essa familia visual como referencia.
-
-Quando receber uma secao "=== Pesquisa sobre o tema ===", use os dados como base factual para enriquecer os slides intermediarios. Incorpore fatos, numeros e conceitos naturalmente — sem citar a fonte.`;
+FORMATO DE RESPOSTA:
+Retorne sempre um JSON com os campos abaixo. Inclua também "caption" (legenda completa pronta para postagem) e "imageSearchQuery" (consulta geral em inglês, 3–8 palavras, para fotografia editorial do tema central):
+{
+  "carouselTitle": string,
+  "visualDirection": string,
+  "caption": string,
+  "imageSearchQuery": string,
+  "slides": [
+    {
+      "slideNumber": number,
+      "type": "hook" | "development" | "cta",
+      "mainText": string,
+      "secondaryText": string,
+      "layoutInstructions": string,
+      "designNotes": string,
+      "imageSearchQuery": string
+    }
+  ],
+  "generalDesignRules": string[],
+  "qualityChecklist": string[]
+}
+`;
 
 // ─── Topic Research (Serper — Google Search) ─────────────────────────────────
 
@@ -140,15 +172,21 @@ export type CarouselAgentResult = {
 };
 
 type CarouselAgentPayload = {
-  hook?: string;
+  carouselTitle?: string;
+  visualDirection?: string;
   caption?: string;
-  finalCta?: string;
   imageSearchQuery?: string;
   slides?: Array<{
-    title?: string;
-    body?: string;
+    slideNumber?: number;
+    type?: "hook" | "development" | "cta";
+    mainText?: string;
+    secondaryText?: string;
+    layoutInstructions?: string;
+    designNotes?: string;
     imageSearchQuery?: string;
   }>;
+  generalDesignRules?: string[];
+  qualityChecklist?: string[];
 };
 
 type WikimediaImageInfo = {
@@ -542,7 +580,7 @@ export async function generateCarouselWithAgent(
     messages: [
       {
         role: "system",
-        content: CAROUSEL_AGENT_PROMPT,
+        content: DESIGNER_AGENT_SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -557,9 +595,9 @@ export async function generateCarouselWithAgent(
         schema: {
           type: "object",
           properties: {
-            hook: { type: "string" },
+            carouselTitle: { type: "string" },
+            visualDirection: { type: "string" },
             caption: { type: "string" },
-            finalCta: { type: "string" },
             imageSearchQuery: { type: "string" },
             slides: {
               type: "array",
@@ -568,16 +606,22 @@ export async function generateCarouselWithAgent(
               items: {
                 type: "object",
                 properties: {
-                  title: { type: "string" },
-                  body: { type: "string" },
+                  slideNumber: { type: "number" },
+                  type: { type: "string", enum: ["hook", "development", "cta"] },
+                  mainText: { type: "string" },
+                  secondaryText: { type: "string" },
+                  layoutInstructions: { type: "string" },
+                  designNotes: { type: "string" },
                   imageSearchQuery: { type: "string" },
                 },
-                required: ["title", "body", "imageSearchQuery"],
+                required: ["slideNumber", "type", "mainText", "secondaryText", "layoutInstructions", "designNotes", "imageSearchQuery"],
                 additionalProperties: false,
               },
             },
+            generalDesignRules: { type: "array", items: { type: "string" } },
+            qualityChecklist: { type: "array", items: { type: "string" } },
           },
-          required: ["hook", "caption", "finalCta", "imageSearchQuery", "slides"],
+          required: ["carouselTitle", "visualDirection", "caption", "imageSearchQuery", "slides", "generalDesignRules", "qualityChecklist"],
           additionalProperties: false,
         },
       },
@@ -590,17 +634,24 @@ export async function generateCarouselWithAgent(
   ) as CarouselAgentPayload;
 
   const slides = (parsed.slides || []).map((slide, index) => ({
-    title: cleanText(slide?.title, `Slide ${index + 1}`),
-    body: cleanText(slide?.body),
+    title: cleanText(slide?.mainText, `Slide ${index + 1}`),
+    body: cleanText(slide?.secondaryText),
     imageSearchQuery: cleanText(slide?.imageSearchQuery),
+    type: slide?.type,
   }));
 
   if (slides.length !== input.slideCount) {
     throw new Error("O agente nao retornou a quantidade esperada de slides");
   }
 
-  const hook = cleanText(parsed.hook, slides[0]?.title || input.topic);
-  const finalCta = cleanText(parsed.finalCta, FALLBACK_CTA);
+  const hook = cleanText(
+    parsed.slides?.find((s) => s.type === "hook")?.mainText,
+    slides[0]?.title || input.topic
+  );
+  const finalCta = cleanText(
+    parsed.slides?.find((s) => s.type === "cta")?.mainText,
+    FALLBACK_CTA
+  );
   const caption = cleanText(
     parsed.caption,
     `${hook}\n\n${slides.map((slide) => `${slide.title}: ${slide.body}`).join("\n\n")}\n\n${finalCta}`
