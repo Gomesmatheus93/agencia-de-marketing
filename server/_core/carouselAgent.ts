@@ -63,7 +63,7 @@ Retorne APENAS o JSON abaixo, sem texto antes ou depois:
       "type": "hook",
       "title": "título curto do slide",
       "text": "texto principal do slide (até 150 chars)",
-      "shortText": "versão ultra-resumida (até 50 chars)",
+      "shortText": "Para o slide CTA: botão de ação específico e direto relacionado ao tema (ex: 'Me conta nos comentários!', 'Qual é o seu favorito?', 'Salva pra não esquecer'). Para outros slides: versão ultra-resumida (até 50 chars).",
       "imagePrompt": "detailed English prompt for the slide hero image — lighting, composition, mood",
       "backgroundPrompt": "English prompt for slide background — gradient, texture or photo",
       "visualDirection": "explicação curta do visual esperado para o designer",
@@ -360,14 +360,16 @@ function buildCentralThemeImageQuery(input: {
   slideTitle: string;
   imageSearchQuery: string;
 }) {
-  return normalizeImageSearchQuery(
-    [
-      input.topic,
-      input.imageSearchQuery,
-      input.slideTitle,
-      "photorealistic editorial image",
-    ].join(" ")
-  );
+  // Prefer Claude's slide-specific query (in English, concise); only fall back to topic+title
+  const specific = normalizeImageSearchQuery(input.imageSearchQuery);
+  if (specific.length > 8) return specific;
+  return normalizeImageSearchQuery(`${input.topic} ${input.slideTitle}`);
+}
+
+function pickRandom<T>(arr: T[], max = 3): T | undefined {
+  if (!arr.length) return undefined;
+  const pool = arr.slice(0, max);
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 async function searchUnsplashImage(query: string): Promise<string | undefined> {
@@ -375,15 +377,20 @@ async function searchUnsplashImage(query: string): Promise<string | undefined> {
   try {
     const params = new URLSearchParams({
       query: normalizeImageSearchQuery(query),
-      per_page: "5",
+      per_page: "10",
       orientation: "portrait",
+      order_by: "relevant",
+      content_filter: "high",
     });
     const response = await fetch(`https://api.unsplash.com/search/photos?${params}`, {
       headers: { Authorization: `Client-ID ${ENV.unsplashAccessKey}` },
     });
     if (!response.ok) return undefined;
-    const data = (await response.json()) as { results?: Array<{ urls?: { regular?: string } }> };
-    return data.results?.[0]?.urls?.regular;
+    const data = (await response.json()) as {
+      results?: Array<{ urls?: { full?: string; regular?: string } }>;
+    };
+    const pick = pickRandom(data.results ?? [], 4);
+    return pick?.urls?.full ?? pick?.urls?.regular;
   } catch {
     return undefined;
   }
@@ -394,15 +401,18 @@ async function searchPexelsImage(query: string): Promise<string | undefined> {
   try {
     const params = new URLSearchParams({
       query: normalizeImageSearchQuery(query),
-      per_page: "5",
+      per_page: "10",
       orientation: "portrait",
     });
     const response = await fetch(`https://api.pexels.com/v1/search?${params}`, {
       headers: { Authorization: ENV.pexelsApiKey },
     });
     if (!response.ok) return undefined;
-    const data = (await response.json()) as { photos?: Array<{ src?: { large?: string } }> };
-    return data.photos?.[0]?.src?.large;
+    const data = (await response.json()) as {
+      photos?: Array<{ src?: { large2x?: string; large?: string } }>;
+    };
+    const pick = pickRandom(data.photos ?? [], 4);
+    return pick?.src?.large2x ?? pick?.src?.large;
   } catch {
     return undefined;
   }
@@ -416,13 +426,31 @@ async function searchPixabayImage(query: string): Promise<string | undefined> {
       q: normalizeImageSearchQuery(query),
       image_type: "photo",
       orientation: "vertical",
-      per_page: "5",
+      per_page: "10",
       safesearch: "true",
+      editors_choice: "true",
+      min_width: "1080",
     });
     const response = await fetch(`https://pixabay.com/api/?${params}`);
     if (!response.ok) return undefined;
     const data = (await response.json()) as { hits?: Array<{ largeImageURL?: string }> };
-    return data.hits?.[0]?.largeImageURL;
+    // editors_choice may return 0 results — fall back without it
+    if (!data.hits?.length) {
+      const paramsNoEC = new URLSearchParams({
+        key: ENV.pixabayApiKey,
+        q: normalizeImageSearchQuery(query),
+        image_type: "photo",
+        orientation: "vertical",
+        per_page: "10",
+        safesearch: "true",
+        min_width: "1080",
+      });
+      const res2 = await fetch(`https://pixabay.com/api/?${paramsNoEC}`);
+      if (!res2.ok) return undefined;
+      const data2 = (await res2.json()) as { hits?: Array<{ largeImageURL?: string }> };
+      return pickRandom(data2.hits ?? [], 4)?.largeImageURL;
+    }
+    return pickRandom(data.hits, 4)?.largeImageURL;
   } catch {
     return undefined;
   }
@@ -437,7 +465,7 @@ async function searchWikimediaImage(query: string) {
     gsrlimit: "8",
     prop: "imageinfo",
     iiprop: "url|mime",
-    iiurlwidth: "1080",
+    iiurlwidth: "1600",
     format: "json",
     origin: "*",
   });
@@ -759,10 +787,13 @@ export async function generateCarouselWithAgent(
         (await resolveCarouselCoverImage({
           topic: input.topic,
           hook,
-          imageSearchQuery: cleanText(
-            slide.imageSearchQuery,
-            `${parsed.imageSearchQuery || input.topic} ${slide.title}`
-          ),
+          imageSearchQuery: (() => {
+            const globalQ = cleanText(parsed.imageSearchQuery, "") || normalizeImageSearchQuery(input.topic);
+            const slideQ = cleanText(slide.imageSearchQuery, "");
+            // Always anchor to global theme so per-slide queries don't drift to unrelated subjects
+            if (slideQ) return `${globalQ} ${slideQ}`;
+            return `${globalQ} ${slide.title}`;
+          })(),
           slideTitle: slide.title,
           slideBody: slide.body,
           slideIndex: index,

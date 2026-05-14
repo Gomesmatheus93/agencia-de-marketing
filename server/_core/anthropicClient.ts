@@ -4,8 +4,8 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_MAX_TOKENS = 4096;
-const MAX_RETRIES = 3;
-const TIMEOUT_MS = 55_000;
+const MAX_RETRIES = 2;
+const TIMEOUT_MS = 90_000;
 
 export type AnthropicTextContent = { type: "text"; text: string };
 export type AnthropicImageContent = {
@@ -112,8 +112,12 @@ export async function invokeAnthropicLLM(params: {
       return text;
     } catch (err) {
       lastError = err;
-      if (attempt < MAX_RETRIES - 1) {
+      // Don't retry on timeout/abort — the model is unreachable right now
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (attempt < MAX_RETRIES - 1 && !isAbort) {
         await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+      } else if (isAbort) {
+        break;
       }
     }
   }

@@ -17,6 +17,7 @@ import {
   avatarVideos,
   socialPosts,
   instagramConnections,
+  canvaConnections,
   featureFlags,
   type ChatConversation,
   type ChatMessage,
@@ -29,6 +30,8 @@ import {
   type SocialPost,
   type InstagramConnection,
   type InsertInstagramConnection,
+  type CanvaConnection,
+  type InsertCanvaConnection,
   type FeatureFlag,
 } from "../drizzle/schema";
 
@@ -38,6 +41,7 @@ let _carouselTemplateTableReady: Promise<void> | null = null;
 let _avatarVideoTableReady: Promise<void> | null = null;
 let _socialPostsMetadataReady: Promise<void> | null = null;
 let _featureFlagsTableReady: Promise<void> | null = null;
+let _canvaConnectionsTableReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -157,11 +161,15 @@ function parseCarouselSlides(value: unknown): CarouselSlideData[] {
   }
 }
 
-function hydrateCarousel(row: Omit<Carousel, "slides"> & { slides: unknown }): Carousel {
-  return {
+function hydrateCarousel(row: Omit<Carousel, "slides"> & { slides: unknown; designSettings?: unknown }): Carousel {
+  const hydrated: Carousel = {
     ...row,
     slides: parseCarouselSlides(row.slides),
   };
+  if (row.designSettings && typeof row.designSettings === "string") {
+    try { (hydrated as Record<string, unknown>).designSettings = JSON.parse(row.designSettings); } catch { /* ignore */ }
+  }
+  return hydrated;
 }
 
 function isMysqlDuplicateColumnError(error: unknown): boolean {
@@ -210,10 +218,17 @@ async function ensureCarouselTable() {
           finalCta text NOT NULL,
           coverImageUrl text,
           slides text NOT NULL,
+          designSettings text,
           createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
       `);
+      // Add column to pre-existing tables that don't have it yet
+      try {
+        await db.execute(sql`ALTER TABLE carousels ADD COLUMN designSettings text`);
+      } catch (e) {
+        if (!isMysqlDuplicateColumnError(e)) throw e;
+      }
     })().catch((error) => {
       _carouselTableReady = null;
       throw error;
@@ -610,6 +625,7 @@ export async function updateCarouselContent(
     caption: string;
     finalCta: string;
     slides: CarouselSlideData[];
+    designSettings?: Record<string, unknown>;
   }
 ): Promise<Carousel | undefined> {
   const db = await getDb();
@@ -620,6 +636,7 @@ export async function updateCarouselContent(
     caption: data.caption,
     finalCta: data.finalCta,
     slides: JSON.stringify(data.slides),
+    designSettings: data.designSettings ? JSON.stringify(data.designSettings) : null,
     updatedAt: new Date(),
   }).where(and(eq(carousels.id, id), eq(carousels.userId, userId)));
 
@@ -914,6 +931,80 @@ export async function deleteInstagramConnection(userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.delete(instagramConnections).where(eq(instagramConnections.userId, userId));
+}
+
+// ─── Canva Connections ────────────────────────────────────────────────────────
+
+async function ensureCanvaConnectionsTable(): Promise<void> {
+  if (!_canvaConnectionsTableReady) {
+    _canvaConnectionsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`canva_connections\` (
+          \`id\` int AUTO_INCREMENT NOT NULL,
+          \`userId\` int NOT NULL,
+          \`canvaUserId\` varchar(128) NOT NULL,
+          \`displayName\` varchar(255),
+          \`email\` varchar(320),
+          \`profilePictureUrl\` text,
+          \`accessToken\` text NOT NULL,
+          \`refreshToken\` text,
+          \`tokenExpiresAt\` timestamp NULL,
+          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`canva_connections_pk\` PRIMARY KEY (\`id\`),
+          CONSTRAINT \`canva_connections_userId_unique\` UNIQUE (\`userId\`)
+        )
+      `);
+    })();
+  }
+  return _canvaConnectionsTableReady;
+}
+
+export async function getCanvaConnection(userId: number): Promise<CanvaConnection | null> {
+  try {
+    await ensureCanvaConnectionsTable();
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db.select().from(canvaConnections).where(eq(canvaConnections.userId, userId));
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertCanvaConnection(data: InsertCanvaConnection): Promise<void> {
+  await ensureCanvaConnectionsTable();
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getCanvaConnection(data.userId);
+  if (existing) {
+    await db.update(canvaConnections)
+      .set({
+        canvaUserId: data.canvaUserId,
+        displayName: data.displayName,
+        email: data.email,
+        profilePictureUrl: data.profilePictureUrl,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        tokenExpiresAt: data.tokenExpiresAt,
+      })
+      .where(eq(canvaConnections.userId, data.userId));
+  } else {
+    await db.insert(canvaConnections).values(data);
+  }
+}
+
+export async function deleteCanvaConnection(userId: number): Promise<void> {
+  try {
+    await ensureCanvaConnectionsTable();
+    const db = await getDb();
+    if (!db) return;
+    await db.delete(canvaConnections).where(eq(canvaConnections.userId, userId));
+  } catch {
+    // table may not exist yet
+  }
 }
 
 // ─── Admin: All Users ─────────────────────────────────────────────────────────

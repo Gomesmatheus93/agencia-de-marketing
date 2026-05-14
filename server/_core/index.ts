@@ -41,6 +41,29 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  // Image proxy — allows canvas to load cross-origin images without CORS taint
+  app.get("/api/image-proxy", async (req, res) => {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      res.status(400).send("Invalid URL"); return;
+    }
+    try {
+      const upstream = await fetch(url, {
+        headers: { "User-Agent": "KrythosLab/1.0 render-proxy", Accept: "image/*" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!upstream.ok) { res.status(502).send("Upstream error"); return; }
+      const ct = upstream.headers.get("content-type") ?? "image/jpeg";
+      if (!ct.startsWith("image/")) { res.status(400).send("Not an image"); return; }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.set("Content-Type", ct);
+      res.set("Cache-Control", "public, max-age=86400");
+      res.send(buf);
+    } catch {
+      res.status(502).send("Failed to fetch image");
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

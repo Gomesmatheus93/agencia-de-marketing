@@ -5,6 +5,13 @@ import { sdk } from "./sdk";
 import { getSessionCookieOptions } from "./cookies";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import * as db from "../db";
+import {
+  buildCanvaAuthUrl,
+  exchangeCanvaCode,
+  generateCodeChallenge,
+  generateCodeVerifier,
+  getCanvaUserProfile,
+} from "./canvaClient";
 
 const GRAPH_BASE = "https://graph.facebook.com";
 const GRAPH_VERSION = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
@@ -297,6 +304,106 @@ export function registerOAuthRoutes(app: Express) {
         const message = encodeURIComponent(errMsg);
         res.redirect(`/?error=oauth_failed&detail=${message}`);
       }
+    }
+  });
+
+  // ── Canva OAuth (PKCE) ────────────────────────────────────────────────────
+
+  // In-memory store: state → { codeVerifier, userId, timestamp }
+  const pendingCanvaStates = new Map<string, { codeVerifier: string; userId: number; ts: number }>();
+
+  app.get("/api/oauth/canva/authorize", async (req, res) => {
+    if (!ENV.canvaClientId) {
+      res.status(503).send("CANVA_CLIENT_ID não configurado.");
+      return;
+    }
+
+    // Require an authenticated session so we can link the connection to the user
+    let userId: number | undefined;
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+      const token = match?.[1];
+      if (token) {
+        const payload = await sdk.verifySession(token);
+        if (payload?.openId) {
+          const user = await db.getUserByOpenId(payload.openId);
+          userId = user?.id;
+        }
+      }
+    } catch {
+      // session check failed — will redirect back with error
+    }
+
+    if (!userId) {
+      res.redirect("/?error=canva_auth_requires_login");
+      return;
+    }
+
+    const state = nanoid(32);
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = generateCodeChallenge(codeVerifier);
+    pendingCanvaStates.set(state, { codeVerifier, userId, ts: Date.now() });
+
+    // Prune old entries
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    Array.from(pendingCanvaStates.entries()).forEach(([k, v]) => {
+      if (v.ts < cutoff) pendingCanvaStates.delete(k);
+    });
+
+    res.redirect(buildCanvaAuthUrl(state, codeChallenge));
+  });
+
+  app.get("/api/oauth/canva/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      console.warn("[OAuth/Canva] Usuário negou autorização:", oauthError);
+      res.redirect("/dashboard/carousel?canva_connect=denied");
+      return;
+    }
+
+    const pending = state ? pendingCanvaStates.get(state) : undefined;
+    if (!pending) {
+      res.redirect("/dashboard/carousel?canva_connect=invalid_state");
+      return;
+    }
+    pendingCanvaStates.delete(state);
+
+    if (!code) {
+      res.redirect("/dashboard/carousel?canva_connect=no_code");
+      return;
+    }
+
+    try {
+      const tokens = await exchangeCanvaCode(code, pending.codeVerifier);
+      const expiresAt = new Date(Date.now() + tokens.expires_in * 1_000);
+
+      let profile: { user_id: string; display_name?: string; email?: string; profile_picture_url?: string } | undefined;
+      try {
+        profile = await getCanvaUserProfile(tokens.access_token);
+      } catch (e) {
+        console.warn("[OAuth/Canva] Não foi possível buscar perfil:", e);
+      }
+
+      await db.upsertCanvaConnection({
+        userId: pending.userId,
+        canvaUserId: profile?.user_id ?? "unknown",
+        displayName: profile?.display_name,
+        email: profile?.email,
+        profilePictureUrl: profile?.profile_picture_url,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiresAt: expiresAt,
+        connectedAt: new Date(),
+      });
+
+      console.log(`[OAuth/Canva] Conectado: userId=${pending.userId} canvaUserId=${profile?.user_id}`);
+      res.redirect("/dashboard/carousel?canva_connect=success");
+    } catch (err) {
+      console.error("[OAuth/Canva] Erro no callback:", err);
+      const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
+      res.redirect(`/dashboard/carousel?canva_connect=error&detail=${msg}`);
     }
   });
 }

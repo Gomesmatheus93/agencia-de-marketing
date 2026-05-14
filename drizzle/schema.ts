@@ -131,6 +131,8 @@ export type CarouselSlideData = {
   fontFamily?: string;
   accentColor?: string;
   backgroundColor?: string;
+  titleColor?: string;
+  bodyColor?: string;
   editorSettings?: {
     titleOffsetX?: number;
     titleOffsetY?: number;
@@ -163,6 +165,7 @@ export const carousels = mysqlTable(
     finalCta: text("finalCta").notNull(),
     coverImageUrl: text("coverImageUrl"),
     slides: text("slides").notNull(),
+    designSettings: text("designSettings"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -271,6 +274,28 @@ export const instagramConnections = mysqlTable(
 
 export type InstagramConnection = typeof instagramConnections.$inferSelect;
 export type InsertInstagramConnection = typeof instagramConnections.$inferInsert;
+
+// ─── Canva Connections ────────────────────────────────────────────────────────
+export const canvaConnections = mysqlTable(
+  "canva_connections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    canvaUserId: varchar("canvaUserId", { length: 128 }).notNull(),
+    displayName: varchar("displayName", { length: 255 }),
+    email: varchar("email", { length: 320 }),
+    profilePictureUrl: text("profilePictureUrl"),
+    accessToken: text("accessToken").notNull(),
+    refreshToken: text("refreshToken"),
+    tokenExpiresAt: timestamp("tokenExpiresAt"),
+    connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_canva_connections_userId").on(t.userId)]
+);
+
+export type CanvaConnection = typeof canvaConnections.$inferSelect;
+export type InsertCanvaConnection = typeof canvaConnections.$inferInsert;
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 export const featureFlags = mysqlTable("feature_flags", {

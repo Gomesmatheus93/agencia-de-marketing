@@ -43,6 +43,8 @@ export const ENV = {
   metaInstagramAccountId: process.env.META_INSTAGRAM_ACCOUNT_ID ?? "",
   metaFacebookPageId: process.env.META_FACEBOOK_PAGE_ID ?? "",
   appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
+  canvaClientId: process.env.CANVA_CLIENT_ID ?? "",
+  canvaClientSecret: process.env.CANVA_CLIENT_SECRET ?? "",
   postSchedulerTimeZone: process.env.POST_SCHEDULER_TIME_ZONE ?? "America/Fortaleza",
   instagramOAuthRedirectUri: process.env.REDIRECT_URI ?? "",
   linkedinApiBaseUrl: process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest",

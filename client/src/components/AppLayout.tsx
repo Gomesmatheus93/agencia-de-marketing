@@ -19,6 +19,7 @@ import {
   GalleryHorizontal,
   Clapperboard,
   BarChart2,
+  Wand2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -39,6 +40,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "videos", icon: Clapperboard, path: "/dashboard/videos", color: "from-fuchsia-500 to-rose-500", labelKey: "videos" as const, descKey: "videosDesc" as const },
   { id: "articles", icon: FileText, path: "/dashboard/articles", color: "from-emerald-500 to-teal-500", labelKey: "articles" as const, descKey: "articlesDesc" as const },
   { id: "carousel", icon: GalleryHorizontal, path: "/dashboard/carousel", color: "from-amber-500 to-orange-500", labelKey: "carousel" as const, descKey: "carouselDesc" as const },
+  { id: "prototipo", icon: Wand2, path: "/dashboard/prototipo", color: "from-cyan-500 to-blue-500", labelKey: "prototipo" as const, descKey: "prototipoDesc" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const },
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const },
 ];

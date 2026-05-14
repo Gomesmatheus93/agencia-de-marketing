@@ -37,6 +37,12 @@ import {
 } from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
+  listCanvaDesigns,
+  exportCanvaDesign,
+  createCanvaDesign,
+  refreshCanvaToken,
+} from "./_core/canvaClient";
+import {
   buildScheduledInstagramCarouselMetadata,
   publishInstagramSocialPost,
 } from "./_core/instagramSocialPostPublisher";
@@ -1342,6 +1348,8 @@ const carouselSlideSchema = z.object({
   fontFamily: z.string().optional(),
   accentColor: z.string().optional(),
   backgroundColor: z.string().optional(),
+  titleColor: z.string().optional(),
+  bodyColor: z.string().optional(),
   editorSettings: carouselEditorSettingsSchema.optional(),
 });
 
@@ -1789,6 +1797,7 @@ const carouselRouter = router({
           )
           .min(1)
           .max(10),
+        designSettings: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1797,6 +1806,7 @@ const carouselRouter = router({
         caption: input.caption,
         finalCta: input.finalCta,
         slides: input.slides.map((s) => ({ ...s, body: s.body ?? "" })),
+        designSettings: input.designSettings,
       });
       if (!updated) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
@@ -2007,6 +2017,106 @@ const carouselRouter = router({
       if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
       return { carousel: saved, caption: result.caption, hashtags: result.hashtags, cta: result.cta };
     }),
+
+  uploadRenderedSlides: protectedProcedure
+    .input(
+      z.object({
+        carouselId: z.number().int().positive(),
+        dataUrls: z.array(z.string().min(1)).min(1).max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { storagePut } = await import("./storage");
+      const urls = await Promise.all(
+        input.dataUrls.map(async (dataUrl, i) => {
+          const commaIdx = dataUrl.indexOf(",");
+          if (commaIdx < 0) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `URL inválida no slide ${i + 1}` });
+          }
+          const mimeType = dataUrl.slice(5, commaIdx).split(";")[0] || "image/jpeg";
+          const ext = mimeType.includes("png") ? "png" : "jpg";
+          const buffer = Buffer.from(dataUrl.slice(commaIdx + 1), "base64");
+          const key = `rendered/${ctx.user.id}/${input.carouselId}/slide-${String(i + 1).padStart(2, "0")}.${ext}`;
+          const { url } = await storagePut(key, buffer, mimeType);
+          return url;
+        })
+      );
+      return { urls };
+    }),
+
+  persistImages: protectedProcedure
+    .input(
+      z.object({
+        carouselId: z.number().int().positive(),
+        slides: z.array(
+          z.object({
+            title: z.string(),
+            body: z.string().optional(),
+            imageUrl: z.string().optional(),
+            slideType: z.enum(["hook", "development", "cta"]).optional(),
+            shortText: z.string().optional(),
+            imagePrompt: z.string().optional(),
+            highlightWords: z.array(z.string()).optional(),
+          })
+        ).min(1).max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { storagePut } = await import("./storage");
+      const updatedSlides = await Promise.all(
+        input.slides.map(async (slide, i) => {
+          const url = slide.imageUrl;
+          if (!url || !url.startsWith("http") || url.includes("amazonaws.com")) {
+            return slide;
+          }
+          try {
+            const res = await fetch(url, {
+              headers: { "User-Agent": "KrythosLab/1.0 carousel-persist" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!res.ok) return slide;
+            const buffer = Buffer.from(await res.arrayBuffer());
+            const contentType = res.headers.get("content-type") ?? "image/jpeg";
+            const ext = contentType.split("/")[1]?.split(";")[0] ?? "jpg";
+            const key = `proto/${ctx.user.id}/${input.carouselId}/slide-${String(i + 1).padStart(2, "0")}.${ext}`;
+            const { url: s3Url } = await storagePut(key, buffer, contentType);
+            return { ...slide, imageUrl: s3Url };
+          } catch {
+            return slide;
+          }
+        })
+      );
+      return { slides: updatedSlides };
+    }),
+
+  analyzeInstagramProfile: protectedProcedure
+    .input(z.object({ usernameOrUrl: z.string().min(1).max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      const { analyzeInstagramProfileStyle } = await import("./_core/instagramStyleAgent");
+
+      const connection = await db.getInstagramConnection(ctx.user.id);
+
+      try {
+        const result = await analyzeInstagramProfileStyle({
+          username: input.usernameOrUrl,
+          connectedAccount: connection
+            ? {
+                instagramAccountId: connection.instagramAccountId,
+                accessToken: connection.accessToken,
+                username: connection.username ?? undefined,
+                name: connection.name,
+                profilePictureUrl: connection.profilePictureUrl,
+              }
+            : null,
+        });
+        return result;
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao analisar perfil: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        });
+      }
+    }),
 });
 
 const postsRouter = router({
@@ -2201,6 +2311,114 @@ Responda em JSON:
     const count = await db.getPostCount(ctx.user.id);
     return { count };
   }),
+});
+
+// ─── Canva Router ─────────────────────────────────────────────────────────────
+const canvaRouter = router({
+  getClientId: publicProcedure.query(() => ({ clientId: ENV.canvaClientId })),
+
+  getConnection: protectedProcedure.query(async ({ ctx }) => {
+    const conn = await db.getCanvaConnection(ctx.user.id);
+    if (!conn) return null;
+    return {
+      canvaUserId: conn.canvaUserId,
+      displayName: conn.displayName,
+      email: conn.email,
+      profilePictureUrl: conn.profilePictureUrl,
+      connectedAt: conn.connectedAt.toISOString(),
+      tokenExpiresAt: conn.tokenExpiresAt?.toISOString() ?? null,
+    };
+  }),
+
+  disconnect: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.deleteCanvaConnection(ctx.user.id);
+    return { success: true };
+  }),
+
+  listDesigns: protectedProcedure
+    .input(z.object({
+      query: z.string().optional(),
+      continuation: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional().default(20),
+    }))
+    .query(async ({ ctx, input }) => {
+      const conn = await db.getCanvaConnection(ctx.user.id);
+      if (!conn) throw new TRPCError({ code: "UNAUTHORIZED", message: "Conecte sua conta Canva primeiro." });
+
+      let accessToken = conn.accessToken;
+
+      // Refresh token if within 5 min of expiry
+      if (conn.tokenExpiresAt && conn.refreshToken) {
+        const expiresIn = conn.tokenExpiresAt.getTime() - Date.now();
+        if (expiresIn < 5 * 60 * 1_000) {
+          try {
+            const fresh = await refreshCanvaToken(conn.refreshToken);
+            accessToken = fresh.access_token;
+            await db.upsertCanvaConnection({
+              ...conn,
+              accessToken: fresh.access_token,
+              refreshToken: fresh.refresh_token ?? conn.refreshToken,
+              tokenExpiresAt: new Date(Date.now() + fresh.expires_in * 1_000),
+            });
+          } catch {
+            // use existing token, may still be valid
+          }
+        }
+      }
+
+      const result = await listCanvaDesigns(accessToken, {
+        query: input.query,
+        continuation: input.continuation,
+        limit: input.limit,
+      });
+
+      return {
+        designs: result.items.map((d) => ({
+          id: d.id,
+          title: d.title || "Sem título",
+          thumbnailUrl: d.thumbnail?.url ?? null,
+          editUrl: d.urls?.edit_url ?? null,
+          updatedAt: d.updated_at ? new Date(d.updated_at * 1000).toISOString() : null,
+        })),
+        continuation: result.continuation ?? null,
+      };
+    }),
+
+  exportDesign: protectedProcedure
+    .input(z.object({
+      designId: z.string().min(1),
+      format: z.enum(["jpg", "png"]).optional().default("jpg"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const conn = await db.getCanvaConnection(ctx.user.id);
+      if (!conn) throw new TRPCError({ code: "UNAUTHORIZED", message: "Conecte sua conta Canva primeiro." });
+
+      const urls = await exportCanvaDesign(conn.accessToken, input.designId, input.format);
+      return { urls };
+    }),
+
+  createDesign: protectedProcedure
+    .input(z.object({
+      title: z.string().optional(),
+      width: z.number().int().positive().optional().default(1080),
+      height: z.number().int().positive().optional().default(1350),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const conn = await db.getCanvaConnection(ctx.user.id);
+      if (!conn) throw new TRPCError({ code: "UNAUTHORIZED", message: "Conecte sua conta Canva primeiro." });
+
+      const design = await createCanvaDesign(conn.accessToken, {
+        title: input.title,
+        width: input.width,
+        height: input.height,
+      });
+      return {
+        id: design.id,
+        title: design.title,
+        editUrl: design.urls?.edit_url ?? null,
+        thumbnailUrl: design.thumbnail?.url ?? null,
+      };
+    }),
 });
 
 // ─── Settings Router ──────────────────────────────────────────────────────────
@@ -2530,6 +2748,7 @@ export const appRouter = router({
   videos: videosRouter,
   articles: articlesRouter,
   carousel: carouselRouter,
+  canva: canvaRouter,
   posts: postsRouter,
   analytics: analyticsRouter,
   admin: adminRouter,
