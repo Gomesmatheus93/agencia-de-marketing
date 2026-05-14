@@ -52,6 +52,10 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
   "image/png": "png",
   "image/svg+xml": "svg",
   "image/webp": "webp",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+  "video/x-msvideo": "avi",
 };
 
 const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
@@ -73,6 +77,14 @@ function getMimeTypeFromExtension(extension: string) {
       return "image/svg+xml";
     case "webp":
       return "image/webp";
+    case "mp4":
+      return "video/mp4";
+    case "mov":
+      return "video/quicktime";
+    case "webm":
+      return "video/webm";
+    case "avi":
+      return "video/x-msvideo";
     default:
       return "application/octet-stream";
   }

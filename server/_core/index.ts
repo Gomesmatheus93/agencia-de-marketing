@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -10,6 +11,8 @@ import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv } from "./env";
+import { sdk } from "./sdk";
+import { storagePut } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,6 +66,29 @@ async function startServer() {
       res.status(502).send("Failed to fetch image");
     }
   });
+
+  // Media upload endpoint — receives raw binary, bypasses tRPC's 20MB JSON limit
+  const MIME_TO_EXT: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "video/x-msvideo": "avi",
+  };
+  app.post(
+    "/api/upload-media",
+    express.raw({ type: ["image/*", "video/*"], limit: "250mb" }),
+    async (req, res) => {
+      try {
+        const user = await sdk.authenticateRequest(req);
+        const contentType = (req.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
+        const ext = MIME_TO_EXT[contentType] ?? "bin";
+        const key = `uploads/${user.id}/${randomUUID()}.${ext}`;
+        const { url } = await storagePut(key, req.body as Buffer, contentType);
+        res.json({ url });
+      } catch (err) {
+        const status = err instanceof Error && err.message.includes("Unauthorized") ? 401 : 500;
+        res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);

@@ -427,44 +427,65 @@ function buildCaption(input: InstagramPostingInput) {
   const intro = compactText(input.caption?.trim() || input.hook?.trim() || input.topic);
   const cta = compactText(input.finalCta?.trim() || "Salve este carrossel e compartilhe com quem precisa ver isso.");
   const hashtags = buildHashtags(input);
-  const slideBlocks = input.slides
-    .map((slide, index) => {
-      const title = compactText(slide.title);
-      const body = compactText(slide.body || "");
-      return [`${index + 1}. ${title}`, body].filter(Boolean).join("\n");
-    })
-    .filter(Boolean);
-
-  const baseSections = [intro, "Neste carrossel:", ...slideBlocks];
-  const sections: string[] = [];
-  const reserveLength = cta.length + (hashtags ? hashtags.length + 2 : 0);
-
-  for (const section of baseSections) {
-    const candidate = [...sections, section].join("\n\n");
-    if (candidate.length + reserveLength <= 2200) {
-      sections.push(section);
-      continue;
-    }
-
-    if (section === "Neste carrossel:" || !section.includes("\n")) {
-      continue;
-    }
-
-    const [title, body] = section.split("\n", 2);
-    const available = 2200 - reserveLength - [...sections, title].join("\n\n").length - 2;
-    const shortenedBody =
-      available > 24 && body.length > available
-        ? `${body.slice(0, available).replace(/\s+\S*$/, "").trim()}...`
-        : body;
-
-    if (shortenedBody) {
-      sections.push([title, shortenedBody].join("\n"));
-    }
-    break;
-  }
 
   const tail = [cta, hashtags].filter(Boolean);
-  return [...sections, ...tail].join("\n\n").slice(0, 2200).trim();
+  return [intro, ...tail].join("\n\n").slice(0, 2200).trim();
+}
+
+export async function publishInstagramReelsPost(input: {
+  userId: number;
+  videoUrl: string;
+  caption: string;
+}): Promise<InstagramPostingResult> {
+  const config = await getRequiredMetaConfig(input.userId);
+
+  let publicVideoUrl: string;
+
+  if (/^https?:\/\//i.test(input.videoUrl)) {
+    // Already a public HTTPS URL — use directly (covers forge, catbox, AWS, etc.)
+    publicVideoUrl = await getMetaFetchableStorageUrl(input.videoUrl);
+  } else if (input.videoUrl.startsWith("/uploads/")) {
+    // Relative local path — read from disk and upload to public storage
+    const absolutePath = path.resolve(process.cwd(), input.videoUrl.replace(/^\/+/, ""));
+    if (!absolutePath.startsWith(`${UPLOADS_DIR}${path.sep}`) && absolutePath !== UPLOADS_DIR) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Caminho de vídeo inválido." });
+    }
+    const ext = path.extname(absolutePath).replace(/^\./, "").toLowerCase() || "mp4";
+    const videoMimeTypes: Record<string, string> = {
+      mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", avi: "video/x-msvideo",
+    };
+    const mimeType = videoMimeTypes[ext] || "video/mp4";
+    const buffer = fs.readFileSync(absolutePath);
+    const key = `instagram/reels/${input.userId}/${randomUUID()}.${ext}`;
+    const uploaded = await putPublicAsset(key, buffer, mimeType);
+    publicVideoUrl = await getMetaFetchableStorageUrl(uploaded.url);
+  } else {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "URL do vídeo inválida para publicação no Instagram.",
+    });
+  }
+
+  const containerId = await postToGraph(
+    "media",
+    { video_url: publicVideoUrl, media_type: "REELS", caption: input.caption },
+    config
+  );
+
+  // Videos take longer to process; allow more attempts with longer delay
+  await waitForContainerReady(containerId, config, 30, 5000);
+
+  const mediaId = await postToGraph("media_publish", { creation_id: containerId }, config);
+
+  return {
+    success: true,
+    mediaId,
+    containerId,
+    childContainerIds: [],
+    slideUrls: [input.videoUrl],
+    publicAssetType: "png",
+    caption: input.caption,
+  };
 }
 
 export async function publishInstagramCarouselWithAgent(

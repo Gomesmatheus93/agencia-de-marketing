@@ -18,21 +18,56 @@ import {
   Trash2,
   Send,
   Calendar,
-  Instagram,
-  Linkedin,
   Mail,
   Clock,
   CheckCircle2,
   XCircle,
   FileEdit,
-  Wand2,
   Eye,
   X,
-  ImagePlus,
+  Upload,
   Image as ImageIcon,
+  Check,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function LinkedinIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+      <rect x="2" y="9" width="4" height="12" />
+      <circle cx="4" cy="4" r="2" />
+    </svg>
+  );
+}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const VIDEO_EXT_RE = /\.(mp4|mov|webm|avi)(\?|$)/i;
+
+function resolveImgUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("data:")) return url;
+  // Don't proxy videos — the image proxy rejects non-image content types
+  if (/^https?:\/\//i.test(url)) {
+    return VIDEO_EXT_RE.test(url) ? url : `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
+  return url;
+}
 
 type Channel = "instagram" | "linkedin" | "newsletter";
 type PostStatus = "draft" | "scheduled" | "published" | "failed";
@@ -57,24 +92,30 @@ const channelConfig: Record<Channel, {
   bg: string;
   maxChars: number;
   supportsImage: boolean;
+  captionLabel: string;
+  captionPlaceholder: string;
 }> = {
   instagram: {
     label: "Instagram",
-    icon: Instagram,
+    icon: InstagramIcon,
     color: "text-pink-600",
     gradient: "from-pink-500 via-rose-500 to-orange-500",
     bg: "bg-gradient-to-br from-pink-50 to-orange-50 dark:from-pink-950/20 dark:to-orange-950/20",
     maxChars: 2200,
     supportsImage: true,
+    captionLabel: "Legenda",
+    captionPlaceholder: "Legenda para o post no Instagram (emojis, hashtags, CTA)...",
   },
   linkedin: {
     label: "LinkedIn",
-    icon: Linkedin,
+    icon: LinkedinIcon,
     color: "text-blue-700",
     gradient: "from-blue-600 to-blue-700",
     bg: "bg-blue-50 dark:bg-blue-950/20",
     maxChars: 3000,
     supportsImage: true,
+    captionLabel: "Texto do post",
+    captionPlaceholder: "Escreva o conteúdo profissional para o LinkedIn...",
   },
   newsletter: {
     label: "Newsletter",
@@ -84,6 +125,8 @@ const channelConfig: Record<Channel, {
     bg: "bg-violet-50 dark:bg-violet-950/20",
     maxChars: 10000,
     supportsImage: false,
+    captionLabel: "Corpo do email",
+    captionPlaceholder: "Escreva o conteúdo completo da newsletter...",
   },
 };
 
@@ -94,117 +137,10 @@ const statusConfig: Record<PostStatus, { label: string; color: string; icon: Rea
   failed: { label: "Falhou", color: "text-red-600 bg-red-50 dark:bg-red-950/30", icon: XCircle },
 };
 
-// Image Upload Component
-function ImageUpload({
-  value,
-  onChange,
-  gradient,
-}: {
-  value: string;
-  onChange: (url: string) => void;
-  gradient: string;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione apenas arquivos de imagem");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("A imagem deve ter no máximo 10MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => onChange(e.target?.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
-
-  if (value) {
-    return (
-      <div className="relative rounded-xl overflow-hidden border border-border/50 group">
-        <img
-          src={value}
-          alt="Preview"
-          className="w-full max-h-56 object-cover"
-        />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => inputRef.current?.click()}
-            className="gap-1.5 text-xs"
-          >
-            <ImagePlus className="w-3.5 h-3.5" />
-            Trocar
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            onClick={() => onChange("")}
-            className="gap-1.5 text-xs"
-          >
-            <X className="w-3.5 h-3.5" />
-            Remover
-          </Button>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      onClick={() => inputRef.current?.click()}
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={handleDrop}
-      className={cn(
-        "border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all duration-200 flex flex-col items-center gap-2 text-center",
-        isDragging
-          ? "border-primary bg-primary/5 scale-[1.01]"
-          : "border-border/50 hover:border-border hover:bg-accent/30"
-      )}
-    >
-      <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-sm", gradient)}>
-        <ImagePlus className="w-5 h-5 text-white" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">Adicionar imagem</p>
-        <p className="text-xs text-muted-foreground mt-0.5">Clique ou arraste aqui · PNG, JPG, WEBP · max 10MB</p>
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-      />
-    </div>
-  );
-}
-
 export default function Posts() {
   const utils = trpc.useUtils();
   const [activeChannel, setActiveChannel] = useState<Channel>("instagram");
   const [showCreate, setShowCreate] = useState(false);
-  const [showAIGen, setShowAIGen] = useState(false);
   const [previewPost, setPreviewPost] = useState<Post | null>(null);
 
   // Create form state
@@ -212,10 +148,10 @@ export default function Posts() {
   const [formContent, setFormContent] = useState("");
   const [formScheduledAt, setFormScheduledAt] = useState("");
   const [formImageUrl, setFormImageUrl] = useState("");
+  const [formMediaType, setFormMediaType] = useState<"image" | "video" | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
-  // AI gen state
-  const [aiTopic, setAiTopic] = useState("");
-  const [aiTone, setAiTone] = useState<"professional" | "casual" | "inspiring" | "educational">("professional");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: posts = [], isLoading } = trpc.posts.getAll.useQuery({ channel: activeChannel });
 
@@ -223,7 +159,7 @@ export default function Posts() {
     onSuccess: (post) => {
       utils.posts.getAll.invalidate();
       utils.posts.getStats.invalidate();
-      toast.success(post.status === "scheduled" ? "Post agendado com sucesso!" : "Post criado com sucesso!");
+      toast.success(post.status === "scheduled" ? "Post agendado com sucesso!" : "Post salvo com sucesso!");
       setShowCreate(false);
       resetForm();
     },
@@ -249,15 +185,12 @@ export default function Posts() {
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
   });
 
-  const aiGenMutation = trpc.posts.generateContent.useMutation({
+  const analyzeImageMutation = trpc.posts.generateContentFromImage.useMutation({
     onSuccess: (data) => {
-      setFormTitle(data.title);
       setFormContent(data.content);
-      setShowAIGen(false);
-      setShowCreate(true);
-      toast.success("Conteúdo gerado! Revise antes de publicar.");
+      toast.success("Legenda gerada com IA!");
     },
-    onError: (err) => toast.error("Erro ao gerar conteúdo: " + err.message),
+    onError: (err) => toast.error("Erro ao analisar imagem: " + err.message),
   });
 
   const resetForm = () => {
@@ -265,6 +198,63 @@ export default function Posts() {
     setFormContent("");
     setFormScheduledAt("");
     setFormImageUrl("");
+    setFormMediaType(null);
+    setIsUploading(false);
+    analyzeImageMutation.reset();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+
+    if (!isImage && !isVideo) {
+      toast.error("Selecione apenas imagens ou vídeos");
+      return;
+    }
+
+    const maxSize = isVideo ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(`Arquivo muito grande. Máximo: ${isVideo ? "200MB" : "50MB"}`);
+      return;
+    }
+
+    // For small images use local data URL (no round-trip needed for preview)
+    if (isImage && file.size <= 4 * 1024 * 1024) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (dataUrl) { setFormImageUrl(dataUrl); setFormMediaType("image"); }
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Large images and all videos: upload directly to /api/upload-media (bypasses JSON body limit)
+    setIsUploading(true);
+    const toastId = isVideo ? "media-upload" : undefined;
+    if (toastId) toast.loading("Enviando vídeo...", { id: toastId });
+    try {
+      const res = await fetch("/api/upload-media", {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { url } = await res.json() as { url: string };
+      setFormImageUrl(url);
+      setFormMediaType(isVideo ? "video" : "image");
+      if (toastId) toast.success("Vídeo enviado!", { id: toastId });
+    } catch (err) {
+      toast.error("Erro ao enviar arquivo: " + (err instanceof Error ? err.message : String(err)),
+        toastId ? { id: toastId } : undefined);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleCreate = () => {
@@ -276,11 +266,6 @@ export default function Posts() {
       scheduledAt: formScheduledAt || undefined,
       imageUrl: formImageUrl || undefined,
     });
-  };
-
-  const handleAIGen = () => {
-    if (!aiTopic.trim()) { toast.error("Digite um tema para gerar o conteúdo"); return; }
-    aiGenMutation.mutate({ channel: activeChannel, topic: aiTopic, tone: aiTone });
   };
 
   const formatDate = (date: Date | null) => {
@@ -310,7 +295,7 @@ export default function Posts() {
             Gerencie suas <span className="gradient-text-accent">postagens</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Crie, organize e acompanhe conteúdo para Instagram, LinkedIn e Newsletter.
+            Envie imagens prontas do computador e publique direto no Instagram ou LinkedIn.
           </p>
         </div>
 
@@ -337,22 +322,23 @@ export default function Posts() {
           })}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+        {/* New post card — always visible, same style as carousel import */}
+        <div
+          className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-background/60 p-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in-up"
+          style={{ animationDelay: "0.15s" }}
+        >
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">Nova postagem</p>
+            <p className="text-xs text-muted-foreground">
+              Envie uma imagem pronta do computador e escreva ou gere a legenda com IA.
+            </p>
+          </div>
           <Button
-            onClick={() => setShowAIGen(true)}
-            className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 hover:opacity-90 shadow-md"
-          >
-            <Wand2 className="w-4 h-4" />
-            Gerar com IA
-          </Button>
-          <Button
-            variant="outline"
             onClick={() => setShowCreate(true)}
-            className="gap-2 glass border-border/50"
+            className="gap-2 shrink-0 bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 text-white border-0 hover:opacity-90 shadow-md"
           >
             <Plus className="w-4 h-4" />
-            Criar manualmente
+            Nova postagem
           </Button>
         </div>
 
@@ -368,48 +354,75 @@ export default function Posts() {
                 <ChannelIcon className="w-8 h-8 text-white" />
               </div>
               <h3 className="font-semibold text-foreground mb-1">Nenhum post para {cfg.label}</h3>
-              <p className="text-sm text-muted-foreground mb-4">Crie seu primeiro post ou gere com IA</p>
-              <Button onClick={() => setShowAIGen(true)} className="gap-2 gradient-primary text-white border-0">
-                <Wand2 className="w-4 h-4" />
-                Gerar com IA
+              <p className="text-sm text-muted-foreground mb-4">Envie sua primeira postagem pronta</p>
+              <Button
+                onClick={() => setShowCreate(true)}
+                className={cn("gap-2 bg-gradient-to-r text-white border-0 hover:opacity-90", cfg.gradient)}
+              >
+                <Upload className="w-4 h-4" />
+                Enviar imagem
               </Button>
             </div>
           ) : (
             posts.map((post, i) => {
               const StatusIcon = statusConfig[post.status].icon;
+              const postCfg = channelConfig[post.channel];
+              const PostChannelIcon = postCfg.icon;
+              const isVideoPost = post.imageUrl ? /\.(mp4|mov|webm|avi)(\?|$)/i.test(post.imageUrl) : false;
               return (
                 <div
                   key={post.id}
-                  className="glass-card p-4 hover:scale-[1.005] transition-all duration-200 animate-fade-in-up"
+                  className="glass-card overflow-hidden hover:scale-[1.002] transition-all duration-200 animate-fade-in-up"
                   style={{ animationDelay: `${i * 0.05}s` }}
                 >
-                  <div className="flex items-start gap-3">
-                    {/* Thumbnail or channel icon */}
-                    {post.imageUrl ? (
-                      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                        <img src={post.imageUrl} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className={cn("w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md", cfg.gradient)}>
-                        <ChannelIcon className="w-5 h-5 text-white" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      {post.title && (
-                        <h3 className="font-semibold text-sm text-foreground truncate">{post.title}</h3>
+                  <div className="flex items-stretch gap-0">
+                    {/* Media preview — 4:5 thumbnail */}
+                    <div className="w-[90px] sm:w-[110px] shrink-0 relative">
+                      {post.imageUrl ? (
+                        <div className="w-full h-full aspect-[4/5] overflow-hidden bg-muted">
+                          {isVideoPost ? (
+                            <video
+                              src={resolveImgUrl(post.imageUrl)}
+                              className="w-full h-full object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                          ) : (
+                            <img
+                              src={resolveImgUrl(post.imageUrl)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <div className={cn("w-full h-full aspect-[4/5] bg-gradient-to-br flex items-center justify-center", postCfg.gradient)}>
+                          <PostChannelIcon className="w-6 h-6 text-white/60" />
+                        </div>
                       )}
-                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{post.content}</p>
-                      <div className="flex items-center gap-3 flex-wrap">
+                      {isVideoPost && (
+                        <div className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/60 text-white text-[9px] font-medium px-1.5 py-0.5 rounded-full">
+                          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                          Vídeo
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-between p-4 gap-2">
+                      <div className="space-y-1.5">
+                        {post.title && (
+                          <h3 className="font-semibold text-sm text-foreground truncate">{post.title}</h3>
+                        )}
+                        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{post.content}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={cn("flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full", statusConfig[post.status].color)}>
                           <StatusIcon className="w-3 h-3" />
                           {statusConfig[post.status].label}
                         </span>
-                        {post.imageUrl && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <ImageIcon className="w-3 h-3" />
-                            Com imagem
-                          </span>
-                        )}
                         {post.scheduledAt && (
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                             <Clock className="w-3 h-3" />
@@ -423,11 +436,13 @@ export default function Posts() {
                           </span>
                         )}
                         <span className="text-[11px] text-muted-foreground ml-auto">
-                          {post.content.length}/{cfg.maxChars} chars
+                          {post.content.length}/{postCfg.maxChars} chars
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+
+                    {/* Actions */}
+                    <div className="flex flex-col items-center justify-center gap-1 px-3 border-l border-border/20 shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -442,7 +457,7 @@ export default function Posts() {
                           size="icon"
                           onClick={() => publishMutation.mutate({ id: post.id })}
                           disabled={publishMutation.isPending}
-                          className="w-8 h-8 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          className="w-8 h-8 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                         >
                           {publishMutation.isPending ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -469,148 +484,227 @@ export default function Posts() {
         </div>
       </div>
 
-      {/* Create Post Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="glass-card border-border/50 max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className={cn("w-7 h-7 rounded-lg bg-gradient-to-br flex items-center justify-center", cfg.gradient)}>
-                <ChannelIcon className="w-3.5 h-3.5 text-white" />
+      {/* Create Post Dialog — styled like carousel import */}
+      <Dialog
+        open={showCreate}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowCreate(false);
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="w-[min(96vw,1200px)] max-w-none sm:max-w-none overflow-hidden border-border/50 bg-background p-0">
+          <div className="flex max-h-[90vh] flex-col">
+            {/* Header */}
+            <div className="border-b border-border/30 px-8 py-5">
+              <div className="flex items-center gap-3">
+                <div className={cn("w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-sm", cfg.gradient)}>
+                  <ChannelIcon className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-semibold leading-tight">
+                    Nova postagem para {cfg.label}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                    Envie uma imagem pronta do computador e escreva ou gere a legenda com IA.
+                  </DialogDescription>
+                </div>
               </div>
-              Novo post para {cfg.label}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {activeChannel === "newsletter" && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Assunto do email</label>
-                <Input
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Ex: Newsletter semanal - Novidades de marketing"
-                  className="glass border-border/50"
-                />
-              </div>
-            )}
-
-            {/* Image upload — only for Instagram and LinkedIn */}
-            {cfg.supportsImage && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                  <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                  Imagem {activeChannel === "instagram" ? "(recomendado)" : "(opcional)"}
-                </label>
-                <ImageUpload
-                  value={formImageUrl}
-                  onChange={setFormImageUrl}
-                  gradient={cfg.gradient}
-                />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-foreground">Conteúdo *</label>
-                <span className={cn("text-xs", formContent.length > cfg.maxChars ? "text-destructive" : "text-muted-foreground")}>
-                  {formContent.length}/{cfg.maxChars}
-                </span>
-              </div>
-              <Textarea
-                value={formContent}
-                onChange={(e) => setFormContent(e.target.value)}
-                placeholder={`Escreva o conteúdo para ${cfg.label}...`}
-                className="glass border-border/50 min-h-[150px] resize-none"
-              />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                Agendar para ({POST_SCHEDULER_TIME_ZONE})
-              </label>
-              <Input
-                type="datetime-local"
-                value={formScheduledAt}
-                onChange={(e) => setFormScheduledAt(e.target.value)}
-                className="glass border-border/50"
-                min={toSchedulerDatetimeLocalValue(new Date())}
-              />
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-8 py-6">
+              <div className={cn("flex gap-7", cfg.supportsImage ? "flex-col md:flex-row" : "flex-col")}>
+                {/* Left — media upload */}
+                {cfg.supportsImage && (
+                  <div className="md:w-[340px] shrink-0 space-y-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Imagem ou vídeo{" "}
+                      {activeChannel === "instagram"
+                        ? <span className="text-destructive">*</span>
+                        : <span className="normal-case font-normal text-muted-foreground/60">(opcional)</span>}
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    {isUploading ? (
+                      <div className="flex w-full aspect-[4/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary/40 bg-muted/30">
+                        <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                        <p className="text-sm font-medium text-foreground">Enviando arquivo...</p>
+                        <p className="text-xs text-muted-foreground">Aguarde</p>
+                      </div>
+                    ) : formImageUrl ? (
+                      <div className="group relative">
+                        <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-border/40 bg-muted shadow-sm">
+                          {formMediaType === "video" ? (
+                            <video
+                              src={resolveImgUrl(formImageUrl)}
+                              className="h-full w-full object-cover"
+                              controls={false}
+                              muted
+                              playsInline
+                              autoPlay
+                              loop
+                            />
+                          ) : (
+                            <img src={resolveImgUrl(formImageUrl)} alt="Preview" className="h-full w-full object-cover" />
+                          )}
+                        </div>
+                        {formMediaType === "video" && (
+                          <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                            Vídeo
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 text-white text-xs font-medium hover:bg-white/30 transition"
+                          >
+                            <Upload className="w-3 h-3" />
+                            Trocar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setFormImageUrl(""); setFormMediaType(null); analyzeImageMutation.reset(); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/70 text-white text-xs font-medium hover:bg-red-500/90 transition"
+                          >
+                            <X className="w-3 h-3" />
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex w-full aspect-[4/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/50 bg-muted/20 text-center transition hover:border-primary/40 hover:bg-muted/30"
+                      >
+                        <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
+                          <Upload className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Clique para selecionar</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Imagem ou vídeo · JPG, PNG, MP4, MOV</p>
+                          <p className="text-xs text-muted-foreground">Imagem max 10MB · Vídeo max 200MB</p>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Right — caption + schedule */}
+                <div className="flex-1 flex flex-col gap-5">
+                  {/* Newsletter subject */}
+                  {activeChannel === "newsletter" && (
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Assunto do email <span className="text-destructive">*</span>
+                      </label>
+                      <Input
+                        value={formTitle}
+                        onChange={(e) => setFormTitle(e.target.value)}
+                        placeholder="Ex: Newsletter semanal — Novidades de marketing"
+                        className="rounded-2xl border-border/50 bg-background/70"
+                      />
+                    </div>
+                  )}
+
+                  {/* Caption */}
+                  <div className="flex-1 flex flex-col">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {cfg.captionLabel} <span className="text-destructive">*</span>
+                      </label>
+                      {cfg.supportsImage && formImageUrl && formMediaType === "image" && (
+                        <button
+                          type="button"
+                          disabled={analyzeImageMutation.isPending}
+                          onClick={() => analyzeImageMutation.mutate({ imageDataUrl: formImageUrl, channel: activeChannel })}
+                          className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
+                        >
+                          {analyzeImageMutation.isPending
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Sparkles className="h-3 w-3" />}
+                          Gerar com IA
+                        </button>
+                      )}
+                    </div>
+                    <Textarea
+                      value={formContent}
+                      onChange={(e) => setFormContent(e.target.value)}
+                      placeholder={cfg.captionPlaceholder}
+                      className="flex-1 min-h-[200px] resize-none rounded-2xl border-border/50 bg-background/70 text-sm leading-relaxed"
+                    />
+                    <p className={cn("mt-1.5 text-right text-xs", formContent.length > cfg.maxChars ? "text-destructive" : "text-muted-foreground")}>
+                      {formContent.length}/{cfg.maxChars}
+                    </p>
+                  </div>
+
+                  {/* Schedule */}
+                  <div>
+                    <label className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      Agendar para ({POST_SCHEDULER_TIME_ZONE})
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={formScheduledAt}
+                      onChange={(e) => setFormScheduledAt(e.target.value)}
+                      className="rounded-2xl border-border/50 bg-background/70"
+                      min={toSchedulerDatetimeLocalValue(new Date())}
+                    />
+                    {formScheduledAt && (
+                      <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Post será agendado e publicado automaticamente nesta data.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => { setShowCreate(false); resetForm(); }} className="flex-1">
-                Cancelar
-              </Button>
+
+            {/* Footer */}
+            <div className="flex items-center gap-3 border-t border-border/30 px-8 py-5">
               <Button
                 onClick={handleCreate}
-                disabled={!formContent.trim() || createMutation.isPending}
-                className={cn("flex-1 bg-gradient-to-r text-white border-0 hover:opacity-90 gap-2", cfg.gradient)}
+                disabled={
+                  !formContent.trim() ||
+                  (activeChannel === "newsletter" && !formTitle.trim()) ||
+                  createMutation.isPending
+                }
+                className={cn("gap-2 border-0 bg-gradient-to-r text-white hover:opacity-90 shadow-sm", cfg.gradient)}
               >
                 {createMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Criando...</>
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {formImageUrl ? "Enviando imagem..." : "Salvando..."}
+                  </>
                 ) : formScheduledAt ? (
-                  <><Calendar className="w-4 h-4" /> Agendar Post</>
+                  <>
+                    <Calendar className="h-4 w-4" />
+                    Agendar post
+                  </>
                 ) : (
-                  <><Plus className="w-4 h-4" /> Criar Post</>
+                  <>
+                    <Check className="h-4 w-4" />
+                    Salvar post
+                  </>
                 )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Generator Dialog */}
-      <Dialog open={showAIGen} onOpenChange={setShowAIGen}>
-        <DialogContent className="glass-card border-border/50 max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                <Wand2 className="w-3.5 h-3.5 text-white" />
-              </div>
-              Gerar conteúdo com IA
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 p-3 rounded-xl glass border-border/30">
-              <ChannelIcon className={cn("w-4 h-4 flex-shrink-0", cfg.color)} />
-              <span className="text-sm text-foreground font-medium">Canal: {cfg.label}</span>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Tema do post *</label>
-              <Input
-                value={aiTopic}
-                onChange={(e) => setAiTopic(e.target.value)}
-                placeholder="Ex: Lançamento do novo produto X"
-                className="glass border-border/50"
-                disabled={aiGenMutation.isPending}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Tom de voz</label>
-              <Select value={aiTone} onValueChange={(v) => setAiTone(v as typeof aiTone)}>
-                <SelectTrigger className="glass border-border/50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="glass-card border-border/50">
-                  <SelectItem value="professional">Profissional</SelectItem>
-                  <SelectItem value="casual">Casual e amigável</SelectItem>
-                  <SelectItem value="inspiring">Inspirador</SelectItem>
-                  <SelectItem value="educational">Educativo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowAIGen(false)} className="flex-1" disabled={aiGenMutation.isPending}>
-                Cancelar
               </Button>
               <Button
-                onClick={handleAIGen}
-                disabled={!aiTopic.trim() || aiGenMutation.isPending}
-                className="flex-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 hover:opacity-90 gap-2"
+                variant="outline"
+                onClick={() => { setShowCreate(false); resetForm(); }}
+                disabled={createMutation.isPending}
               >
-                {aiGenMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</>
-                ) : (
-                  <><Sparkles className="w-4 h-4" /> Gerar Conteúdo</>
-                )}
+                Cancelar
               </Button>
             </div>
           </div>
@@ -619,60 +713,65 @@ export default function Posts() {
 
       {/* Preview Dialog */}
       <Dialog open={!!previewPost} onOpenChange={() => setPreviewPost(null)}>
-        <DialogContent className="glass-card border-border/50 max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="w-4 h-4" />
-              Preview do Post
-            </DialogTitle>
-          </DialogHeader>
-          {previewPost && (
-            <div className="space-y-4">
-              <div className={cn("rounded-xl overflow-hidden", channelConfig[previewPost.channel].bg)}>
-                {/* Image preview */}
-                {previewPost.imageUrl && (
-                  <div className="w-full aspect-video overflow-hidden">
-                    <img
-                      src={previewPost.imageUrl}
-                      alt="Imagem do post"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                <div className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    {(() => {
-                      const Icon = channelConfig[previewPost.channel].icon;
-                      return <Icon className={cn("w-5 h-5", channelConfig[previewPost.channel].color)} />;
-                    })()}
-                    <span className={cn("font-semibold text-sm", channelConfig[previewPost.channel].color)}>
-                      {channelConfig[previewPost.channel].label}
-                    </span>
-                  </div>
-                  {previewPost.title && (
-                    <h3 className="font-bold text-foreground mb-2">{previewPost.title}</h3>
-                  )}
-                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{previewPost.content}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{previewPost.content.length} caracteres</span>
-                <span className={cn("px-2 py-0.5 rounded-full font-medium", statusConfig[previewPost.status].color)}>
-                  {statusConfig[previewPost.status].label}
-                </span>
-              </div>
-              {previewPost.status !== "published" && (
-                <Button
-                  onClick={() => { publishMutation.mutate({ id: previewPost.id }); setPreviewPost(null); }}
-                  className={cn("w-full gap-2 bg-gradient-to-r text-white border-0 hover:opacity-90", channelConfig[previewPost.channel].gradient)}
-                  disabled={publishMutation.isPending}
-                >
-                  <Send className="w-4 h-4" />
-                  {previewPost.channel === "instagram" ? "Publicar no Instagram" : "Marcar como publicado"}
-                </Button>
-              )}
+        <DialogContent className="w-[min(92vw,480px)] max-w-none sm:max-w-none border-border/50 bg-background p-0">
+          <div className="flex max-h-[90vh] flex-col">
+            <div className="border-b border-border/30 p-5">
+              <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+                <Eye className="w-4 h-4" />
+                Preview do Post
+              </DialogTitle>
             </div>
-          )}
+            {previewPost && (
+              <>
+                <div className="flex-1 overflow-y-auto">
+                  <div className={cn("overflow-hidden", channelConfig[previewPost.channel].bg)}>
+                    {previewPost.imageUrl && (
+                      <div className="w-full aspect-[4/5] overflow-hidden">
+                        <img
+                          src={resolveImgUrl(previewPost.imageUrl)}
+                          alt="Imagem do post"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="p-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        {(() => {
+                          const Icon = channelConfig[previewPost.channel].icon;
+                          return <Icon className={cn("w-5 h-5", channelConfig[previewPost.channel].color)} />;
+                        })()}
+                        <span className={cn("font-semibold text-sm", channelConfig[previewPost.channel].color)}>
+                          {channelConfig[previewPost.channel].label}
+                        </span>
+                        <span className={cn("ml-auto flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full", statusConfig[previewPost.status].color)}>
+                          {statusConfig[previewPost.status].label}
+                        </span>
+                      </div>
+                      {previewPost.title && (
+                        <h3 className="font-bold text-foreground mb-2">{previewPost.title}</h3>
+                      )}
+                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{previewPost.content}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-border/30 p-5 flex gap-3">
+                  {previewPost.status !== "published" && (
+                    <Button
+                      onClick={() => { publishMutation.mutate({ id: previewPost.id }); setPreviewPost(null); }}
+                      className={cn("flex-1 gap-2 bg-gradient-to-r text-white border-0 hover:opacity-90", channelConfig[previewPost.channel].gradient)}
+                      disabled={publishMutation.isPending}
+                    >
+                      <Send className="w-4 h-4" />
+                      {previewPost.channel === "instagram" ? "Publicar no Instagram" : "Marcar como publicado"}
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setPreviewPost(null)}>
+                    Fechar
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>

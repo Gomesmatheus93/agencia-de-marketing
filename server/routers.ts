@@ -2141,8 +2141,9 @@ const postsRouter = router({
               (value) =>
                 /^https?:\/\//i.test(value) ||
                 value.startsWith("data:image/") ||
+                value.startsWith("data:video/") ||
                 value.startsWith("/uploads/"),
-              "Informe uma URL de imagem valida."
+              "Informe uma URL de mídia válida."
             )
             .optional(),
           scheduledAt: scheduledAtInputSchema.optional(),
@@ -2152,7 +2153,7 @@ const postsRouter = router({
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: ["imageUrl"],
-              message: "Para agendar no Instagram, adicione uma imagem ao post.",
+              message: "Para agendar no Instagram, adicione uma imagem ou vídeo ao post.",
             });
           }
         })
@@ -2170,7 +2171,13 @@ const postsRouter = router({
         });
       }
 
-      const saved = await db.saveSocialPost(ctx.user.id, { ...data, scheduledAt });
+      // Upload base64 images to storage before saving to DB
+      let imageUrl = data.imageUrl;
+      if (imageUrl?.startsWith("data:")) {
+        imageUrl = await persistSingleCarouselImage({ userId: ctx.user.id, imageDataUrl: imageUrl });
+      }
+
+      const saved = await db.saveSocialPost(ctx.user.id, { ...data, imageUrl, scheduledAt });
       return saved;
     }),
 
@@ -2232,6 +2239,42 @@ Responda em JSON:
       const rawPost = llmResponse.choices[0]?.message?.content;
       const parsed = JSON.parse((typeof rawPost === 'string' ? rawPost : JSON.stringify(rawPost)) || "{}");
       return { title: parsed.title || "", content: parsed.content || "" };
+    }),
+
+  generateContentFromImage: aiProcedure
+    .input(z.object({
+      imageDataUrl: z.string().min(1),
+      channel: z.enum(["instagram", "linkedin", "newsletter"]),
+    }))
+    .mutation(async ({ input }) => {
+      const channelGuide: Record<string, string> = {
+        instagram: "uma legenda envolvente para Instagram em português brasileiro, com emojis, hashtags relevantes e um CTA natural no final (máx ~2000 chars)",
+        linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
+        newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
+      };
+
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: input.imageDataUrl, detail: "auto" },
+              },
+              {
+                type: "text",
+                text: `Analise esta imagem e crie ${channelGuide[input.channel]}. Retorne apenas o conteúdo pronto para publicar, sem títulos ou explicações adicionais.`,
+              },
+            ],
+          },
+        ],
+      });
+
+      const content = typeof response.choices[0]?.message?.content === "string"
+        ? response.choices[0].message.content.trim()
+        : "";
+      return { content };
     }),
 
   publish: protectedProcedure
