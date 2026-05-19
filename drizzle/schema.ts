@@ -115,6 +115,7 @@ export type CarouselSlideData = {
   visualDirection?: string;
   layoutNotes?: string;
   highlightWords?: string[];
+  wordStyles?: { word: string; color?: string; bold?: boolean; italic?: boolean }[];
   editableFields?: {
     title: boolean;
     text: boolean;

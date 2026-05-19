@@ -180,6 +180,17 @@ function buildFallbackCommentary(input: LinkedInArticlePostingInput) {
   return clampText(sections.join("\n\n"), LINKEDIN_COMMENTARY_LIMIT);
 }
 
+function buildImagePostCommentary(input: LinkedInArticlePostingInput) {
+  const sections = [
+    compactText(input.title),
+    input.summary ? compactText(input.summary) : "",
+    buildParagraphExcerpt(input.content, 5),
+    "O que mais chamou a sua atencao nesse tema?",
+  ].filter(Boolean);
+
+  return clampMultilineText(sections.join("\n\n"), LINKEDIN_COMMENTARY_LIMIT);
+}
+
 function buildFallbackDescription(input: LinkedInArticlePostingInput) {
   return clampText(
     input.summary ||
@@ -337,7 +348,7 @@ async function createLinkedInCopy(input: LinkedInArticlePostingInput) {
   const sourceUrl = normalizeSourceUrl(input.sourceUrl);
   const commentary = sourceUrl
     ? buildArticleStyleCommentary(input, sourceUrl)
-    : buildFallbackCommentary(input);
+    : buildImagePostCommentary(input);
 
   try {
     const response = await invokeLLM({
@@ -396,8 +407,11 @@ Regras:
       (typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent)) || "{}"
     ) as LinkedInCopyPayload;
 
+    const llmCommentary = typeof parsed.commentary === "string" && parsed.commentary.trim()
+      ? clampMultilineText(parsed.commentary, LINKEDIN_COMMENTARY_LIMIT)
+      : undefined;
     return {
-      commentary,
+      commentary: sourceUrl ? commentary : (llmCommentary ?? commentary),
       articleTitle: clampText(parsed.articleTitle || input.title, 200),
       articleDescription: clampText(
         parsed.articleDescription || buildFallbackDescription(input),
@@ -786,19 +800,10 @@ export async function publishArticleToLinkedInWithAgent(
   const config = getLinkedInConfig();
   const sourceUrl = normalizeSourceUrl(input.sourceUrl);
 
-  if (!sourceUrl) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message:
-        "Para publicar no LinkedIn em formato de artigo, informe uma URL real da fonte da noticia no artigo.",
-    });
-  }
-
   if (!input.coverImageUrl) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message:
-        "Para publicar no LinkedIn em formato de artigo com imagem, gere uma capa para o artigo antes de publicar.",
+      message: "Para publicar no LinkedIn, gere uma imagem de capa para o artigo antes de publicar.",
     });
   }
 
@@ -833,6 +838,8 @@ export async function publishArticleToLinkedInWithAgent(
     });
   }
 
+  const postType: LinkedInArticlePostingResult["postType"] = sourceUrl ? "article" : "image";
+
   const payload: Record<string, unknown> = {
     author: config.authorUrn,
     commentary: copy.commentary,
@@ -846,15 +853,24 @@ export async function publishArticleToLinkedInWithAgent(
     isReshareDisabledByAuthor: false,
   };
 
-  const postType: LinkedInArticlePostingResult["postType"] = "article";
-  payload.content = {
-    article: {
-      source: sourceUrl,
-      title: copy.articleTitle,
-      description: copy.articleDescription,
-      thumbnail: imageUrn,
-    },
-  };
+  if (sourceUrl) {
+    payload.content = {
+      article: {
+        source: sourceUrl,
+        title: copy.articleTitle,
+        description: copy.articleDescription,
+        thumbnail: imageUrn,
+      },
+    };
+  } else {
+    payload.content = {
+      media: {
+        id: imageUrn,
+        altText: copy.imageAltText,
+        title: copy.articleTitle,
+      },
+    };
+  }
 
   const response = await fetch(`${config.apiBaseUrl}/posts`, {
     method: "POST",
@@ -888,6 +904,6 @@ export async function publishArticleToLinkedInWithAgent(
     articleDescription: copy.articleDescription,
     imageAltText: copy.imageAltText,
     imageUrn,
-    sourceUrl,
+    sourceUrl: sourceUrl ?? undefined,
   };
 }

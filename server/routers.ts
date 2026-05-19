@@ -1332,6 +1332,12 @@ const carouselSlideSchema = z.object({
   visualDirection: z.string().optional(),
   layoutNotes: z.string().optional(),
   highlightWords: z.array(z.string()).optional(),
+  wordStyles: z.array(z.object({
+    word: z.string(),
+    color: z.string().optional(),
+    bold: z.boolean().optional(),
+    italic: z.boolean().optional(),
+  })).optional(),
   editableFields: z.object({
     title: z.boolean(),
     text: z.boolean(),

@@ -7,6 +7,7 @@ import {
 import { ENV } from "./env";
 
 export interface InstagramStyleResult {
+  // ── Campos usados pelo editor de carrossel (não remover) ──────────────
   accentColor: string;
   bgColor: string;
   fontFamily: string;
@@ -17,6 +18,67 @@ export interface InstagramStyleResult {
   profileImageUrl?: string;
   styleSummary: string;
   toneDescription: string;
+
+  // ── Identidade do perfil ───────────────────────────────────────────────
+  niche?: string;
+  targetAudience?: string;
+  objective?: string;
+
+  // ── Paleta de cores ampliada ───────────────────────────────────────────
+  primaryColor?: string;
+  secondaryColor?: string;
+  textColor?: string;
+
+  // ── Tipografia ────────────────────────────────────────────────────────
+  secondaryFont?: string;
+  fontWeight?: string;
+
+  // ── Padrões visuais ───────────────────────────────────────────────────
+  layoutPattern?: string;
+  editingStyle?: string;
+  recurringElements?: string;
+  postStructure?: string;
+  visualEffects?: string;
+
+  // ── Estratégia de conteúdo ────────────────────────────────────────────
+  copyType?: string;
+  captionStructure?: string;
+  ctaExamples?: string[];
+  language?: string;
+  frequentEmojis?: string;
+
+  // ── Design dos slides de carrossel ───────────────────────────────────
+  coverSlideStyle?: {
+    bgColor: string;
+    accentColor: string;
+    titleAlign: "left" | "center";
+    description: string;
+  };
+  contentSlideStyle?: {
+    bgColor: string;
+    accentColor: string;
+    titleAlign: "left" | "center";
+    description: string;
+  };
+  ctaSlideStyle?: {
+    bgColor: string;
+    accentColor: string;
+    description: string;
+  };
+
+  // ── Branding ─────────────────────────────────────────────────────────
+  brandKeywords?: string[];
+  designTokens?: {
+    "--color-primary": string;
+    "--color-secondary": string;
+    "--color-bg": string;
+    "--color-text": string;
+    "--color-accent": string;
+    "--font-primary": string;
+    "--font-secondary": string;
+    "--border-radius": string;
+    "--spacing-unit": string;
+  };
 }
 
 interface RawProfile {
@@ -74,7 +136,7 @@ async function fetchOwnProfileViaGraphApi(
       { signal: AbortSignal.timeout(10_000) }
     ),
     fetch(
-      `${base}/${instagramAccountId}/media?fields=media_url,thumbnail_url,media_type&limit=9&access_token=${accessToken}`,
+      `${base}/${instagramAccountId}/media?fields=media_url,thumbnail_url,media_type&limit=12&access_token=${accessToken}`,
       { signal: AbortSignal.timeout(10_000) }
     ),
   ]);
@@ -95,7 +157,7 @@ async function fetchOwnProfileViaGraphApi(
   const postImageUrls = mediaItems
     .map((m) => m.thumbnail_url ?? m.media_url)
     .filter((u): u is string => typeof u === "string" && u.startsWith("http"))
-    .slice(0, 9);
+    .slice(0, 12);
 
   return {
     username: profile.username ?? "",
@@ -130,25 +192,28 @@ async function fetchPublicProfilePage(username: string): Promise<Partial<RawProf
     const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/)?.[1] ?? "";
     const name = ogTitle.match(/^([^(@•\|]+)/)?.[1]?.trim() || undefined;
 
+    // Bio from OG description
+    const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/)?.[1]
+      ?.replace(/&amp;/g, "&")
+      ?.replace(/&#39;/g, "'")
+      ?.replace(/&quot;/g, '"') || "";
+
     // Try to find post image URLs embedded in the page JSON
     const postImageUrls: string[] = [];
-    // Instagram embeds image URLs in various JSON structures in the page
     const cdnPattern = /https:\/\/[^"']+\.cdninstagram\.com\/[^"']+\.(?:jpg|jpeg|png|webp)/gi;
     const allCdnUrls = Array.from(html.matchAll(cdnPattern)).map((m) => m[0]);
-    // Deduplicate and skip profile picture (usually the first/smallest)
     const seen = new Set<string>();
     for (const url of allCdnUrls) {
-      // Skip tiny thumbnails (usually size indicators like s150x150 or p150x150)
       if (/[_/]s\d{2,3}x\d{2,3}[_/]/.test(url)) continue;
       if (seen.has(url) || url === ogImage) continue;
       seen.add(url);
       postImageUrls.push(url);
-      if (postImageUrls.length >= 6) break;
+      if (postImageUrls.length >= 9) break;
     }
 
     return {
       username,
-      name,
+      name: ogDesc ? `${name ?? username} — ${ogDesc.slice(0, 120)}` : name,
       profilePictureUrl: ogImage,
       postImageUrls,
     };
@@ -178,8 +243,6 @@ export async function analyzeInstagramProfileStyle(params: {
 
   let profile: RawProfile = { username: cleanUsername, postImageUrls: [] };
 
-  // Only use the Graph API when the requested profile IS the connected account.
-  // Using it for other profiles would return the wrong account's media.
   const isOwnConnectedProfile =
     connectedAccount &&
     connectedAccount.username &&
@@ -202,7 +265,6 @@ export async function analyzeInstagramProfileStyle(params: {
     }
   }
 
-  // For any profile (own or external): also try the public page to fill gaps
   if (profile.postImageUrls.length === 0) {
     const pub = await fetchPublicProfilePage(cleanUsername);
     profile = {
@@ -221,12 +283,23 @@ export async function analyzeInstagramProfileStyle(params: {
   ].filter((u): u is string => !!u && u.startsWith("http"));
 
   const imageBlocks: AnthropicImageContent[] = [];
-  await Promise.all(
-    allImageUrls.slice(0, 6).map(async (url) => {
-      const block = await fetchImageAsBase64(url);
-      if (block) imageBlocks.push(block);
-    })
+  const downloadResults = await Promise.allSettled(
+    allImageUrls.slice(0, 10).map((url) => fetchImageAsBase64(url))
   );
+
+  // Persist the profile picture as a data URL so it never expires
+  let profilePictureDataUrl: string | undefined;
+  const picIsFirst = profile.profilePictureUrl && allImageUrls[0] === profile.profilePictureUrl;
+  if (picIsFirst && downloadResults[0]?.status === "fulfilled" && downloadResults[0].value) {
+    const block = downloadResults[0].value;
+    if (block.source.type === "base64") {
+      profilePictureDataUrl = `data:${block.source.media_type};base64,${block.source.data}`;
+    }
+  }
+
+  for (const r of downloadResults) {
+    if (r.status === "fulfilled" && r.value) imageBlocks.push(r.value);
+  }
 
   console.log(`[InstagramStyleAgent] Sending ${imageBlocks.length} base64 images to Claude for @${cleanUsername}`);
 
@@ -234,56 +307,159 @@ export async function analyzeInstagramProfileStyle(params: {
     ? `@${cleanUsername} (${profile.name})`
     : `@${cleanUsername}`;
 
-  const systemPrompt = `Você é um especialista em extração de paleta de cores e identidade visual a partir de imagens reais. Você DEVE analisar os pixels das imagens fornecidas — nunca adivinhe cores com base no nome da marca ou do setor. Retorne APENAS JSON válido.`;
+  const systemPrompt = `Você é um agente especialista em análise e clonagem estrutural de perfis do Instagram.
+
+Seu objetivo é analisar completamente o perfil a partir das imagens enviadas e recriar toda a identidade visual e estratégica automaticamente — sem que o usuário precise configurar nada manualmente.
+
+# COMPORTAMENTO OBRIGATÓRIO
+
+## ANÁLISE VISUAL PROFUNDA
+- Examine cada imagem pixel a pixel
+- Extraia cores HEX EXATAS que aparecem nas imagens — nunca adivinhe baseado no nome da marca ou setor
+- Identifique padrões visuais repetidos entre os posts
+- Detecte estilos gráficos: sombras, bordas, glow, gradientes, filtros
+- Classifique o estilo: moderno, minimalista, luxuoso, esportivo, colorido, etc.
+- Analise a tipografia a partir da aparência visual
+- Identifique o nicho, público-alvo e objetivo comercial a partir dos temas visuais
+
+## EXTRAÇÃO DE IDENTIDADE
+- Paleta completa: primária, secundária, fundo, texto, destaque
+- Sistema tipográfico: fontes, pesos, hierarquia
+- DNA visual: layouts, estrutura, elementos recorrentes
+- Estratégia de conteúdo deduzida pelas imagens
+- Tokens de design prontos para reutilização
+
+## REGRAS CRÍTICAS
+- Retorne APENAS JSON válido, sem texto antes ou depois
+- Cores SEMPRE em formato #RRGGBB baseado nas imagens reais
+- Se uma imagem não estiver disponível, indique no styleSummary
+- Analise profundamente antes de responder — priorize fidelidade visual`;
 
   const jsonSchema = `{
-  "accentColor": "#RRGGBB — cor de destaque mais usada nas imagens (logo, botões, títulos coloridos, ícones)",
+  "accentColor": "#RRGGBB — cor de destaque mais usada (logo, títulos coloridos, ícones, botões)",
   "bgColor": "#RRGGBB — cor de fundo dominante dos posts",
-  "fontFamily": "um de: 'system-ui, -apple-system, sans-serif' | 'Georgia, \\'Times New Roman\\', serif' | 'Impact, \\'Arial Black\\', sans-serif' | '\\'Courier New\\', Courier, monospace' | '\\'Helvetica Neue\\', Helvetica, Arial, sans-serif'",
+  "primaryColor": "#RRGGBB — cor primária da identidade (pode ser igual ao accentColor)",
+  "secondaryColor": "#RRGGBB — segunda cor mais usada",
+  "textColor": "#RRGGBB — cor predominante dos textos",
+  "fontFamily": "uma das opções: 'system-ui, -apple-system, sans-serif' | 'Georgia, Times New Roman, serif' | 'Impact, Arial Black, sans-serif' | 'Courier New, Courier, monospace' | 'Helvetica Neue, Helvetica, Arial, sans-serif'",
+  "secondaryFont": "descrição da fonte secundária observada visualmente (ex: 'sans-serif leve')",
+  "fontWeight": "descrição do peso visual (ex: 'bold com contraste alto', 'light minimalista')",
   "titleAlign": "left ou center",
-  "titleSize": número 0.8–1.2,
-  "profileName": "nome do perfil",
+  "titleSize": número entre 0.8 e 1.2,
+  "profileName": "nome real do perfil",
   "profileHandle": "@handle",
-  "styleSummary": "2-3 frases descrevendo o estilo visual EXATO observado nas imagens (mencione as cores reais)",
-  "toneDescription": "1 frase sobre o tom de comunicação"
+  "niche": "nicho do perfil (ex: 'Marketing Digital', 'Fitness', 'Gastronomia', 'Moda')",
+  "targetAudience": "público-alvo deduzido (ex: 'Empreendedores 25-40 anos', 'Jovens fitness 18-30')",
+  "objective": "objetivo comercial do perfil (ex: 'Vender cursos', 'Gerar leads', 'Construir autoridade')",
+  "layoutPattern": "padrão de layout predominante (ex: 'grade uniforme com fundo neutro', 'mosaico colorido alternado')",
+  "editingStyle": "estilo de edição das fotos/vídeos (ex: 'tons quentes saturados', 'preto e branco com contraste alto', 'flat lay minimalista')",
+  "recurringElements": "elementos visuais que se repetem (ex: 'moldura branca, ícones de linha, texto centralizado')",
+  "postStructure": "estrutura típica dos posts (ex: 'imagem impactante + texto curto + CTA', 'carrossel educativo com múltiplos slides')",
+  "visualEffects": "efeitos visuais detectados (ex: 'gradientes suaves, sombra drop shadow leve', 'sem efeitos, flat design')",
+  "copyType": "tipo de copy predominante (ex: 'educacional direto', 'emocional storytelling', 'provocativo com pergunta')",
+  "captionStructure": "estrutura das legendas deduzida (ex: 'gancho + desenvolvimento + CTA + hashtags')",
+  "ctaExamples": ["array com exemplos de CTA que o perfil provavelmente usa"],
+  "language": "tom e linguagem (ex: 'informal e próximo com gírias', 'formal e técnico', 'inspiracional e motivacional')",
+  "frequentEmojis": "emojis que o perfil provavelmente usa com base no estilo (ex: '🔥💡✅🎯')",
+  "coverSlideStyle": {
+    "bgColor": "#RRGGBB — cor de fundo predominante nas capas dos carrosseis",
+    "accentColor": "#RRGGBB — cor de destaque usada nas capas",
+    "titleAlign": "left ou center — alinhamento do título na capa",
+    "description": "1-2 frases sobre o design da capa (ex: 'fundo escuro com imagem full-bleed e título grande centralizado')"
+  },
+  "contentSlideStyle": {
+    "bgColor": "#RRGGBB — cor de fundo dos slides de conteúdo, geralmente diferente da capa",
+    "accentColor": "#RRGGBB — cor de destaque nos slides intermediários",
+    "titleAlign": "left ou center",
+    "description": "1-2 frases sobre os slides internos (ex: 'fundo claro com texto escuro e linha de destaque colorida')"
+  },
+  "ctaSlideStyle": {
+    "bgColor": "#RRGGBB — cor de fundo do slide final/CTA",
+    "accentColor": "#RRGGBB — cor de destaque no CTA",
+    "description": "1 frase sobre o slide de fechamento (ex: 'fundo sólido escuro com CTA e handle do perfil')"
+  },
+  "brandKeywords": ["palavras-chave que definem o branding deste perfil"],
+  "styleSummary": "3-4 frases descrevendo o estilo visual EXATO observado nas imagens, mencionando cores reais, padrões e sensação geral",
+  "toneDescription": "1-2 frases sobre o tom de comunicação e personalidade da marca",
+  "designTokens": {
+    "--color-primary": "#RRGGBB",
+    "--color-secondary": "#RRGGBB",
+    "--color-bg": "#RRGGBB",
+    "--color-text": "#RRGGBB",
+    "--color-accent": "#RRGGBB",
+    "--font-primary": "font-family CSS",
+    "--font-secondary": "font-family CSS",
+    "--border-radius": "valor CSS (ex: '8px' ou '0px')",
+    "--spacing-unit": "valor CSS (ex: '16px')"
+  }
 }`;
 
   const userContent: AnthropicContent[] = imageBlocks.length > 0
     ? [
         {
           type: "text",
-          text: `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}. Identifique as cores EXATAS (em hex) que aparecem nas imagens — fundo, destaque, texto colorido, logo. NÃO use cores baseadas no setor ou nome da marca.`,
+          text: `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}.\n\nFaça uma análise completa e profunda do DNA visual e estratégico deste perfil. Extraia as cores EXATAS em HEX que aparecem nas imagens. Identifique todos os padrões visuais, estilo de edição, estrutura de posts, nicho e estratégia de conteúdo.`,
         },
         ...imageBlocks,
         {
           type: "text",
-          text: `Baseado SOMENTE nas cores que você viu acima, retorne:\n${jsonSchema}`,
+          text: `Com base EXCLUSIVAMENTE nas imagens analisadas acima, retorne o seguinte JSON completo:\n${jsonSchema}`,
         },
       ]
     : [
         {
           type: "text",
-          text: `Não foi possível carregar imagens do perfil ${profileDesc}. Informe no styleSummary que as imagens não estavam disponíveis e sugira uma identidade visual genérica:\n${jsonSchema}`,
+          text: `Não foi possível carregar imagens do perfil ${profileDesc}. Indique no styleSummary que as imagens não estavam disponíveis. Sugira uma identidade visual genérica profissional:\n${jsonSchema}`,
         },
       ];
 
   const fallback: InstagramStyleResult = {
     accentColor: "#29d9ff",
     bgColor: "#0d1117",
+    primaryColor: "#29d9ff",
+    secondaryColor: "#1a8aff",
+    textColor: "#ffffff",
     fontFamily: "system-ui, -apple-system, sans-serif",
+    secondaryFont: "sans-serif",
+    fontWeight: "medium",
     titleAlign: "left",
     titleSize: 1,
     profileName: profile.name ?? cleanUsername,
     profileHandle: `@${cleanUsername}`,
-    profileImageUrl: profile.profilePictureUrl,
+    profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl,
     styleSummary: "Não foi possível carregar as imagens do perfil para análise.",
     toneDescription: "Comunicação profissional.",
+    niche: "Não identificado",
+    targetAudience: "Não identificado",
+    objective: "Não identificado",
+    layoutPattern: "Grade uniforme",
+    editingStyle: "Não identificado",
+    recurringElements: "Não identificado",
+    postStructure: "Não identificado",
+    visualEffects: "Não identificado",
+    copyType: "Não identificado",
+    captionStructure: "Gancho + desenvolvimento + CTA",
+    ctaExamples: [],
+    language: "Português brasileiro",
+    frequentEmojis: "",
+    brandKeywords: [],
+    designTokens: {
+      "--color-primary": "#29d9ff",
+      "--color-secondary": "#1a8aff",
+      "--color-bg": "#0d1117",
+      "--color-text": "#ffffff",
+      "--color-accent": "#29d9ff",
+      "--font-primary": "system-ui, -apple-system, sans-serif",
+      "--font-secondary": "system-ui, -apple-system, sans-serif",
+      "--border-radius": "8px",
+      "--spacing-unit": "16px",
+    },
   };
 
   const raw = await invokeAnthropicLLM({
     system: systemPrompt,
     userContent,
-    maxTokens: 700,
+    maxTokens: 2000,
   });
 
   const parsed = parseClaudeJsonResponse<Partial<InstagramStyleResult>>(raw, {});
@@ -292,6 +468,6 @@ export async function analyzeInstagramProfileStyle(params: {
     ...fallback,
     ...parsed,
     profileHandle: `@${String(parsed.profileHandle ?? cleanUsername).replace(/^@/, "")}`,
-    profileImageUrl: profile.profilePictureUrl ?? parsed.profileImageUrl,
+    profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? parsed.profileImageUrl,
   };
 }

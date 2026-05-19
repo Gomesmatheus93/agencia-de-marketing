@@ -12,7 +12,7 @@ import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv } from "./env";
 import { sdk } from "./sdk";
-import { storagePut } from "../storage";
+import { storagePut, getMetaFetchableStorageUrl } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -51,7 +51,9 @@ async function startServer() {
       res.status(400).send("Invalid URL"); return;
     }
     try {
-      const upstream = await fetch(url, {
+      // For S3 private objects, generate a presigned URL so the proxy can fetch them
+      const fetchUrl = await getMetaFetchableStorageUrl(url);
+      const upstream = await fetch(fetchUrl, {
         headers: { "User-Agent": "KrythosLab/1.0 render-proxy", Accept: "image/*" },
         signal: AbortSignal.timeout(15_000),
       });

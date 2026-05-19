@@ -24,6 +24,7 @@ import {
   Calendar,
   Download,
   Plus,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -37,6 +38,13 @@ import {
 type Phase = "list" | "form" | "fetching" | "generating" | "preview";
 type InputMode = "topic" | "url";
 
+type WordStyle = {
+  word: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+};
+
 type ProtoSlide = {
   title: string;
   body?: string;
@@ -46,6 +54,7 @@ type ProtoSlide = {
   shortText?: string;
   imagePrompt?: string;
   highlightWords?: string[];
+  wordStyles?: WordStyle[];
   canvaDesignId?: string;
   titleColor?: string;
   bodyColor?: string;
@@ -82,6 +91,12 @@ type DesignSettings = {
   profileImageUrl?: string;
   profileName?: string;
   profileHandle?: string;
+  // Cover (capa) overrides — applied only to the first/hook slide
+  coverBgColor?: string;
+  coverAccentColor?: string;
+  coverTitleAlign?: "left" | "center";
+  // Visual template
+  template?: "dark" | "editorial";
 };
 
 type NamedDesignPreset = DesignSettings & { presetName: string };
@@ -97,6 +112,12 @@ type IgStyleAnalysis = {
   profileImageUrl?: string;
   styleSummary: string;
   toneDescription: string;
+  niche?: string;
+  targetAudience?: string;
+  objective?: string;
+  coverSlideStyle?: { bgColor: string; accentColor: string; titleAlign: "left" | "center"; description: string };
+  contentSlideStyle?: { bgColor: string; accentColor: string; titleAlign: "left" | "center"; description: string };
+  ctaSlideStyle?: { bgColor: string; accentColor: string; description: string };
 };
 
 const DEFAULT_DESIGN: DesignSettings = {
@@ -189,16 +210,29 @@ const FONT_OPTIONS = [
 
 // ─── renderHighlighted ────────────────────────────────────────────────────────
 
-function renderHighlighted(text: string, words: string[], color: string): React.ReactNode {
-  if (!words.length || !text) return text;
-  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+function renderHighlighted(
+  text: string,
+  words: string[],
+  accentColor: string,
+  wordStyles?: WordStyle[]
+): React.ReactNode {
+  const allStyled: Array<{ word: string; color: string; bold?: boolean; italic?: boolean }> = [
+    ...words.map((w) => ({ word: w, color: accentColor })),
+    ...(wordStyles ?? []).map((ws) => ({ word: ws.word, color: ws.color ?? accentColor, bold: ws.bold, italic: ws.italic })),
+  ];
+  if (!allStyled.length || !text) return text;
+  const escaped = allStyled.map((s) => s.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
   const parts = text.split(pattern);
-  return parts.map((part, i) =>
-    words.some((w) => w.toLowerCase() === part.toLowerCase())
-      ? <span key={i} style={{ color }}>{part}</span>
-      : part
-  );
+  return parts.map((part, i) => {
+    const s = allStyled.find((s) => s.word.toLowerCase() === part.toLowerCase());
+    if (!s) return part;
+    return (
+      <span key={i} style={{ color: s.color, fontWeight: s.bold ? 900 : undefined, fontStyle: s.italic ? "italic" : undefined }}>
+        {part}
+      </span>
+    );
+  });
 }
 
 // ─── EditableText ─────────────────────────────────────────────────────────────
@@ -251,9 +285,15 @@ function ProtoSlideCard({
   const isHook = slide.slideType === "hook" || index === 0;
   const isCta = slide.slideType === "cta" || index === total - 1;
   const slideNum = String(index + 1).padStart(2, "0");
+
+  // Cover slide uses its own color overrides when provided
+  const activeBg = isHook ? (design.coverBgColor ?? design.bgColor) : design.bgColor;
+  const activeAccent = isHook ? (design.coverAccentColor ?? design.accentColor) : design.accentColor;
+  const activeTitleAlign = isHook ? (design.coverTitleAlign ?? design.titleAlign) : design.titleAlign;
+
   const titleStyle: React.CSSProperties = {
     fontFamily: design.fontFamily,
-    textAlign: design.titleAlign,
+    textAlign: activeTitleAlign,
     fontSize: `${(isHook ? 36 : 28) * design.titleSize}px`,
     textShadow: "0 2px 16px rgba(0,0,0,0.7)",
     lineHeight: 1.15,
@@ -262,19 +302,19 @@ function ProtoSlideCard({
   };
   const bodyStyle: React.CSSProperties = {
     fontFamily: design.fontFamily,
-    textAlign: design.titleAlign,
+    textAlign: activeTitleAlign,
     fontSize: `${(isHook ? 17 : 15) * design.titleSize}px`,
     color: slide.bodyColor ?? "rgba(255,255,255,0.78)",
     textShadow: "0 1px 8px rgba(0,0,0,0.6)",
     lineHeight: 1.55,
   };
   const hw = slide.highlightWords ?? [];
-  const hc = design.accentColor;
+  const hc = activeAccent;
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl shadow-2xl"
-      style={{ width: 400, height: 500, background: design.bgColor, flexShrink: 0 }}
+      style={{ width: 400, height: 500, background: activeBg, flexShrink: 0 }}
     >
       {/* Background image */}
       {slide.imageUrl && !isCta && (
@@ -291,12 +331,12 @@ function ProtoSlideCard({
           <div
             className="absolute inset-0"
             style={{
-              background: `radial-gradient(ellipse at 70% 110%, ${design.accentColor}18 0%, transparent 60%), linear-gradient(135deg, ${design.bgColor} 0%, ${design.bgColor}ee 100%)`,
+              background: `radial-gradient(ellipse at 70% 110%, ${activeAccent}18 0%, transparent 60%), linear-gradient(135deg, ${activeBg} 0%, ${activeBg}ee 100%)`,
             }}
           />
           <div
             className="absolute bottom-[-100px] right-[-100px] rounded-full opacity-[0.06]"
-            style={{ width: 380, height: 380, background: design.accentColor }}
+            style={{ width: 380, height: 380, background: activeAccent }}
           />
         </>
       ) : (
@@ -313,7 +353,7 @@ function ProtoSlideCard({
       {/* Top accent stripe — always visible */}
       <div
         className="absolute top-0 left-0 right-0"
-        style={{ height: 3, background: `linear-gradient(90deg, ${design.accentColor}, ${design.accentColor}88)` }}
+        style={{ height: 3, background: `linear-gradient(90deg, ${activeAccent}, ${activeAccent}88)` }}
       />
 
       {/* HOOK */}
@@ -328,7 +368,7 @@ function ProtoSlideCard({
               <img
                 src={design.profileImageUrl.startsWith("data:") ? design.profileImageUrl : resolveImgUrl(design.profileImageUrl)}
                 className="rounded-full object-cover flex-shrink-0"
-                style={{ width: 32, height: 32, border: `1.5px solid ${design.accentColor}` }}
+                style={{ width: 32, height: 32, border: `1.5px solid ${activeAccent}` }}
                 draggable={false}
               />
               <div className="min-w-0">
@@ -349,17 +389,13 @@ function ProtoSlideCard({
           )}
           <div
             className="mb-3 rounded-full"
-            style={{ width: 44, height: 3, background: design.accentColor }}
+            style={{ width: 44, height: 3, background: activeAccent }}
           />
-          {editable ? (
-            <EditableText value={slide.title} onCommit={(v) => onUpdate?.("title", v)} tag="h1" style={titleStyle} className="mb-3" />
-          ) : (
-            <h1 style={titleStyle} className="mb-3">{renderHighlighted(slide.title, hw, hc)}</h1>
-          )}
+          <h1 style={titleStyle} className="mb-3">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h1>
           {editable ? (
             <EditableText value={slide.body ?? ""} onCommit={(v) => onUpdate?.("body", v)} tag="p" style={bodyStyle} />
           ) : (
-            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc)}</p>
+            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>
           )}
           <p
             className="mt-5 font-medium tracking-widest uppercase pointer-events-none"
@@ -411,15 +447,11 @@ function ProtoSlideCard({
             className="mb-3 rounded-full"
             style={{ width: 32, height: 3, background: design.accentColor }}
           />
-          {editable ? (
-            <EditableText value={slide.title} onCommit={(v) => onUpdate?.("title", v)} tag="h2" style={{ ...titleStyle, fontSize: `${28 * design.titleSize}px` }} className="mb-3" />
-          ) : (
-            <h2 style={{ ...titleStyle, fontSize: `${28 * design.titleSize}px` }} className="mb-3">{renderHighlighted(slide.title, hw, hc)}</h2>
-          )}
+          <h2 style={{ ...titleStyle, fontSize: `${28 * design.titleSize}px` }} className="mb-3">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h2>
           {editable ? (
             <EditableText value={slide.body ?? ""} onCommit={(v) => onUpdate?.("body", v)} tag="p" style={bodyStyle} />
           ) : (
-            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc)}</p>
+            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>
           )}
         </div>
       )}
@@ -468,11 +500,7 @@ function ProtoSlideCard({
           )}
 
           {/* Title */}
-          {editable ? (
-            <EditableText value={slide.title} onCommit={(v) => onUpdate?.("title", v)} tag="h1" style={{ ...titleStyle, fontSize: `${30 * design.titleSize}px`, textAlign: "center", lineHeight: 1.1 }} className="mb-4" />
-          ) : (
-            <h1 style={{ ...titleStyle, fontSize: `${30 * design.titleSize}px`, textAlign: "center", lineHeight: 1.1 }} className="mb-4">{renderHighlighted(slide.title, hw, hc)}</h1>
-          )}
+          <h1 style={{ ...titleStyle, fontSize: `${30 * design.titleSize}px`, textAlign: "center", lineHeight: 1.1 }} className="mb-4">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h1>
 
           {/* Body */}
           {editable ? (
@@ -480,7 +508,7 @@ function ProtoSlideCard({
           ) : (
             slide.body && (
               <p style={{ ...bodyStyle, fontSize: `${14 * design.titleSize}px`, textAlign: "center", lineHeight: 1.6 }} className="mb-7">
-                {renderHighlighted(slide.body, hw, hc)}
+                {renderHighlighted(slide.body, hw, hc, slide.wordStyles)}
               </p>
             )
           )}
@@ -534,6 +562,186 @@ function ProtoSlideCard({
   );
 }
 
+// ─── EditorialSlideCard ───────────────────────────────────────────────────────
+
+function EditorialSlideCard({
+  slide, index, total, design, editable = false, onUpdate,
+}: {
+  slide: ProtoSlide; index: number; total: number; design: DesignSettings;
+  editable?: boolean; onUpdate?: (field: "title" | "body", value: string) => void;
+}) {
+  const isHook = slide.slideType === "hook" || index === 0;
+  const isCta = slide.slideType === "cta" || index === total - 1;
+  const contentIndex = index - 1;
+  const isTypeA = !isHook && !isCta && contentIndex % 2 === 0;
+
+  const accent = isHook ? (design.coverAccentColor ?? design.accentColor) : design.accentColor;
+  const hw = slide.highlightWords ?? [];
+  const handle = design.profileHandle || "@handle";
+  const brand = design.profileName || "Content Machine";
+  const year = new Date().getFullYear();
+  const ff = design.fontFamily;
+
+  // ── COVER ────────────────────────────────────────────────────────────────────
+  if (isHook) {
+    return (
+      <div className="relative overflow-hidden rounded-2xl shadow-2xl"
+        style={{ width: 400, height: 500, background: design.coverBgColor ?? "#111111", flexShrink: 0 }}>
+        {slide.imageUrl && (
+          <img src={resolveImgUrl(slide.imageUrl)}
+            className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+        )}
+        <div className="absolute inset-0"
+          style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.48) 42%, rgba(0,0,0,0.86) 100%)" }} />
+
+        {/* Top bar */}
+        <div className="absolute top-3.5 left-4 right-4 flex justify-between items-center">
+          <span style={{ fontSize: 8, color: "rgba(255,255,255,0.6)", fontFamily: ff, fontWeight: 600, letterSpacing: 1.2, textTransform: "uppercase" as const }}>
+            {brand}
+          </span>
+          <span style={{ fontSize: 8, color: "rgba(255,255,255,0.6)", fontFamily: ff, letterSpacing: 0.4 }}>{handle}</span>
+        </div>
+
+        {/* Bottom content */}
+        <div className="absolute bottom-10 left-5 right-5">
+          <div className="flex items-center gap-1.5 mb-3">
+            {design.profileImageUrl ? (
+              <img
+                src={design.profileImageUrl.startsWith("data:") ? design.profileImageUrl : resolveImgUrl(design.profileImageUrl)}
+                className="rounded-full object-cover flex-shrink-0"
+                style={{ width: 22, height: 22, border: `1.5px solid ${accent}` }}
+                draggable={false}
+              />
+            ) : (
+              <div className="flex items-center justify-center rounded-full flex-shrink-0"
+                style={{ width: 16, height: 16, background: accent }}>
+                <span style={{ color: "white", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>+</span>
+              </div>
+            )}
+            <span style={{ fontSize: 11, color: "white", fontFamily: ff, fontWeight: 700 }}>{handle}</span>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+              <circle cx="6.5" cy="6.5" r="6.5" fill="#1d9bf0" />
+              <path d="M3.5 6.5L5.5 8.5L9.5 4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: 31 * design.titleSize, fontWeight: 900, color: slide.titleColor ?? "white", lineHeight: 1.1, textTransform: "uppercase" as const, fontFamily: ff }} className="mb-2">
+            {renderHighlighted(slide.title, hw, accent, slide.wordStyles)}
+          </h1>
+          {slide.body && (
+            editable ? (
+              <EditableText value={slide.body} onCommit={(v) => onUpdate?.("body", v)} tag="p"
+                style={{ fontSize: 10, color: slide.bodyColor ?? "rgba(255,255,255,0.62)", fontFamily: ff, fontWeight: 500, letterSpacing: 0.3 }} />
+            ) : (
+              <p style={{ fontSize: 10, color: slide.bodyColor ?? "rgba(255,255,255,0.62)", fontFamily: ff, fontWeight: 500, letterSpacing: 0.3 }}>
+                → {slide.body}
+              </p>
+            )
+          )}
+        </div>
+
+        {/* Slide counter */}
+        <div className="absolute bottom-3 right-4"
+          style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", fontFamily: ff }}>{index + 1}/{total}</div>
+        {/* Progress dots */}
+        <div className="absolute bottom-3.5 left-0 right-0 flex justify-center gap-1">
+          {Array.from({ length: total }).map((_, i) => (
+            <div key={i} style={{ width: i === index ? 14 : 5, height: 2, borderRadius: 1, background: i === index ? "white" : "rgba(255,255,255,0.3)", transition: "width 0.2s" }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── CTA ──────────────────────────────────────────────────────────────────────
+  if (isCta) {
+    return (
+      <div className="relative overflow-hidden rounded-2xl shadow-2xl"
+        style={{ width: 400, height: 500, background: "#ffffff", flexShrink: 0, fontFamily: ff }}>
+        <div className="flex justify-between items-center px-4 pt-3 pb-0">
+          <span style={{ fontSize: 8, color: "rgba(0,0,0,0.28)", fontWeight: 500 }}>Powered by {brand}</span>
+          <span style={{ fontSize: 8, color: "rgba(0,0,0,0.28)" }}>{handle}</span>
+          <span style={{ fontSize: 8, color: "rgba(0,0,0,0.42)", fontWeight: 700 }}>{year} //</span>
+        </div>
+        <div className="absolute inset-x-4 h-px bg-black/8" style={{ top: 34 }} />
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
+          <div style={{ width: 48, height: 3, background: accent, borderRadius: 2, marginBottom: 18 }} />
+          <h1 style={{ fontSize: 24 * design.titleSize, fontWeight: 900, color: slide.titleColor ?? "#000", textAlign: "center", lineHeight: 1.15, marginBottom: 12 }}>
+            {renderHighlighted(slide.title, hw, accent, slide.wordStyles)}
+          </h1>
+          {slide.body && (
+            <p style={{ fontSize: 12, color: slide.bodyColor ?? "#555", textAlign: "center", lineHeight: 1.55, marginBottom: 20 }}>{slide.body}</p>
+          )}
+          {slide.shortText && (
+            <div className="rounded-full px-6 py-2.5 font-bold" style={{ background: accent, color: "#fff", fontSize: 12 }}>
+              {slide.shortText}
+            </div>
+          )}
+          {design.profileImageUrl && (
+            <div className="flex items-center gap-2 mt-5">
+              <img
+                src={design.profileImageUrl.startsWith("data:") ? design.profileImageUrl : resolveImgUrl(design.profileImageUrl)}
+                className="rounded-full object-cover"
+                style={{ width: 28, height: 28, border: `2px solid ${accent}` }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#000" }}>{handle}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── CONTENT SLIDES — alternating white / dark ────────────────────────────────
+  const isDark = !isTypeA;
+  const contentBg = isDark ? "#111111" : "#ffffff";
+  const cTitleColor = slide.titleColor ?? (isDark ? "#ffffff" : "#000000");
+  const cBodyColor = slide.bodyColor ?? (isDark ? "rgba(255,255,255,0.68)" : "#333333");
+  const hdrFg = isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.28)";
+  const hdrFgBold = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.42)";
+  const dividerFg = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";
+  const imgPlaceholderBg = isDark ? "#222222" : "#f0f0f0";
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl shadow-2xl"
+      style={{ width: 400, height: 500, background: contentBg, flexShrink: 0, fontFamily: ff }}>
+      {/* Header row */}
+      <div className="flex justify-between items-center px-4 pt-3 pb-0" style={{ height: 36 }}>
+        <span style={{ fontSize: 8, color: hdrFg, fontWeight: 500 }}>Powered by {brand}</span>
+        <span style={{ fontSize: 8, color: hdrFg }}>{handle}</span>
+        <span style={{ fontSize: 8, color: hdrFgBold, fontWeight: 700 }}>{year} //</span>
+      </div>
+      <div className="absolute inset-x-4 h-px" style={{ top: 34, background: dividerFg }} />
+
+      {/* Content: accent bar → title → body → image fills rest */}
+      <div className="px-4 pt-3 pb-3" style={{ height: "calc(100% - 36px)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ width: 32, height: 2, background: accent, borderRadius: 2, flexShrink: 0 }} />
+        <div style={{ flex: "0 0 auto" }}>
+          <h2 style={{ fontSize: 20 * design.titleSize, fontWeight: 800, color: cTitleColor, lineHeight: 1.2, fontFamily: ff }}>
+            {renderHighlighted(slide.title, hw, accent, slide.wordStyles)}
+          </h2>
+        </div>
+        {slide.body && (
+          <div style={{ flex: "0 0 auto" }}>
+            {editable ? (
+              <EditableText value={slide.body} onCommit={(v) => onUpdate?.("body", v)} tag="p"
+                style={{ fontSize: 12, color: cBodyColor, lineHeight: 1.65, fontFamily: ff }} />
+            ) : (
+              <p style={{ fontSize: 12, color: cBodyColor, lineHeight: 1.65, fontFamily: ff }}>
+                {renderHighlighted(slide.body, hw, accent, slide.wordStyles)}
+              </p>
+            )}
+          </div>
+        )}
+        <div style={{ flex: 1, minHeight: 80, borderRadius: 6, overflow: "hidden", background: imgPlaceholderBg }}>
+          {slide.imageUrl
+            ? <img src={resolveImgUrl(slide.imageUrl)} style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} />
+            : <div className="w-full h-full flex items-center justify-center"><span style={{ fontSize: 10, color: "#888" }}>Imagem</span></div>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SlideGridItem ────────────────────────────────────────────────────────────
 
 function SlideGridItem({
@@ -557,11 +765,19 @@ function SlideGridItem({
       onClick={onClick}
     >
       <div style={{ transform: `scale(${SCALE})`, transformOrigin: "top left", width: 400, height: 500, pointerEvents: active ? "all" : "none" }}>
-        <ProtoSlideCard
-          key={active ? `${index}-active` : String(index)}
-          slide={slide} index={index} total={total} design={design}
-          editable={active} onUpdate={onUpdate}
-        />
+        {design.template === "editorial" ? (
+          <EditorialSlideCard
+            key={active ? `${index}-active` : String(index)}
+            slide={slide} index={index} total={total} design={design}
+            editable={active} onUpdate={onUpdate}
+          />
+        ) : (
+          <ProtoSlideCard
+            key={active ? `${index}-active` : String(index)}
+            slide={slide} index={index} total={total} design={design}
+            editable={active} onUpdate={onUpdate}
+          />
+        )}
       </div>
     </div>
   );
@@ -619,6 +835,51 @@ function _hexToRgba(hex: string, alpha: number): string {
   const g = parseInt(c.slice(2, 4), 16);
   const b = parseInt(c.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Renders a single line with per-word color/bold/italic overrides
+function _drawStyledLine(
+  ctx: CanvasRenderingContext2D,
+  line: string,
+  x: number,
+  y: number,
+  baseSz: number,
+  baseWeight: string,
+  ff: string,
+  baseColor: string,
+  wordStyles: WordStyle[],
+  tAlign: CanvasTextAlign
+): void {
+  if (!wordStyles.length) {
+    ctx.fillStyle = baseColor;
+    ctx.fillText(line, x, y);
+    return;
+  }
+  const tokens = line.split(/(\s+)/);
+  // measure total width for alignment
+  let totalW = 0;
+  for (const t of tokens) {
+    const ws = t.trim() ? wordStyles.find((s) => s.word.toLowerCase() === t.toLowerCase()) : undefined;
+    const w = ws?.bold ? "900" : baseWeight;
+    const it = ws?.italic ? "italic " : "";
+    ctx.font = `${it}${w} ${baseSz}px ${ff}, sans-serif`;
+    totalW += ctx.measureText(t).width;
+  }
+  let cx = tAlign === "center" ? x - totalW / 2 : tAlign === "right" ? x - totalW : x;
+  const savedAlign = ctx.textAlign;
+  ctx.textAlign = "left";
+  for (const t of tokens) {
+    const ws = t.trim() ? wordStyles.find((s) => s.word.toLowerCase() === t.toLowerCase()) : undefined;
+    const w = ws?.bold ? "900" : baseWeight;
+    const it = ws?.italic ? "italic " : "";
+    ctx.font = `${it}${w} ${baseSz}px ${ff}, sans-serif`;
+    ctx.fillStyle = ws?.color ?? baseColor;
+    ctx.fillText(t, cx, y);
+    cx += ctx.measureText(t).width;
+  }
+  ctx.textAlign = savedAlign;
+  // reset font to base
+  ctx.font = `${baseWeight} ${baseSz}px ${ff}, sans-serif`;
 }
 
 function _wrapCanvasText(
@@ -733,9 +994,9 @@ async function renderSlidesToDataUrls(
   slides: ProtoSlide[],
   design: DesignSettings
 ): Promise<string[]> {
-  const S = 2.7; // 1080×1350px — Instagram's recommended 4:5 portrait size
-  const W = 400 * S;
-  const H = 500 * S;
+  const W = 1080; // exact integer — 4:5 Instagram portrait
+  const H = 1350;
+  const S = W / 400; // scaling factor for coordinate calculations
   const PX = 32 * S;
   const PB = 40 * S;
   const ff = design.fontFamily.split(",")[0].trim().replace(/['"]/g, "") || "system-ui";
@@ -760,13 +1021,20 @@ async function renderSlidesToDataUrls(
     const isHook = slide.slideType === "hook" || i === 0;
     const isCta = slide.slideType === "cta" || i === slides.length - 1;
 
+    // Per-slide color overrides
+    const cBg = isHook ? (design.coverBgColor ?? design.bgColor) : design.bgColor;
+    const cAccent = isHook ? (design.coverAccentColor ?? design.accentColor) : design.accentColor;
+    const cAlign = isHook ? (design.coverTitleAlign ?? design.titleAlign) : design.titleAlign;
+
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     // Background
-    ctx.fillStyle = design.bgColor;
+    ctx.fillStyle = cBg;
     ctx.fillRect(0, 0, W, H);
 
     // Background image (non-CTA)
@@ -797,17 +1065,17 @@ async function renderSlidesToDataUrls(
       ctx.fillRect(0, 0, W, H);
     } else {
       const grd = ctx.createRadialGradient(W * 0.7, H * 1.1, 0, W * 0.7, H * 1.1, H * 0.65);
-      grd.addColorStop(0, _hexToRgba(design.accentColor, 0.09));
+      grd.addColorStop(0, _hexToRgba(cAccent, 0.09));
       grd.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
     }
 
     // Top stripe
-    ctx.fillStyle = design.accentColor;
+    ctx.fillStyle = cAccent;
     ctx.fillRect(0, 0, W, 3 * S);
 
-    const tAlign: CanvasTextAlign = design.titleAlign === "center" ? "center" : "left";
+    const tAlign: CanvasTextAlign = cAlign === "center" ? "center" : "left";
     const tX = tAlign === "center" ? W / 2 : PX;
 
     if (isHook) {
@@ -829,19 +1097,23 @@ async function renderSlidesToDataUrls(
 
       // Profile badge above accent bar
       if (design.profileImageUrl) {
-        _drawProfileBadge(ctx, profileImg, design, S, PX, y, PROFILE_IMG_SIZE, ff);
+        _drawProfileBadge(ctx, profileImg, { ...design, accentColor: cAccent }, S, PX, y, PROFILE_IMG_SIZE, ff);
         y += PROFILE_BADGE_H;
       }
 
-      ctx.fillStyle = design.accentColor;
+      ctx.fillStyle = cAccent;
       ctx.fillRect(tAlign === "center" ? (W - barW) / 2 : PX, y, barW, barH);
       y += barH + gap;
 
       ctx.textAlign = tAlign;
       ctx.font = `900 ${tsz}px ${ff}, sans-serif`;
-      ctx.fillStyle = "#ffffff";
       ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 12;
-      for (const line of tLines) { ctx.fillText(line, tX, y + tsz * 0.82); y += tsz * 1.15; }
+      const titleColor = slide.titleColor ?? "#ffffff";
+      const ws = slide.wordStyles ?? [];
+      for (const line of tLines) {
+        _drawStyledLine(ctx, line, tX, y + tsz * 0.82, tsz, "900", ff, titleColor, ws, tAlign);
+        y += tsz * 1.15;
+      }
       ctx.shadowBlur = 0; y += gap;
 
       if (bLines.length) {
@@ -866,7 +1138,7 @@ async function renderSlidesToDataUrls(
 
       ctx.font = `900 ${80 * S}px ${ff}, sans-serif`;
       ctx.textAlign = "left";
-      ctx.fillStyle = _hexToRgba(design.accentColor, 0.12);
+      ctx.fillStyle = _hexToRgba(cAccent, 0.12);
       ctx.fillText(slideNum, PX, 80 * S * 0.82 + 24);
 
       ctx.font = `900 ${tsz}px ${ff}, sans-serif`;
@@ -886,15 +1158,19 @@ async function renderSlidesToDataUrls(
         y += contentProfileBadgeH;
       }
 
-      ctx.fillStyle = design.accentColor;
+      ctx.fillStyle = cAccent;
       ctx.fillRect(tAlign === "center" ? (W - barW) / 2 : PX, y, barW, barH);
       y += barH + gap;
 
       ctx.textAlign = tAlign;
       ctx.font = `900 ${tsz}px ${ff}, sans-serif`;
-      ctx.fillStyle = "#ffffff";
       ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 12;
-      for (const line of tLines) { ctx.fillText(line, tX, y + tsz * 0.82); y += tsz * 1.15; }
+      const cTitleColor = slide.titleColor ?? "#ffffff";
+      const cWs = slide.wordStyles ?? [];
+      for (const line of tLines) {
+        _drawStyledLine(ctx, line, tX, y + tsz * 0.82, tsz, "900", ff, cTitleColor, cWs, tAlign);
+        y += tsz * 1.15;
+      }
       ctx.shadowBlur = 0; y += gap;
 
       if (bLines.length) {
@@ -916,9 +1192,9 @@ async function renderSlidesToDataUrls(
       // Decorative mark (shift up if profile badge present)
       const ctaProfileBadgeH = design.profileImageUrl ? (30 * S + 20 * S) : 0;
       const markShift = ctaProfileBadgeH / 2;
-      ctx.fillStyle = _hexToRgba(design.accentColor, 0.33);
+      ctx.fillStyle = _hexToRgba(cAccent, 0.33);
       ctx.fillRect(cx - 1.5 * S, H / 2 - 180 * S - markShift, 3 * S, 24 * S);
-      ctx.fillStyle = design.accentColor;
+      ctx.fillStyle = cAccent;
       ctx.fillRect(cx - 24 * S, H / 2 - 150 * S - markShift, 48 * S, 3 * S);
 
       let y = H / 2 - 130 * S - markShift;
@@ -953,12 +1229,12 @@ async function renderSlidesToDataUrls(
         const btnTW = ctx.measureText(slide.shortText).width;
         const bpx = 28 * S; const bpy = 14 * S;
         const btnW = btnTW + bpx * 2; const btnH = ctaSz + bpy * 2;
-        ctx.fillStyle = design.accentColor;
+        ctx.fillStyle = cAccent;
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(cx - btnW / 2, y, btnW, btnH, btnH / 2);
         else ctx.rect(cx - btnW / 2, y, btnW, btnH);
         ctx.fill();
-        ctx.fillStyle = design.bgColor;
+        ctx.fillStyle = cBg;
         ctx.fillText(slide.shortText, cx, y + btnH / 2 + ctaSz * 0.38);
         y += btnH + 40 * S;
       }
@@ -990,7 +1266,280 @@ async function renderSlidesToDataUrls(
     ctx.fillStyle = "rgba(255,255,255,0.2)";
     ctx.fillText(`${i + 1}/${slides.length}`, W - 20 * S, H - 12 * S);
 
-    results.push(canvas.toDataURL("image/jpeg", 0.88));
+    results.push(canvas.toDataURL("image/jpeg", 0.95));
+  }
+
+  return results;
+}
+
+// Wrapper that dispatches to the right renderer based on design.template
+async function renderSlidesToDataUrlsForTemplate(
+  slides: ProtoSlide[],
+  design: DesignSettings
+): Promise<string[]> {
+  if (design.template === "editorial") return renderEditorialSlidesToDataUrls(slides, design);
+  return renderSlidesToDataUrls(slides, design);
+}
+
+async function renderEditorialSlidesToDataUrls(
+  slides: ProtoSlide[],
+  design: DesignSettings
+): Promise<string[]> {
+  const W = 1080;
+  const H = 1350;
+  const S = W / 400;
+  const PX = 16 * S;
+  const ff = design.fontFamily.split(",")[0].trim().replace(/['"]/g, "") || "system-ui";
+  const accent = design.accentColor;
+  const coverAccent = design.coverAccentColor ?? accent;
+  const handle = design.profileHandle || "@handle";
+  const brand = design.profileName || "Content Machine";
+  const year = new Date().getFullYear();
+  const results: string[] = [];
+
+  // Pre-load profile image
+  let profileImg: HTMLImageElement | null = null;
+  if (design.profileImageUrl) {
+    try {
+      const src = design.profileImageUrl.startsWith("data:")
+        ? design.profileImageUrl
+        : resolveImgUrl(design.profileImageUrl) ?? design.profileImageUrl;
+      profileImg = await _loadImgCrossOrigin(src);
+    } catch { /* no profile image */ }
+  }
+
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i];
+    const isHook = slide.slideType === "hook" || i === 0;
+    const isCta = slide.slideType === "cta" || i === slides.length - 1;
+    const contentIndex = i - 1;
+    const isTypeA = !isHook && !isCta && contentIndex % 2 === 0;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    if (isHook) {
+      // Dark background
+      ctx.fillStyle = design.coverBgColor ?? "#111111";
+      ctx.fillRect(0, 0, W, H);
+
+      // Background image
+      if (slide.imageUrl) {
+        try {
+          const img = await _loadImgCrossOrigin(resolveImgUrl(slide.imageUrl) ?? slide.imageUrl);
+          const sc = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+          const dw = img.naturalWidth * sc; const dh = img.naturalHeight * sc;
+          ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        } catch { /* keep bg */ }
+      }
+
+      // Gradient overlay
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, "rgba(0,0,0,0.38)");
+      grad.addColorStop(0.42, "rgba(0,0,0,0.48)");
+      grad.addColorStop(1, "rgba(0,0,0,0.86)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Top bar
+      const topY = 16 * S;
+      ctx.font = `600 ${8 * S}px ${ff}, sans-serif`;
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.textAlign = "left";
+      ctx.fillText(brand.toUpperCase(), PX, topY);
+      ctx.textAlign = "right";
+      ctx.fillText(handle, W - PX, topY);
+
+      // Profile badge (photo or + circle)
+      let y = H - 120 * S;
+      const circleR = 11 * S;
+      if (profileImg) {
+        ctx.save(); ctx.beginPath(); ctx.arc(PX + circleR, y + circleR, circleR, 0, Math.PI * 2); ctx.clip();
+        ctx.drawImage(profileImg, PX, y, circleR * 2, circleR * 2); ctx.restore();
+        ctx.strokeStyle = coverAccent; ctx.lineWidth = 1.5 * S;
+        ctx.beginPath(); ctx.arc(PX + circleR, y + circleR, circleR, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        const smallR = 9 * S;
+        ctx.fillStyle = coverAccent;
+        ctx.beginPath(); ctx.arc(PX + smallR, y + smallR, smallR, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = `900 ${11 * S}px ${ff}, sans-serif`; ctx.textAlign = "center";
+        ctx.fillText("+", PX + smallR, y + smallR + 4 * S);
+      }
+      ctx.font = `700 ${11 * S}px ${ff}, sans-serif`; ctx.fillStyle = "white"; ctx.textAlign = "left";
+      ctx.fillText(handle, PX + circleR * 2 + 6 * S, y + circleR + 4 * S);
+      y += circleR * 2 + 14 * S;
+
+      // Title
+      const titleSz = Math.round(31 * S * design.titleSize);
+      const titleColor = slide.titleColor ?? "#ffffff";
+      ctx.font = `900 ${titleSz}px ${ff}, sans-serif`;
+      ctx.textAlign = "left";
+      const ews = slide.wordStyles ?? [];
+      const titleLines = _wrapCanvasText(ctx, slide.title.toUpperCase(), W - PX * 2);
+      for (const line of titleLines) {
+        _drawStyledLine(ctx, line, PX, y + titleSz * 0.82, titleSz, "900", ff, titleColor, ews, "left");
+        y += titleSz * 1.1;
+      }
+
+      // Subtitle
+      if (slide.body) {
+        const subSz = 10 * S;
+        ctx.font = `500 ${subSz}px ${ff}, sans-serif`;
+        ctx.fillStyle = slide.bodyColor ?? "rgba(255,255,255,0.62)";
+        ctx.fillText("→ " + slide.body, PX, y + subSz * 0.82 + 10 * S);
+      }
+
+      // Progress dots
+      const dotY = H - 14 * S;
+      const dotCount = slides.length;
+      const dotGap = 7 * S;
+      const activeW = 14 * S; const inactiveW = 5 * S;
+      const totalDotsW = activeW + (dotCount - 1) * (inactiveW + dotGap);
+      let dotX = (W - totalDotsW) / 2;
+      for (let d = 0; d < dotCount; d++) {
+        const dw = d === i ? activeW : inactiveW;
+        ctx.fillStyle = d === i ? "white" : "rgba(255,255,255,0.3)";
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(dotX, dotY, dw, 2 * S, S);
+        else ctx.rect(dotX, dotY, dw, 2 * S);
+        ctx.fill();
+        dotX += dw + dotGap;
+      }
+
+      // Counter
+      ctx.font = `${9 * S}px ${ff}, sans-serif`;
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.textAlign = "right";
+      ctx.fillText(`${i + 1}/${slides.length}`, W - PX, H - 10 * S);
+
+    } else if (isCta) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W, H);
+
+      // Header
+      const hdrY = 18 * S;
+      ctx.font = `500 ${8 * S}px ${ff}, sans-serif`; ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.textAlign = "left"; ctx.fillText(`Powered by ${brand}`, PX, hdrY);
+      ctx.textAlign = "center"; ctx.fillText(handle, W / 2, hdrY);
+      ctx.textAlign = "right"; ctx.font = `700 ${8 * S}px ${ff}, sans-serif`; ctx.fillStyle = "rgba(0,0,0,0.42)";
+      ctx.fillText(`${year} //`, W - PX, hdrY);
+      ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(PX, 24 * S, W - PX * 2, S);
+
+      // Center content
+      const cx2 = W / 2;
+      let y = H * 0.32;
+      ctx.fillStyle = accent; ctx.fillRect(cx2 - 24 * S, y, 48 * S, 3 * S); y += 22 * S;
+
+      const titleSz = Math.round(24 * S * design.titleSize);
+      ctx.font = `900 ${titleSz}px ${ff}, sans-serif`; ctx.textAlign = "center";
+      const ctaLines = _wrapCanvasText(ctx, slide.title, W - PX * 3);
+      ctx.fillStyle = slide.titleColor ?? "#000";
+      for (const line of ctaLines) { ctx.fillText(line, cx2, y + titleSz * 0.82); y += titleSz * 1.15; }
+      y += 10 * S;
+
+      if (slide.body) {
+        const bsz = 12 * S;
+        ctx.font = `${bsz}px ${ff}, sans-serif`; ctx.fillStyle = slide.bodyColor ?? "#555";
+        const bLines = _wrapCanvasText(ctx, slide.body, W - PX * 3);
+        for (const line of bLines) { ctx.fillText(line, cx2, y + bsz * 0.82); y += bsz * 1.55; }
+        y += bsz;
+      }
+
+      if (slide.shortText) {
+        const btnSz = 12 * S;
+        ctx.font = `700 ${btnSz}px ${ff}, sans-serif`;
+        const btnW = ctx.measureText(slide.shortText).width + 56 * S;
+        const btnH = btnSz + 28 * S;
+        ctx.fillStyle = accent;
+        if (ctx.roundRect) ctx.roundRect(cx2 - btnW / 2, y, btnW, btnH, btnH / 2);
+        else ctx.rect(cx2 - btnW / 2, y, btnW, btnH);
+        ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillText(slide.shortText, cx2, y + btnH / 2 + btnSz * 0.38);
+        y += btnH + 24 * S;
+      }
+
+      if (profileImg) {
+        const imgSz = 28 * S;
+        const badgeX = cx2 - imgSz / 2 - 30 * S;
+        ctx.save(); ctx.beginPath(); ctx.arc(badgeX + imgSz / 2, y + imgSz / 2, imgSz / 2, 0, Math.PI * 2); ctx.clip();
+        ctx.drawImage(profileImg, badgeX, y, imgSz, imgSz); ctx.restore();
+        ctx.font = `700 ${13 * S}px ${ff}, sans-serif`; ctx.fillStyle = "#000";
+        ctx.textAlign = "left";
+        ctx.fillText(handle, badgeX + imgSz + 8 * S, y + imgSz / 2 + 5 * S);
+      }
+
+    } else {
+      // Content slides — alternating white (isTypeA) / dark (!isTypeA)
+      const isDark = !isTypeA;
+      ctx.fillStyle = isDark ? "#111111" : "#ffffff";
+      ctx.fillRect(0, 0, W, H);
+
+      // Header row
+      const hdrY = 18 * S;
+      const hdrFg = isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.28)";
+      ctx.font = `500 ${8 * S}px ${ff}, sans-serif`; ctx.fillStyle = hdrFg;
+      ctx.textAlign = "left"; ctx.fillText(`Powered by ${brand}`, PX, hdrY);
+      ctx.textAlign = "center"; ctx.fillText(handle, W / 2, hdrY);
+      ctx.textAlign = "right"; ctx.font = `700 ${8 * S}px ${ff}, sans-serif`;
+      ctx.fillStyle = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.42)";
+      ctx.fillText(`${year} //`, W - PX, hdrY);
+      ctx.fillStyle = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";
+      ctx.fillRect(PX, 24 * S, W - PX * 2, S);
+
+      // Accent bar
+      let y = 34 * S + 12 * S;
+      ctx.fillStyle = accent;
+      ctx.fillRect(PX, y, 32 * S, 2 * S);
+      y += 2 * S + 12 * S;
+
+      // Title
+      const tsz = Math.round(20 * S * design.titleSize);
+      ctx.font = `800 ${tsz}px ${ff}, sans-serif`;
+      ctx.fillStyle = slide.titleColor ?? (isDark ? "#ffffff" : "#000000");
+      ctx.textAlign = "left";
+      const tLines = _wrapCanvasText(ctx, slide.title, W - PX * 2);
+      const contentWs = slide.wordStyles ?? [];
+      for (const line of tLines) {
+        _drawStyledLine(ctx, line, PX, y + tsz * 0.82, tsz, "800", ff, slide.titleColor ?? (isDark ? "#ffffff" : "#000000"), contentWs, "left");
+        y += tsz * 1.2;
+      }
+      y += 8 * S;
+
+      // Body text
+      if (slide.body) {
+        const bsz = 12 * S;
+        ctx.font = `${bsz}px ${ff}, sans-serif`;
+        ctx.fillStyle = slide.bodyColor ?? (isDark ? "rgba(255,255,255,0.68)" : "#333333");
+        const bLines = _wrapCanvasText(ctx, slide.body, W - PX * 2);
+        for (const line of bLines) { ctx.fillText(line, PX, y + bsz * 0.82); y += bsz * 1.65; }
+        y += 8 * S;
+      }
+
+      // Image fills all remaining space
+      const imgH = H - y - 10 * S;
+      if (imgH > 60 * S && slide.imageUrl) {
+        try {
+          const img = await _loadImgCrossOrigin(resolveImgUrl(slide.imageUrl) ?? slide.imageUrl);
+          const sc = Math.max((W - PX * 2) / img.naturalWidth, imgH / img.naturalHeight);
+          const dw = img.naturalWidth * sc; const dh = img.naturalHeight * sc;
+          ctx.save();
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(PX, y, W - PX * 2, imgH, 6 * S); ctx.clip(); }
+          ctx.drawImage(img, PX + ((W - PX * 2) - dw) / 2, y + (imgH - dh) / 2, dw, dh);
+          ctx.restore();
+        } catch {
+          ctx.fillStyle = isDark ? "#222222" : "#f0f0f0";
+          ctx.fillRect(PX, y, W - PX * 2, imgH);
+        }
+      } else if (imgH > 60 * S) {
+        ctx.fillStyle = isDark ? "#222222" : "#f0f0f0";
+        ctx.fillRect(PX, y, W - PX * 2, imgH);
+      }
+    }
+
+    results.push(canvas.toDataURL("image/jpeg", 0.95));
   }
 
   return results;
@@ -1020,6 +1569,7 @@ function buildProtoPayload(carousel: ProtoListItem) {
       shortText: s.shortText,
       imagePrompt: s.imagePrompt,
       highlightWords: s.highlightWords,
+      wordStyles: s.wordStyles,
     })),
   };
 }
@@ -1066,7 +1616,7 @@ function ProtoCarouselCard({
       const design: DesignSettings = carousel.designSettings
         ? { ...DEFAULT_DESIGN, ...(carousel.designSettings as Partial<DesignSettings>) }
         : DEFAULT_DESIGN;
-      const dataUrls = await renderSlidesToDataUrls(carousel.slides, design);
+      const dataUrls = await renderSlidesToDataUrlsForTemplate(carousel.slides, design);
       const zip = new JSZip();
       dataUrls.forEach((dataUrl, i) => {
         const svgContent = [
@@ -1256,6 +1806,8 @@ export default function PrototipoCarrossel() {
   const [igStyleInput, setIgStyleInput] = useState("");
   const [igStyleResult, setIgStyleResult] = useState<IgStyleAnalysis | null>(null);
   const [canvaExportingId, setCanvaExportingId] = useState<string | null>(null);
+  const [isUploadingSlideImg, setIsUploadingSlideImg] = useState(false);
+  const slideImgInputRef = useRef<HTMLInputElement>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const utils = trpc.useUtils();
 
@@ -1450,9 +2002,9 @@ export default function PrototipoCarrossel() {
     setResult((prev) => {
       if (!prev) return prev;
       const slides = [...prev.slides];
-      const current = slides[activeIdx].highlightWords ?? [];
-      if (current.some((w) => w.toLowerCase() === word.toLowerCase())) return prev;
-      slides[activeIdx] = { ...slides[activeIdx], highlightWords: [...current, word] };
+      const current = slides[activeIdx].wordStyles ?? [];
+      if (current.some((w) => w.word.toLowerCase() === word.toLowerCase())) return prev;
+      slides[activeIdx] = { ...slides[activeIdx], wordStyles: [...current, { word, color: design.accentColor }] };
       return { ...prev, slides };
     });
     setHighlightInput("");
@@ -1462,7 +2014,18 @@ export default function PrototipoCarrossel() {
     setResult((prev) => {
       if (!prev) return prev;
       const slides = [...prev.slides];
-      slides[activeIdx] = { ...slides[activeIdx], highlightWords: (slides[activeIdx].highlightWords ?? []).filter((_, i) => i !== idx) };
+      slides[activeIdx] = { ...slides[activeIdx], wordStyles: (slides[activeIdx].wordStyles ?? []).filter((_, i) => i !== idx) };
+      return { ...prev, slides };
+    });
+  };
+
+  const updateWordStyle = (idx: number, patch: Partial<WordStyle>) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const slides = [...prev.slides];
+      const ws = [...(slides[activeIdx].wordStyles ?? [])];
+      ws[idx] = { ...ws[idx], ...patch };
+      slides[activeIdx] = { ...slides[activeIdx], wordStyles: ws };
       return { ...prev, slides };
     });
   };
@@ -1486,6 +2049,7 @@ export default function PrototipoCarrossel() {
           shortText: s.shortText,
           imagePrompt: s.imagePrompt,
           highlightWords: s.highlightWords,
+          wordStyles: s.wordStyles,
           titleColor: s.titleColor,
           bodyColor: s.bodyColor,
         })),
@@ -1494,7 +2058,7 @@ export default function PrototipoCarrossel() {
 
       // Step 2: render slides with current design → data URLs
       toast.loading("Renderizando slides…", { id: "save-flow" });
-      const dataUrls = await renderSlidesToDataUrls(result.slides, design);
+      const dataUrls = await renderSlidesToDataUrlsForTemplate(result.slides, design);
 
       // Step 3: upload rendered images to public storage
       toast.loading("Enviando imagens…", { id: "save-flow" });
@@ -1522,6 +2086,7 @@ export default function PrototipoCarrossel() {
           shortText: s.shortText,
           imagePrompt: s.imagePrompt,
           highlightWords: s.highlightWords,
+          wordStyles: s.wordStyles,
           titleColor: s.titleColor,
           bodyColor: s.bodyColor,
         })),
@@ -1596,7 +2161,7 @@ export default function PrototipoCarrossel() {
         ? { ...DEFAULT_DESIGN, ...carousel.designSettings }
         : DEFAULT_DESIGN;
       toast.loading("Renderizando slides…", { id: "insta-pub" });
-      const dataUrls = await renderSlidesToDataUrls(carousel.slides, designToUse);
+      const dataUrls = await renderSlidesToDataUrlsForTemplate(carousel.slides, designToUse);
 
       toast.loading("Enviando para o Instagram…", { id: "insta-pub" });
       const result = await publishInstagramMutation.mutateAsync({
@@ -1640,7 +2205,7 @@ export default function PrototipoCarrossel() {
         urls = scheduleCarousel.slides.map((s) => s.renderedImageUrl!);
       } else {
         toast.loading("Renderizando slides…", { id: "insta-sched" });
-        const dataUrls = await renderSlidesToDataUrls(scheduleCarousel.slides, scheduleDesign);
+        const dataUrls = await renderSlidesToDataUrlsForTemplate(scheduleCarousel.slides, scheduleDesign);
         toast.loading("Salvando imagens na nuvem…", { id: "insta-sched" });
         ({ urls } = await uploadRenderedMutation.mutateAsync({
           carouselId: scheduleCarousel.id,
@@ -1778,8 +2343,34 @@ export default function PrototipoCarrossel() {
                     </div>
                     {/* Info */}
                     <div className="p-3 space-y-1.5">
+                      {igStyleResult.niche && (
+                        <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: igStyleResult.accentColor }}>{igStyleResult.niche}</p>
+                      )}
                       <p className="text-xs text-foreground leading-relaxed">{igStyleResult.styleSummary}</p>
                       <p className="text-[11px] text-muted-foreground italic">{igStyleResult.toneDescription}</p>
+                      {/* Carousel slide style comparison */}
+                      {(igStyleResult.coverSlideStyle || igStyleResult.contentSlideStyle) && (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {igStyleResult.coverSlideStyle && (
+                            <div className="rounded-lg overflow-hidden border border-border/30">
+                              <div className="flex items-center gap-1.5 px-2 py-1.5" style={{ background: igStyleResult.coverSlideStyle.bgColor }}>
+                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: igStyleResult.coverSlideStyle.accentColor }} />
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-white/80">Capa</span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground px-2 py-1.5 leading-relaxed">{igStyleResult.coverSlideStyle.description}</p>
+                            </div>
+                          )}
+                          {igStyleResult.contentSlideStyle && (
+                            <div className="rounded-lg overflow-hidden border border-border/30">
+                              <div className="flex items-center gap-1.5 px-2 py-1.5" style={{ background: igStyleResult.contentSlideStyle.bgColor }}>
+                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: igStyleResult.contentSlideStyle.accentColor }} />
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-white/80">Slides</span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground px-2 py-1.5 leading-relaxed">{igStyleResult.contentSlideStyle.description}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {/* Actions */}
                     <div className="px-3 pb-3 flex gap-2">
@@ -1790,19 +2381,22 @@ export default function PrototipoCarrossel() {
                         onClick={() => {
                           const preset: NamedDesignPreset = {
                             presetName: igStyleResult.profileHandle,
-                            accentColor: igStyleResult.accentColor,
-                            bgColor: igStyleResult.bgColor,
+                            accentColor: igStyleResult.contentSlideStyle?.accentColor ?? igStyleResult.accentColor,
+                            bgColor: igStyleResult.contentSlideStyle?.bgColor ?? igStyleResult.bgColor,
                             fontFamily: igStyleResult.fontFamily,
-                            titleAlign: igStyleResult.titleAlign,
+                            titleAlign: igStyleResult.contentSlideStyle?.titleAlign ?? igStyleResult.titleAlign,
                             titleSize: igStyleResult.titleSize,
                             profileName: igStyleResult.profileName,
                             profileHandle: igStyleResult.profileHandle,
                             profileImageUrl: igStyleResult.profileImageUrl,
+                            coverBgColor: igStyleResult.coverSlideStyle?.bgColor,
+                            coverAccentColor: igStyleResult.coverSlideStyle?.accentColor,
+                            coverTitleAlign: igStyleResult.coverSlideStyle?.titleAlign,
                           };
                           persistNamedPreset(preset);
                           setNamedPresets(loadNamedPresets());
-                          setDesign({ accentColor: preset.accentColor, bgColor: preset.bgColor, fontFamily: preset.fontFamily, titleAlign: preset.titleAlign, titleSize: preset.titleSize, profileName: preset.profileName, profileHandle: preset.profileHandle, profileImageUrl: preset.profileImageUrl });
-                          saveDesignAsDefault({ accentColor: preset.accentColor, bgColor: preset.bgColor, fontFamily: preset.fontFamily, titleAlign: preset.titleAlign, titleSize: preset.titleSize, profileName: preset.profileName, profileHandle: preset.profileHandle, profileImageUrl: preset.profileImageUrl });
+                          setDesign(preset);
+                          saveDesignAsDefault(preset);
                           toast.success(`Preset "${preset.presetName}" salvo e ativado!`);
                           setIgStyleOpen(false);
                         }}
@@ -2284,25 +2878,64 @@ export default function PrototipoCarrossel() {
                 </div>
               </div>
 
-              {/* Highlight words */}
+              {/* Word styles */}
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-                  Palavras em destaque
+                  Palavras com estilo
                 </label>
-                <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
-                  {(activeSlide.highlightWords ?? []).map((word, i) => (
-                    <span key={i}
-                      className="inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: design.accentColor + "22", color: design.accentColor, border: `1px solid ${design.accentColor}55` }}>
-                      {word}
-                      <button onClick={() => removeHighlightWord(i)} className="opacity-60 hover:opacity-100 ml-0.5 leading-none">×</button>
-                    </span>
+                {/* Title word chips — click to add */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {[...new Set(activeSlide.title.split(/\s+/).filter(Boolean))].map((word) => {
+                    const already = (activeSlide.wordStyles ?? []).some((ws) => ws.word.toLowerCase() === word.toLowerCase());
+                    return (
+                      <button key={word} disabled={already}
+                        onClick={() => { setHighlightInput(word); }}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                          already
+                            ? "border-transparent text-muted-foreground/30 cursor-default"
+                            : "border-border/60 text-muted-foreground bg-muted/30 hover:text-foreground hover:border-border"
+                        )}>
+                        {word}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Styled words list */}
+                <div className="space-y-1.5 mb-2">
+                  {(activeSlide.wordStyles ?? []).map((ws, i) => (
+                    <div key={i} className="flex items-center gap-1.5 bg-muted/20 rounded-lg px-2 py-1">
+                      <span className="text-xs font-semibold flex-1 truncate"
+                        style={{ color: ws.color ?? design.accentColor, fontWeight: ws.bold ? 900 : undefined, fontStyle: ws.italic ? "italic" : undefined }}>
+                        {ws.word}
+                      </span>
+                      <input type="color" value={ws.color ?? design.accentColor}
+                        onChange={(e) => updateWordStyle(i, { color: e.target.value })}
+                        className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent flex-shrink-0" />
+                      <button onClick={() => updateWordStyle(i, { bold: !ws.bold })}
+                        className={cn("w-6 h-6 rounded text-xs font-black flex items-center justify-center transition-colors flex-shrink-0",
+                          ws.bold ? "text-black" : "bg-muted/50 text-muted-foreground")}
+                        style={ws.bold ? { background: design.accentColor } : undefined}>
+                        B
+                      </button>
+                      <button onClick={() => updateWordStyle(i, { italic: !ws.italic })}
+                        className={cn("w-6 h-6 rounded text-xs italic flex items-center justify-center transition-colors flex-shrink-0",
+                          ws.italic ? "text-black" : "bg-muted/50 text-muted-foreground")}
+                        style={ws.italic ? { background: design.accentColor } : undefined}>
+                        I
+                      </button>
+                      <button onClick={() => removeHighlightWord(i)}
+                        className="w-5 h-5 flex items-center justify-center rounded opacity-40 hover:opacity-100 transition-opacity flex-shrink-0 text-xs">
+                        ×
+                      </button>
+                    </div>
                   ))}
                 </div>
+                {/* Add word input */}
                 <div className="flex gap-1.5">
                   <input
                     className="flex-1 h-7 rounded-md border border-border/40 bg-background px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                    placeholder="Digite a palavra..."
+                    placeholder="Digite ou clique na palavra acima…"
                     value={highlightInput}
                     onChange={(e) => setHighlightInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addHighlightWord(); } }}
@@ -2321,6 +2954,27 @@ export default function PrototipoCarrossel() {
 
             {/* Design */}
             <div className="p-4 space-y-4">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Template visual</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { id: "dark", label: "Dark", desc: "Foto full-bleed, texto sobre imagem" },
+                  { id: "editorial", label: "Editorial", desc: "Capa dark + slides brancos estilo revista" },
+                ] as const).map((t) => {
+                  const active = (design.template ?? "dark") === t.id;
+                  return (
+                    <button key={t.id}
+                      onClick={() => { const d = { ...design, template: t.id }; setDesign(d); saveDesignAsDefault(d); }}
+                      className={cn("p-2.5 rounded-xl text-left transition-all border", active
+                        ? "border-current bg-current/10"
+                        : "border-border/30 bg-muted/30 text-muted-foreground hover:border-border/60")}
+                      style={active ? { borderColor: design.accentColor, color: design.accentColor, backgroundColor: design.accentColor + "18" } : {}}>
+                      <div className="text-xs font-bold">{t.label}</div>
+                      <div className="text-[10px] mt-0.5 opacity-60 leading-tight">{t.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Perfis de design</p>
 
               {/* Named presets */}
@@ -2541,17 +3195,59 @@ export default function PrototipoCarrossel() {
                   <img src={resolveImgUrl(activeSlide.imageUrl)} className="w-full h-full object-cover" />
                 </div>
               )}
-              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8"
-                disabled={regenImageMutation.isPending}
-                onClick={() => regenImageMutation.mutate({
-                  carouselId: result.id, slideIndex: activeIdx, topic: result.topic, hook: result.hook,
-                  slideTitle: activeSlide.title, slideBody: activeSlide.body ?? "",
-                  currentSlides: result.slides.map((s) => ({ title: s.title, body: s.body ?? "", imageUrl: s.imageUrl, slideType: s.slideType, shortText: s.shortText, imagePrompt: s.imagePrompt, highlightWords: s.highlightWords })),
-                  imagePrompt: activeSlide.imagePrompt,
-                })}>
-                {regenImageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                Trocar imagem
-              </Button>
+              {/* Hidden file input for local upload */}
+              <input
+                ref={slideImgInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  e.target.value = "";
+                  setIsUploadingSlideImg(true);
+                  try {
+                    const res = await fetch("/api/upload-media", {
+                      method: "POST",
+                      headers: { "Content-Type": file.type },
+                      body: file,
+                      credentials: "include",
+                    });
+                    if (!res.ok) throw new Error(await res.text());
+                    const { url } = await res.json() as { url: string };
+                    setResult((prev) => {
+                      if (!prev) return prev;
+                      const sl = [...prev.slides];
+                      sl[activeIdx] = { ...sl[activeIdx], imageUrl: url };
+                      return { ...prev, slides: sl };
+                    });
+                    toast.success("Imagem carregada!");
+                  } catch (err) {
+                    toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : "falha"));
+                  } finally {
+                    setIsUploadingSlideImg(false);
+                  }
+                }}
+              />
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8"
+                  disabled={isUploadingSlideImg}
+                  onClick={() => slideImgInputRef.current?.click()}>
+                  {isUploadingSlideImg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  Do computador
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8"
+                  disabled={regenImageMutation.isPending}
+                  onClick={() => regenImageMutation.mutate({
+                    carouselId: result.id, slideIndex: activeIdx, topic: result.topic, hook: result.hook,
+                    slideTitle: activeSlide.title, slideBody: activeSlide.body ?? "",
+                    currentSlides: result.slides.map((s) => ({ title: s.title, body: s.body ?? "", imageUrl: s.imageUrl, slideType: s.slideType, shortText: s.shortText, imagePrompt: s.imagePrompt, highlightWords: s.highlightWords, wordStyles: s.wordStyles })),
+                    imagePrompt: activeSlide.imagePrompt,
+                  })}>
+                  {regenImageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Gerar com IA
+                </Button>
+              </div>
             </div>
 
             {/* Canva */}

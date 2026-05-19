@@ -63,6 +63,24 @@ function parseCarouselSlides(value: unknown): CarouselSlideData[] {
         title: typeof item.title === "string" ? item.title : "",
         body: typeof item.body === "string" ? item.body : "",
         imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+        profileId: typeof item.profileId === "string" ? item.profileId : undefined,
+        slideType: (item.slideType === "hook" || item.slideType === "development" || item.slideType === "cta") ? item.slideType : undefined,
+        shortText: typeof item.shortText === "string" ? item.shortText : undefined,
+        imagePrompt: typeof item.imagePrompt === "string" ? item.imagePrompt : undefined,
+        backgroundPrompt: typeof item.backgroundPrompt === "string" ? item.backgroundPrompt : undefined,
+        visualDirection: typeof item.visualDirection === "string" ? item.visualDirection : undefined,
+        layoutNotes: typeof item.layoutNotes === "string" ? item.layoutNotes : undefined,
+        highlightWords: Array.isArray(item.highlightWords) ? (item.highlightWords as string[]).filter((w) => typeof w === "string") : undefined,
+        wordStyles: Array.isArray(item.wordStyles)
+          ? (item.wordStyles as unknown[]).filter((w): w is Record<string, unknown> => typeof w === "object" && w !== null).map((w) => ({
+              word: typeof w.word === "string" ? w.word : "",
+              color: typeof w.color === "string" ? w.color : undefined,
+              bold: typeof w.bold === "boolean" ? w.bold : undefined,
+              italic: typeof w.italic === "boolean" ? w.italic : undefined,
+            })).filter((w) => w.word)
+          : undefined,
+        titleColor: typeof item.titleColor === "string" ? item.titleColor : undefined,
+        bodyColor: typeof item.bodyColor === "string" ? item.bodyColor : undefined,
         designTemplateName:
           typeof item.designTemplateName === "string" ? item.designTemplateName : undefined,
         designTemplateUrl:
