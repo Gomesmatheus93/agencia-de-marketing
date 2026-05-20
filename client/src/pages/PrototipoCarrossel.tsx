@@ -2218,7 +2218,7 @@ export default function PrototipoCarrossel() {
 
   if (phase === "list") {
     return (
-      <AppLayout activeModule="prototipo">
+      <AppLayout activeModule="carousel">
         <div className="p-6 max-w-7xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -2509,7 +2509,7 @@ export default function PrototipoCarrossel() {
 
   if (phase === "form") {
     return (
-      <AppLayout activeModule="prototipo">
+      <AppLayout activeModule="carousel">
         <div className="min-h-screen flex items-center justify-center p-6">
           <div className="w-full max-w-xl">
             {/* Back */}
@@ -2680,7 +2680,7 @@ export default function PrototipoCarrossel() {
 
   if (phase === "fetching") {
     return (
-      <AppLayout activeModule="prototipo">
+      <AppLayout activeModule="carousel">
         <div className="min-h-screen flex items-center justify-center p-6">
           <div className="w-full max-w-sm text-center">
             <div
@@ -2719,7 +2719,7 @@ export default function PrototipoCarrossel() {
 
   if (phase === "generating") {
     return (
-      <AppLayout activeModule="prototipo">
+      <AppLayout activeModule="carousel">
         <div className="min-h-screen flex items-center justify-center p-6">
           <div className="w-full max-w-sm text-center">
             <div
@@ -2766,7 +2766,7 @@ export default function PrototipoCarrossel() {
   const activeSlide = result.slides[activeIdx];
 
   return (
-    <AppLayout activeModule="prototipo">
+    <AppLayout activeModule="carousel">
       <div className="flex" style={{ height: "100vh" }}>
 
         {/* ── LEFT PANEL ─────────────────────────────────────────────────────── */}

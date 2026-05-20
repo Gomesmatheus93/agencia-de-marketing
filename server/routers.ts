@@ -6,7 +6,8 @@ import { adminRouter, featuresRouter } from "./_core/adminRouter";
 import { aiProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
-import { generateImage } from "./_core/imageGeneration";
+import { buildNewsletterHtml } from "./_core/newsletterTemplate";
+import { generateImage, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
 import {
   generateCarouselWithAgent,
   regenerateSlide,
@@ -182,12 +183,16 @@ const imagesRouter = router({
       z.object({
         prompt: z.string(),
         referenceImageUrl: z.string().optional(),
+        style: z.enum(["commercial", "produto", "banner", "social", "logo", "lifestyle"]).optional(),
+        size: z.enum(["1:1", "4:5", "16:9"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await generateImage({
         prompt: input.prompt,
         referenceImageUrl: input.referenceImageUrl,
+        style: input.style as ImageStyle | undefined,
+        size: input.size as ImageSize | undefined,
       });
       const imageUrl = result.url || "";
 
@@ -1292,6 +1297,71 @@ Formato de resposta JSON:
     .mutation(async ({ ctx, input }) => {
       await db.deleteArticle(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  generateNewsletter: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const article = await db.getArticle(input.id, ctx.user.id);
+      if (!article) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Artigo não encontrado" });
+      }
+
+      const llmResponse = await invokeLLM({
+        messages: [
+          {
+            role: "user",
+            content: `Você é um especialista em newsletters de e-mail. Transforme o artigo abaixo em conteúdo estruturado para uma newsletter visual em português brasileiro.
+
+Retorne APENAS um JSON válido (sem markdown, sem explicações) com esta estrutura:
+{
+  "preheader": "texto de preview curto (máx 90 caracteres)",
+  "intro": "parágrafo de abertura da newsletter (2-3 frases, tom próximo e direto com o leitor)",
+  "highlights": [
+    {"heading": "título do destaque", "text": "texto do destaque (2-3 frases)"}
+  ],
+  "conclusion": "parágrafo de fechamento com reflexão ou convite à leitura (2-3 frases)",
+  "ctaText": "texto do botão de CTA (ex: Leia o artigo completo)"
+}
+
+Inclua de 3 a 4 highlights com os pontos mais importantes do artigo. Use linguagem clara e envolvente.
+
+Título: ${article.title}
+Conteúdo: ${article.content.slice(0, 4000)}`,
+          },
+        ],
+        maxTokens: 1500,
+      });
+
+      const rawContent = llmResponse.choices[0]?.message?.content;
+      const llmText = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent ?? "");
+
+      let newsletterData: {
+        preheader: string;
+        intro: string;
+        highlights: { heading: string; text: string }[];
+        conclusion: string;
+        ctaText: string;
+      };
+
+      try {
+        const jsonMatch = llmText.match(/\{[\s\S]*\}/);
+        newsletterData = JSON.parse(jsonMatch?.[0] ?? llmText);
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Erro ao processar conteúdo da newsletter. Tente novamente.",
+        });
+      }
+
+      const htmlContent = buildNewsletterHtml({
+        title: article.title,
+        coverImageUrl: article.coverImageUrl,
+        sourceUrl: article.sourceUrl,
+        ...newsletterData,
+      });
+
+      return { subject: article.title, htmlContent };
     }),
 
   getStats: protectedProcedure.query(async ({ ctx }) => {

@@ -2,10 +2,80 @@ import fs from "fs";
 import path from "path";
 import { ENV } from "./env";
 
+export type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
+export type ImageSize = "1:1" | "4:5" | "16:9";
+
 export type GenerateImageOptions = {
   prompt: string;
   referenceImageUrl?: string;
+  style?: ImageStyle;
+  size?: ImageSize;
 };
+
+const STYLE_INSTRUCTIONS: Record<ImageStyle, string> = {
+  commercial: `Create a complete professional advertisement graphic design (not just a photo).
+Layout: bold headline text overlaid on image, product hero shot, marketing tagline, price or offer if mentioned, CTA button area.
+Style: dark dramatic background, high contrast, cinematic lighting on product, ultra-sharp details.
+Typography: large bold modern font for headline, clean sans-serif for body copy.
+Quality: professional ad agency level, social media ready, Brazilian marketing aesthetic.`,
+
+  produto: `Create a complete product advertisement graphic (like a professional e-commerce ad or social media sale post).
+Layout: product image as hero centered or angled, large bold product name as headline text, price prominently displayed (big, bold), 3-4 feature bullet points with icons on the side, "Compre Agora" or relevant CTA button at bottom.
+Style: dark or gradient background (black/navy/charcoal), electric accent color (blue, orange or brand color), high contrast, dramatic product lighting.
+Typography: ultra-bold headline, clean supporting text.
+Quality: professional Brazilian digital marketing ad, Instagram/Facebook ad level.`,
+
+  banner: `Create a complete advertising banner graphic design.
+Layout: strong bold headline text as focal point, supporting subheadline, product or offer image, prominent CTA button, logo area.
+Style: high contrast color scheme, bold typography hierarchy, modern graphic design elements (geometric shapes, gradients, lines).
+Typography: massive bold font for main message, clean readable body text.
+Quality: professional agency-level banner, print and digital ready.`,
+
+  social: `Create a complete social media advertisement post design (Instagram/Facebook ad style).
+Layout: eye-catching headline overlaid on image, product or person featured prominently, price or offer badge if relevant, CTA text, brand colors.
+Style: modern trendy aesthetic, high saturation, bold typography over image, clean composition.
+Typography: large impactful headline, supporting text, hashtag area.
+Quality: thumb-stopping social media ad, professionally designed, Brazilian audience.`,
+
+  logo: `Create a professional logo / brand mark design.
+Layout: centered symbol or wordmark, clean negative space, balanced composition.
+Style: minimalist, vector-clean, timeless, works on white background.
+Typography: strong brand typeface if wordmark, geometric or custom letterforms.
+Quality: professional brand identity design, scalable, versatile.`,
+
+  lifestyle: `Create a lifestyle commercial photograph with professional advertising quality.
+Scene: authentic real-life context with product or service naturally integrated, diverse relatable people if applicable.
+Style: natural warm lighting, shallow depth of field, cinematic color grade, editorial magazine quality.
+Mood: aspirational, authentic, energetic or calm depending on product.
+Quality: high-end advertising campaign photography, Brazilian lifestyle aesthetic.`,
+};
+
+const SIZE_MAP: Record<ImageSize, string> = {
+  "1:1": "1024x1024",
+  "4:5": "1024x1536",
+  "16:9": "1536x1024",
+};
+
+// All posts are 1080x1350 (4:5) for Instagram by default
+const DEFAULT_API_SIZE = "1024x1536";
+
+function buildEnhancedPrompt(prompt: string, style?: ImageStyle): string {
+  const instructions = style
+    ? STYLE_INSTRUCTIONS[style]
+    : STYLE_INSTRUCTIONS.commercial;
+  return `${instructions}\n\nUser request: ${prompt}`;
+}
+
+function buildReferencePrompt(prompt: string, style?: ImageStyle): string {
+  const instructions = style
+    ? STYLE_INSTRUCTIONS[style]
+    : STYLE_INSTRUCTIONS.commercial;
+  return `IMPORTANT — BRAND REFERENCE IMAGE: The attached image is a REFERENCE ONLY for brand identity (logo, colors, visual style, product). Do NOT copy, reproduce or edit this image. Use it only to extract brand elements (logo, colors, typography style) and create a completely NEW original advertisement design from scratch.
+
+${instructions}
+
+User request: ${prompt}`;
+}
 
 export type GenerateImageResponse = {
   url?: string;
@@ -92,12 +162,16 @@ function readUploadsAsset(assetUrl: string): StorageAsset | undefined {
   return { data, contentType, extension };
 }
 
+const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefined> {
   if (!/^https?:\/\//i.test(assetUrl)) {
     return undefined;
   }
 
-  const response = await fetch(assetUrl);
+  const response = await fetch(assetUrl, {
+    headers: { Accept: "image/jpeg,image/png,image/webp,image/*" },
+  });
   if (!response.ok) {
     throw new Error(
       `Failed to fetch reference image (${response.status} ${response.statusText})`
@@ -107,6 +181,12 @@ async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefin
   const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
   if (!mimeType.startsWith("image/")) {
     throw new Error("Reference image URL did not return an image file");
+  }
+
+  if (!OPENAI_SUPPORTED_IMAGE_TYPES.has(mimeType)) {
+    throw new Error(
+      `Formato de imagem não suportado: ${mimeType}. Use JPEG, PNG ou WEBP como referência.`
+    );
   }
 
   return {
@@ -144,11 +224,21 @@ function persistGeneratedImage(b64: string) {
 
 async function generateWithOpenAI(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   const referenceAsset = await resolveReferenceImageAsset(options.referenceImageUrl);
-  const isEditRequest = Boolean(referenceAsset);
-  const endpoint = isEditRequest ? "/images/edits" : "/images/generations";
+  const hasReference = Boolean(referenceAsset);
+
+  // Always use the edits endpoint when a reference is present (so the model can see the image),
+  // but the prompt explicitly instructs it to create a new design, not modify the reference.
+  const endpoint = hasReference ? "/images/edits" : "/images/generations";
   const url = `${ENV.openaiApiBaseUrl.replace(/\/$/, "")}${endpoint}`;
 
-  const requestInit: RequestInit = isEditRequest
+  // Always 1024x1536 (closest to Instagram's 1080×1350 / 4:5)
+  const apiSize = options.size ? SIZE_MAP[options.size] : DEFAULT_API_SIZE;
+
+  const prompt = hasReference
+    ? buildReferencePrompt(options.prompt, options.style)
+    : buildEnhancedPrompt(options.prompt, options.style);
+
+  const requestInit: RequestInit = hasReference
     ? (() => {
         const formData = new FormData();
         const blob = new Blob([new Uint8Array(referenceAsset!.data)], {
@@ -156,16 +246,14 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
         });
 
         formData.append("model", ENV.openaiImageModel);
-        formData.append("prompt", options.prompt);
-        formData.append("size", "1024x1536");
+        formData.append("prompt", prompt);
+        formData.append("size", apiSize);
         formData.append("quality", "high");
         formData.append("image", blob, `reference.${referenceAsset!.extension}`);
 
         return {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${ENV.openaiApiKey}`,
-          },
+          headers: { Authorization: `Bearer ${ENV.openaiApiKey}` },
           body: formData,
         };
       })()
@@ -177,9 +265,10 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
         },
         body: JSON.stringify({
           model: ENV.openaiImageModel,
-          prompt: options.prompt,
-          size: "1024x1536",
+          prompt,
+          size: apiSize,
           quality: "high",
+          output_format: "png",
         }),
       };
 
@@ -188,7 +277,7 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(
-      `OpenAI image ${isEditRequest ? "edit" : "generation"} failed (${response.status}): ${detail}`
+      `OpenAI image ${hasReference ? "edit" : "generation"} failed (${response.status}): ${detail}`
     );
   }
 
@@ -199,7 +288,7 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) {
     throw new Error(
-      `No image returned from OpenAI image ${isEditRequest ? "edit" : "generation"}`
+      `No image returned from OpenAI image ${hasReference ? "edit" : "generation"}`
     );
   }
 

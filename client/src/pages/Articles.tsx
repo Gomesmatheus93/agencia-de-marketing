@@ -33,6 +33,7 @@ import {
   RefreshCw,
   Send,
   Settings2,
+  Mail,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -135,6 +136,9 @@ export default function Articles() {
   const [selectedNews, setSelectedNews] = useState<EnergyNewsItem | null>(null);
   const [linkedinDiagnostic, setLinkedinDiagnostic] = useState<LinkedInDiagnostic | null>(null);
   const [showLinkedInDiagnostic, setShowLinkedInDiagnostic] = useState(false);
+  const [newsletterHtml, setNewsletterHtml] = useState<string | null>(null);
+  const [newsletterSubject, setNewsletterSubject] = useState<string>("");
+  const [showNewsletterDialog, setShowNewsletterDialog] = useState(false);
 
   const { data: articles = [], isLoading } = trpc.articles.getAll.useQuery();
 
@@ -240,6 +244,15 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
   });
 
+  const generateNewsletterMutation = trpc.articles.generateNewsletter.useMutation({
+    onSuccess: (result) => {
+      setNewsletterHtml(result.htmlContent);
+      setNewsletterSubject(result.subject);
+      setShowNewsletterDialog(true);
+    },
+    onError: (err) => toast.error("Erro ao gerar newsletter: " + err.message),
+  });
+
   const handleGenerate = () => {
     if (!topic.trim()) { toast.error("Digite um tema para o artigo"); return; }
     generateMutation.mutate({
@@ -312,6 +325,28 @@ export default function Articles() {
 
   const handleDiagnoseLinkedIn = () => {
     diagnoseLinkedInMutation.mutate();
+  };
+
+  const handleCreateNewsletter = (article: Article) => {
+    generateNewsletterMutation.mutate({ id: article.id });
+  };
+
+  const handleDownloadNewsletter = () => {
+    if (!newsletterHtml) return;
+    const blob = new Blob([newsletterHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${newsletterSubject.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-newsletter.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Newsletter baixada!");
+  };
+
+  const handleCopyNewsletterHtml = () => {
+    if (!newsletterHtml) return;
+    navigator.clipboard.writeText(newsletterHtml);
+    toast.success("HTML copiado!");
   };
 
   const formatDate = (date: Date) => new Date(date).toLocaleDateString("pt-BR", {
@@ -458,6 +493,20 @@ export default function Articles() {
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => handleDownload(selectedArticle)} className="h-8">
                       <Download className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleCreateNewsletter(selectedArticle)}
+                      disabled={generateNewsletterMutation.isPending}
+                      className="h-8 gap-1.5 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                    >
+                      {generateNewsletterMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Mail className="w-3.5 h-3.5" />
+                      )}
+                      Newsletter
                     </Button>
                     <Button
                       size="sm"
@@ -980,6 +1029,51 @@ export default function Articles() {
               ) : null}
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Newsletter preview dialog */}
+      <Dialog open={showNewsletterDialog} onOpenChange={setShowNewsletterDialog}>
+        <DialogContent className="glass-card flex flex-col h-[min(94vh,860px)] w-[min(96vw,780px)] max-w-none border-border/50 sm:max-w-none p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/30 flex-shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
+                  <Mail className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="truncate">Newsletter — {newsletterSubject}</span>
+              </DialogTitle>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCopyNewsletterHtml}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copiar HTML
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleDownloadNewsletter}
+                  className="h-8 gap-1.5 text-xs bg-violet-600 text-white hover:bg-violet-700 border-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Baixar .html
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-[#f1f5f9]">
+            {newsletterHtml && (
+              <iframe
+                srcDoc={newsletterHtml}
+                title="Preview da newsletter"
+                className="w-full h-full border-0"
+                sandbox="allow-same-origin"
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>

@@ -16,18 +16,58 @@ import {
   Copy,
   ImagePlus,
   Upload,
+  ShoppingBag,
+  Megaphone,
+  LayoutGrid,
+  Brush,
+  Camera,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
  
-const promptSuggestions = [
-  "Logo minimalista para agência de marketing digital, estilo Apple",
-  "Banner profissional para LinkedIn com gradiente azul e roxo",
-  "Post Instagram com design moderno para lançamento de produto",
-  "Ilustração abstrata para campanha de marketing, cores vibrantes",
-  "Foto de produto em fundo branco, iluminação profissional",
-  "Infográfico moderno sobre marketing digital",
+type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
+const STYLE_OPTIONS: { id: ImageStyle; label: string; icon: React.ComponentType<{ className?: string }>; desc: string }[] = [
+  { id: "commercial", label: "Geral", icon: Sparkles, desc: "Foto comercial de alta qualidade" },
+  { id: "produto",    label: "Produto",   icon: ShoppingBag, desc: "E-commerce e catálogos" },
+  { id: "banner",     label: "Banner",    icon: Megaphone,   desc: "Anúncios e publicidade" },
+  { id: "social",     label: "Social",    icon: LayoutGrid,  desc: "Feed e stories" },
+  { id: "logo",       label: "Logo",      icon: Brush,       desc: "Identidade visual" },
+  { id: "lifestyle",  label: "Lifestyle", icon: Camera,      desc: "Fotos ambientadas" },
 ];
+
+
+const STYLE_SUGGESTIONS: Record<ImageStyle, string[]> = {
+  commercial: [
+    "Campanha publicitária para marca de luxo, elegante e sofisticado",
+    "Anúncio digital moderno para startup de tecnologia, cores azul e branco",
+    "Visual para campanha de marketing sazonal, estilo editorial",
+  ],
+  produto: [
+    "Frasco de perfume em fundo branco, reflexo no vidro, iluminação de produto",
+    "Tênis esportivo flutuando em fundo preto, splash de tinta colorida",
+    "Caixa de produto de cosmético premium em superfície mármore, minimalista",
+  ],
+  banner: [
+    "Banner de promoção Black Friday, vermelho e preto, tipografia bold",
+    "Header para site de agência criativa, gradiente roxo e azul, moderno",
+    "Banner LinkedIn para empresa de consultoria, profissional e clean",
+  ],
+  social: [
+    "Post carrossel para lançamento de produto tech, estilo Apple",
+    "Stories motivacional para marca fitness, energia e movimento",
+    "Post feed para restaurante gourmet, prato fotografado de cima, flat lay",
+  ],
+  logo: [
+    "Logo minimalista para agência de marketing digital, letra K, dourado",
+    "Ícone de app para plataforma de educação online, roxo e branco",
+    "Símbolo corporativo para empresa de energia sustentável, verde e cinza",
+  ],
+  lifestyle: [
+    "Empreendedor usando laptop em café moderno, luz natural, produtivo",
+    "Equipe de trabalho em reunião criativa, escritório moderno, diversidade",
+    "Influencer segurando produto de beleza, estúdio clean, tom pastel",
+  ],
+};
  
 // Reference Image Upload Component
 function ReferenceImageUpload({
@@ -40,6 +80,8 @@ function ReferenceImageUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
  
+  const SUPPORTED_EDIT_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
   const handleFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast.error("Selecione apenas arquivos de imagem");
@@ -49,9 +91,39 @@ function ReferenceImageUpload({
       toast.error("A imagem deve ter no máximo 10MB");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => onChange(e.target?.result as string);
-    reader.readAsDataURL(file);
+
+    const needsConversion = !SUPPORTED_EDIT_TYPES.includes(file.type);
+
+    if (!needsConversion) {
+      const reader = new FileReader();
+      reader.onload = (e) => onChange(e.target?.result as string);
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Convert unsupported formats (avif, gif, tiff, bmp, etc.) to PNG via canvas
+    const objectUrl = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(objectUrl);
+        toast.error("Erro ao processar imagem");
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      const dataUrl = canvas.toDataURL("image/png");
+      URL.revokeObjectURL(objectUrl);
+      onChange(dataUrl);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      toast.error("Não foi possível carregar esta imagem. Tente PNG, JPG ou WEBP.");
+    };
+    img.src = objectUrl;
   };
  
   const handleDrop = (e: React.DragEvent) => {
@@ -142,9 +214,10 @@ export default function Images() {
   const [prompt, setPrompt] = useState("");
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
   const [selectedImage, setSelectedImage] = useState<{ id: number; imageUrl: string; prompt: string } | null>(null);
- 
+  const [style, setStyle] = useState<ImageStyle>("commercial");
+
   const { data: images = [], isLoading } = trpc.images.getAll.useQuery();
- 
+
   const generateMutation = trpc.images.generate.useMutation({
     onSuccess: () => {
       utils.images.getAll.invalidate();
@@ -173,10 +246,11 @@ export default function Images() {
     generateMutation.mutate({
       prompt: prompt.trim(),
       referenceImageUrl: referenceImageUrl || undefined,
+      style,
     });
   };
  
-  const handleDownload = async (url: string, promptText: string) => {
+  const handleDownload = async (url: string, _promptText: string) => {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
@@ -206,53 +280,80 @@ export default function Images() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md">
               <Image className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm text-muted-foreground font-medium">Geração de Imagens</span>
+            <span className="text-sm text-muted-foreground font-medium">Imagens Comerciais</span>
           </div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Crie imagens com <span className="gradient-text">Inteligência Artificial</span>
+            Gere imagens <span className="gradient-text">comerciais com IA</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Descreva a imagem que deseja criar e a IA irá gerá-la para você.
+            Powered by <strong>gpt-image-1</strong> — o modelo mais avançado da OpenAI para criação de imagens.
           </p>
         </div>
- 
+
         {/* Generator */}
-        <div className="glass-card p-6 space-y-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+        <div className="glass-card p-6 space-y-5 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           <div className="flex items-center gap-2">
             <Wand2 className="w-4 h-4 text-primary" />
-            <h2 className="font-semibold text-sm text-foreground">Novo prompt</h2>
+            <h2 className="font-semibold text-sm text-foreground">Nova imagem</h2>
           </div>
- 
+
+          {/* Style selector */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Estilo</p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {STYLE_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const isActive = style === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setStyle(opt.id)}
+                    disabled={generateMutation.isPending}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs font-medium transition-all duration-150",
+                      isActive
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/40 bg-accent/20 text-muted-foreground hover:border-border hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Descreva a imagem que você quer criar... Ex: 'Logo minimalista para startup de tecnologia com cores azul e branco'"
-            className="resize-none min-h-[100px] glass border-border/50 focus:border-primary/50 rounded-xl text-sm"
+            placeholder="Descreva a imagem comercial que você quer criar..."
+            className="resize-none min-h-[90px] glass border-border/50 focus:border-primary/50 rounded-xl text-sm"
             disabled={generateMutation.isPending}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
           />
- 
-          {/* Reference image upload */}
-          <ReferenceImageUpload
-            value={referenceImageUrl}
-            onChange={setReferenceImageUrl}
-          />
- 
-          {/* Suggestions */}
+
+          {/* Suggestions for selected style */}
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground font-medium">Sugestões de prompts:</p>
+            <p className="text-xs text-muted-foreground font-medium">Sugestões para "{STYLE_OPTIONS.find(s => s.id === style)?.label}":</p>
             <div className="flex flex-wrap gap-2">
-              {promptSuggestions.map((s) => (
+              {STYLE_SUGGESTIONS[style].map((s) => (
                 <button
                   key={s}
                   onClick={() => setPrompt(s)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-accent/60 hover:bg-accent text-muted-foreground hover:text-foreground transition-all duration-150"
+                  disabled={generateMutation.isPending}
+                  className="text-xs px-3 py-1.5 rounded-full bg-accent/60 hover:bg-accent text-muted-foreground hover:text-foreground transition-all duration-150 text-left"
                 >
-                  {s.slice(0, 40)}...
+                  {s.length > 52 ? s.slice(0, 52) + "…" : s}
                 </button>
               ))}
             </div>
           </div>
- 
+
+          {/* Reference image upload */}
+          <ReferenceImageUpload value={referenceImageUrl} onChange={setReferenceImageUrl} />
+
           <div className="flex items-center justify-end">
             <Button
               onClick={handleGenerate}
@@ -262,7 +363,7 @@ export default function Images() {
               {generateMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Gerando...
+                  Gerando imagem comercial...
                 </>
               ) : (
                 <>
@@ -272,14 +373,13 @@ export default function Images() {
               )}
             </Button>
           </div>
- 
-          {/* Loading preview */}
+
           {generateMutation.isPending && (
             <div className="rounded-xl overflow-hidden border border-border/30">
               <div className="aspect-square max-w-xs mx-auto shimmer flex items-center justify-center">
                 <div className="text-center space-y-2">
                   <Loader2 className="w-8 h-8 text-muted-foreground/40 animate-spin mx-auto" />
-                  <p className="text-xs text-muted-foreground">Gerando sua imagem...</p>
+                  <p className="text-xs text-muted-foreground">Gerando imagem comercial de alta qualidade...</p>
                 </div>
               </div>
             </div>
