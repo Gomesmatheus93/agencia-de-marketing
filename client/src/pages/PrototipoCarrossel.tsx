@@ -392,11 +392,7 @@ function ProtoSlideCard({
             style={{ width: 44, height: 3, background: activeAccent }}
           />
           <h1 style={titleStyle} className="mb-3">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h1>
-          {editable ? (
-            <EditableText value={slide.body ?? ""} onCommit={(v) => onUpdate?.("body", v)} tag="p" style={bodyStyle} />
-          ) : (
-            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>
-          )}
+          {slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>}
           <p
             className="mt-5 font-medium tracking-widest uppercase pointer-events-none"
             style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: design.fontFamily }}
@@ -448,11 +444,7 @@ function ProtoSlideCard({
             style={{ width: 32, height: 3, background: design.accentColor }}
           />
           <h2 style={{ ...titleStyle, fontSize: `${28 * design.titleSize}px` }} className="mb-3">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h2>
-          {editable ? (
-            <EditableText value={slide.body ?? ""} onCommit={(v) => onUpdate?.("body", v)} tag="p" style={bodyStyle} />
-          ) : (
-            slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>
-          )}
+          {slide.body && <p style={bodyStyle}>{renderHighlighted(slide.body, hw, hc, slide.wordStyles)}</p>}
         </div>
       )}
 
@@ -503,14 +495,10 @@ function ProtoSlideCard({
           <h1 style={{ ...titleStyle, fontSize: `${30 * design.titleSize}px`, textAlign: "center", lineHeight: 1.1 }} className="mb-4">{renderHighlighted(slide.title, hw, hc, slide.wordStyles)}</h1>
 
           {/* Body */}
-          {editable ? (
-            <EditableText value={slide.body ?? ""} onCommit={(v) => onUpdate?.("body", v)} tag="p" style={{ ...bodyStyle, fontSize: `${14 * design.titleSize}px`, textAlign: "center", lineHeight: 1.6 }} className="mb-7" />
-          ) : (
-            slide.body && (
-              <p style={{ ...bodyStyle, fontSize: `${14 * design.titleSize}px`, textAlign: "center", lineHeight: 1.6 }} className="mb-7">
-                {renderHighlighted(slide.body, hw, hc, slide.wordStyles)}
-              </p>
-            )
+          {slide.body && (
+            <p style={{ ...bodyStyle, fontSize: `${14 * design.titleSize}px`, textAlign: "center", lineHeight: 1.6 }} className="mb-7">
+              {renderHighlighted(slide.body, hw, hc, slide.wordStyles)}
+            </p>
           )}
 
           {/* Primary CTA — specific action from the AI */}
@@ -628,14 +616,9 @@ function EditorialSlideCard({
             {renderHighlighted(slide.title, hw, accent, slide.wordStyles)}
           </h1>
           {slide.body && (
-            editable ? (
-              <EditableText value={slide.body} onCommit={(v) => onUpdate?.("body", v)} tag="p"
-                style={{ fontSize: 10, color: slide.bodyColor ?? "rgba(255,255,255,0.62)", fontFamily: ff, fontWeight: 500, letterSpacing: 0.3 }} />
-            ) : (
-              <p style={{ fontSize: 10, color: slide.bodyColor ?? "rgba(255,255,255,0.62)", fontFamily: ff, fontWeight: 500, letterSpacing: 0.3 }}>
-                → {slide.body}
-              </p>
-            )
+            <p style={{ fontSize: 10, color: slide.bodyColor ?? "rgba(255,255,255,0.62)", fontFamily: ff, fontWeight: 500, letterSpacing: 0.3 }}>
+              → {slide.body}
+            </p>
           )}
         </div>
 
@@ -721,14 +704,9 @@ function EditorialSlideCard({
         </div>
         {slide.body && (
           <div style={{ flex: "0 0 auto" }}>
-            {editable ? (
-              <EditableText value={slide.body} onCommit={(v) => onUpdate?.("body", v)} tag="p"
-                style={{ fontSize: 12, color: cBodyColor, lineHeight: 1.65, fontFamily: ff }} />
-            ) : (
-              <p style={{ fontSize: 12, color: cBodyColor, lineHeight: 1.65, fontFamily: ff }}>
-                {renderHighlighted(slide.body, hw, accent, slide.wordStyles)}
-              </p>
-            )}
+            <p style={{ fontSize: 12, color: cBodyColor, lineHeight: 1.65, fontFamily: ff }}>
+              {renderHighlighted(slide.body, hw, accent, slide.wordStyles)}
+            </p>
           </div>
         )}
         <div style={{ flex: 1, minHeight: 80, borderRadius: 6, overflow: "hidden", background: imgPlaceholderBg }}>
@@ -1597,7 +1575,7 @@ function ProtoCarouselCard({
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   // coverImageUrl is set by the generate endpoint to slides[0].imageUrl — more reliable than slides[0].imageUrl directly
-  const thumbUrl = carousel.coverImageUrl || carousel.slides[0]?.imageUrl || null;
+  const thumbUrl = carousel.slides[0]?.renderedImageUrl || carousel.coverImageUrl || carousel.slides[0]?.imageUrl || null;
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation();
   const act = (e: React.MouseEvent<HTMLButtonElement>, fn: () => void) => {
     e.stopPropagation();
@@ -1786,7 +1764,7 @@ export default function PrototipoCarrossel() {
   const [topic, setTopic] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
   const [slideCount, setSlideCount] = useState(5);
-  const [format, setFormat] = useState<"feed" | "story">("feed");
+  const format = "feed" as const;
   const [tone, setTone] = useState<"educativo" | "viral" | "vendas">("viral");
   const [genStep, setGenStep] = useState(0);
   const [result, setResult] = useState<ProtoResult | null>(null);
@@ -2650,26 +2628,6 @@ export default function PrototipoCarrossel() {
                 </div>
               </div>
 
-              {/* Format */}
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">Formato</label>
-                <div className="flex gap-1.5 p-1 rounded-xl bg-muted/40">
-                  {(["feed", "story"] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setFormat(f)}
-                      className={cn(
-                        "flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
-                        format === f
-                          ? "bg-background shadow-sm text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {f === "feed" ? "Feed (4:5)" : "Story (9:16)"}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Tone */}
               <div>

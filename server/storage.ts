@@ -362,6 +362,27 @@ async function awsPut(
   return { key, url: buildAwsPublicUrl(config, key) };
 }
 
+export async function getPresignedUploadUrl(
+  key: string,
+  contentType: string
+): Promise<string | null> {
+  const provider = getStorageProvider();
+  if (provider !== "aws") return null;
+
+  const config = getAwsStorageConfig();
+  return getSignedUrl(
+    getS3Client(config),
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: normalizeKey(key),
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000, immutable",
+      ContentDisposition: "inline",
+    }),
+    { expiresIn: 3600 }
+  );
+}
+
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,

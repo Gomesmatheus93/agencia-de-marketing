@@ -147,11 +147,14 @@ export default function Posts() {
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formScheduledAt, setFormScheduledAt] = useState("");
-  const [formImageUrl, setFormImageUrl] = useState("");
-  const [formMediaType, setFormMediaType] = useState<"image" | "video" | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [formImageUrls, setFormImageUrls] = useState<string[]>([]);
+  const [formMediaTypes, setFormMediaTypes] = useState<("image" | "video")[]>([]);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadingSlotRef = useRef<number>(0);
+
+  const MAX_IMAGES = 10;
 
   const { data: posts = [], isLoading } = trpc.posts.getAll.useQuery({ channel: activeChannel });
 
@@ -197,24 +200,17 @@ export default function Posts() {
     setFormTitle("");
     setFormContent("");
     setFormScheduledAt("");
-    setFormImageUrl("");
-    setFormMediaType(null);
-    setIsUploading(false);
+    setFormImageUrls([]);
+    setFormMediaTypes([]);
+    setUploadingIdx(null);
     analyzeImageMutation.reset();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-
+  const uploadFile = async (file: File, slotIdx: number) => {
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
 
-    if (!isImage && !isVideo) {
-      toast.error("Selecione apenas imagens ou vídeos");
-      return;
-    }
+    if (!isImage && !isVideo) { toast.error("Selecione apenas imagens ou vídeos"); return; }
 
     const maxSize = isVideo ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
     if (file.size > maxSize) {
@@ -222,49 +218,92 @@ export default function Posts() {
       return;
     }
 
-    // For small images use local data URL (no round-trip needed for preview)
+    // Small images: use data URL directly
     if (isImage && file.size <= 4 * 1024 * 1024) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string;
-        if (dataUrl) { setFormImageUrl(dataUrl); setFormMediaType("image"); }
+        if (!dataUrl) return;
+        setFormImageUrls((prev) => { const a = [...prev]; a[slotIdx] = dataUrl; return a; });
+        setFormMediaTypes((prev) => { const a = [...prev]; a[slotIdx] = "image"; return a; });
       };
       reader.readAsDataURL(file);
       return;
     }
 
-    // Large images and all videos: upload directly to /api/upload-media (bypasses JSON body limit)
-    setIsUploading(true);
-    const toastId = isVideo ? "media-upload" : undefined;
-    if (toastId) toast.loading("Enviando vídeo...", { id: toastId });
+    // Large files: try presigned S3 URL first, then fallback to upload-media
+    setUploadingIdx(slotIdx);
+    const toastId = `upload-${slotIdx}`;
+    toast.loading(isVideo ? "Enviando vídeo…" : "Enviando imagem…", { id: toastId });
     try {
-      const res = await fetch("/api/upload-media", {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const { url } = await res.json() as { url: string };
-      setFormImageUrl(url);
-      setFormMediaType(isVideo ? "video" : "image");
-      if (toastId) toast.success("Vídeo enviado!", { id: toastId });
+      // Try presigned upload (S3 only — bypasses proxy for large files)
+      let url: string | null = null;
+      try {
+        const presignRes = await fetch("/api/request-presigned-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentType: file.type }),
+          credentials: "include",
+        });
+        if (presignRes.ok) {
+          const { presignedUrl, publicUrl } = await presignRes.json() as { presignedUrl: string | null; publicUrl: string };
+          if (presignedUrl) {
+            const putRes = await fetch(presignedUrl, {
+              method: "PUT",
+              headers: { "Content-Type": file.type },
+              body: file,
+            });
+            if (putRes.ok) url = publicUrl;
+          }
+        }
+      } catch { /* presigned not available, fall through */ }
+
+      // Fallback: upload through Express server
+      if (!url) {
+        const res = await fetch("/api/upload-media", {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(await res.text());
+        ({ url } = await res.json() as { url: string });
+      }
+
+      setFormImageUrls((prev) => { const a = [...prev]; a[slotIdx] = url!; return a; });
+      setFormMediaTypes((prev) => { const a = [...prev]; a[slotIdx] = isVideo ? "video" : "image"; return a; });
+      toast.success(isVideo ? "Vídeo enviado!" : "Imagem enviada!", { id: toastId });
     } catch (err) {
-      toast.error("Erro ao enviar arquivo: " + (err instanceof Error ? err.message : String(err)),
-        toastId ? { id: toastId } : undefined);
+      toast.error("Erro ao enviar: " + (err instanceof Error ? err.message : String(err)), { id: toastId });
     } finally {
-      setIsUploading(false);
+      setUploadingIdx(null);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+
+    const startIdx = formImageUrls.filter(Boolean).length;
+    const remaining = MAX_IMAGES - startIdx;
+    const toUpload = files.slice(0, remaining);
+
+    for (let i = 0; i < toUpload.length; i++) {
+      await uploadFile(toUpload[i]!, startIdx + i);
     }
   };
 
   const handleCreate = () => {
     if (!formContent.trim()) { toast.error("O conteúdo é obrigatório"); return; }
+    const imageUrls = formImageUrls.filter(Boolean);
     createMutation.mutate({
       channel: activeChannel,
       title: formTitle || undefined,
       content: formContent,
       scheduledAt: formScheduledAt || undefined,
-      imageUrl: formImageUrl || undefined,
+      imageUrl: imageUrls[0] || undefined,
+      extraImageUrls: imageUrls.slice(1),
     });
   };
 
@@ -519,83 +558,87 @@ export default function Posts() {
                 {/* Left — media upload */}
                 {cfg.supportsImage && (
                   <div className="md:w-[340px] shrink-0 space-y-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Imagem ou vídeo{" "}
-                      {activeChannel === "instagram"
-                        ? <span className="text-destructive">*</span>
-                        : <span className="normal-case font-normal text-muted-foreground/60">(opcional)</span>}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Mídia{" "}
+                        {activeChannel === "instagram"
+                          ? <span className="text-destructive">*</span>
+                          : <span className="normal-case font-normal text-muted-foreground/60">(opcional)</span>}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground">{formImageUrls.filter(Boolean).length}/{MAX_IMAGES}</span>
+                    </div>
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept="image/*,video/*"
+                      multiple
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    {isUploading ? (
-                      <div className="flex w-full aspect-[4/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary/40 bg-muted/30">
-                        <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                        <p className="text-sm font-medium text-foreground">Enviando arquivo...</p>
-                        <p className="text-xs text-muted-foreground">Aguarde</p>
-                      </div>
-                    ) : formImageUrl ? (
-                      <div className="group relative">
-                        <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-border/40 bg-muted shadow-sm">
-                          {formMediaType === "video" ? (
-                            <video
-                              src={resolveImgUrl(formImageUrl)}
-                              className="h-full w-full object-cover"
-                              controls={false}
-                              muted
-                              playsInline
-                              autoPlay
-                              loop
-                            />
-                          ) : (
-                            <img src={resolveImgUrl(formImageUrl)} alt="Preview" className="h-full w-full object-cover" />
-                          )}
-                        </div>
-                        {formMediaType === "video" && (
-                          <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
-                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                            Vídeo
+                    {/* Media grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {Array.from({ length: Math.min(MAX_IMAGES, formImageUrls.filter(Boolean).length + 1) }).map((_, idx) => {
+                        const url = formImageUrls[idx];
+                        const mediaType = formMediaTypes[idx];
+                        const isUploading = uploadingIdx === idx;
+
+                        if (isUploading) return (
+                          <div key={idx} className="aspect-[4/5] rounded-xl border-2 border-dashed border-primary/40 bg-muted/30 flex flex-col items-center justify-center gap-1.5">
+                            <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                            <p className="text-[10px] text-muted-foreground">Enviando…</p>
                           </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-2">
+                        );
+
+                        if (url) return (
+                          <div key={idx} className="group relative aspect-[4/5] rounded-xl overflow-hidden border border-border/40 bg-muted shadow-sm">
+                            {mediaType === "video" ? (
+                              <video src={resolveImgUrl(url)} className="w-full h-full object-cover" muted playsInline autoPlay loop />
+                            ) : (
+                              <img src={resolveImgUrl(url)} alt="" className="w-full h-full object-cover" />
+                            )}
+                            {mediaType === "video" && (
+                              <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-black/60 text-white text-[9px] font-medium px-1.5 py-0.5 rounded-full">
+                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                Vídeo
+                              </div>
+                            )}
+                            {idx === 0 && (
+                              <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">1ª</div>
+                            )}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormImageUrls((p) => p.filter((_, i) => i !== idx));
+                                  setFormMediaTypes((p) => p.filter((_, i) => i !== idx));
+                                  if (idx === 0) analyzeImageMutation.reset();
+                                }}
+                                className="p-1.5 rounded-lg bg-red-500/80 text-white hover:bg-red-500 transition"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+
+                        // Empty slot
+                        return (
                           <button
+                            key={idx}
                             type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 text-white text-xs font-medium hover:bg-white/30 transition"
+                            onClick={() => {
+                              uploadingSlotRef.current = idx;
+                              fileInputRef.current?.click();
+                            }}
+                            className="aspect-[4/5] rounded-xl border-2 border-dashed border-border/50 bg-muted/20 flex flex-col items-center justify-center gap-1.5 transition hover:border-primary/40 hover:bg-muted/30"
                           >
-                            <Upload className="w-3 h-3" />
-                            Trocar
+                            <Upload className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-[10px] text-muted-foreground">Adicionar</p>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => { setFormImageUrl(""); setFormMediaType(null); analyzeImageMutation.reset(); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/70 text-white text-xs font-medium hover:bg-red-500/90 transition"
-                          >
-                            <X className="w-3 h-3" />
-                            Remover
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex w-full aspect-[4/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/50 bg-muted/20 text-center transition hover:border-primary/40 hover:bg-muted/30"
-                      >
-                        <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
-                          <Upload className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Clique para selecionar</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Imagem ou vídeo · JPG, PNG, MP4, MOV</p>
-                          <p className="text-xs text-muted-foreground">Imagem max 10MB · Vídeo max 200MB</p>
-                        </div>
-                      </button>
-                    )}
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">JPG, PNG, MP4, MOV · Imagem 50MB · Vídeo 200MB</p>
                   </div>
                 )}
 
@@ -622,11 +665,11 @@ export default function Posts() {
                       <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         {cfg.captionLabel} <span className="text-destructive">*</span>
                       </label>
-                      {cfg.supportsImage && formImageUrl && formMediaType === "image" && (
+                      {cfg.supportsImage && formImageUrls[0] && formMediaTypes[0] === "image" && (
                         <button
                           type="button"
                           disabled={analyzeImageMutation.isPending}
-                          onClick={() => analyzeImageMutation.mutate({ imageDataUrl: formImageUrl, channel: activeChannel })}
+                          onClick={() => analyzeImageMutation.mutate({ imageDataUrl: formImageUrls[0]!, channel: activeChannel })}
                           className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
                         >
                           {analyzeImageMutation.isPending
@@ -678,14 +721,20 @@ export default function Posts() {
                 disabled={
                   !formContent.trim() ||
                   (activeChannel === "newsletter" && !formTitle.trim()) ||
-                  createMutation.isPending
+                  createMutation.isPending ||
+                  uploadingIdx !== null
                 }
                 className={cn("gap-2 border-0 bg-gradient-to-r text-white hover:opacity-90 shadow-sm", cfg.gradient)}
               >
                 {createMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {formImageUrl ? "Enviando imagem..." : "Salvando..."}
+                    {formImageUrls.some(Boolean) ? "Enviando imagem..." : "Salvando..."}
+                  </>
+                ) : uploadingIdx !== null ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Enviando mídia…
                   </>
                 ) : formScheduledAt ? (
                   <>

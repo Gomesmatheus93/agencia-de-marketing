@@ -2152,6 +2152,7 @@ const postsRouter = router({
               "Informe uma URL de mídia válida."
             )
             .optional(),
+          extraImageUrls: z.array(z.string().url()).optional(),
           scheduledAt: scheduledAtInputSchema.optional(),
         })
         .superRefine((value, ctx) => {
@@ -2165,7 +2166,7 @@ const postsRouter = router({
         })
     )
     .mutation(async ({ ctx, input }) => {
-      const { scheduledAt: scheduledAtInput, ...data } = input;
+      const { scheduledAt: scheduledAtInput, extraImageUrls, ...data } = input;
       const scheduledAt = scheduledAtInput
         ? parseScheduledAtInput(scheduledAtInput)
         : undefined;
@@ -2183,7 +2184,12 @@ const postsRouter = router({
         imageUrl = await persistSingleCarouselImage({ userId: ctx.user.id, imageDataUrl: imageUrl });
       }
 
-      const saved = await db.saveSocialPost(ctx.user.id, { ...data, imageUrl, scheduledAt });
+      // Store additional images in metadata
+      const metadata = extraImageUrls && extraImageUrls.length > 0
+        ? JSON.stringify({ imageUrls: [imageUrl, ...extraImageUrls].filter(Boolean) })
+        : undefined;
+
+      const saved = await db.saveSocialPost(ctx.user.id, { ...data, imageUrl, metadata, scheduledAt });
       return saved;
     }),
 

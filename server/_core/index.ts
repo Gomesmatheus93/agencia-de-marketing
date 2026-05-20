@@ -12,7 +12,7 @@ import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv } from "./env";
 import { sdk } from "./sdk";
-import { storagePut, getMetaFetchableStorageUrl } from "../storage";
+import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -91,6 +91,32 @@ async function startServer() {
       }
     }
   );
+
+  // Presigned upload URL — returns S3 presigned PUT URL when AWS is configured
+  // Clients use this to upload large files (especially videos) directly to S3,
+  // bypassing the Express server and avoiding reverse-proxy body/timeout limits.
+  app.post("/api/request-presigned-upload", express.json(), async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      const contentType = (typeof req.body?.contentType === "string" ? req.body.contentType : "application/octet-stream").split(";")[0].trim();
+      const MIME_TO_EXT: Record<string, string> = {
+        "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+        "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "video/x-msvideo": "avi",
+      };
+      const ext = MIME_TO_EXT[contentType] ?? "bin";
+      const key = `uploads/${user.id}/${randomUUID()}.${ext}`;
+      const presignedUrl = await getPresignedUploadUrl(key, contentType);
+      if (!presignedUrl) {
+        res.json({ presignedUrl: null, publicUrl: null });
+        return;
+      }
+      const publicUrl = buildAwsPublicUrl({ bucket: process.env.AWS_BUCKET ?? "", region: process.env.AWS_REGION ?? "", publicBaseUrl: process.env.AWS_PUBLIC_BASE_URL }, key);
+      res.json({ presignedUrl, publicUrl, key });
+    } catch (err) {
+      const status = err instanceof Error && err.message.includes("Unauthorized") ? 401 : 500;
+      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);

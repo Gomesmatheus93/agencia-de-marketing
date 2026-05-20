@@ -98,6 +98,19 @@ type SerperResponse = {
   knowledgeGraph?: { description?: string; title?: string };
 };
 
+type SerperImageResult = {
+  title?: string;
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  thumbnailUrl?: string;
+  source?: string;
+};
+
+type SerperImagesResponse = {
+  images?: SerperImageResult[];
+};
+
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 6000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -155,6 +168,36 @@ async function researchTopicContext(topic: string): Promise<string | null> {
     return `[Google — "${topic}"]\n${parts.join("\n")}`;
   } catch {
     return null;
+  }
+}
+
+async function searchSerperImages(query: string): Promise<string | undefined> {
+  if (!ENV.serperApiKey) return undefined;
+  try {
+    const res = await fetchWithTimeout(
+      "https://google.serper.dev/images",
+      {
+        method: "POST",
+        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query, gl: "br", hl: "pt", num: 10 }),
+      },
+      5000
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as SerperImagesResponse;
+    const images = (data.images ?? []).filter((img) => {
+      if (!img.imageUrl) return false;
+      // Skip strongly landscape images (bad for portrait carousel)
+      if (img.imageWidth && img.imageHeight && img.imageWidth > img.imageHeight * 1.4) return false;
+      return true;
+    });
+    const portrait = images.filter(
+      (img) => !img.imageWidth || !img.imageHeight || img.imageHeight >= img.imageWidth
+    );
+    const pool = portrait.length > 0 ? portrait : images;
+    return pickRandom(pool, 5)?.imageUrl;
+  } catch {
+    return undefined;
   }
 }
 
@@ -612,40 +655,13 @@ async function resolveCarouselCoverImage(input: {
   slideIndex: number;
   templateName?: string;
   templateStyleBrief?: string;
-  referenceImageUrl?: string;
-  useAiImages?: boolean;
   imagePrompt?: string;
   profileId?: string;
 }) {
   const query = buildCentralThemeImageQuery(input);
 
-  if (input.useAiImages) {
-    try {
-      const generatedImage = await generateImage({
-        prompt: buildCarouselImagePrompt({
-          topic: input.topic,
-          hook: input.hook,
-          slideTitle: input.slideTitle,
-          slideBody: input.slideBody,
-          imageSearchQuery: query,
-          slideIndex: input.slideIndex,
-          templateName: input.templateName,
-          templateStyleBrief: input.templateStyleBrief,
-          imagePrompt: input.imagePrompt,
-          profileId: input.profileId,
-        }),
-        referenceImageUrl: input.referenceImageUrl,
-      });
-
-      if (generatedImage.url) {
-        return generatedImage.url;
-      }
-    } catch (err) {
-      console.warn("[CarouselAgent] AI image generation failed, falling back to stock photos:", err);
-    }
-  }
-
   const stockSources = [
+    searchSerperImages(query),   // real Google Images — highest priority
     searchUnsplashImage(query),
     searchPexelsImage(query),
     searchPixabayImage(query),
@@ -662,6 +678,43 @@ async function resolveCarouselCoverImage(input: {
   }
 
   return buildFallbackImageDataUrl(`${input.topic} ${input.slideTitle}`);
+}
+
+async function resolveCarouselCoverImageWithAI(input: {
+  topic: string;
+  hook: string;
+  imageSearchQuery: string;
+  slideTitle: string;
+  slideBody: string;
+  slideIndex: number;
+  templateName?: string;
+  templateStyleBrief?: string;
+  referenceImageUrl?: string;
+  imagePrompt?: string;
+  profileId?: string;
+}) {
+  const query = buildCentralThemeImageQuery(input);
+  try {
+    const generatedImage = await generateImage({
+      prompt: buildCarouselImagePrompt({
+        topic: input.topic,
+        hook: input.hook,
+        slideTitle: input.slideTitle,
+        slideBody: input.slideBody,
+        imageSearchQuery: query,
+        slideIndex: input.slideIndex,
+        templateName: input.templateName,
+        templateStyleBrief: input.templateStyleBrief,
+        imagePrompt: input.imagePrompt,
+        profileId: input.profileId,
+      }),
+      referenceImageUrl: input.referenceImageUrl,
+    });
+    if (generatedImage.url) return generatedImage.url;
+  } catch (err) {
+    console.warn("[CarouselAgent] AI image generation failed, falling back to stock photos:", err);
+  }
+  return resolveCarouselCoverImage(input);
 }
 
 export async function generateCarouselWithAgent(
@@ -799,8 +852,6 @@ export async function generateCarouselWithAgent(
           slideIndex: index,
           templateName: input.templateName,
           templateStyleBrief: input.templateStyleBrief,
-          referenceImageUrl: templateImageUrl,
-          useAiImages: input.useAiImages ?? false,
           imagePrompt: slide.imagePrompt,
           profileId: input.profileId,
         }));
@@ -900,14 +951,14 @@ export async function regenerateSlide(params: {
   };
 
   const imageSearchQuery = cleanText(s.imageSearchQuery, `${params.topic} ${slideData.title}`);
-  slideData.imageUrl = await resolveCarouselCoverImage({
+  const resolveImage = params.useAiImages ? resolveCarouselCoverImageWithAI : resolveCarouselCoverImage;
+  slideData.imageUrl = await resolveImage({
     topic: params.topic,
     hook: params.hook,
     imageSearchQuery,
     slideTitle: slideData.title,
     slideBody: slideData.body,
     slideIndex: params.slideIndex,
-    useAiImages: params.useAiImages ?? false,
     imagePrompt: slideData.imagePrompt,
     profileId: params.profileId,
   });
@@ -979,14 +1030,14 @@ export async function regenerateSlideImage(params: {
     imagePrompt = cleanText(s.imagePrompt, `${params.topic} ${params.slideTitle}`);
   }
 
-  const imageUrl = await resolveCarouselCoverImage({
+  const resolveImage = params.useAiImages ? resolveCarouselCoverImageWithAI : resolveCarouselCoverImage;
+  const imageUrl = await resolveImage({
     topic: params.topic,
     hook: params.hook,
     imageSearchQuery: `${params.topic} ${params.slideTitle}`,
     slideTitle: params.slideTitle,
     slideBody: params.slideBody,
     slideIndex: params.slideIndex,
-    useAiImages: params.useAiImages ?? false,
     imagePrompt,
     profileId: params.profileId,
   });
