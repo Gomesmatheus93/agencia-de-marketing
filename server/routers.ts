@@ -1926,6 +1926,49 @@ const carouselRouter = router({
     return { count };
   }),
 
+  getTrendingTopics: protectedProcedure
+    .input(z.object({ niche: z.string().max(100).optional() }))
+    .query(async ({ input }) => {
+      const today = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+      const llmResponse = await invokeLLM({
+        messages: [
+          {
+            role: "user",
+            content: `Você é um especialista em marketing digital e tendências do Instagram Brasil. Data: ${today}.
+
+Gere 8 temas virais para carrosséis no Instagram. ${input.niche ? `Nicho: ${input.niche}.` : "Foque em negócios, marketing, empreendedorismo, finanças pessoais e produtividade para o público brasileiro."}
+
+Critérios:
+- Alto potencial de salvamento (conteúdo prático e aplicável)
+- Gancho que para o scroll em menos de 1 segundo
+- Baseado em dores reais do público brasileiro atual
+- Formato de revelação ou lista numerada (ideal para carrossel)
+- Alinhado com o algoritmo do Instagram 2025 (maximize saves e shares)
+
+Retorne APENAS JSON válido:
+{
+  "topics": [
+    {
+      "topic": "tema completo (ex: '5 erros que todo empreendedor comete no início')",
+      "category": "categoria curta (ex: Empreendedorismo)",
+      "hook": "gancho impactante de 8-10 palavras para o primeiro slide",
+      "emoji": "emoji relevante"
+    }
+  ]
+}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const rawContent = llmResponse.choices[0]?.message?.content;
+      const raw = typeof rawContent === "string" ? rawContent : "{}";
+      let parsed: { topics?: Array<{ topic: string; category: string; hook: string; emoji: string }> } = {};
+      try { parsed = JSON.parse(raw); } catch { /* fallback */ }
+
+      return { topics: parsed.topics ?? [] };
+    }),
+
   // ── Regeneration endpoints ────────────────────────────────────────────────
 
   regenerateSlide: aiProcedure
@@ -2270,32 +2313,44 @@ const postsRouter = router({
       tone: z.enum(["professional", "casual", "inspiring", "educational"]).optional().default("professional"),
     }))
     .mutation(async ({ ctx, input }) => {
-      const channelGuide: Record<string, string> = {
-        instagram: "post para Instagram (máx 2200 chars, use emojis, hashtags relevantes, call-to-action)",
-        linkedin: "post para LinkedIn (tom profissional, máx 3000 chars, insights valiosos, sem excessos de hashtags)",
-        newsletter: "newsletter por email (assunto atrativo, corpo completo com saudação, conteúdo e CTA)",
-      };
-
       const toneGuide: Record<string, string> = {
-        professional: "profissional e formal",
-        casual: "casual e amigável",
+        professional: "profissional e direto",
+        casual: "casual e próximo",
         inspiring: "inspirador e motivacional",
         educational: "educativo e informativo",
+      };
+
+      const channelGuide: Record<string, string> = {
+        instagram: `legenda para Instagram em português brasileiro otimizada para o algoritmo 2025.
+
+ESTRUTURA OBRIGATÓRIA:
+1. GANCHO (linha 1-2, visível antes do "ver mais"): 5-10 palavras — dado surpreendente, pergunta provocadora ou afirmação ousada. SEM emoji na primeira linha.
+2. DESENVOLVIMENTO: 3-5 frases curtas em parágrafos de 1-2 linhas. Use emojis como separadores estruturais. Inclua keywords do tema naturalmente no texto (aumentam 30% de alcance via busca semântica).
+3. CTA FINAL: UM único CTA específico com benefício claro — peça salvamento ("Salva pra consultar quando precisar de X"), compartilhamento ("Manda pra quem precisa ver isso") ou comentário ("Me conta nos comentários: qual foi o seu maior desafio com X?"). NUNCA peça curtida.
+4. HASHTAGS: exatamente 3-5 ao final. Priorize nicho (50K-500K posts). Nunca mais que 5.
+Tamanho ideal: 800-1500 caracteres. Tom: ${toneGuide[input.tone]}.`,
+
+        linkedin: `post para LinkedIn em português brasileiro — tom profissional mas acessível, máx 3000 chars.
+Estrutura: gancho forte na primeira linha, desenvolvimento com insight real, no máximo 3 hashtags relevantes ao final.
+Tom: ${toneGuide[input.tone]}.`,
+
+        newsletter: `newsletter por email em português brasileiro — assunto atrativo, saudação, conteúdo de valor com seções claras, CTA final.
+Tom: ${toneGuide[input.tone]}.`,
       };
 
       const llmResponse = await invokeLLM({
         messages: [
           {
             role: "system",
-            content: `Você é um especialista em marketing de conteúdo. Crie conteúdo otimizado para redes sociais em português brasileiro.`,
+            content: `Você é um especialista em copywriting para redes sociais e conhece profundamente o algoritmo do Instagram. Crie conteúdo em português brasileiro que maximize engajamento real (salvamentos, compartilhamentos e comentários).`,
           },
           {
             role: "user",
-            content: `Crie um ${channelGuide[input.channel]} sobre "${input.topic}" com tom ${toneGuide[input.tone]}.
-            
+            content: `Crie ${channelGuide[input.channel]} sobre o tema: "${input.topic}".
+
 Responda em JSON:
 {
-  "title": "título ou assunto (para newsletter)",
+  "title": "título ou assunto (para newsletter, ou gancho resumido para instagram/linkedin)",
   "content": "conteúdo completo pronto para publicar"
 }`,
           },

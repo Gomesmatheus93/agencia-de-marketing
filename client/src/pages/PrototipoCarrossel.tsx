@@ -1087,7 +1087,10 @@ async function renderSlidesToDataUrls(
       ctx.font = `900 ${tsz}px ${ff}, sans-serif`;
       ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 12;
       const titleColor = slide.titleColor ?? "#ffffff";
-      const ws = slide.wordStyles ?? [];
+      const ws = [
+        ...(slide.highlightWords ?? []).map(w => ({ word: w, color: cAccent })),
+        ...(slide.wordStyles ?? []),
+      ];
       for (const line of tLines) {
         _drawStyledLine(ctx, line, tX, y + tsz * 0.82, tsz, "900", ff, titleColor, ws, tAlign);
         y += tsz * 1.15;
@@ -1144,7 +1147,10 @@ async function renderSlidesToDataUrls(
       ctx.font = `900 ${tsz}px ${ff}, sans-serif`;
       ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 12;
       const cTitleColor = slide.titleColor ?? "#ffffff";
-      const cWs = slide.wordStyles ?? [];
+      const cWs = [
+        ...(slide.highlightWords ?? []).map(w => ({ word: w, color: design.accentColor })),
+        ...(slide.wordStyles ?? []),
+      ];
       for (const line of tLines) {
         _drawStyledLine(ctx, line, tX, y + tsz * 0.82, tsz, "900", ff, cTitleColor, cWs, tAlign);
         y += tsz * 1.15;
@@ -1331,9 +1337,17 @@ async function renderEditorialSlidesToDataUrls(
       ctx.textAlign = "right";
       ctx.fillText(handle, W - PX, topY);
 
-      // Profile badge (photo or + circle)
-      let y = H - 120 * S;
+      // Pre-measure content block to anchor it at the bottom without clipping
       const circleR = 11 * S;
+      const titleSz = Math.round(31 * S * design.titleSize);
+      ctx.font = `900 ${titleSz}px ${ff}, sans-serif`;
+      const titleLines = _wrapCanvasText(ctx, slide.title.toUpperCase(), W - PX * 2);
+      const badgeBlockH = circleR * 2 + 14 * S;
+      const titleBlockH = titleLines.length * titleSz * 1.1;
+      const subBlockH = slide.body ? (10 * S + 10 * S) : 0;
+      let y = Math.max(H - 50 * S - subBlockH - titleBlockH - badgeBlockH, H * 0.42);
+
+      // Profile badge (photo or + circle)
       if (profileImg) {
         ctx.save(); ctx.beginPath(); ctx.arc(PX + circleR, y + circleR, circleR, 0, Math.PI * 2); ctx.clip();
         ctx.drawImage(profileImg, PX, y, circleR * 2, circleR * 2); ctx.restore();
@@ -1351,12 +1365,13 @@ async function renderEditorialSlidesToDataUrls(
       y += circleR * 2 + 14 * S;
 
       // Title
-      const titleSz = Math.round(31 * S * design.titleSize);
       const titleColor = slide.titleColor ?? "#ffffff";
       ctx.font = `900 ${titleSz}px ${ff}, sans-serif`;
       ctx.textAlign = "left";
-      const ews = slide.wordStyles ?? [];
-      const titleLines = _wrapCanvasText(ctx, slide.title.toUpperCase(), W - PX * 2);
+      const ews = [
+        ...(slide.highlightWords ?? []).map(w => ({ word: w, color: coverAccent })),
+        ...(slide.wordStyles ?? []),
+      ];
       for (const line of titleLines) {
         _drawStyledLine(ctx, line, PX, y + titleSz * 0.82, titleSz, "900", ff, titleColor, ews, "left");
         y += titleSz * 1.1;
@@ -1479,7 +1494,10 @@ async function renderEditorialSlidesToDataUrls(
       ctx.fillStyle = slide.titleColor ?? (isDark ? "#ffffff" : "#000000");
       ctx.textAlign = "left";
       const tLines = _wrapCanvasText(ctx, slide.title, W - PX * 2);
-      const contentWs = slide.wordStyles ?? [];
+      const contentWs = [
+        ...(slide.highlightWords ?? []).map(w => ({ word: w, color: accent })),
+        ...(slide.wordStyles ?? []),
+      ];
       for (const line of tLines) {
         _drawStyledLine(ctx, line, PX, y + tsz * 0.82, tsz, "800", ff, slide.titleColor ?? (isDark ? "#ffffff" : "#000000"), contentWs, "left");
         y += tsz * 1.2;
@@ -1798,6 +1816,12 @@ export default function PrototipoCarrossel() {
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: allCarousels = [], isLoading: isLoadingList } = trpc.carousel.getAll.useQuery();
+
+  const [trendingNiche, setTrendingNiche] = useState("");
+  const trendingQuery = trpc.carousel.getTrendingTopics.useQuery(
+    { niche: trendingNiche || undefined },
+    { enabled: phase === "form", staleTime: 5 * 60 * 1000 }
+  );
   const protoCarousels = (allCarousels as ProtoListItem[]).filter(
     (c) => c.style === "proto-moderno"
   );
@@ -2566,22 +2590,114 @@ export default function PrototipoCarrossel() {
 
               {/* Input */}
               {inputMode === "topic" ? (
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    Tema do carrossel
-                  </label>
-                  <Textarea
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Ex: 3 erros que impedem seu negócio de crescer nas redes sociais"
-                    className="resize-none min-h-[88px] text-sm"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) startGeneration();
-                    }}
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
-                    Temas específicos geram resultados mais impactantes · Ctrl+Enter para gerar
-                  </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Tema do carrossel
+                    </label>
+                    <Textarea
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder="Ex: 3 erros que impedem seu negócio de crescer nas redes sociais"
+                      className="resize-none min-h-[88px] text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) startGeneration();
+                      }}
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                      Temas específicos geram resultados mais impactantes · Ctrl+Enter para gerar
+                    </p>
+                  </div>
+
+                  {/* ── Trending Topics ── */}
+                  <div className="rounded-xl border border-border/40 p-3 space-y-2.5" style={{ background: "rgba(41,217,255,0.03)" }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">🔥</span>
+                        <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">Temas em alta</span>
+                        <span className="text-[10px] text-muted-foreground">· clique para usar</span>
+                      </div>
+                      <button
+                        onClick={() => trendingQuery.refetch()}
+                        disabled={trendingQuery.isFetching}
+                        className="flex items-center gap-1 text-[10px] font-semibold transition-colors"
+                        style={{ color: trendingQuery.isFetching ? "rgba(41,217,255,0.4)" : "#29d9ff" }}
+                        title="Atualizar sugestões"
+                      >
+                        <RefreshCw className={cn("w-3 h-3", trendingQuery.isFetching && "animate-spin")} />
+                        Atualizar
+                      </button>
+                    </div>
+
+                    {/* Niche filter */}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {["", "Negócios", "Finanças", "Marketing", "Saúde", "Tecnologia"].map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setTrendingNiche(n)}
+                          className={cn(
+                            "px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all border",
+                            trendingNiche === n
+                              ? "border-transparent text-[#0d1117]"
+                              : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border/60"
+                          )}
+                          style={trendingNiche === n ? { background: "#29d9ff" } : {}}
+                        >
+                          {n || "Geral"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {trendingQuery.isFetching ? (
+                      <div className="flex items-center gap-2 py-3 justify-center">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#29d9ff" }} />
+                        <span className="text-[11px] text-muted-foreground">Buscando tendências com IA…</span>
+                      </div>
+                    ) : trendingQuery.data?.topics && trendingQuery.data.topics.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {trendingQuery.data.topics.map((item, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setTopic(item.topic)}
+                            className={cn(
+                              "group flex items-start gap-2.5 px-3 py-2 rounded-lg text-left transition-all border",
+                              topic === item.topic
+                                ? "border-cyan-500/50 bg-cyan-500/10"
+                                : "border-border/30 bg-background/40 hover:border-border/60 hover:bg-background/70"
+                            )}
+                          >
+                            <span className="text-base leading-none mt-0.5 flex-shrink-0">{item.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={cn(
+                                  "text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0",
+                                  topic === item.topic ? "bg-cyan-500/20 text-cyan-400" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {item.category}
+                                </span>
+                              </div>
+                              <p className={cn(
+                                "text-xs font-semibold leading-tight mt-0.5",
+                                topic === item.topic ? "text-foreground" : "text-foreground/80 group-hover:text-foreground"
+                              )}>
+                                {item.topic}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 italic">
+                                "{item.hook}"
+                              </p>
+                            </div>
+                            {topic === item.topic && (
+                              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#29d9ff" }} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : !trendingQuery.isLoading && (
+                      <p className="text-[11px] text-muted-foreground text-center py-2">
+                        Clique em "Atualizar" para carregar sugestões
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div>
