@@ -307,6 +307,151 @@ export function registerOAuthRoutes(app: Express) {
     }
   });
 
+  // ── Instagram Connect (for already-logged-in users) ──────────────────────
+  // Similar to Canva: requires an active session, links the IG account to the
+  // current user without creating a new session.
+
+  const pendingConnectStates = new Map<string, { userId: number; ts: number }>();
+
+  function buildConnectCallbackUrl(req: Express["request"]) {
+    if (ENV.isProduction) {
+      if (ENV.instagramConnectRedirectUri) return ENV.instagramConnectRedirectUri;
+      if (ENV.appBaseUrl) return `${ENV.appBaseUrl.replace(/\/+$/, "")}/api/oauth/instagram/connect/callback`;
+    }
+    const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || req.protocol || "http";
+    const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000";
+    return `${proto}://${host}/api/oauth/instagram/connect/callback`;
+  }
+
+  app.get("/api/oauth/instagram/connect", async (req, res) => {
+    if (!ENV.metaAppId || !ENV.metaAppSecret) {
+      res.status(503).send("META_APP_ID e META_APP_SECRET não configurados.");
+      return;
+    }
+
+    let userId: number | undefined;
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+      const token = match?.[1];
+      if (token) {
+        const payload = await sdk.verifySession(token);
+        if (payload?.openId) {
+          const user = await db.getUserByOpenId(payload.openId);
+          userId = user?.id;
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!userId) {
+      res.redirect("/dashboard/settings?ig_connect=requires_login");
+      return;
+    }
+
+    // Prune old states
+    const cutoff = Date.now() - STATE_TTL_MS;
+    Array.from(pendingConnectStates.entries()).forEach(([k, v]) => {
+      if (v.ts < cutoff) pendingConnectStates.delete(k);
+    });
+
+    const state = nanoid(32);
+    pendingConnectStates.set(state, { userId, ts: Date.now() });
+
+    const callbackUrl = buildConnectCallbackUrl(req);
+    const authUrl = new URL(`${OAUTH_DIALOG_BASE}/dialog/oauth`);
+    authUrl.searchParams.set("client_id", ENV.metaAppId);
+    authUrl.searchParams.set("redirect_uri", callbackUrl);
+    authUrl.searchParams.set("scope", SCOPES);
+    authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("response_type", "code");
+
+    res.redirect(authUrl.toString());
+  });
+
+  app.get("/api/oauth/instagram/connect/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      console.warn("[OAuth/Instagram/Connect] User denied authorization:", oauthError);
+      res.redirect("/dashboard/analytics?ig_connect=denied");
+      return;
+    }
+
+    const pending = state ? pendingConnectStates.get(state) : undefined;
+    if (!pending) {
+      res.redirect("/dashboard/analytics?ig_connect=invalid_state");
+      return;
+    }
+    pendingConnectStates.delete(state);
+
+    if (!code) {
+      res.redirect("/dashboard/analytics?ig_connect=no_code");
+      return;
+    }
+
+    try {
+      const callbackUrl = buildConnectCallbackUrl(req);
+
+      const shortTokenData = await graphGet<FbTokenResponse>(
+        `${GRAPH}/oauth/access_token?client_id=${ENV.metaAppId}&client_secret=${ENV.metaAppSecret}&redirect_uri=${encodeURIComponent(callbackUrl)}&code=${encodeURIComponent(code)}`
+      );
+      if (!shortTokenData.access_token) throw new Error("Token não retornado pelo Facebook.");
+
+      const longTokenData = await graphGet<FbTokenResponse>(
+        `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${ENV.metaAppId}&client_secret=${ENV.metaAppSecret}&fb_exchange_token=${encodeURIComponent(shortTokenData.access_token)}`
+      );
+      const accessToken = longTokenData.access_token || shortTokenData.access_token;
+      const expiresIn = longTokenData.expires_in ?? 5184000;
+      const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+
+      // Find Instagram Business Account via Pages
+      let resolvedIg: IgBusinessAccount | undefined;
+      let resolvedPageId: string | undefined;
+      let resolvedToken: string = accessToken;
+
+      try {
+        const pagesData = await graphGet<FbPagesResponse>(
+          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+        );
+        const pageWithIg = (pagesData.data ?? []).find(
+          (p) => p.instagram_business_account?.id || p.connected_instagram_account?.id
+        );
+        if (pageWithIg) {
+          resolvedIg = pageWithIg.instagram_business_account || pageWithIg.connected_instagram_account;
+          resolvedPageId = pageWithIg.id;
+          resolvedToken = pageWithIg.access_token || accessToken;
+        }
+      } catch (e) {
+        console.warn("[OAuth/Instagram/Connect] Falha ao buscar páginas:", e);
+      }
+
+      if (!resolvedIg?.id) {
+        console.warn(`[OAuth/Instagram/Connect] Nenhuma conta IG encontrada para userId=${pending.userId}`);
+        res.redirect("/dashboard/analytics?ig_connect=no_account");
+        return;
+      }
+
+      await db.upsertInstagramConnection({
+        userId: pending.userId,
+        instagramAccountId: resolvedIg.id,
+        facebookPageId: resolvedPageId,
+        username: resolvedIg.username,
+        name: resolvedIg.name,
+        profilePictureUrl: resolvedIg.profile_picture_url,
+        accessToken: resolvedToken,
+        tokenExpiresAt,
+        connectedAt: new Date(),
+      });
+
+      console.log(`[OAuth/Instagram/Connect] Conta IG @${resolvedIg.username} conectada ao userId=${pending.userId}`);
+      res.redirect("/dashboard/analytics?ig_connect=success");
+    } catch (err) {
+      console.error("[OAuth/Instagram/Connect] Erro:", err);
+      const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
+      res.redirect(`/dashboard/analytics?ig_connect=error&detail=${msg}`);
+    }
+  });
+
   // ── Canva OAuth (PKCE) ────────────────────────────────────────────────────
 
   // In-memory store: state → { codeVerifier, userId, timestamp }

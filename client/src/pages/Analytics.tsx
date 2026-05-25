@@ -29,6 +29,12 @@ import {
   Instagram,
   FileText,
   Send,
+  Stethoscope,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -184,13 +190,13 @@ function InstagramLoginPrompt() {
       </div>
       <div>
         <h3 className="text-lg font-semibold text-foreground">Conecte seu Instagram</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Faça login com sua conta para visualizar os analytics.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Vincule sua conta para visualizar analytics e publicar posts.</p>
       </div>
       <Button
         className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white px-8"
-        onClick={() => { window.location.href = "/auth/instagram"; }}
+        onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
       >
-        Entrar com Instagram
+        Conectar Instagram
       </Button>
     </div>
   );
@@ -219,7 +225,7 @@ function InstagramSetupGuide() {
 
       <Button
         className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
-        onClick={() => { window.location.href = "/auth/instagram"; }}
+        onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
       >
         Tentar novamente
       </Button>
@@ -245,6 +251,21 @@ function useLastUpdated(isFetching: boolean) {
 }
 
 function InstagramTab() {
+  const [showDiag, setShowDiag] = useState(false);
+  const [diagResult, setDiagResult] = useState<null | {
+    ok: boolean;
+    tokenSource?: string;
+    tokenType?: string;
+    expiresInDays?: number | null;
+    scopes?: string[];
+    missingScopes?: string[];
+    igAccountId?: string;
+    accountAccessOk?: boolean | null;
+    accountError?: string | null;
+    error?: string | null;
+    details?: unknown;
+  }>(null);
+
   const connectionQuery = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, {
     retry: 1,
     refetchInterval: PROFILE_POLL_MS,
@@ -275,6 +296,10 @@ function InstagramTab() {
   const disconnectMutation = trpc.analytics.disconnectInstagram.useMutation({
     onSuccess: () => { toast.success("Instagram desconectado."); void connectionQuery.refetch(); },
   });
+  const diagnoseMutation = trpc.analytics.diagnoseInstagramToken.useMutation({
+    onSuccess: (data) => { setDiagResult(data); setShowDiag(true); },
+    onError: (err) => { setDiagResult({ ok: false, error: err.message }); setShowDiag(true); },
+  });
 
   const refetchAll = () => {
     void connectionQuery.refetch();
@@ -297,7 +322,23 @@ function InstagramTab() {
   const isLoading = profileQuery.isLoading || insightsQuery.isLoading;
   const hasError = profileQuery.isError || insightsQuery.isError;
   const notConnected = connectionQuery.isSuccess && !isConnected;
-  const oauthNoAccount = new URLSearchParams(window.location.search).get("ig_connect") === "no_account";
+  const igConnectParam = new URLSearchParams(window.location.search).get("ig_connect");
+  const oauthNoAccount = igConnectParam === "no_account";
+
+  useEffect(() => {
+    if (igConnectParam === "success") {
+      toast.success("Instagram conectado com sucesso!");
+      void connectionQuery.refetch();
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (igConnectParam === "denied") {
+      toast.error("Autorização negada pelo Facebook.");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (igConnectParam === "error") {
+      const detail = new URLSearchParams(window.location.search).get("detail") ?? "";
+      toast.error(`Erro ao conectar Instagram: ${detail}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [igConnectParam]);
 
   return (
     <div className="space-y-6">
@@ -317,6 +358,16 @@ function InstagramTab() {
               Atualizado às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => diagnoseMutation.mutate()}
+            disabled={diagnoseMutation.isPending}
+            className="gap-2 rounded-xl"
+          >
+            <Stethoscope className={cn("h-3.5 w-3.5", diagnoseMutation.isPending && "animate-pulse")} />
+            {diagnoseMutation.isPending ? "Diagnosticando…" : "Diagnosticar Token"}
+          </Button>
           {isConnected && (
             <Button variant="outline" size="sm" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="gap-2 rounded-xl text-destructive hover:text-destructive">
               Desconectar
@@ -328,6 +379,103 @@ function InstagramTab() {
           </Button>
         </div>
       </div>
+
+      {/* Diagnostic result panel */}
+      {showDiag && diagResult && (
+        <div className={cn(
+          "rounded-2xl border p-5 space-y-3",
+          diagResult.ok
+            ? "border-emerald-400/40 bg-emerald-50 dark:bg-emerald-950/20"
+            : "border-red-400/40 bg-red-50 dark:bg-red-950/20"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {diagResult.ok
+                ? <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                : <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />}
+              <span className={cn("font-semibold text-sm", diagResult.ok ? "text-emerald-900 dark:text-emerald-200" : "text-red-900 dark:text-red-200")}>
+                {diagResult.ok ? "Token válido" : "Problema encontrado com o token"}
+              </span>
+            </div>
+            <button onClick={() => setShowDiag(false)} className="text-muted-foreground hover:text-foreground">
+              <ChevronUp className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+            {diagResult.tokenSource && (
+              <div className="rounded-lg bg-background/60 px-3 py-2">
+                <p className="text-muted-foreground">Fonte do token</p>
+                <p className="font-semibold mt-0.5">{diagResult.tokenSource === "database" ? "Banco de dados (OAuth)" : ".env / servidor"}</p>
+              </div>
+            )}
+            {diagResult.tokenType && (
+              <div className="rounded-lg bg-background/60 px-3 py-2">
+                <p className="text-muted-foreground">Tipo</p>
+                <p className="font-semibold mt-0.5">{diagResult.tokenType}</p>
+              </div>
+            )}
+            {diagResult.expiresInDays !== undefined && (
+              <div className={cn("rounded-lg px-3 py-2", diagResult.expiresInDays === null ? "bg-background/60" : diagResult.expiresInDays < 7 ? "bg-amber-100/80 dark:bg-amber-900/30" : "bg-background/60")}>
+                <p className="text-muted-foreground">Expira em</p>
+                <p className="font-semibold mt-0.5">
+                  {diagResult.expiresInDays === null ? "Nunca (token de longa duração)" : `${diagResult.expiresInDays} dias`}
+                </p>
+              </div>
+            )}
+            {diagResult.igAccountId && (
+              <div className="rounded-lg bg-background/60 px-3 py-2">
+                <p className="text-muted-foreground">ID da conta IG</p>
+                <p className="font-semibold mt-0.5 break-all">{diagResult.igAccountId}</p>
+              </div>
+            )}
+            {diagResult.accountAccessOk !== undefined && (
+              <div className={cn("rounded-lg px-3 py-2", diagResult.accountAccessOk ? "bg-background/60" : "bg-red-100/80 dark:bg-red-900/30")}>
+                <p className="text-muted-foreground">Acesso à conta</p>
+                <p className="font-semibold mt-0.5">{diagResult.accountAccessOk ? "OK" : "Falhou"}</p>
+              </div>
+            )}
+          </div>
+
+          {(diagResult.missingScopes?.length ?? 0) > 0 && (
+            <div className="rounded-lg bg-amber-100/80 dark:bg-amber-900/30 px-3 py-2 text-xs">
+              <div className="flex items-center gap-1.5 mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                <span className="font-semibold text-amber-900 dark:text-amber-200">Permissões faltando</span>
+              </div>
+              <p className="text-amber-800 dark:text-amber-300 break-all">{diagResult.missingScopes!.join(", ")}</p>
+            </div>
+          )}
+
+          {diagResult.scopes && diagResult.scopes.length > 0 && (
+            <div className="rounded-lg bg-background/60 px-3 py-2 text-xs">
+              <p className="text-muted-foreground mb-1">Permissões concedidas</p>
+              <p className="break-all text-foreground/80">{diagResult.scopes.join(", ")}</p>
+            </div>
+          )}
+
+          {diagResult.error && (
+            <div className="rounded-lg bg-red-100/80 dark:bg-red-900/30 px-3 py-2 text-xs">
+              <p className="font-semibold text-red-900 dark:text-red-200 mb-0.5">Erro</p>
+              <p className="text-red-700 dark:text-red-300 break-all">{diagResult.error}</p>
+            </div>
+          )}
+
+          {diagResult.accountError && (
+            <div className="rounded-lg bg-red-100/80 dark:bg-red-900/30 px-3 py-2 text-xs">
+              <p className="font-semibold text-red-900 dark:text-red-200 mb-0.5">Erro de acesso à conta</p>
+              <p className="text-red-700 dark:text-red-300 break-all">{diagResult.accountError}</p>
+            </div>
+          )}
+
+          {Boolean(diagResult.details) && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Detalhes técnicos</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all rounded-lg bg-background/60 p-3 text-[10px] leading-relaxed">{JSON.stringify(diagResult.details, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      )}
 
       {connectionQuery.isLoading && (
         <div className="flex items-center justify-center py-20">

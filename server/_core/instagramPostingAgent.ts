@@ -335,11 +335,9 @@ type MetaConfig = Awaited<ReturnType<typeof getRequiredMetaConfig>>;
 
 function isMetaAuthError(error?: { code?: number; type?: string; message?: string }) {
   if (!error) return false;
-  return (
-    error.code === 190 ||
-    error.type === "OAuthException" ||
-    /authorization|oauth|access.?token|expired|invalid.?token/i.test(error.message ?? "")
-  );
+  // Code 190 = invalid/expired OAuth token (the real auth error).
+  // Code 100 with OAuthException = permission denied (not a token expiry — show raw error instead).
+  return error.code === 190;
 }
 
 const TOKEN_EXPIRED_MSG =
@@ -358,11 +356,29 @@ async function waitForContainerReady(
     const data = text ? (JSON.parse(text) as { status_code?: string; error?: { code?: number; type?: string; message?: string } }) : {};
 
     if (data.error) {
+      const e = data.error;
+      console.error(`[Instagram] waitForContainerReady error — code=${e.code} type=${e.type} message="${e.message}"`);
+
+      if (isMetaAuthError(e)) {
+        const metaMsg = [e.message, e.code ? `(code ${e.code})` : ""].filter(Boolean).join(" ");
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `${TOKEN_EXPIRED_MSG} Detalhe Meta: ${metaMsg}`,
+        });
+      }
+
+      // Code 100 = token sem permissão para ler status do container (PAGE token).
+      // Aguarda tempo fixo e tenta publicar — a Meta aceita após alguns segundos.
+      if (e.code === 100) {
+        console.warn(`[Instagram] Container status check blocked (code 100) — waiting ${delayMs * 3}ms then attempting publish`);
+        await sleep(delayMs * 3);
+        return;
+      }
+
+      const metaMsg = [e.message, e.code ? `(code ${e.code})` : ""].filter(Boolean).join(" ");
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: isMetaAuthError(data.error)
-          ? TOKEN_EXPIRED_MSG
-          : `Erro ao verificar status do container Instagram: ${data.error.message}`,
+        message: `Erro ao verificar status do container Instagram: ${metaMsg}`,
       });
     }
 
@@ -407,11 +423,13 @@ async function postToGraph(
 
   if (!response.ok || data.error) {
     const error = data.error;
+    console.error(`[Instagram] postToGraph /${endpoint} error — status=${response.status} code=${error?.code} type=${error?.type} message="${error?.message}" subcode=${error?.error_subcode}`);
 
     if (isMetaAuthError(error)) {
+      const metaMsg = [error?.message, error?.code ? `(code ${error.code})` : ""].filter(Boolean).join(" ");
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: TOKEN_EXPIRED_MSG,
+        message: `${TOKEN_EXPIRED_MSG} Detalhe Meta: ${metaMsg}`,
       });
     }
 

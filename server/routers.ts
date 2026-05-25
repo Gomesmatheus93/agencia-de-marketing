@@ -2686,6 +2686,110 @@ const analyticsRouter = router({
     return { success: true };
   }),
 
+  diagnoseInstagramToken: protectedProcedure.mutation(async ({ ctx }) => {
+    const graphBase = (ENV.metaGraphApiBaseUrl || "https://graph.facebook.com").replace(/\/+$/, "");
+    const version = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
+
+    let token = "";
+    let tokenSource = "";
+
+    try {
+      const connection = await db.getInstagramConnection(ctx.user.id);
+      if (connection?.accessToken) {
+        token = connection.accessToken;
+        tokenSource = `banco (conta: ${connection.username ?? connection.instagramAccountId})`;
+      }
+    } catch { /* ignore */ }
+
+    if (!token) {
+      token = ENV.metaAccessToken;
+      tokenSource = ".env (META_ACCESS_TOKEN)";
+    }
+
+    if (!token) {
+      return {
+        ok: false,
+        tokenSource: "nenhum",
+        error: "Nenhum token configurado. Defina META_ACCESS_TOKEN no .env ou conecte sua conta em Configurações → Instagram.",
+        details: null,
+      };
+    }
+
+    const igAccountId = ENV.metaInstagramAccountId;
+
+    try {
+      // 1. Debug token
+      const debugRes = await fetch(
+        `${graphBase}/debug_token?input_token=${token}&access_token=${token}`
+      );
+      const debugData = await debugRes.json() as {
+        data?: {
+          is_valid?: boolean;
+          expires_at?: number;
+          scopes?: string[];
+          type?: string;
+          app_id?: string;
+          error?: { message?: string; code?: number };
+        };
+        error?: { message?: string; code?: number };
+      };
+
+      if (debugData.error || !debugData.data?.is_valid) {
+        const errMsg = debugData.error?.message ?? debugData.data?.error?.message ?? "Token inválido";
+        return {
+          ok: false,
+          tokenSource,
+          error: `Token inválido: ${errMsg}`,
+          details: debugData.data ?? null,
+        };
+      }
+
+      const expiresAt = debugData.data.expires_at;
+      const expiresIn = expiresAt ? Math.round((expiresAt * 1000 - Date.now()) / 86400000) : null;
+      const scopes = debugData.data.scopes ?? [];
+      const requiredScopes = ["instagram_basic", "instagram_content_publish", "pages_read_engagement"];
+      const missingScopes = requiredScopes.filter(s => !scopes.includes(s));
+
+      // 2. Test account access
+      let accountOk = false;
+      let accountError = "";
+      if (igAccountId) {
+        const accRes = await fetch(
+          `${graphBase}/${version}/${igAccountId}?fields=id,username&access_token=${token}`
+        );
+        const accData = await accRes.json() as { id?: string; username?: string; error?: { message?: string } };
+        if (accData.error) {
+          accountError = accData.error.message ?? "Sem acesso à conta";
+        } else {
+          accountOk = true;
+        }
+      }
+
+      return {
+        ok: missingScopes.length === 0 && (igAccountId ? accountOk : true),
+        tokenSource,
+        tokenType: debugData.data.type,
+        expiresInDays: expiresIn,
+        scopes,
+        missingScopes,
+        igAccountId: igAccountId || "(não configurado)",
+        accountAccessOk: igAccountId ? accountOk : null,
+        accountError: accountError || null,
+        error: missingScopes.length > 0
+          ? `Permissões faltando: ${missingScopes.join(", ")}`
+          : accountError || null,
+        details: debugData.data,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        tokenSource,
+        error: `Erro ao verificar token: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        details: null,
+      };
+    }
+  }),
+
   getInstagramConnectionStatus: protectedProcedure.query(async ({ ctx }) => {
     try {
       const connection = await db.getInstagramConnection(ctx.user.id);
