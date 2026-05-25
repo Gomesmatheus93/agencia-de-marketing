@@ -333,6 +333,18 @@ function sleep(ms: number) {
 
 type MetaConfig = Awaited<ReturnType<typeof getRequiredMetaConfig>>;
 
+function isMetaAuthError(error?: { code?: number; type?: string; message?: string }) {
+  if (!error) return false;
+  return (
+    error.code === 190 ||
+    error.type === "OAuthException" ||
+    /authorization|oauth|access.?token|expired|invalid.?token/i.test(error.message ?? "")
+  );
+}
+
+const TOKEN_EXPIRED_MSG =
+  "Token do Instagram expirado ou inválido. Acesse Configurações → Instagram e reconecte sua conta para gerar um novo token.";
+
 async function waitForContainerReady(
   containerId: string,
   config: MetaConfig,
@@ -343,12 +355,14 @@ async function waitForContainerReady(
     const url = `${config.graphBaseUrl}/${containerId}?fields=status_code&access_token=${config.accessToken}`;
     const res = await fetch(url);
     const text = await res.text();
-    const data = text ? (JSON.parse(text) as { status_code?: string; error?: { message?: string } }) : {};
+    const data = text ? (JSON.parse(text) as { status_code?: string; error?: { code?: number; type?: string; message?: string } }) : {};
 
     if (data.error) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: `Erro ao verificar status do container Instagram: ${data.error.message}`,
+        message: isMetaAuthError(data.error)
+          ? TOKEN_EXPIRED_MSG
+          : `Erro ao verificar status do container Instagram: ${data.error.message}`,
       });
     }
 
@@ -393,6 +407,14 @@ async function postToGraph(
 
   if (!response.ok || data.error) {
     const error = data.error;
+
+    if (isMetaAuthError(error)) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: TOKEN_EXPIRED_MSG,
+      });
+    }
+
     const isObjectAccessError = error?.code === 100 && error?.error_subcode === 33;
     const flowHint = config.graphBaseUrl.includes("graph.instagram.com")
       ? "Para graph.instagram.com, use um token gerado pelo Instagram Login e um Instagram User ID que esse mesmo token consegue acessar."

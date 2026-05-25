@@ -13,26 +13,45 @@ function getPollIntervalMs() {
 async function publishDueInstagramPosts() {
   const posts = await db.getDueScheduledInstagramPosts(new Date(), 10);
 
+  if (posts.length > 0) {
+    console.log(`[InstagramScheduler] ${posts.length} post(s) due for publishing.`);
+  }
+
   for (const post of posts) {
+    const tag = `[InstagramScheduler] post=${post.id} user=${post.userId}`;
+    console.log(`${tag} Starting publish. scheduledAt=${post.scheduledAt?.toISOString()}`);
+
     try {
       const { result, publicImageUrl } = await publishInstagramSocialPost(post);
       await db.updateSocialPost(post.id, post.userId, {
         status: "published",
         publishedAt: new Date(),
         imageUrl: publicImageUrl,
+        errorMessage: null,
       });
-      console.log(`[InstagramScheduler] Published scheduled post ${post.id}: ${result.mediaId}`);
+      console.log(`${tag} Published successfully. mediaId=${result.mediaId} slides=${result.slideUrls.length}`);
     } catch (error) {
-      const message =
-        error instanceof TRPCError
+      const isTrpc = error instanceof TRPCError;
+      const message = isTrpc
+        ? error.message
+        : error instanceof Error
           ? error.message
-          : error instanceof Error
-            ? error.message
-            : "falha desconhecida";
-      await db.updateSocialPost(post.id, post.userId, {
-        status: "failed",
-      });
-      console.warn(`[InstagramScheduler] Failed to publish scheduled post ${post.id}: ${message}`);
+          : "falha desconhecida";
+      const errorType = isTrpc ? `TRPCError(${error.code})` : (error instanceof Error ? error.constructor.name : "unknown");
+      const stack = error instanceof Error ? error.stack?.split("\n").slice(0, 4).join(" | ") : "";
+
+      const logMessage = `${errorType}: ${message}`;
+      console.error(`${tag} FAILED. ${logMessage}`);
+      if (stack) console.error(`${tag} stack: ${stack}`);
+
+      try {
+        await db.updateSocialPost(post.id, post.userId, {
+          status: "failed",
+          errorMessage: logMessage.slice(0, 1000),
+        });
+      } catch (dbErr) {
+        console.error(`${tag} Also failed to save error to DB:`, dbErr);
+      }
     }
   }
 }

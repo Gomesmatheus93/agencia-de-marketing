@@ -242,6 +242,7 @@ export const socialPosts = mysqlTable(
     scheduledAt: timestamp("scheduledAt"),
     publishedAt: timestamp("publishedAt"),
     status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
+    errorMessage: text("errorMessage"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },

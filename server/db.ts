@@ -323,20 +323,28 @@ async function ensureSocialPostsMetadataColumn() {
   if (!_socialPostsMetadataReady) {
     _socialPostsMetadataReady = (async () => {
       const [columnRows] = (await db.execute(sql`
-        SELECT COUNT(*) AS columnCount
+        SELECT column_name
         FROM information_schema.columns
         WHERE table_schema = DATABASE()
           AND table_name = 'social_posts'
-          AND column_name = 'metadata'
-      `)) as unknown as [Array<{ columnCount: number | string }>, unknown];
+          AND column_name IN ('metadata', 'errorMessage')
+      `)) as unknown as [Array<{ column_name: string }>, unknown];
 
-      if (Number(columnRows[0]?.columnCount ?? 0) > 0) return;
+      const existing = new Set((columnRows as Array<{ column_name: string }>).map((r) => r.column_name));
 
-      try {
-        await db.execute(sql`ALTER TABLE social_posts ADD COLUMN metadata text`);
-      } catch (error) {
-        if (!isMysqlDuplicateColumnError(error)) {
-          throw error;
+      if (!existing.has("metadata")) {
+        try {
+          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN metadata text`);
+        } catch (error) {
+          if (!isMysqlDuplicateColumnError(error)) throw error;
+        }
+      }
+
+      if (!existing.has("errorMessage")) {
+        try {
+          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN errorMessage text`);
+        } catch (error) {
+          if (!isMysqlDuplicateColumnError(error)) throw error;
         }
       }
     })().catch((error) => {
@@ -893,6 +901,7 @@ export async function updateSocialPost(
     metadata: string | null;
     scheduledAt: Date | null;
     publishedAt: Date | null;
+    errorMessage: string | null;
   }>
 ) {
   const db = await getDb();

@@ -81,6 +81,7 @@ type Post = {
   scheduledAt: Date | null;
   publishedAt: Date | null;
   status: PostStatus;
+  errorMessage: string | null;
   createdAt: Date;
 };
 
@@ -478,6 +479,15 @@ export default function Posts() {
                           {post.content.length}/{postCfg.maxChars} chars
                         </span>
                       </div>
+
+                      {post.status === "failed" && post.errorMessage && (
+                        <div className="flex items-start gap-1.5 mt-1 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/40 px-2.5 py-1.5">
+                          <XCircle className="w-3 h-3 text-red-500 mt-0.5 shrink-0" />
+                          <p className="text-[11px] text-red-700 dark:text-red-400 leading-snug break-all">
+                            {post.errorMessage}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
