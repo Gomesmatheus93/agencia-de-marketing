@@ -18,15 +18,16 @@ const GRAPH_VERSION = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
 const GRAPH = `${GRAPH_BASE}/${GRAPH_VERSION}`;
 const OAUTH_DIALOG_BASE = `https://www.facebook.com/${GRAPH_VERSION}`;
 
+// Permissions that work with Standard Access (no App Review needed in Live mode).
+// business_management and instagram_manage_insights require Advanced Access (App Review)
+// and will cause "app unavailable" if requested without approval.
 const SCOPES = [
   "email",
   "public_profile",
   "instagram_basic",
-  "instagram_manage_insights",
   "instagram_content_publish",
   "pages_show_list",
   "pages_read_engagement",
-  "business_management",
 ].join(",");
 
 // In-memory CSRF state store (nonce → timestamp)
