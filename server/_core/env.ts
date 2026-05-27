@@ -49,6 +49,7 @@ export const ENV = {
   instagramOAuthRedirectUri: process.env.REDIRECT_URI ?? "",
   instagramConnectRedirectUri: process.env.INSTAGRAM_CONNECT_REDIRECT_URI ?? "",
   instagramLoginCallbackUri: process.env.INSTAGRAM_LOGIN_CALLBACK_URI ?? "",
+  instagramBusinessAppId: process.env.INSTAGRAM_BUSINESS_APP_ID ?? "",
   linkedinApiBaseUrl: process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest",
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202601",
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",

@@ -108,9 +108,11 @@ export function registerOAuthRoutes(app: Express) {
   // Uses api.instagram.com + graph.instagram.com — the user logs in with
   // their Instagram credentials directly.
 
+  // Instagram Business Login scopes — used with www.instagram.com/oauth/authorize
+  // These are the correct scopes for the Instagram Business Login product
   const IG_LOGIN_SCOPES = [
-    "instagram_basic",
-    "instagram_content_publish",
+    "instagram_business_basic",
+    "instagram_business_content_publish",
   ].join(",");
 
   const pendingIgLoginStates = new Map<string, { userId: number; ts: number }>();
@@ -126,8 +128,9 @@ export function registerOAuthRoutes(app: Express) {
   }
 
   app.get("/api/oauth/instagram/login", async (req, res) => {
-    if (!ENV.metaAppId || !ENV.metaAppSecret) {
-      res.status(503).send("META_APP_ID e META_APP_SECRET não configurados.");
+    const igAppId = ENV.instagramBusinessAppId || ENV.metaAppId;
+    if (!igAppId || !ENV.metaAppSecret) {
+      res.status(503).send("INSTAGRAM_BUSINESS_APP_ID (ou META_APP_ID) e META_APP_SECRET não configurados.");
       return;
     }
 
@@ -161,12 +164,14 @@ export function registerOAuthRoutes(app: Express) {
     pendingIgLoginStates.set(state, { userId, ts: Date.now() });
 
     const callbackUrl = buildIgLoginCallbackUrl(req);
-    const authUrl = new URL("https://api.instagram.com/oauth/authorize");
-    authUrl.searchParams.set("client_id", ENV.metaAppId);
+    // Instagram Business Login endpoint (shows Instagram popup, no Facebook account needed)
+    const authUrl = new URL("https://www.instagram.com/oauth/authorize");
+    authUrl.searchParams.set("client_id", igAppId);
     authUrl.searchParams.set("redirect_uri", callbackUrl);
     authUrl.searchParams.set("scope", IG_LOGIN_SCOPES);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("force_reauth", "true");
 
     res.redirect(authUrl.toString());
   });
@@ -194,13 +199,14 @@ export function registerOAuthRoutes(app: Express) {
 
     try {
       const callbackUrl = buildIgLoginCallbackUrl(req);
+      const igAppId = ENV.instagramBusinessAppId || ENV.metaAppId;
 
-      // 1. Exchange code for short-lived token
+      // 1. Exchange code for short-lived token (Instagram Business Login)
       const shortRes = await fetch("https://api.instagram.com/oauth/access_token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: ENV.metaAppId,
+          client_id: igAppId,
           client_secret: ENV.metaAppSecret,
           grant_type: "authorization_code",
           redirect_uri: callbackUrl,
@@ -212,9 +218,9 @@ export function registerOAuthRoutes(app: Express) {
 
       const igUserId = String(shortData.user_id);
 
-      // 2. Exchange for long-lived token (~60 days)
+      // 2. Exchange for long-lived token (~60 days) via graph.instagram.com
       const longRes = await fetch(
-        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_id=${ENV.metaAppId}&client_secret=${ENV.metaAppSecret}&access_token=${encodeURIComponent(shortData.access_token)}`
+        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_id=${igAppId}&client_secret=${ENV.metaAppSecret}&access_token=${encodeURIComponent(shortData.access_token)}`
       );
       const longData = await longRes.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
       if (!longData.access_token) throw new Error(`Token longa duração não retornado: ${longData.error?.message ?? ""}`);
