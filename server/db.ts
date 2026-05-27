@@ -926,7 +926,32 @@ export async function getPostCount(userId: number): Promise<number> {
 }
 
 // ─── Instagram Connections ────────────────────────────────────────────────────
+let _igConnectionsReady: Promise<void> | null = null;
+
+async function ensureInstagramConnectionsColumns(): Promise<void> {
+  if (!_igConnectionsReady) {
+    _igConnectionsReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      const [cols] = await db.execute(sql`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instagram_connections'
+      `);
+      const existing = new Set((cols as unknown as Array<{ COLUMN_NAME: string }>).map(c => c.COLUMN_NAME));
+      if (!existing.has("tokenSource")) {
+        await db.execute(sql`
+          ALTER TABLE \`instagram_connections\`
+          ADD COLUMN \`tokenSource\` varchar(16) DEFAULT 'facebook'
+        `);
+        console.log("[DB] Added tokenSource column to instagram_connections");
+      }
+    })();
+  }
+  return _igConnectionsReady;
+}
+
 export async function getInstagramConnection(userId: number): Promise<InstagramConnection | null> {
+  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.userId, userId));
@@ -934,6 +959,7 @@ export async function getInstagramConnection(userId: number): Promise<InstagramC
 }
 
 export async function upsertInstagramConnection(data: InsertInstagramConnection): Promise<void> {
+  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return;
   const existing = await getInstagramConnection(data.userId);
@@ -941,16 +967,20 @@ export async function upsertInstagramConnection(data: InsertInstagramConnection)
     await db.update(instagramConnections)
       .set({
         instagramAccountId: data.instagramAccountId,
-        facebookPageId: data.facebookPageId,
+        facebookPageId: data.facebookPageId ?? null,
         username: data.username,
         name: data.name,
         profilePictureUrl: data.profilePictureUrl,
         accessToken: data.accessToken,
         tokenExpiresAt: data.tokenExpiresAt,
+        tokenSource: data.tokenSource ?? "facebook",
       })
       .where(eq(instagramConnections.userId, data.userId));
   } else {
-    await db.insert(instagramConnections).values(data);
+    await db.insert(instagramConnections).values({
+      ...data,
+      tokenSource: data.tokenSource ?? "facebook",
+    });
   }
 }
 

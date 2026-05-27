@@ -190,14 +190,25 @@ function InstagramLoginPrompt() {
       </div>
       <div>
         <h3 className="text-lg font-semibold text-foreground">Conecte seu Instagram</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Vincule sua conta para visualizar analytics e publicar posts.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Entre com sua conta Instagram diretamente — sem precisar de Facebook.
+        </p>
       </div>
-      <Button
-        className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white px-8"
-        onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
-      >
-        Conectar Instagram
-      </Button>
+      <div className="flex flex-col gap-2 w-full max-w-xs">
+        <Button
+          className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white w-full"
+          onClick={() => { window.location.href = "/api/oauth/instagram/login"; }}
+        >
+          <Instagram className="h-4 w-4 mr-2" />
+          Entrar com Instagram
+        </Button>
+        <button
+          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+          onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
+        >
+          Tenho conta no Facebook — conectar via Facebook
+        </button>
+      </div>
     </div>
   );
 }

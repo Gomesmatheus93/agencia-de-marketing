@@ -268,6 +268,9 @@ export const instagramConnections = mysqlTable(
     profilePictureUrl: text("profilePictureUrl"),
     accessToken: text("accessToken").notNull(),
     tokenExpiresAt: timestamp("tokenExpiresAt"),
+    // "facebook" = token via Facebook Login (needs graph.facebook.com)
+    // "instagram" = token via Instagram Login (needs graph.instagram.com)
+    tokenSource: varchar("tokenSource", { length: 16 }).default("facebook"),
     connectedAt: timestamp("connectedAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },

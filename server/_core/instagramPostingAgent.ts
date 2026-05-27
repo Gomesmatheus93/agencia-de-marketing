@@ -112,10 +112,14 @@ async function getRequiredMetaConfig(userId?: number) {
     try {
       const connection = await getInstagramConnection(userId);
       if (connection?.accessToken && connection?.instagramAccountId) {
+        // Instagram Login tokens use graph.instagram.com; Facebook tokens use graph.facebook.com
+        const apiBase = connection.tokenSource === "instagram"
+          ? "https://graph.instagram.com"
+          : getGraphApiBaseUrl();
         return {
           igUserId: connection.instagramAccountId,
           accessToken: connection.accessToken,
-          graphBaseUrl: `${getGraphApiBaseUrl()}/${getGraphApiVersion()}`,
+          graphBaseUrl: `${apiBase}/${getGraphApiVersion()}`,
         };
       }
     } catch {

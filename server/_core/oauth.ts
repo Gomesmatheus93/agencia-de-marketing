@@ -104,6 +104,149 @@ function buildCallbackUrl(req: Express["request"]) {
 }
 
 export function registerOAuthRoutes(app: Express) {
+  // ── Instagram Direct Login (no Facebook account needed) ─────────────────────
+  // Uses api.instagram.com + graph.instagram.com — the user logs in with
+  // their Instagram credentials directly.
+
+  const IG_LOGIN_SCOPES = [
+    "instagram_basic",
+    "instagram_content_publish",
+  ].join(",");
+
+  const pendingIgLoginStates = new Map<string, { userId: number; ts: number }>();
+
+  function buildIgLoginCallbackUrl(req: Express["request"]) {
+    if (ENV.isProduction) {
+      if (ENV.instagramLoginCallbackUri) return ENV.instagramLoginCallbackUri;
+      if (ENV.appBaseUrl) return `${ENV.appBaseUrl.replace(/\/+$/, "")}/api/oauth/instagram/login/callback`;
+    }
+    const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || req.protocol || "http";
+    const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000";
+    return `${proto}://${host}/api/oauth/instagram/login/callback`;
+  }
+
+  app.get("/api/oauth/instagram/login", async (req, res) => {
+    if (!ENV.metaAppId || !ENV.metaAppSecret) {
+      res.status(503).send("META_APP_ID e META_APP_SECRET não configurados.");
+      return;
+    }
+
+    // Require active session
+    let userId: number | undefined;
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+      const token = match?.[1];
+      if (token) {
+        const payload = await sdk.verifySession(token);
+        if (payload?.openId) {
+          const user = await db.getUserByOpenId(payload.openId);
+          userId = user?.id;
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!userId) {
+      res.redirect("/dashboard/analytics?ig_connect=requires_login");
+      return;
+    }
+
+    // Prune old states
+    const cutoff = Date.now() - STATE_TTL_MS;
+    Array.from(pendingIgLoginStates.entries()).forEach(([k, v]) => {
+      if (v.ts < cutoff) pendingIgLoginStates.delete(k);
+    });
+
+    const state = nanoid(32);
+    pendingIgLoginStates.set(state, { userId, ts: Date.now() });
+
+    const callbackUrl = buildIgLoginCallbackUrl(req);
+    const authUrl = new URL("https://api.instagram.com/oauth/authorize");
+    authUrl.searchParams.set("client_id", ENV.metaAppId);
+    authUrl.searchParams.set("redirect_uri", callbackUrl);
+    authUrl.searchParams.set("scope", IG_LOGIN_SCOPES);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("state", state);
+
+    res.redirect(authUrl.toString());
+  });
+
+  app.get("/api/oauth/instagram/login/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      console.warn("[OAuth/IGLogin] User denied:", oauthError);
+      res.redirect("/dashboard/analytics?ig_connect=denied");
+      return;
+    }
+
+    const pending = state ? pendingIgLoginStates.get(state) : undefined;
+    if (!pending) {
+      res.redirect("/dashboard/analytics?ig_connect=invalid_state");
+      return;
+    }
+    pendingIgLoginStates.delete(state);
+
+    if (!code) {
+      res.redirect("/dashboard/analytics?ig_connect=no_code");
+      return;
+    }
+
+    try {
+      const callbackUrl = buildIgLoginCallbackUrl(req);
+
+      // 1. Exchange code for short-lived token
+      const shortRes = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: ENV.metaAppId,
+          client_secret: ENV.metaAppSecret,
+          grant_type: "authorization_code",
+          redirect_uri: callbackUrl,
+          code,
+        }),
+      });
+      const shortData = await shortRes.json() as { access_token?: string; user_id?: number; error_message?: string };
+      if (!shortData.access_token) throw new Error(`Token não retornado: ${shortData.error_message ?? "erro desconhecido"}`);
+
+      const igUserId = String(shortData.user_id);
+
+      // 2. Exchange for long-lived token (~60 days)
+      const longRes = await fetch(
+        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_id=${ENV.metaAppId}&client_secret=${ENV.metaAppSecret}&access_token=${encodeURIComponent(shortData.access_token)}`
+      );
+      const longData = await longRes.json() as { access_token?: string; expires_in?: number; error?: { message?: string } };
+      if (!longData.access_token) throw new Error(`Token longa duração não retornado: ${longData.error?.message ?? ""}`);
+
+      const accessToken = longData.access_token;
+      const expiresIn = longData.expires_in ?? 5184000;
+      const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+
+      // 3. Get user info
+      const userRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`);
+      const userData = await userRes.json() as { id?: string; username?: string; error?: { message?: string } };
+      if (!userData.id) throw new Error(`ID do usuário IG não retornado: ${userData.error?.message ?? ""}`);
+
+      await db.upsertInstagramConnection({
+        userId: pending.userId,
+        instagramAccountId: userData.id,
+        username: userData.username,
+        accessToken,
+        tokenExpiresAt,
+        tokenSource: "instagram",
+        connectedAt: new Date(),
+      });
+
+      console.log(`[OAuth/IGLogin] @${userData.username} conectado ao userId=${pending.userId}`);
+      res.redirect("/dashboard/analytics?ig_connect=success");
+    } catch (err) {
+      console.error("[OAuth/IGLogin] Erro:", err);
+      const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
+      res.redirect(`/dashboard/analytics?ig_connect=error&detail=${msg}`);
+    }
+  });
+
   // ── Step 1: redirect to Facebook OAuth ─────────────────────────────────────
   app.get("/auth/instagram", (req, res) => {
     if (!ENV.metaAppId || !ENV.metaAppSecret) {
