@@ -109,12 +109,12 @@ export function registerOAuthRoutes(app: Express) {
   // their Instagram credentials directly.
 
   // Instagram Business Login scopes — used with www.instagram.com/oauth/authorize
-  // These are the correct scopes for the Instagram Business Login product
   const IG_LOGIN_SCOPES = [
     "instagram_business_basic",
     "instagram_business_content_publish",
   ].join(",");
 
+  // userId = 0 means "not logged in yet" — a new session will be created in the callback
   const pendingIgLoginStates = new Map<string, { userId: number; ts: number }>();
 
   function buildIgLoginCallbackUrl(req: Express["request"]) {
@@ -134,8 +134,9 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
-    // Require active session
-    let userId: number | undefined;
+    // Optionally detect existing session — if logged in, we link to that user;
+    // if not logged in (userId = 0), callback will create a new user + session.
+    let userId = 0;
     try {
       const cookieHeader = req.headers.cookie ?? "";
       const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
@@ -144,15 +145,10 @@ export function registerOAuthRoutes(app: Express) {
         const payload = await sdk.verifySession(token);
         if (payload?.openId) {
           const user = await db.getUserByOpenId(payload.openId);
-          userId = user?.id;
+          userId = user?.id ?? 0;
         }
       }
     } catch { /* ignore */ }
-
-    if (!userId) {
-      res.redirect("/dashboard/analytics?ig_connect=requires_login");
-      return;
-    }
 
     // Prune old states
     const cutoff = Date.now() - STATE_TTL_MS;
@@ -179,21 +175,24 @@ export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/instagram/login/callback", async (req, res) => {
     const { code, state, error: oauthError } = req.query as Record<string, string>;
 
+    // Determine where to redirect on error — if user had a session, send to analytics; otherwise to login
+    const pending = state ? pendingIgLoginStates.get(state) : undefined;
+    const errorRedirect = pending?.userId ? "/dashboard/analytics" : "/";
+
     if (oauthError) {
       console.warn("[OAuth/IGLogin] User denied:", oauthError);
-      res.redirect("/dashboard/analytics?ig_connect=denied");
+      res.redirect(`${errorRedirect}?ig_connect=denied`);
       return;
     }
 
-    const pending = state ? pendingIgLoginStates.get(state) : undefined;
     if (!pending) {
-      res.redirect("/dashboard/analytics?ig_connect=invalid_state");
+      res.redirect(`${errorRedirect}?ig_connect=invalid_state`);
       return;
     }
     pendingIgLoginStates.delete(state);
 
     if (!code) {
-      res.redirect("/dashboard/analytics?ig_connect=no_code");
+      res.redirect(`${errorRedirect}?ig_connect=no_code`);
       return;
     }
 
@@ -230,12 +229,39 @@ export function registerOAuthRoutes(app: Express) {
       const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
       // 3. Get user info
-      const userRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`);
-      const userData = await userRes.json() as { id?: string; username?: string; error?: { message?: string } };
+      const userRes = await fetch(`https://graph.instagram.com/me?fields=id,username,name&access_token=${encodeURIComponent(accessToken)}`);
+      const userData = await userRes.json() as { id?: string; username?: string; name?: string; error?: { message?: string } };
       if (!userData.id) throw new Error(`ID do usuário IG não retornado: ${userData.error?.message ?? ""}`);
 
+      // 4. Resolve target userId
+      // If pending.userId === 0, user came from Login page (no session) → create/upsert user
+      let targetUserId = pending.userId;
+      if (targetUserId === 0) {
+        const openId = `ig_${userData.id}`;
+        const displayName = userData.name || userData.username || "Usuário Instagram";
+        await db.upsertUser({
+          openId,
+          name: displayName,
+          loginMethod: "instagram",
+          lastSignedIn: new Date(),
+        });
+        const newUser = await db.getUserByOpenId(openId);
+        if (!newUser) throw new Error("Falha ao criar usuário Instagram.");
+        targetUserId = newUser.id;
+
+        // Create session cookie
+        const sessionToken = await sdk.createSessionToken(openId, {
+          name: displayName,
+          expiresInMs: ONE_YEAR_MS,
+        });
+        const cookieOptions = getSessionCookieOptions(req);
+        res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        console.log(`[OAuth/IGLogin] Novo usuário criado: @${userData.username} (userId=${targetUserId})`);
+      }
+
+      // 5. Save Instagram connection
       await db.upsertInstagramConnection({
-        userId: pending.userId,
+        userId: targetUserId,
         instagramAccountId: userData.id,
         username: userData.username,
         accessToken,
@@ -244,12 +270,14 @@ export function registerOAuthRoutes(app: Express) {
         connectedAt: new Date(),
       });
 
-      console.log(`[OAuth/IGLogin] @${userData.username} conectado ao userId=${pending.userId}`);
+      console.log(`[OAuth/IGLogin] @${userData.username} conectado ao userId=${targetUserId}`);
       res.redirect("/dashboard/analytics?ig_connect=success");
     } catch (err) {
       console.error("[OAuth/IGLogin] Erro:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
-      res.redirect(`/dashboard/analytics?ig_connect=error&detail=${msg}`);
+      // If it was a new login (no prior session), redirect back to login page with error
+      const fallback = pending.userId === 0 ? "/" : "/dashboard/analytics";
+      res.redirect(`${fallback}?ig_connect=error&detail=${msg}`);
     }
   });
 

@@ -23,12 +23,22 @@ export default function Login() {
   // Show OAuth errors from redirect params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Legacy Facebook OAuth errors
     const oauthError = params.get("error");
     if (oauthError === "oauth_denied") setError("Autorização negada pelo Instagram.");
     else if (oauthError === "oauth_failed") {
       const detail = params.get("detail");
       setError(`Erro no login com Instagram${detail ? `: ${decodeURIComponent(detail)}` : "."}`);
     } else if (oauthError === "oauth_invalid_state") setError("Sessão de login expirada. Tente novamente.");
+
+    // Instagram Business Login errors (ig_connect param)
+    const igConnect = params.get("ig_connect");
+    if (igConnect === "denied") setError("Acesso negado. Autorize o app no Instagram para continuar.");
+    else if (igConnect === "error") {
+      const detail = params.get("detail");
+      setError(`Erro no login com Instagram${detail ? `: ${decodeURIComponent(detail)}` : "."}`);
+    } else if (igConnect === "invalid_state") setError("Sessão de login expirada. Tente novamente.");
   }, []);
 
   const loginMutation = trpc.auth.login.useMutation({
@@ -202,7 +212,7 @@ export default function Login() {
             </div>
 
             <a
-              href="/auth/instagram"
+              href="/api/oauth/instagram/login"
               className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" }}
             >

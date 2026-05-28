@@ -69,6 +69,43 @@ async function startServer() {
     }
   });
 
+  // Video proxy — streams S3 videos to the browser with CORS and range-request support.
+  // Direct S3 links fail in browsers because S3 buckets don't have CORS headers for krythoslab.com.
+  app.get("/api/video-proxy", async (req, res) => {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      res.status(400).send("Invalid URL"); return;
+    }
+    try {
+      const fetchUrl = await getMetaFetchableStorageUrl(url);
+      const rangeHeader = req.headers.range;
+      const upstream = await fetch(fetchUrl, {
+        headers: {
+          "User-Agent": "KrythosLab/1.0 video-proxy",
+          ...(rangeHeader ? { Range: rangeHeader } : {}),
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!upstream.ok && upstream.status !== 206) {
+        res.status(upstream.status).send("Upstream error"); return;
+      }
+      const ct = upstream.headers.get("content-type") ?? "video/mp4";
+      res.set("Content-Type", ct);
+      res.set("Accept-Ranges", "bytes");
+      res.set("Cache-Control", "public, max-age=86400");
+      res.set("Access-Control-Allow-Origin", "*");
+      const contentRange = upstream.headers.get("content-range");
+      const contentLength = upstream.headers.get("content-length");
+      if (contentRange) res.set("Content-Range", contentRange);
+      if (contentLength) res.set("Content-Length", contentLength);
+      res.status(upstream.status);
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.send(buf);
+    } catch {
+      res.status(502).send("Failed to fetch video");
+    }
+  });
+
   // Media upload endpoint — receives raw binary, bypasses tRPC's 20MB JSON limit
   const MIME_TO_EXT: Record<string, string> = {
     "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",

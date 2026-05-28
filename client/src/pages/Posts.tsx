@@ -26,7 +26,6 @@ import {
   Eye,
   X,
   Upload,
-  Image as ImageIcon,
   Check,
 } from "lucide-react";
 
@@ -61,9 +60,9 @@ const VIDEO_EXT_RE = /\.(mp4|mov|webm|avi)(\?|$)/i;
 function resolveImgUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (url.startsWith("data:")) return url;
-  // Don't proxy videos — the image proxy rejects non-image content types
   if (/^https?:\/\//i.test(url)) {
-    return VIDEO_EXT_RE.test(url) ? url : `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    if (VIDEO_EXT_RE.test(url)) return `/api/video-proxy?url=${encodeURIComponent(url)}`;
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
   }
   if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
   return url;
@@ -195,6 +194,14 @@ export default function Posts() {
       toast.success("Legenda gerada com IA!");
     },
     onError: (err) => toast.error("Erro ao analisar imagem: " + err.message),
+  });
+
+  const analyzeVideoMutation = trpc.posts.generateContentFromVideo.useMutation({
+    onSuccess: (data) => {
+      setFormContent(data.content);
+      toast.success("Legenda gerada com IA!");
+    },
+    onError: (err) => toast.error("Erro ao analisar vídeo: " + err.message),
   });
 
   const resetForm = () => {
@@ -683,6 +690,19 @@ export default function Posts() {
                           className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
                         >
                           {analyzeImageMutation.isPending
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Sparkles className="h-3 w-3" />}
+                          Gerar com IA
+                        </button>
+                      )}
+                      {cfg.supportsImage && formImageUrls[0] && formMediaTypes[0] === "video" && (
+                        <button
+                          type="button"
+                          disabled={analyzeVideoMutation.isPending}
+                          onClick={() => analyzeVideoMutation.mutate({ videoUrl: formImageUrls[0]!, channel: activeChannel })}
+                          className="flex items-center gap-1.5 rounded-xl border border-border/40 px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
+                        >
+                          {analyzeVideoMutation.isPending
                             ? <Loader2 className="h-3 w-3 animate-spin" />
                             : <Sparkles className="h-3 w-3" />}
                           Gerar com IA

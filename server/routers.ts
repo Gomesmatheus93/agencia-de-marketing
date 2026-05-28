@@ -2414,6 +2414,64 @@ Responda em JSON:
       return { content };
     }),
 
+  generateContentFromVideo: aiProcedure
+    .input(z.object({
+      videoUrl: z.string().url(),
+      channel: z.enum(["instagram", "linkedin", "newsletter"]),
+    }))
+    .mutation(async ({ input }) => {
+      const channelGuide: Record<string, string> = {
+        instagram: "uma legenda envolvente para Instagram em português brasileiro, com emojis, hashtags relevantes e um CTA natural no final (máx ~2000 chars)",
+        linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
+        newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
+      };
+
+      // Try to transcribe video audio with Whisper
+      let transcript = "";
+      try {
+        const videoRes = await fetch(input.videoUrl);
+        if (videoRes.ok) {
+          const buffer = await videoRes.arrayBuffer();
+          const sizeMB = buffer.byteLength / (1024 * 1024);
+          if (sizeMB <= 25) {
+            // Detect file extension from URL or content-type
+            const contentType = videoRes.headers.get("content-type") ?? "video/mp4";
+            const ext = /\.mov(\?|$)/i.test(input.videoUrl) ? "mov"
+              : /\.webm(\?|$)/i.test(input.videoUrl) ? "webm"
+              : "mp4";
+            const formData = new FormData();
+            formData.append("file", new Blob([buffer], { type: contentType }), `video.${ext}`);
+            formData.append("model", "whisper-1");
+            formData.append("response_format", "text");
+            formData.append("language", "pt");
+            const whisperRes = await fetch(`${ENV.openaiApiBaseUrl}/audio/transcriptions`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
+              body: formData,
+            });
+            if (whisperRes.ok) {
+              transcript = (await whisperRes.text()).trim();
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[generateContentFromVideo] Whisper transcription failed:", e);
+      }
+
+      const contextText = transcript
+        ? `Transcrição do áudio do vídeo:\n"${transcript}"\n\nCom base nessa transcrição, crie ${channelGuide[input.channel]}.`
+        : `Crie ${channelGuide[input.channel]} para um vídeo de marketing. Use um tom envolvente e criativo.`;
+
+      const response = await invokeLLM({
+        messages: [{ role: "user", content: contextText }],
+      });
+
+      const content = typeof response.choices[0]?.message?.content === "string"
+        ? response.choices[0].message.content.trim()
+        : "";
+      return { content };
+    }),
+
   publish: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
