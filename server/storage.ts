@@ -2,7 +2,7 @@
 // Default provider uses the Biz-provided storage proxy. Catbox or AWS S3 can be
 // enabled with PUBLIC_STORAGE_PROVIDER=catbox or PUBLIC_STORAGE_PROVIDER=aws.
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ENV } from './_core/env';
 
@@ -439,4 +439,33 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
     key,
     url: await buildDownloadUrl(baseUrl, key, apiKey),
   };
+}
+
+// Configures S3 bucket CORS so browsers can PUT (presigned upload) and GET (video playback)
+// from any origin. Called once at server startup; safe to call repeatedly (idempotent).
+export async function ensureS3CorsConfigured(): Promise<void> {
+  if (getStorageProvider() !== "aws") return;
+  try {
+    const config = getAwsStorageConfig();
+    await getS3Client(config).send(
+      new PutBucketCorsCommand({
+        Bucket: config.bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedHeaders: ["*"],
+              AllowedMethods: ["GET", "HEAD", "PUT"],
+              AllowedOrigins: ["*"],
+              ExposeHeaders: ["Content-Length", "Content-Range", "ETag"],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      })
+    );
+    console.log("[S3] CORS configurado com sucesso");
+  } catch (err) {
+    // Non-fatal: log but don't crash server startup
+    console.warn("[S3] Não foi possível configurar CORS:", err instanceof Error ? err.message : err);
+  }
 }

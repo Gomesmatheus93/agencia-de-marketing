@@ -12,7 +12,7 @@ import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv } from "./env";
 import { sdk } from "./sdk";
-import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl } from "../storage";
+import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -184,6 +184,7 @@ async function startServer() {
   });
 
   startInstagramPostScheduler();
+  ensureS3CorsConfigured();
 }
 
 startServer().catch(console.error);
