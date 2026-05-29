@@ -246,6 +246,7 @@ export default function Posts() {
     try {
       // Try presigned upload (S3 only — bypasses proxy for large files)
       let url: string | null = null;
+      let presignedUploadFailed = false;
       try {
         const presignRes = await fetch("/api/request-presigned-upload", {
           method: "POST",
@@ -262,11 +263,23 @@ export default function Posts() {
               body: file,
             });
             if (putRes.ok) url = publicUrl;
+            else presignedUploadFailed = true;
           }
         }
-      } catch { /* presigned not available, fall through */ }
+      } catch {
+        presignedUploadFailed = true;
+      }
 
-      // Fallback: upload through Express server
+      // Videos must use presigned S3 upload — server fallback can't handle large files
+      if (isVideo && !url) {
+        throw new Error(
+          presignedUploadFailed
+            ? "Upload S3 falhou. Verifique o CORS do bucket S3 (permitir PUT de *) e tente novamente."
+            : "S3 não configurado. Defina PUBLIC_STORAGE_PROVIDER=aws no servidor."
+        );
+      }
+
+      // Fallback for images: upload through Express server
       if (!url) {
         const res = await fetch("/api/upload-media", {
           method: "POST",

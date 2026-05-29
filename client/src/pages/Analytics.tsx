@@ -191,24 +191,16 @@ function InstagramLoginPrompt() {
       <div>
         <h3 className="text-lg font-semibold text-foreground">Conecte seu Instagram</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Entre com sua conta Instagram diretamente — sem precisar de Facebook.
+          Conecte sua conta do Instagram via Facebook para publicar posts e acompanhar métricas.
         </p>
       </div>
-      <div className="flex flex-col gap-2 w-full max-w-xs">
-        <Button
-          className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white w-full"
-          onClick={() => { window.location.href = "/api/oauth/instagram/login"; }}
-        >
-          <Instagram className="h-4 w-4 mr-2" />
-          Entrar com Instagram
-        </Button>
-        <button
-          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-          onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
-        >
-          Tenho conta no Facebook — conectar via Facebook
-        </button>
-      </div>
+      <Button
+        className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
+        onClick={() => { window.location.href = "/auth/instagram"; }}
+      >
+        <Instagram className="h-4 w-4 mr-2" />
+        Conectar com Facebook
+      </Button>
     </div>
   );
 }
@@ -236,7 +228,7 @@ function InstagramSetupGuide() {
 
       <Button
         className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white"
-        onClick={() => { window.location.href = "/api/oauth/instagram/connect"; }}
+        onClick={() => { window.location.href = "/auth/instagram"; }}
       >
         Tentar novamente
       </Button>

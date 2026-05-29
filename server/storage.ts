@@ -370,14 +370,14 @@ export async function getPresignedUploadUrl(
   if (provider !== "aws") return null;
 
   const config = getAwsStorageConfig();
+  // Only sign ContentType — CacheControl/ContentDisposition as signed headers
+  // cause 403 SignatureDoesNotMatch because browsers don't send them on PUT.
   return getSignedUrl(
     getS3Client(config),
     new PutObjectCommand({
       Bucket: config.bucket,
       Key: normalizeKey(key),
       ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-      ContentDisposition: "inline",
     }),
     { expiresIn: 3600 }
   );
@@ -443,8 +443,8 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 
 // Configures S3 bucket CORS so browsers can PUT (presigned upload) and GET (video playback)
 // from any origin. Called once at server startup; safe to call repeatedly (idempotent).
-export async function ensureS3CorsConfigured(): Promise<void> {
-  if (getStorageProvider() !== "aws") return;
+export async function ensureS3CorsConfigured(): Promise<boolean> {
+  if (getStorageProvider() !== "aws") return true;
   try {
     const config = getAwsStorageConfig();
     await getS3Client(config).send(
@@ -464,8 +464,9 @@ export async function ensureS3CorsConfigured(): Promise<void> {
       })
     );
     console.log("[S3] CORS configurado com sucesso");
+    return true;
   } catch (err) {
-    // Non-fatal: log but don't crash server startup
-    console.warn("[S3] Não foi possível configurar CORS:", err instanceof Error ? err.message : err);
+    console.warn("[S3] Não foi possível configurar CORS automaticamente:", err instanceof Error ? err.message : err);
+    return false;
   }
 }

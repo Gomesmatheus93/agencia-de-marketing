@@ -212,7 +212,7 @@ export default function Login() {
             </div>
 
             <a
-              href="/api/oauth/instagram/login"
+              href="/auth/instagram"
               className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" }}
             >

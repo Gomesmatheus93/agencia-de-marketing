@@ -184,7 +184,15 @@ async function startServer() {
   });
 
   startInstagramPostScheduler();
-  ensureS3CorsConfigured();
+  ensureS3CorsConfigured().then((configured) => {
+    if (!configured) {
+      console.warn(
+        "[S3] CORS não pôde ser configurado automaticamente.\n" +
+        "  → Acesse AWS Console > S3 > krythos > Permissions > CORS e adicione:\n" +
+        '  [{"AllowedHeaders":["*"],"AllowedMethods":["GET","HEAD","PUT"],"AllowedOrigins":["*"],"ExposeHeaders":["Content-Length","Content-Range","ETag"],"MaxAgeSeconds":3600}]'
+      );
+    }
+  });
 }
 
 startServer().catch(console.error);

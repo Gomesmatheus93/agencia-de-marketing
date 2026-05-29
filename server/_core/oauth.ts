@@ -87,17 +87,15 @@ async function graphGet<T>(path: string): Promise<T> {
 }
 
 function buildCallbackUrl(req: Express["request"]) {
-  // In production, respect explicit redirect URI configuration (required for Meta app allow-list)
-  if (ENV.isProduction) {
-    if (ENV.instagramOAuthRedirectUri) {
-      return ENV.instagramOAuthRedirectUri;
-    }
-    if (ENV.appBaseUrl) {
-      return `${ENV.appBaseUrl.replace(/\/+$/, "")}/auth/instagram/callback`;
-    }
+  // Always prefer explicit REDIRECT_URI when configured — required for Meta's allow-list
+  // and also fixes local dev where Meta blocks localhost in Live mode.
+  if (ENV.instagramOAuthRedirectUri) {
+    return ENV.instagramOAuthRedirectUri;
   }
-  // In development (or production without explicit config), derive from the incoming request so
-  // that local testing works without needing REDIRECT_URI set.
+  if (ENV.appBaseUrl) {
+    return `${ENV.appBaseUrl.replace(/\/+$/, "")}/auth/instagram/callback`;
+  }
+  // Fallback: derive from request (local dev without any URI configured)
   const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || req.protocol || "http";
   const host = (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host || "localhost:3000";
   return `${proto}://${host}/auth/instagram/callback`;
@@ -214,8 +212,6 @@ export function registerOAuthRoutes(app: Express) {
       });
       const shortData = await shortRes.json() as { access_token?: string; user_id?: number; error_message?: string };
       if (!shortData.access_token) throw new Error(`Token não retornado: ${shortData.error_message ?? "erro desconhecido"}`);
-
-      const igUserId = String(shortData.user_id);
 
       // 2. Exchange for long-lived token (~60 days) via graph.instagram.com
       const longRes = await fetch(
