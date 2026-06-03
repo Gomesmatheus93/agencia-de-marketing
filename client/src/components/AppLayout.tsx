@@ -20,6 +20,7 @@ import {
   Clapperboard,
   BarChart2,
   Wand2,
+  CalendarDays,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -42,6 +43,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "carousel", icon: GalleryHorizontal, path: "/dashboard/carousel", color: "from-amber-500 to-orange-500", labelKey: "carousel" as const, descKey: "carouselDesc" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const },
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const },
+  { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-violet-500 to-purple-600", labelKey: "calendar" as const, descKey: "calendarDesc" as const },
 ];
 
 const SETTINGS_CONFIG = {

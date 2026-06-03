@@ -15,6 +15,7 @@ import Posts from "./pages/Posts";
 import Settings from "./pages/Settings";
 import PrototipoCarrossel from "./pages/PrototipoCarrossel";
 import Analytics from "./pages/Analytics";
+import CalendarPage from "./pages/Calendar";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/dashboard/prototipo" component={PrototipoCarrossel} />
       <Route path="/dashboard/analytics" component={Analytics} />
       <Route path="/dashboard/posts" component={Posts} />
+      <Route path="/dashboard/calendar" component={CalendarPage} />
       <Route path="/dashboard/settings" component={Settings} />
 <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

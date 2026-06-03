@@ -14,6 +14,7 @@ export const translations = {
     prototipo: "Protótipo Carrossel",
     posts: "Postagens",
     analytics: "Analytics",
+    calendar: "Calendário",
     settings: "Configurações",
     // Nav descriptions
     dashboardDesc: "Visão geral",
@@ -25,6 +26,7 @@ export const translations = {
     prototipoDesc: "Novo gerador com IA",
     postsDesc: "Automatize suas redes",
     analyticsDesc: "Insights do Instagram",
+    calendarDesc: "Feriados e postagens",
     settingsDesc: "Conta e integrações",
     // Sections
     modules: "Módulos",
@@ -52,6 +54,7 @@ export const translations = {
     prototipo: "Carousel Prototype",
     posts: "Posts",
     analytics: "Analytics",
+    calendar: "Calendar",
     settings: "Settings",
     dashboardDesc: "Overview",
     chatDesc: "Chat with AI",
@@ -62,6 +65,7 @@ export const translations = {
     prototipoDesc: "New AI generator",
     postsDesc: "Automate your networks",
     analyticsDesc: "Instagram insights",
+    calendarDesc: "Holidays & posts",
     settingsDesc: "Account & integrations",
     modules: "Modules",
     system: "System",
