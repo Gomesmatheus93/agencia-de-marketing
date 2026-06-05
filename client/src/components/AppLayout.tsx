@@ -21,6 +21,7 @@ import {
   BarChart2,
   Wand2,
   CalendarDays,
+  Palette,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -44,6 +45,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const },
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const },
   { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-violet-500 to-purple-600", labelKey: "calendar" as const, descKey: "calendarDesc" as const },
+  { id: "brand",    icon: Palette,     path: "/dashboard/brand",    color: "from-rose-500 to-pink-600",    labelKey: "brand" as const,    descKey: "brandDesc" as const },
 ];
 
 const SETTINGS_CONFIG = {
@@ -184,7 +186,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           <NavButton key={item.id} item={item} />
         ))}
 
-        {user?.name?.toLowerCase().includes("matheus") && (
+        {user?.role === "admin" && (
           <>
             <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
               {t("system")}

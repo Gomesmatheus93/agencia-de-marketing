@@ -33,6 +33,8 @@ import {
   type CanvaConnection,
   type InsertCanvaConnection,
   type FeatureFlag,
+  brandKits,
+  type BrandKit,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -316,6 +318,64 @@ async function ensureAvatarVideoTable() {
   await _avatarVideoTableReady;
 }
 
+// ─── Approval columns migration ──────────────────────────────────────────────
+let _approvalColumnsReady: Promise<void> | null = null;
+
+async function ensureApprovalColumns() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_approvalColumnsReady) {
+    _approvalColumnsReady = (async () => {
+      // 1. Add approvalToken column if missing
+      const [cols] = (await db.execute(sql`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'social_posts'
+          AND column_name IN ('approvalToken', 'approvalExpiresAt')
+      `)) as unknown as [Array<{ column_name: string }>, unknown];
+
+      const existing = new Set((cols as Array<{ column_name: string }>).map((r) => r.column_name));
+
+      if (!existing.has("approvalToken")) {
+        try {
+          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN approvalToken varchar(64)`);
+        } catch (e) {
+          if (!isMysqlDuplicateColumnError(e)) throw e;
+        }
+      }
+      if (!existing.has("approvalExpiresAt")) {
+        try {
+          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN approvalExpiresAt timestamp NULL`);
+        } catch (e) {
+          if (!isMysqlDuplicateColumnError(e)) throw e;
+        }
+      }
+
+      // 2. Extend the status enum to include pending_approval and rejected
+      const [enumRows] = (await db.execute(sql`
+        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'social_posts'
+          AND COLUMN_NAME = 'status'
+      `)) as unknown as [Array<{ COLUMN_TYPE: string }>, unknown];
+
+      const colType = (enumRows as Array<{ COLUMN_TYPE: string }>)[0]?.COLUMN_TYPE ?? "";
+      if (!colType.includes("pending_approval")) {
+        await db.execute(sql`
+          ALTER TABLE social_posts
+          MODIFY COLUMN status enum('draft','pending_approval','scheduled','published','failed','rejected')
+          NOT NULL DEFAULT 'draft'
+        `);
+      }
+    })().catch((e) => {
+      _approvalColumnsReady = null;
+      throw e;
+    });
+  }
+  await _approvalColumnsReady;
+}
+
 async function ensureSocialPostsMetadataColumn() {
   const db = await getDb();
   if (!db) return;
@@ -354,6 +414,43 @@ async function ensureSocialPostsMetadataColumn() {
   }
 
   await _socialPostsMetadataReady;
+}
+
+// ─── Users — runtime column migration ────────────────────────────────────────
+
+let _userExtraColumnsReady: Promise<void> | null = null;
+
+async function ensureUserExtraColumns() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_userExtraColumnsReady) {
+    _userExtraColumnsReady = (async () => {
+      const [cols] = (await db.execute(sql`
+        SELECT column_name, column_type FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'users'
+          AND column_name IN ('isActive', 'plan')
+      `)) as unknown as [Array<{ column_name: string; column_type: string }>, unknown];
+
+      const existing = new Map(
+        (cols as Array<{ column_name: string; column_type: string }>).map((r) => [r.column_name, r.column_type])
+      );
+
+      if (!existing.has("isActive")) {
+        try {
+          await db.execute(sql`ALTER TABLE users ADD COLUMN isActive tinyint(1) NOT NULL DEFAULT 1`);
+        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
+      }
+
+      if (!existing.has("plan")) {
+        try {
+          await db.execute(sql`ALTER TABLE users ADD COLUMN plan enum('free','pro','agency') NOT NULL DEFAULT 'free'`);
+        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
+      }
+    })().catch((e) => { _userExtraColumnsReady = null; throw e; });
+  }
+  await _userExtraColumnsReady;
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -400,8 +497,60 @@ export async function getUserByOpenId(openId: string) {
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
+  await ensureUserExtraColumns();
   const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByOpenIdWithActiveCheck(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureUserExtraColumns();
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const user = result[0];
+  if (!user) return undefined;
+  // isActive defaults to true for rows that pre-date the column
+  const isActive = (user as unknown as { isActive?: number | boolean }).isActive;
+  if (isActive === 0 || isActive === false) return null; // null = found but inactive
+  return user;
+}
+
+export async function setUserRole(id: number, role: "user" | "admin") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ role }).where(eq(users.id, id));
+}
+
+export async function setUserPlan(id: number, plan: "free" | "pro" | "agency") {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserExtraColumns();
+  await db.execute(sql`UPDATE users SET plan = ${plan} WHERE id = ${id}`);
+}
+
+export async function setUserActive(id: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserExtraColumns();
+  await db.execute(sql`UPDATE users SET isActive = ${isActive ? 1 : 0} WHERE id = ${id}`);
+}
+
+export async function deleteUserById(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(users).where(eq(users.id, id));
+}
+
+export async function listAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureUserExtraColumns();
+  const rows = await db.select().from(users).orderBy(desc(users.createdAt));
+  return rows.map((u) => ({
+    ...u,
+    plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
+    isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
+  }));
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -918,6 +1067,64 @@ export async function deleteSocialPost(id: number, userId: number) {
   await db.delete(socialPosts).where(and(eq(socialPosts.id, id), eq(socialPosts.userId, userId)));
 }
 
+export async function setSocialPostPendingApproval(
+  id: number,
+  userId: number,
+  token: string,
+  expiresAt: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureApprovalColumns();
+  await db.execute(sql`
+    UPDATE social_posts
+    SET status = 'pending_approval', approvalToken = ${token}, approvalExpiresAt = ${expiresAt}
+    WHERE id = ${id} AND userId = ${userId}
+  `);
+}
+
+export async function getSocialPostByApprovalToken(
+  token: string
+): Promise<SocialPost | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureApprovalColumns();
+  const rows = await db.execute(sql`
+    SELECT * FROM social_posts WHERE approvalToken = ${token} LIMIT 1
+  `) as unknown as [Array<Record<string, unknown>>, unknown];
+  const row = (rows[0] as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+  return row as unknown as SocialPost;
+}
+
+export async function resolveApprovalToken(
+  token: string,
+  action: "approve" | "reject"
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = await getDb();
+  if (!db) return { ok: false, reason: "Banco de dados indisponível" };
+  await ensureApprovalColumns();
+
+  const post = await getSocialPostByApprovalToken(token);
+  if (!post) return { ok: false, reason: "Token inválido ou expirado" };
+  if (post.status !== "pending_approval") {
+    return { ok: false, reason: `Este post já foi ${post.status === "published" ? "publicado" : post.status}` };
+  }
+
+  const expires = (post as unknown as Record<string, unknown>).approvalExpiresAt as Date | null;
+  if (expires && new Date() > new Date(expires)) {
+    return { ok: false, reason: "Link de aprovação expirado" };
+  }
+
+  const newStatus = action === "approve" ? "scheduled" : "rejected";
+  await db.execute(sql`
+    UPDATE social_posts
+    SET status = ${newStatus}, approvalToken = NULL, approvalExpiresAt = NULL
+    WHERE id = ${post.id}
+  `);
+  return { ok: true };
+}
+
 export async function getPostCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
@@ -1064,23 +1271,6 @@ export async function deleteCanvaConnection(userId: number): Promise<void> {
   }
 }
 
-// ─── Admin: All Users ─────────────────────────────────────────────────────────
-export async function listAllUsers(): Promise<Omit<typeof users.$inferSelect, "passwordHash">[]> {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
-    id: users.id,
-    openId: users.openId,
-    name: users.name,
-    email: users.email,
-    loginMethod: users.loginMethod,
-    role: users.role,
-    createdAt: users.createdAt,
-    updatedAt: users.updatedAt,
-    lastSignedIn: users.lastSignedIn,
-  }).from(users).orderBy(desc(users.createdAt));
-}
-
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 async function ensureFeatureFlagsTable(): Promise<void> {
   if (!_featureFlagsTableReady) {
@@ -1151,4 +1341,104 @@ export async function deleteFeatureFlag(key: string): Promise<void> {
   if (!db) return;
   await ensureFeatureFlagsTable();
   await db.delete(featureFlags).where(eq(featureFlags.key, key));
+}
+
+// ─── Brand Kits ───────────────────────────────────────────────────────────────
+
+async function ensureBrandKitTable(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  // If the table exists with the OLD schema (has a 'name' column), drop and recreate.
+  const [oldCols] = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name   = 'brand_kits'
+      AND column_name  = 'name'
+  `) as unknown as [Array<{ cnt: number }>, unknown];
+  if (Number((oldCols as Array<{ cnt: number }>)[0]?.cnt) > 0) {
+    await db.execute(sql`DROP TABLE brand_kits`);
+  }
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS brand_kits (
+      id              int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      userId          int NOT NULL UNIQUE,
+      companyName     varchar(255),
+      tagline         varchar(512),
+      logoUrl         text,
+      industry        varchar(128),
+      targetAudience  text,
+      brandValues     text,
+      toneOfVoice     varchar(64)  DEFAULT 'professional',
+      primaryColor    varchar(7)   DEFAULT '#6366f1',
+      secondaryColor  varchar(7)   DEFAULT '#8b5cf6',
+      accentColor     varchar(7)   DEFAULT '#06b6d4',
+      instagramHandle varchar(128),
+      linkedinUrl     varchar(255),
+      createdAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+export async function getBrandKit(userId: number): Promise<BrandKit | null> {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    await ensureBrandKitTable(db);
+    const [rows] = await db.execute(
+      sql`SELECT * FROM brand_kits WHERE userId = ${userId} LIMIT 1`
+    ) as unknown as [Array<Record<string, unknown>>, unknown];
+    const row = (rows as Array<Record<string, unknown>>)[0];
+    return row ? (row as unknown as BrandKit) : null;
+  } catch (e) {
+    console.error("[BrandKit] getBrandKit error:", e);
+    return null;
+  }
+}
+
+export type BrandKitData = Omit<BrandKit, "id" | "userId" | "createdAt" | "updatedAt">;
+
+export async function saveBrandKit(userId: number, data: Partial<BrandKitData>): Promise<BrandKit> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureBrandKitTable(db);
+
+  // Coerce empty strings to null so MySQL doesn't reject them
+  const n = (v: string | null | undefined) => (v === "" || v == null ? null : v);
+
+  const cn  = n(data.companyName);
+  const tl  = n(data.tagline);
+  const lo  = n(data.logoUrl);
+  const ind = n(data.industry);
+  const ta  = n(data.targetAudience);
+  const bv  = n(data.brandValues);
+  const tv  = n(data.toneOfVoice) ?? "professional";
+  const pc  = n(data.primaryColor)   ?? "#6366f1";
+  const sc  = n(data.secondaryColor) ?? "#8b5cf6";
+  const ac  = n(data.accentColor)    ?? "#06b6d4";
+  const ig  = n(data.instagramHandle);
+  const li  = n(data.linkedinUrl);
+
+  // Use INSERT IGNORE to create the row if it doesn't exist, then always UPDATE.
+  // Avoids VALUES() reference which causes issues with MySQL2 + Drizzle.
+  await db.execute(sql`INSERT IGNORE INTO brand_kits (userId) VALUES (${userId})`);
+  await db.execute(sql`
+    UPDATE brand_kits SET
+      companyName     = ${cn},
+      tagline         = ${tl},
+      logoUrl         = ${lo},
+      industry        = ${ind},
+      targetAudience  = ${ta},
+      brandValues     = ${bv},
+      toneOfVoice     = ${tv},
+      primaryColor    = ${pc},
+      secondaryColor  = ${sc},
+      accentColor     = ${ac},
+      instagramHandle = ${ig},
+      linkedinUrl     = ${li}
+    WHERE userId = ${userId}
+  `);
+
+  const result = await getBrandKit(userId);
+  if (!result) throw new Error("Failed to save brand kit");
+  return result;
 }

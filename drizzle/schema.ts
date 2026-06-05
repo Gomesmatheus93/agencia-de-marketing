@@ -18,6 +18,8 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: text("passwordHash"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  plan: mysqlEnum("plan", ["free", "pro", "agency"]).default("free").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -241,7 +243,7 @@ export const socialPosts = mysqlTable(
     metadata: text("metadata"),
     scheduledAt: timestamp("scheduledAt"),
     publishedAt: timestamp("publishedAt"),
-    status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
+    status: mysqlEnum("status", ["draft", "pending_approval", "scheduled", "published", "failed", "rejected"]).default("draft").notNull(),
     errorMessage: text("errorMessage"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -315,3 +317,26 @@ export const featureFlags = mysqlTable("feature_flags", {
 
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
+
+// ─── Brand Kits ───────────────────────────────────────────────────────────────
+export const brandKits = mysqlTable("brand_kits", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  companyName: varchar("companyName", { length: 255 }),
+  tagline: varchar("tagline", { length: 512 }),
+  logoUrl: text("logoUrl"),
+  industry: varchar("industry", { length: 128 }),
+  targetAudience: text("targetAudience"),
+  brandValues: text("brandValues"),
+  toneOfVoice: varchar("toneOfVoice", { length: 64 }).default("professional"),
+  primaryColor: varchar("primaryColor", { length: 7 }).default("#6366f1"),
+  secondaryColor: varchar("secondaryColor", { length: 7 }).default("#8b5cf6"),
+  accentColor: varchar("accentColor", { length: 7 }).default("#06b6d4"),
+  instagramHandle: varchar("instagramHandle", { length: 128 }),
+  linkedinUrl: varchar("linkedinUrl", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BrandKit = typeof brandKits.$inferSelect;
+export type InsertBrandKit = typeof brandKits.$inferInsert;

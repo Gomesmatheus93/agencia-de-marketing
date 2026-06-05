@@ -25,6 +25,7 @@ import {
   Flag,
   ImageIcon,
   RefreshCw,
+  MessageCircle,
 } from "lucide-react";
 import {
   type Holiday,
@@ -486,6 +487,7 @@ function CreatePostDialog({
   const [channel, setChannel] = useState<Channel>("instagram");
   const [content, setContent] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [requireApproval, setRequireApproval] = useState(false);
   const [scheduledAt, setScheduledAt] = useState(() => {
     const base = prefillDate ?? new Date();
     const d = new Date(base);
@@ -510,11 +512,24 @@ function CreatePostDialog({
     onError: (e) => toast.error(e.message),
   });
 
-  const createMutation = trpc.posts.create.useMutation({
+  const approvalMutation = trpc.posts.sendForApproval.useMutation({
     onSuccess: () => {
-      toast.success("Post criado com sucesso.");
+      toast.success("Post enviado para aprovação no WhatsApp.");
       utils.posts.getAll.invalidate();
       onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const createMutation = trpc.posts.create.useMutation({
+    onSuccess: (post) => {
+      if (requireApproval && post?.id) {
+        approvalMutation.mutate({ id: post.id });
+      } else {
+        toast.success("Post criado com sucesso.");
+        utils.posts.getAll.invalidate();
+        onClose();
+      }
     },
     onError: (e) => toast.error(e.message),
   });
@@ -695,6 +710,39 @@ function CreatePostDialog({
             />
           </div>
 
+          {/* Approval toggle */}
+          <button
+            type="button"
+            onClick={() => setRequireApproval((v) => !v)}
+            className={cn(
+              "w-full flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-all",
+              requireApproval
+                ? "border-green-500 bg-green-50 dark:bg-green-950/20"
+                : "border-border hover:bg-accent/50"
+            )}
+          >
+            <div className={cn(
+              "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+              requireApproval ? "bg-green-500" : "bg-muted"
+            )}>
+              <MessageCircle className={cn("w-4 h-4", requireApproval ? "text-white" : "text-muted-foreground")} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={cn("text-xs font-medium", requireApproval ? "text-green-700 dark:text-green-400" : "text-foreground")}>
+                Enviar para aprovação no WhatsApp
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {requireApproval
+                  ? "Você receberá uma mensagem para aprovar antes de publicar"
+                  : "Ative para revisar o post pelo WhatsApp antes de agendar"}
+              </p>
+            </div>
+            <div className={cn(
+              "w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors",
+              requireApproval ? "bg-green-500 border-green-500" : "border-muted-foreground/40"
+            )} />
+          </button>
+
           {/* Actions */}
           <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={onClose}>
@@ -703,12 +751,14 @@ function CreatePostDialog({
             <Button
               className="flex-1 gap-2"
               onClick={handleSubmit}
-              disabled={createMutation.isPending || !content.trim() || !imageUrl}
+              disabled={createMutation.isPending || approvalMutation.isPending || !content.trim() || !imageUrl}
             >
-              {createMutation.isPending
+              {(createMutation.isPending || approvalMutation.isPending)
                 ? <Loader2 className="w-4 h-4 animate-spin" />
+                : requireApproval
+                ? <MessageCircle className="w-4 h-4" />
                 : <Send className="w-4 h-4" />}
-              {scheduledAt ? "Agendar post" : "Salvar rascunho"}
+              {requireApproval ? "Enviar para aprovação" : scheduledAt ? "Agendar post" : "Salvar rascunho"}
             </Button>
           </div>
         </div>

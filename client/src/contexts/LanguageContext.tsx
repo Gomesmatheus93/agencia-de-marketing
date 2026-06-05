@@ -15,6 +15,7 @@ export const translations = {
     posts: "Postagens",
     analytics: "Analytics",
     calendar: "Calendário",
+    brand: "Brand Kit",
     settings: "Configurações",
     // Nav descriptions
     dashboardDesc: "Visão geral",
@@ -27,6 +28,7 @@ export const translations = {
     postsDesc: "Automatize suas redes",
     analyticsDesc: "Insights do Instagram",
     calendarDesc: "Feriados e postagens",
+    brandDesc: "Identidade visual",
     settingsDesc: "Conta e integrações",
     // Sections
     modules: "Módulos",
@@ -55,6 +57,7 @@ export const translations = {
     posts: "Posts",
     analytics: "Analytics",
     calendar: "Calendar",
+    brand: "Brand Kit",
     settings: "Settings",
     dashboardDesc: "Overview",
     chatDesc: "Chat with AI",
@@ -66,6 +69,7 @@ export const translations = {
     postsDesc: "Automate your networks",
     analyticsDesc: "Instagram insights",
     calendarDesc: "Holidays & posts",
+    brandDesc: "Visual identity",
     settingsDesc: "Account & integrations",
     modules: "Modules",
     system: "System",

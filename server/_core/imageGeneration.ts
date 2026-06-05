@@ -210,9 +210,9 @@ async function resolveReferenceImageAsset(
   return readRemoteAsset(referenceImageUrl);
 }
 
-function persistGeneratedImage(b64: string) {
+function persistGeneratedImage(b64: string, ext = "webp") {
   const buffer = Buffer.from(b64, "base64");
-  const filename = `${Date.now()}.png`;
+  const filename = `${Date.now()}.${ext}`;
 
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -249,6 +249,8 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
         formData.append("prompt", prompt);
         formData.append("size", apiSize);
         formData.append("quality", "high");
+        formData.append("output_format", "webp");
+        formData.append("output_compression", "92");
         formData.append("image", blob, `reference.${referenceAsset!.extension}`);
 
         return {
@@ -268,7 +270,9 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
           prompt,
           size: apiSize,
           quality: "high",
-          output_format: "png",
+          output_format: "webp",
+          output_compression: 92,
+          response_format: "b64_json",
         }),
       };
 

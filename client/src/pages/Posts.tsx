@@ -27,6 +27,7 @@ import {
   X,
   Upload,
   Check,
+  MessageCircle,
 } from "lucide-react";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -69,7 +70,7 @@ function resolveImgUrl(url?: string | null): string | undefined {
 }
 
 type Channel = "instagram" | "linkedin" | "newsletter";
-type PostStatus = "draft" | "scheduled" | "published" | "failed";
+type PostStatus = "draft" | "pending_approval" | "scheduled" | "published" | "failed" | "rejected";
 
 type Post = {
   id: number;
@@ -132,9 +133,11 @@ const channelConfig: Record<Channel, {
 
 const statusConfig: Record<PostStatus, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
   draft: { label: "Rascunho", color: "text-amber-600 bg-amber-50 dark:bg-amber-950/30", icon: FileEdit },
+  pending_approval: { label: "Aguardando aprovação", color: "text-orange-600 bg-orange-50 dark:bg-orange-950/30", icon: Clock },
   scheduled: { label: "Agendado", color: "text-blue-600 bg-blue-50 dark:bg-blue-950/30", icon: Clock },
   published: { label: "Publicado", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 },
   failed: { label: "Falhou", color: "text-red-600 bg-red-50 dark:bg-red-950/30", icon: XCircle },
+  rejected: { label: "Rejeitado", color: "text-red-700 bg-red-50 dark:bg-red-950/30", icon: XCircle },
 };
 
 export default function Posts() {
@@ -186,6 +189,14 @@ export default function Posts() {
       toast.success("Post excluído");
     },
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
+  });
+
+  const sendApprovalMutation = trpc.posts.sendForApproval.useMutation({
+    onSuccess: () => {
+      utils.posts.getAll.invalidate();
+      toast.success("Enviado para aprovação no WhatsApp!");
+    },
+    onError: (err) => toast.error("Erro: " + err.message),
   });
 
   const analyzeImageMutation = trpc.posts.generateContentFromImage.useMutation({
@@ -520,7 +531,23 @@ export default function Posts() {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
-                      {post.status !== "published" && (
+                      {(post.status === "draft" || post.status === "scheduled") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Enviar para aprovação no WhatsApp"
+                          onClick={() => sendApprovalMutation.mutate({ id: post.id })}
+                          disabled={sendApprovalMutation.isPending}
+                          className="w-8 h-8 rounded-lg text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
+                        >
+                          {sendApprovalMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                      )}
+                      {post.status !== "published" && post.status !== "pending_approval" && (
                         <Button
                           variant="ghost"
                           size="icon"

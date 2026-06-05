@@ -188,8 +188,24 @@ const imagesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const brand = await db.getBrandKit(ctx.user.id);
+
+      const brandPrefix = brand
+        ? [
+            brand.companyName ? `Marca: ${brand.companyName}.` : null,
+            brand.industry ? `Setor: ${brand.industry}.` : null,
+            (brand.primaryColor && brand.primaryColor !== "#6366f1")
+              ? `Paleta de cores obrigatória — primária: ${brand.primaryColor}${brand.secondaryColor && brand.secondaryColor !== "#8b5cf6" ? `, secundária: ${brand.secondaryColor}` : ""}${brand.accentColor && brand.accentColor !== "#06b6d4" ? `, destaque: ${brand.accentColor}` : ""}. Use estas cores como paleta dominante.`
+              : null,
+          ].filter(Boolean).join(" ")
+        : null;
+
+      const enhancedPrompt = brandPrefix
+        ? `${brandPrefix} ${input.prompt}`
+        : input.prompt;
+
       const result = await generateImage({
-        prompt: input.prompt,
+        prompt: enhancedPrompt,
         referenceImageUrl: input.referenceImageUrl,
         style: input.style as ImageStyle | undefined,
         size: input.size as ImageSize | undefined,
@@ -2313,12 +2329,16 @@ const postsRouter = router({
       tone: z.enum(["professional", "casual", "inspiring", "educational"]).optional().default("professional"),
     }))
     .mutation(async ({ ctx, input }) => {
+      const brand = await db.getBrandKit(ctx.user.id);
+
       const toneGuide: Record<string, string> = {
         professional: "profissional e direto",
         casual: "casual e próximo",
         inspiring: "inspirador e motivacional",
         educational: "educativo e informativo",
       };
+
+      const effectiveTone = brand?.toneOfVoice ?? input.tone;
 
       const channelGuide: Record<string, string> = {
         instagram: `legenda para Instagram em português brasileiro otimizada para o algoritmo 2025.
@@ -2328,21 +2348,36 @@ ESTRUTURA OBRIGATÓRIA:
 2. DESENVOLVIMENTO: 3-5 frases curtas em parágrafos de 1-2 linhas. Use emojis como separadores estruturais. Inclua keywords do tema naturalmente no texto (aumentam 30% de alcance via busca semântica).
 3. CTA FINAL: UM único CTA específico com benefício claro — peça salvamento ("Salva pra consultar quando precisar de X"), compartilhamento ("Manda pra quem precisa ver isso") ou comentário ("Me conta nos comentários: qual foi o seu maior desafio com X?"). NUNCA peça curtida.
 4. HASHTAGS: exatamente 3-5 ao final. Priorize nicho (50K-500K posts). Nunca mais que 5.
-Tamanho ideal: 800-1500 caracteres. Tom: ${toneGuide[input.tone]}.`,
+Tamanho ideal: 800-1500 caracteres. Tom: ${toneGuide[effectiveTone]}.`,
 
         linkedin: `post para LinkedIn em português brasileiro — tom profissional mas acessível, máx 3000 chars.
 Estrutura: gancho forte na primeira linha, desenvolvimento com insight real, no máximo 3 hashtags relevantes ao final.
-Tom: ${toneGuide[input.tone]}.`,
+Tom: ${toneGuide[effectiveTone]}.`,
 
         newsletter: `newsletter por email em português brasileiro — assunto atrativo, saudação, conteúdo de valor com seções claras, CTA final.
-Tom: ${toneGuide[input.tone]}.`,
+Tom: ${toneGuide[effectiveTone]}.`,
       };
+
+      const brandContext = brand?.companyName
+        ? [
+            `IDENTIDADE DA MARCA:`,
+            `- Empresa: ${brand.companyName}${brand.industry ? ` (${brand.industry})` : ""}`,
+            brand.tagline ? `- Tagline: "${brand.tagline}"` : null,
+            brand.targetAudience ? `- Público-alvo: ${brand.targetAudience}` : null,
+            brand.brandValues ? `- Valores: ${brand.brandValues}` : null,
+            `- Tom de voz: ${toneGuide[effectiveTone]}`,
+            `\nO conteúdo DEVE refletir a identidade desta marca. Use o nome da empresa quando natural. Mantenha consistência com os valores e o tom definidos.`,
+          ].filter(Boolean).join("\n")
+        : null;
 
       const llmResponse = await invokeLLM({
         messages: [
           {
             role: "system",
-            content: `Você é um especialista em copywriting para redes sociais e conhece profundamente o algoritmo do Instagram. Crie conteúdo em português brasileiro que maximize engajamento real (salvamentos, compartilhamentos e comentários).`,
+            content: [
+              `Você é um especialista em copywriting para redes sociais e conhece profundamente o algoritmo do Instagram. Crie conteúdo em português brasileiro que maximize engajamento real (salvamentos, compartilhamentos e comentários).`,
+              brandContext,
+            ].filter(Boolean).join("\n\n"),
           },
           {
             role: "user",
@@ -2549,6 +2584,72 @@ Responda em JSON:
     const count = await db.getPostCount(ctx.user.id);
     return { count };
   }),
+
+  sendForApproval: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const posts = await db.getSocialPosts(ctx.user.id);
+      const post = posts.find((p) => p.id === input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Post não encontrado." });
+
+      const { sendApprovalMessage, isWhatsAppConfigured } = await import("./_core/whatsapp.js");
+      if (!isWhatsAppConfigured()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "WhatsApp não configurado. Preencha WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN e WHATSAPP_RECIPIENT_NUMBER no .env",
+        });
+      }
+
+      const { nanoid } = await import("nanoid");
+      const token = nanoid(48);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
+
+      await db.setSocialPostPendingApproval(input.id, ctx.user.id, token, expiresAt);
+
+      const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
+      const result = await sendApprovalMessage({
+        postId: post.id,
+        channel: post.channel,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        scheduledAt: post.scheduledAt,
+        approveUrl: `${baseUrl}/api/posts/approve/${token}`,
+        rejectUrl: `${baseUrl}/api/posts/reject/${token}`,
+      });
+
+      if (result.error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao enviar WhatsApp: ${result.error}` });
+      }
+
+      return { success: true };
+    }),
+});
+
+// ─── Brand Kit Router ─────────────────────────────────────────────────────────
+
+const brandKitRouter = router({
+  get: protectedProcedure.query(async ({ ctx }) => {
+    return db.getBrandKit(ctx.user.id);
+  }),
+
+  save: protectedProcedure
+    .input(z.object({
+      companyName: z.string().max(255).optional(),
+      tagline: z.string().max(512).optional(),
+      logoUrl: z.string().optional(),
+      industry: z.string().max(128).optional(),
+      targetAudience: z.string().max(2000).optional(),
+      brandValues: z.string().max(2000).optional(),
+      toneOfVoice: z.enum(["professional", "casual", "inspiring", "educational"]).optional(),
+      primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      instagramHandle: z.string().max(128).optional(),
+      linkedinUrl: z.string().max(255).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return db.saveBrandKit(ctx.user.id, input);
+    }),
 });
 
 // ─── Canva Router ─────────────────────────────────────────────────────────────
@@ -3037,19 +3138,18 @@ export const appRouter = router({
         password: z.string().min(6),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Check if open registration is enabled (default: open)
+        const regFlag = await db.getFeatureFlagByKey("open_registration");
+        if (regFlag && !regFlag.enabled) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "O cadastro público está desativado. Solicite um convite ao administrador." });
+        }
         const existing = await db.getUserByEmail(input.email);
         if (existing) {
           throw new TRPCError({ code: "CONFLICT", message: "Email já cadastrado" });
         }
         const passwordHash = await hashPassword(input.password);
         const openId = `local_${nanoid()}`;
-        await db.upsertUser({
-          openId,
-          name: input.name,
-          email: input.email,
-          loginMethod: "email",
-          passwordHash,
-        });
+        await db.upsertUser({ openId, name: input.name, email: input.email, loginMethod: "email", passwordHash });
         const user = await db.getUserByOpenId(openId);
         if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar usuário" });
         const sessionToken = await sdk.createSessionToken(openId, { name: input.name, expiresInMs: ONE_YEAR_MS });
@@ -3071,6 +3171,11 @@ export const appRouter = router({
         const valid = await verifyPassword(input.password, user.passwordHash);
         if (!valid) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha incorretos" });
+        }
+        // Block inactive users
+        const isActive = (user as unknown as { isActive?: number | boolean }).isActive;
+        if (isActive === 0 || isActive === false) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está desativada. Entre em contato com o administrador." });
         }
         await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
         const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || "", expiresInMs: ONE_YEAR_MS });
@@ -3095,6 +3200,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   admin: adminRouter,
   features: featuresRouter,
+  brandKit: brandKitRouter,
 });
 
 export type AppRouter = typeof appRouter;

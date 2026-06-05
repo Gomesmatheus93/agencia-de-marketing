@@ -30,7 +30,6 @@ function parseEnvelope<T>(text: string, label: string): T {
   } catch {
     throw new Error(`HeyGen ${label}: resposta não-JSON — ${text.slice(0, 300)}`);
   }
-  // code 100 = sucesso; undefined = outros formatos da API que só usam HTTP status
   const ok = (envelope.code === 100 || envelope.code === undefined) && !envelope.error;
   if (!ok) {
     const msg = envelope.error?.message ?? envelope.message ?? `código ${envelope.code}`;
@@ -46,43 +45,40 @@ async function heyGenFetch(url: string, init: RequestInit): Promise<Response> {
   const res = await fetch(url, { ...init, headers });
   if (!res.ok) {
     const body = await res.text();
-    // Pode ser HTML de 404 — extraímos texto legível
-    const msg = body.includes("<html") ? `HTTP ${res.status}` : body.slice(0, 200);
+    const isHtml = body.includes("<html") || body.includes("<!DOCTYPE");
+    const msg = isHtml ? `HTTP ${res.status}` : body.slice(0, 200);
     throw new Error(`HeyGen HTTP ${res.status}: ${msg}`);
   }
   return res;
 }
 
-// Cria o Talking Photo enviando a imagem diretamente via multipart — sem etapa de asset separada
-async function createTalkingPhoto(buffer: Buffer, contentType: string): Promise<string> {
+async function createTalkingPhoto(buffer: Buffer, contentType: "image/jpeg" | "image/png"): Promise<string> {
   const apiKey = getApiKey();
-  const ext = contentType === "image/jpeg" ? "jpg" : "png";
-
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([new Uint8Array(buffer)], { type: contentType }),
-    `avatar.${ext}`
-  );
-
-  const res = await fetch(`${HEYGEN_API}/v1/talking_photo`, {
+  // Upload direto para o endpoint de talking photo — retorna talking_photo_id imediatamente
+  const res = await fetch("https://upload.heygen.com/v1/talking_photo", {
     method: "POST",
-    headers: { "X-Api-Key": apiKey },
-    body: formData,
+    headers: {
+      "X-Api-Key": apiKey,
+      "Content-Type": contentType,
+    },
+    body: buffer,
   });
 
   if (!res.ok) {
     const body = await res.text();
-    const msg = body.includes("<html") ? `HTTP ${res.status}` : body.slice(0, 200);
-    throw new Error(`HeyGen talking_photo: ${msg}`);
+    const isHtml = body.includes("<html") || body.includes("<!DOCTYPE");
+    const msg = isHtml ? `HTTP ${res.status}` : body.slice(0, 200);
+    throw new Error(`HeyGen talking_photo upload: ${msg}`);
   }
 
-  const text = await res.text();
-  type PhotoData = { talking_photo_id?: string; id?: string };
-  const d = parseEnvelope<PhotoData>(text, "talking_photo");
-  const id = d?.talking_photo_id ?? d?.id;
-  if (!id) throw new Error("HeyGen talking_photo: ID não retornado na resposta.");
-  return id;
+  const json = await res.json() as { code?: number; data?: { talking_photo_id?: string }; error?: { message?: string } };
+  if ((json.code !== 100 && json.code != null) || json.error) {
+    throw new Error(`HeyGen talking_photo upload: ${json.error?.message ?? `código ${json.code}`}`);
+  }
+
+  const talkingPhotoId = json.data?.talking_photo_id;
+  if (!talkingPhotoId) throw new Error("HeyGen talking_photo upload: talking_photo_id não retornado.");
+  return talkingPhotoId;
 }
 
 export type HeyGenVoice = {
@@ -121,6 +117,10 @@ export async function createHeyGenAvatarVideo(
 ): Promise<CreatedHeyGenVideo> {
   const talkingPhotoId = await createTalkingPhoto(input.imageBuffer, input.contentType);
 
+  if (!input.voiceId) {
+    throw new Error("Selecione uma voz antes de gerar o vídeo com HeyGen.");
+  }
+
   const res = await heyGenFetch(`${HEYGEN_API}/v2/video/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -130,11 +130,8 @@ export async function createHeyGenAvatarVideo(
           character: {
             type: "talking_photo",
             talking_photo_id: talkingPhotoId,
-            talking_photo_style: "square",
             talking_style: input.talkingStyle ?? "expressive",
-            expression: "default",
             scale: 1.0,
-            matting: false,
           },
           voice: {
             type: "text",
@@ -168,11 +165,18 @@ export async function waitForHeyGenCompletion(
       { method: "GET" }
     );
     const text = await res.text();
-    type StatusData = { status?: string; video_url?: string; error?: string };
+    type StatusData = { status?: string; video_url?: string; error?: unknown };
     const d = parseEnvelope<StatusData>(text, "video_status");
 
     if (d.status === "completed" && d.video_url) return { resultUrl: d.video_url };
-    if (d.status === "failed") throw new Error(`HeyGen falhou: ${d.error ?? "erro desconhecido"}`);
+    if (d.status === "failed") {
+      const errMsg = d.error == null
+        ? "erro desconhecido"
+        : typeof d.error === "string"
+          ? d.error
+          : JSON.stringify(d.error);
+      throw new Error(`HeyGen falhou: ${errMsg}`);
+    }
 
     if (attempt < maxAttempts) await sleep(delayMs);
   }

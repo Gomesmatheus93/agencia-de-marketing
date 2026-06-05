@@ -54,6 +54,10 @@ export const ENV = {
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202601",
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
   linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
+  // WhatsApp Cloud API (Meta) — aprovação de conteúdo
+  whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
+  whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
+  whatsappRecipientNumber: process.env.WHATSAPP_RECIPIENT_NUMBER ?? "",
 };
 
 const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [

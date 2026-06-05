@@ -13,6 +13,50 @@ import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv } from "./env";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
+import * as db from "../db";
+
+function approvalHtmlPage(ok: boolean, action: string, reason?: string): string {
+  const icon = ok ? "✅" : "❌";
+  const title = ok ? `Post ${action}!` : "Não foi possível processar";
+  const msg = ok
+    ? action === "aprovado"
+      ? "O post foi aprovado e será publicado na data agendada."
+      : "O post foi rejeitado e não será publicado."
+    : (reason ?? "Link inválido ou expirado.");
+  const color = ok ? (action === "aprovado" ? "#166534" : "#991b1b") : "#92400e";
+  const bg = ok ? (action === "aprovado" ? "#f0fdf4" : "#fff1f2") : "#fffbeb";
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: ${bg}; padding: 1rem; }
+    .card { background: white; border-radius: 16px; padding: 2.5rem 2rem;
+      text-align: center; max-width: 400px; width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+    .icon { font-size: 3.5rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.4rem; font-weight: 700; color: ${color}; margin-bottom: .5rem; }
+    p { font-size: .95rem; color: #6b7280; line-height: 1.5; }
+    a { display: inline-block; margin-top: 1.5rem; font-size: .85rem;
+      color: #7c3aed; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${icon}</div>
+    <h1>${title}</h1>
+    <p>${msg}</p>
+    <a href="/">Abrir plataforma</a>
+  </div>
+</body>
+</html>`;
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -153,6 +197,19 @@ async function startServer() {
       const status = err instanceof Error && err.message.includes("Unauthorized") ? 401 : 500;
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // ── WhatsApp approval endpoints (public, token-based) ───────────────────────
+  app.get("/api/posts/approve/:token", async (req, res) => {
+    const { token } = req.params;
+    const result = await db.resolveApprovalToken(token, "approve");
+    res.send(approvalHtmlPage(result.ok, "aprovado", result.reason));
+  });
+
+  app.get("/api/posts/reject/:token", async (req, res) => {
+    const { token } = req.params;
+    const result = await db.resolveApprovalToken(token, "reject");
+    res.send(approvalHtmlPage(result.ok, "rejeitado", result.reason));
   });
 
   // OAuth callback under /api/oauth/callback

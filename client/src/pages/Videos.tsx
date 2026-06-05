@@ -212,7 +212,7 @@ export default function Videos() {
   const [topic, setTopic] = useState("");
   const [script, setScript] = useState("");
   const [tone, setTone] = useState<(typeof toneOptions)[number]["value"]>("professional");
-  const [provider] = useState<Provider>("did");
+  const [provider, setProvider] = useState<Provider>("did");
   const [voiceId, setVoiceId] = useState("pt-BR-FranciscaNeural");
   const [emotion, setEmotion] = useState<Emotion>("Friendly");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState("");
@@ -224,7 +224,7 @@ export default function Videos() {
 
   const { data: heyGenVoicesRaw = [], isLoading: loadingVoices } = trpc.videos.getVoices.useQuery(
     { provider: "heygen" },
-    { enabled: false } // HeyGen requer plano pago — desabilitado no free
+    { enabled: provider === "heygen" }
   );
 
   const generateScriptMutation = trpc.videos.generateScript.useMutation({
@@ -343,7 +343,7 @@ export default function Videos() {
         <div className="grid gap-3 sm:grid-cols-2 animate-fade-in-up">
           <button
             type="button"
-            onClick={() => { setVoiceId("pt-BR-FranciscaNeural"); }}
+            onClick={() => { setProvider("did"); setVoiceId("pt-BR-FranciscaNeural"); }}
             className={cn(
               "relative flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-all duration-200",
               provider === "did"
@@ -363,19 +363,28 @@ export default function Videos() {
             </p>
           </button>
 
-          <div className="relative flex flex-col gap-2 rounded-2xl border-2 border-border/30 bg-muted/30 p-4 opacity-60 cursor-not-allowed select-none">
+          <button
+            type="button"
+            onClick={() => { setProvider("heygen"); setVoiceId(""); }}
+            className={cn(
+              "relative flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-all duration-200",
+              provider === "heygen"
+                ? "border-fuchsia-500 bg-fuchsia-500/5"
+                : "border-border/40 hover:border-border/70 bg-background/60"
+            )}
+          >
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-400 to-rose-400">
                 <Zap className="w-4 h-4 text-white" />
               </div>
               <span className="text-sm font-semibold text-foreground">HeyGen</span>
               <span className="ml-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-rose-500 px-2 py-0.5 text-[10px] font-medium text-white">Alta qualidade</span>
-              <span className="ml-auto rounded-full border border-border/50 bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Plano pago</span>
+              {provider === "heygen" && <span className="ml-auto rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-medium text-white">Selecionado</span>}
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Expressões faciais naturais, movimentos realistas e lip sync de alta fidelidade. Disponível a partir do plano Creator da HeyGen.
+              Expressões faciais naturais, movimentos realistas e lip sync de alta fidelidade.
             </p>
-          </div>
+          </button>
         </div>
 
         <div className="glass-card space-y-5 p-6 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
