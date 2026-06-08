@@ -35,6 +35,7 @@ import {
   waitForHeyGenCompletion,
   downloadAndStoreHeyGenVideo,
   listHeyGenVoices,
+  deleteHeyGenTalkingPhoto,
 } from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
@@ -331,7 +332,7 @@ const videosRouter = router({
         let videoUrl: string;
 
         if (input.provider === "heygen") {
-          const { videoId } = await createHeyGenAvatarVideo({
+          const { videoId, talkingPhotoId } = await createHeyGenAvatarVideo({
             userId: ctx.user.id,
             imageBuffer: preparedSourceImage.imageBuffer,
             contentType: preparedSourceImage.contentType,
@@ -346,13 +347,18 @@ const videosRouter = router({
             errorMessage: null,
           });
 
-          const completed = await waitForHeyGenCompletion(videoId);
-          const stored = await downloadAndStoreHeyGenVideo({
-            userId: ctx.user.id,
-            videoId: saved.id,
-            resultUrl: completed.resultUrl,
-          });
-          videoUrl = stored.videoUrl;
+          try {
+            const completed = await waitForHeyGenCompletion(videoId);
+            const stored = await downloadAndStoreHeyGenVideo({
+              userId: ctx.user.id,
+              videoId: saved.id,
+              resultUrl: completed.resultUrl,
+            });
+            videoUrl = stored.videoUrl;
+          } finally {
+            // Sempre deleta o talking photo após o uso para não acumular e atingir o limite de 3
+            await deleteHeyGenTalkingPhoto(talkingPhotoId);
+          }
         } else {
           const talk = await createDidTalk({
             sourceImageUrl: preparedSourceImage.providerSourceImageUrl,
