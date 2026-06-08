@@ -56,10 +56,41 @@ async function listTalkingPhotoIds(): Promise<string[]> {
   try {
     const res = await heyGenFetch(`${HEYGEN_API}/v2/talking_photo`, { method: "GET" });
     const text = await res.text();
-    type ListData = { talking_photo_list?: Array<{ talking_photo_id?: string }> };
-    const d = parseEnvelope<ListData>(text, "talking_photo_list");
-    return (d?.talking_photo_list ?? []).map((p) => p.talking_photo_id ?? "").filter(Boolean);
-  } catch {
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      console.warn("[HeyGen] listTalkingPhotoIds: resposta não-JSON:", text.slice(0, 200));
+      return [];
+    }
+
+    // Extrai IDs tolerando diferentes estruturas de resposta da API
+    const envelope = parsed as Record<string, unknown>;
+    const data = envelope.data;
+
+    let items: unknown[] = [];
+    if (Array.isArray(data)) {
+      items = data;
+    } else if (data && typeof data === "object") {
+      const dataObj = data as Record<string, unknown>;
+      const list =
+        dataObj.talking_photo_list ??
+        dataObj.list ??
+        dataObj.items ??
+        dataObj.talking_photos;
+      if (Array.isArray(list)) items = list;
+    }
+
+    const ids = items
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => String(item.talking_photo_id ?? item.id ?? ""))
+      .filter(Boolean);
+
+    console.log(`[HeyGen] listTalkingPhotoIds: ${ids.length} foto(s) encontrada(s)`);
+    return ids;
+  } catch (err) {
+    console.warn("[HeyGen] listTalkingPhotoIds falhou:", err);
     return [];
   }
 }
@@ -122,11 +153,19 @@ async function createTalkingPhoto(buffer: Buffer, contentType: "image/jpeg" | "i
 
   // Limit reached — delete all accumulated talking photos and retry once
   const existingIds = await listTalkingPhotoIds();
-  await Promise.all(existingIds.map((id) => deleteHeyGenTalkingPhoto(id)));
+  console.log(`[HeyGen] Limpando ${existingIds.length} talking photo(s) para liberar slot...`);
+
+  if (existingIds.length > 0) {
+    await Promise.all(existingIds.map((id) => deleteHeyGenTalkingPhoto(id)));
+  }
 
   const retryAttempt = await tryUpload();
   if (retryAttempt === null) {
-    throw new Error("HeyGen: limite de photo avatars atingido. Delete os avatars antigos no painel da HeyGen e tente novamente.");
+    throw new Error(
+      existingIds.length === 0
+        ? "HeyGen: limite de photo avatars atingido e nenhum avatar antigo encontrado para deletar. Acesse app.heygen.com → Avatars e delete manualmente os photo avatars."
+        : "HeyGen: limite de photo avatars atingido mesmo após limpeza. Tente novamente em alguns instantes."
+    );
   }
   return retryAttempt;
 }
