@@ -219,7 +219,7 @@ export async function createHeyGenAvatarVideo(
           character: {
             type: "talking_photo",
             talking_photo_id: talkingPhotoId,
-            talking_style: input.talkingStyle ?? "expressive",
+            talking_style: "expressive",
             scale: 1.0,
           },
           voice: {
@@ -232,6 +232,8 @@ export async function createHeyGenAvatarVideo(
         },
       ],
       dimension: { width: 1080, height: 1920 },
+      // Avatar IV: movimentos de cabeça e gestos faciais muito mais naturais
+      use_avatar_iv_model: true,
     }),
   });
 
