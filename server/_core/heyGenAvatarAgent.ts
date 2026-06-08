@@ -220,7 +220,9 @@ export async function createHeyGenAvatarVideo(
             type: "talking_photo",
             talking_photo_id: talkingPhotoId,
             talking_style: "expressive",
+            expression: "happy",
             scale: 1.0,
+            matting: false,
           },
           voice: {
             type: "text",
