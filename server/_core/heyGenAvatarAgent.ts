@@ -30,47 +30,22 @@ async function heyGenFetch(url: string, init: RequestInit): Promise<Response> {
   return res;
 }
 
-// V3: faz upload da imagem como asset
-async function uploadV3Asset(buffer: Buffer, contentType: string): Promise<string> {
-  const apiKey = getApiKey();
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([new Uint8Array(buffer)], { type: contentType }),
-    "avatar.jpg"
-  );
-
-  const res = await fetch(`${HEYGEN_API}/v3/assets`, {
-    method: "POST",
-    headers: { "X-Api-Key": apiKey },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    const isHtml = body.includes("<html") || body.includes("<!DOCTYPE");
-    const msg = isHtml ? `HTTP ${res.status}` : body.slice(0, 300);
-    throw new Error(`HeyGen asset upload: ${msg}`);
-  }
-
-  const json = await res.json() as { data?: { asset_id?: string }; error?: { message?: string } };
-  const assetId = json.data?.asset_id;
-  if (!assetId) throw new Error("HeyGen asset upload: asset_id não retornado.");
-  return assetId;
-}
-
-// V3: cria photo avatar a partir do asset
+// V3: cria photo avatar enviando a imagem como base64 inline (evita problemas de upload multipart)
 async function createV3PhotoAvatar(
   name: string,
-  assetId: string
+  buffer: Buffer,
+  contentType: string
 ): Promise<{ avatarId: string; groupId: string }> {
+  const mediaType = contentType === "image/png" ? "image/png" : "image/jpeg";
+  const base64Data = buffer.toString("base64");
+
   const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       type: "photo",
       name,
-      file: { type: "asset_id", asset_id: assetId },
+      file: { type: "base64", media_type: mediaType, data: base64Data },
     }),
   });
 
@@ -79,10 +54,15 @@ async function createV3PhotoAvatar(
       avatar_item?: { id?: string };
       avatar_group?: { id?: string };
     };
+    error?: { message?: string };
   };
 
+  if (json.error) {
+    throw new Error(`HeyGen create avatar: ${json.error.message ?? JSON.stringify(json.error)}`);
+  }
+
   const avatarId = json.data?.avatar_item?.id;
-  if (!avatarId) throw new Error("HeyGen create avatar: avatar_id não retornado.");
+  if (!avatarId) throw new Error(`HeyGen create avatar: avatar_id não retornado. ${JSON.stringify(json)}`);
   return { avatarId, groupId: json.data?.avatar_group?.id ?? "" };
 }
 
@@ -175,12 +155,9 @@ export async function createHeyGenAvatarVideo(
     throw new Error("Selecione uma voz antes de gerar o vídeo com HeyGen.");
   }
 
-  // 1. Upload da imagem como asset V3
-  const assetId = await uploadV3Asset(input.imageBuffer, input.contentType);
-
-  // 2. Cria photo avatar V3 (qualidade do site)
+  // 1. Cria photo avatar V3 com base64 inline (qualidade do site, sem upload separado)
   const avatarName = `av-${input.userId}-${Date.now()}`;
-  const { avatarId } = await createV3PhotoAvatar(avatarName, assetId);
+  const { avatarId } = await createV3PhotoAvatar(avatarName, input.imageBuffer, input.contentType);
 
   // 3. Inicia geração do vídeo V3
   const videoId = await generateV3Video({
