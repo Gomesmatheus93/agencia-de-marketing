@@ -846,8 +846,30 @@ export async function generateCarouselWithAgent(
     editableFields: slide?.editableFields,
   }));
 
-  if (slides.length !== input.slideCount) {
-    throw new Error("O agente nao retornou a quantidade esperada de slides");
+  if (slides.length === 0) {
+    throw new Error("O agente nao retornou nenhum slide. Tente novamente.");
+  }
+
+  // Ajusta para o número exato solicitado sem lançar erro para diferenças pequenas
+  if (slides.length > input.slideCount) {
+    // Remove slides do meio (desenvolvimento), preservando hook e CTA
+    const excess = slides.length - input.slideCount;
+    const removeFrom = Math.max(1, slides.length - 1 - excess);
+    slides.splice(removeFrom, excess);
+  } else if (slides.length < input.slideCount) {
+    const missing = input.slideCount - slides.length;
+    if (missing > 3) {
+      throw new Error(
+        `O agente retornou apenas ${slides.length} slides dos ${input.slideCount} solicitados. Tente novamente.`
+      );
+    }
+    // Duplica o último slide de desenvolvimento para completar (melhor que lançar erro)
+    const devSlide = slides.find((s) => s.slideType === "development") ?? slides[Math.floor(slides.length / 2)];
+    for (let i = 0; i < missing; i++) {
+      const ctaIndex = slides.findIndex((s) => s.slideType === "cta");
+      const insertAt = ctaIndex > 0 ? ctaIndex : slides.length - 1;
+      slides.splice(insertAt, 0, { ...devSlide, title: `${devSlide?.title ?? ""} (${i + 2})` });
+    }
   }
 
   const hook = cleanText(
