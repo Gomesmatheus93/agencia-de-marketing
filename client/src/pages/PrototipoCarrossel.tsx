@@ -2725,8 +2725,8 @@ export default function PrototipoCarrossel() {
                     {slideCount} slides
                   </span>
                 </div>
-                <div className="flex gap-2">
-                  {[3, 4, 5, 6, 7].map((n) => (
+                <div className="flex flex-wrap gap-2">
+                  {[3, 5, 7, 8, 9, 10].map((n) => (
                     <button
                       key={n}
                       onClick={() => setSlideCount(n)}
