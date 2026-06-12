@@ -746,6 +746,57 @@ async function resolveCarouselCoverImageWithAI(input: {
   return resolveCarouselCoverImage(input);
 }
 
+type MappedSlide = {
+  title: string;
+  body: string;
+  imageSearchQuery: string;
+  slideType: "hook" | "development" | "cta" | undefined;
+  shortText?: string;
+  imagePrompt?: string;
+  backgroundPrompt?: string;
+  visualDirection?: string;
+  layoutNotes?: string;
+  highlightWords: string[];
+  editableFields?: SlideEditableFields;
+};
+
+/**
+ * Ajusta o array de slides (in-place) para corresponder ao target.
+ * Tolerante a diferenças pequenas do LLM — evita lançar erro desnecessário.
+ */
+export function adjustSlideCount(slides: MappedSlide[], target: number): void {
+  if (slides.length === target) return;
+
+  if (slides.length > target) {
+    // Remove slides do meio (desenvolvimento), preservando hook (0) e CTA (last)
+    const excess = slides.length - target;
+    const removeFrom = Math.max(1, slides.length - 1 - excess);
+    slides.splice(removeFrom, excess);
+    return;
+  }
+
+  const missing = target - slides.length;
+  if (missing > 3) {
+    throw new Error(
+      `O agente retornou apenas ${slides.length} slides dos ${target} solicitados. Tente novamente.`
+    );
+  }
+
+  // Preenche com cópia do slide de desenvolvimento mais central
+  const devSlide =
+    slides.find((s) => s.slideType === "development") ??
+    slides[Math.floor(slides.length / 2)];
+
+  for (let i = 0; i < missing; i++) {
+    const ctaIndex = slides.findIndex((s) => s.slideType === "cta");
+    const insertAt = ctaIndex > 0 ? ctaIndex : slides.length - 1;
+    slides.splice(insertAt, 0, {
+      ...devSlide,
+      title: `${devSlide?.title ?? ""} (cont.)`,
+    });
+  }
+}
+
 export async function generateCarouselWithAgent(
   input: CarouselAgentInput
 ): Promise<CarouselAgentResult> {
@@ -825,14 +876,28 @@ export async function generateCarouselWithAgent(
 
   // ── Build OpenAI content (fallback) ────────────────────────────────────────
 
-  // ── Invoke LLM: Anthropic first, OpenAI/Gemini as fallback ─────────────────
-  const raw = await invokeAnthropicLLM({
-    system: DESIGNER_AGENT_SYSTEM_PROMPT,
-    userContent: anthropicParts.length === 1 ? userPrompt : anthropicParts,
-  });
-  const parsed = parseClaudeJsonResponse<CarouselAgentPayload>(raw, { slides: [] });
+  // Tokens proporcionais ao número de slides — cada slide tem ~8 campos ricos
+  // 5 slides ≈ 3500 tok, 8 slides ≈ 5500 tok, 10 slides ≈ 7000 tok
+  const maxTokens = input.slideCount <= 5 ? 4096
+    : input.slideCount <= 7 ? 6144
+    : 8192;
 
-  const slides = (parsed.slides || []).map((slide, index) => ({
+  // ── Invoke LLM com retry automático em caso de parse falhar ────────────────
+  let parsed: CarouselAgentPayload = { slides: [] };
+  let raw = "";
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    raw = await invokeAnthropicLLM({
+      system: DESIGNER_AGENT_SYSTEM_PROMPT,
+      userContent: anthropicParts.length === 1 ? userPrompt : anthropicParts,
+      maxTokens: attempt === 1 ? maxTokens : 8192,
+    });
+    parsed = parseClaudeJsonResponse<CarouselAgentPayload>(raw, { slides: [] });
+    if ((parsed.slides?.length ?? 0) > 0) break;
+    console.warn(`[CarouselAgent] Tentativa ${attempt}: slides vazios. Raw length=${raw.length}. Retentando com maxTokens=8192...`);
+  }
+
+  const slides: MappedSlide[] = (parsed.slides || []).map((slide, index) => ({
     title: cleanText(slide?.title, `Slide ${index + 1}`),
     body: cleanText(slide?.text),
     imageSearchQuery: cleanText(slide?.imageSearchQuery),
@@ -847,30 +912,13 @@ export async function generateCarouselWithAgent(
   }));
 
   if (slides.length === 0) {
-    throw new Error("O agente nao retornou nenhum slide. Tente novamente.");
+    console.error(`[CarouselAgent] Falha após 2 tentativas. Raw (primeiros 500 chars): ${raw.slice(0, 500)}`);
+    throw new Error(
+      "O agente nao conseguiu gerar os slides. Verifique se ANTHROPIC_API_KEY esta configurada e tente novamente."
+    );
   }
 
-  // Ajusta para o número exato solicitado sem lançar erro para diferenças pequenas
-  if (slides.length > input.slideCount) {
-    // Remove slides do meio (desenvolvimento), preservando hook e CTA
-    const excess = slides.length - input.slideCount;
-    const removeFrom = Math.max(1, slides.length - 1 - excess);
-    slides.splice(removeFrom, excess);
-  } else if (slides.length < input.slideCount) {
-    const missing = input.slideCount - slides.length;
-    if (missing > 3) {
-      throw new Error(
-        `O agente retornou apenas ${slides.length} slides dos ${input.slideCount} solicitados. Tente novamente.`
-      );
-    }
-    // Duplica o último slide de desenvolvimento para completar (melhor que lançar erro)
-    const devSlide = slides.find((s) => s.slideType === "development") ?? slides[Math.floor(slides.length / 2)];
-    for (let i = 0; i < missing; i++) {
-      const ctaIndex = slides.findIndex((s) => s.slideType === "cta");
-      const insertAt = ctaIndex > 0 ? ctaIndex : slides.length - 1;
-      slides.splice(insertAt, 0, { ...devSlide, title: `${devSlide?.title ?? ""} (${i + 2})` });
-    }
-  }
+  adjustSlideCount(slides, input.slideCount);
 
   const hook = cleanText(
     parsed.slides?.find((s) => s.type === "hook")?.title,

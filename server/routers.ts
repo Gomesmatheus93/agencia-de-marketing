@@ -2472,50 +2472,83 @@ Responda em JSON:
         newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
       };
 
-      // Try to transcribe video audio with Whisper
+      // 1. Try Whisper audio transcription (only when OpenAI key is configured)
       let transcript = "";
-      try {
-        const videoRes = await fetch(input.videoUrl);
-        if (videoRes.ok) {
-          const buffer = await videoRes.arrayBuffer();
-          const sizeMB = buffer.byteLength / (1024 * 1024);
-          if (sizeMB <= 25) {
-            // Detect file extension from URL or content-type
-            const contentType = videoRes.headers.get("content-type") ?? "video/mp4";
-            const ext = /\.mov(\?|$)/i.test(input.videoUrl) ? "mov"
-              : /\.webm(\?|$)/i.test(input.videoUrl) ? "webm"
-              : "mp4";
-            const formData = new FormData();
-            formData.append("file", new Blob([buffer], { type: contentType }), `video.${ext}`);
-            formData.append("model", "whisper-1");
-            formData.append("response_format", "text");
-            formData.append("language", "pt");
-            const whisperRes = await fetch(`${ENV.openaiApiBaseUrl}/audio/transcriptions`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
-              body: formData,
-            });
-            if (whisperRes.ok) {
-              transcript = (await whisperRes.text()).trim();
+      if (ENV.openaiApiKey.trim()) {
+        try {
+          const videoRes = await fetch(input.videoUrl);
+          if (videoRes.ok) {
+            const buffer = await videoRes.arrayBuffer();
+            const sizeMB = buffer.byteLength / (1024 * 1024);
+            if (sizeMB <= 25) {
+              const contentType = videoRes.headers.get("content-type") ?? "video/mp4";
+              const ext = /\.mov(\?|$)/i.test(input.videoUrl) ? "mov"
+                : /\.webm(\?|$)/i.test(input.videoUrl) ? "webm"
+                : "mp4";
+              const formData = new FormData();
+              formData.append("file", new Blob([buffer], { type: contentType }), `video.${ext}`);
+              formData.append("model", "whisper-1");
+              formData.append("response_format", "text");
+              formData.append("language", "pt");
+              const whisperRes = await fetch(`${ENV.openaiApiBaseUrl}/audio/transcriptions`, {
+                method: "POST",
+                headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
+                body: formData,
+              });
+              if (whisperRes.ok) {
+                transcript = (await whisperRes.text()).trim();
+              } else {
+                console.warn("[generateContentFromVideo] Whisper status:", whisperRes.status, await whisperRes.text().catch(() => ""));
+              }
+            } else {
+              console.warn(`[generateContentFromVideo] Video too large for Whisper: ${sizeMB.toFixed(1)}MB`);
             }
+          } else {
+            console.warn("[generateContentFromVideo] Video URL not accessible:", videoRes.status, input.videoUrl);
           }
+        } catch (e) {
+          console.warn("[generateContentFromVideo] Whisper failed:", e);
         }
-      } catch (e) {
-        console.warn("[generateContentFromVideo] Whisper transcription failed:", e);
       }
 
-      const contextText = transcript
-        ? `Transcrição do áudio do vídeo:\n"${transcript}"\n\nCom base nessa transcrição, crie ${channelGuide[input.channel]}.`
-        : `Crie ${channelGuide[input.channel]} para um vídeo de marketing. Use um tom envolvente e criativo.`;
+      // 2. If transcription succeeded, generate caption from transcript
+      if (transcript) {
+        const response = await invokeLLM({
+          messages: [{
+            role: "user",
+            content: `Transcrição do áudio do vídeo:\n"${transcript}"\n\nCom base nessa transcrição, crie ${channelGuide[input.channel]}.`,
+          }],
+        });
+        const content = typeof response.choices[0]?.message?.content === "string"
+          ? response.choices[0].message.content.trim()
+          : "";
+        if (content) return { content };
+      }
 
-      const response = await invokeLLM({
-        messages: [{ role: "user", content: contextText }],
+      // 3. Fallback: pass video URL directly to the LLM (works with multimodal models like Gemini)
+      try {
+        const response = await invokeLLM({
+          messages: [{
+            role: "user",
+            content: [
+              { type: "file_url", file_url: { url: input.videoUrl, mime_type: "video/mp4" as const } },
+              { type: "text", text: `Analise este vídeo e crie ${channelGuide[input.channel]}.` },
+            ],
+          }],
+        });
+        const content = typeof response.choices[0]?.message?.content === "string"
+          ? response.choices[0].message.content.trim()
+          : "";
+        if (content) return { content };
+      } catch (e) {
+        console.warn("[generateContentFromVideo] Direct video LLM analysis failed:", e);
+      }
+
+      // 4. Both approaches failed — return clear error instead of random content
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Não foi possível analisar o áudio do vídeo. Verifique se o vídeo está acessível e possui áudio, ou configure OPENAI_API_KEY para habilitar a transcrição.",
       });
-
-      const content = typeof response.choices[0]?.message?.content === "string"
-        ? response.choices[0].message.content.trim()
-        : "";
-      return { content };
     }),
 
   publish: protectedProcedure

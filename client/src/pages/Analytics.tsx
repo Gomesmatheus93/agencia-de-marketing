@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Area,
   AreaChart,
@@ -800,6 +801,7 @@ function LinkedInTab() {
 type Tab = "instagram" | "linkedin";
 
 export default function Analytics() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<Tab>("instagram");
 
   return (
@@ -813,8 +815,8 @@ export default function Analytics() {
               <BarChart2 className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Analytics</h1>
-              <p className="text-xs text-muted-foreground">Desempenho das suas redes sociais</p>
+              <h1 className="text-xl font-bold text-foreground">{t("analyticsTitle")}</h1>
+              <p className="text-xs text-muted-foreground">{t("analyticsSubtitle")}</p>
             </div>
           </div>
 

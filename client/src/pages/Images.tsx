@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Image,
   Sparkles,
@@ -210,6 +211,7 @@ function ReferenceImageUpload({
 }
  
 export default function Images() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const [prompt, setPrompt] = useState("");
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
@@ -280,10 +282,10 @@ export default function Images() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md">
               <Image className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm text-muted-foreground font-medium">Imagens Comerciais</span>
+            <span className="text-sm text-muted-foreground font-medium">{t("imagesTitle")}</span>
           </div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Gere imagens <span className="gradient-text">comerciais com IA</span>
+            {t("imagesTitle")}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Powered by <strong>gpt-image-1</strong> — o modelo mais avançado da OpenAI para criação de imagens.

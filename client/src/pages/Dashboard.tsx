@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import {
@@ -15,92 +16,76 @@ import {
   Clapperboard,
 } from "lucide-react";
 
-const modules = [
-  {
-    id: "chat",
-    title: "Chat com IA",
-    description: "Converse com inteligência artificial para criar conteúdo, tirar dúvidas e automatizar tarefas.",
-    icon: MessageSquare,
-    path: "/dashboard/chat",
-    gradient: "from-violet-500 to-purple-600",
-    stat: "Conversas",
-    color: "text-violet-600",
-  },
-  {
-    id: "images",
-    title: "Geração de Imagens",
-    description: "Crie imagens únicas e profissionais com IA para suas campanhas de marketing.",
-    icon: Image,
-    path: "/dashboard/images",
-    gradient: "from-blue-500 to-cyan-500",
-    stat: "Imagens",
-    color: "text-blue-600",
-  },
-  {
-    id: "videos",
-    title: "Videos com Avatar",
-    description: "Transforme a foto de uma pessoa em um video falado e mantenha tudo salvo na plataforma.",
-    icon: Clapperboard,
-    path: "/dashboard/videos",
-    gradient: "from-fuchsia-500 to-rose-500",
-    stat: "Videos",
-    color: "text-fuchsia-600",
-  },
-  {
-    id: "articles",
-    title: "Artigos Automáticos",
-    description: "Gere artigos completos e otimizados para SEO a partir de temas ou links de notícias.",
-    icon: FileText,
-    path: "/dashboard/articles",
-    gradient: "from-emerald-500 to-teal-500",
-    stat: "Artigos",
-    color: "text-emerald-600",
-  },
-  {
-    id: "carousel",
-    title: "Carrossel de Imagens",
-    description: "Crie carrosséis dinâmicos e atraentes para suas campanhas nas redes sociais.",
-    icon: GalleryHorizontal,
-    path: "/dashboard/carousel",
-    gradient: "from-amber-500 to-orange-500",
-    stat: "Carrosséis",
-    color: "text-amber-600",
-  },
-  {
-    id: "posts",
-    title: "Planejamento de Postagens",
-    description: "Organize textos, imagens e status de publicacao para Instagram, LinkedIn e Newsletter.",
-    icon: Share2,
-    path: "/dashboard/posts",
-    gradient: "from-orange-500 to-rose-500",
-    stat: "Posts",
-    color: "text-orange-600",
-  },
+type ModuleConfig = {
+  id: string;
+  icon: React.ComponentType<{ className?: string }>;
+  path: string;
+  gradient: string;
+  color: string;
+};
+
+const MODULE_CONFIGS: ModuleConfig[] = [
+  { id: "chat",     icon: MessageSquare,    path: "/dashboard/chat",      gradient: "from-violet-500 to-purple-600", color: "text-violet-600" },
+  { id: "images",   icon: Image,            path: "/dashboard/images",    gradient: "from-blue-500 to-cyan-500",     color: "text-blue-600" },
+  { id: "videos",   icon: Clapperboard,     path: "/dashboard/videos",    gradient: "from-fuchsia-500 to-rose-500",  color: "text-fuchsia-600" },
+  { id: "articles", icon: FileText,         path: "/dashboard/articles",  gradient: "from-emerald-500 to-teal-500",  color: "text-emerald-600" },
+  { id: "carousel", icon: GalleryHorizontal,path: "/dashboard/carousel",  gradient: "from-amber-500 to-orange-500",  color: "text-amber-600" },
+  { id: "posts",    icon: Share2,           path: "/dashboard/posts",     gradient: "from-orange-500 to-rose-500",   color: "text-orange-600" },
 ];
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [, navigate] = useLocation();
 
-  const { data: chatStats } = trpc.chat.getStats.useQuery();
-  const { data: imageStats } = trpc.images.getStats.useQuery();
-  const { data: videoStats } = trpc.videos.getStats.useQuery();
-  const { data: articleStats } = trpc.articles.getStats.useQuery();
+  const { data: chatStats }     = trpc.chat.getStats.useQuery();
+  const { data: imageStats }    = trpc.images.getStats.useQuery();
+  const { data: videoStats }    = trpc.videos.getStats.useQuery();
+  const { data: articleStats }  = trpc.articles.getStats.useQuery();
   const { data: carouselStats } = trpc.carousel.getStats.useQuery();
-  const { data: postStats } = trpc.posts.getStats.useQuery();
+  const { data: postStats }     = trpc.posts.getStats.useQuery();
 
   const statsMap: Record<string, number> = {
-    chat: chatStats?.count ?? 0,
-    images: imageStats?.count ?? 0,
-    videos: videoStats?.count ?? 0,
+    chat:     chatStats?.count ?? 0,
+    images:   imageStats?.count ?? 0,
+    videos:   videoStats?.count ?? 0,
     articles: articleStats?.count ?? 0,
     carousel: carouselStats?.count ?? 0,
-    posts: postStats?.count ?? 0,
+    posts:    postStats?.count ?? 0,
+  };
+
+  const statLabels: Record<string, string> = {
+    chat:     t("dashboardConversations"),
+    images:   t("dashboardImages"),
+    videos:   t("dashboardVideos"),
+    articles: t("dashboardArticles"),
+    carousel: t("dashboardCarousels"),
+    posts:    t("dashboardPosts"),
+  };
+
+  const moduleTitles: Record<string, string> = {
+    chat:     t("chat"),
+    images:   t("images"),
+    videos:   t("videos"),
+    articles: t("articles"),
+    carousel: t("carousel"),
+    posts:    t("posts"),
+  };
+
+  const moduleDescs: Record<string, string> = {
+    chat:     t("chatModuleDesc"),
+    images:   t("imagesModuleDesc"),
+    videos:   t("videosModuleDesc"),
+    articles: t("articlesModuleDesc"),
+    carousel: t("carouselModuleDesc"),
+    posts:    t("postsModuleDesc"),
   };
 
   const firstName = user?.name?.split(" ")[0] || "Usuário";
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const greeting = hour < 12 ? t("dashboardGreetingMorning")
+    : hour < 18 ? t("dashboardGreetingAfternoon")
+    : t("dashboardGreetingEvening");
 
   return (
     <AppLayout activeModule="dashboard">
@@ -116,14 +101,12 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
             {greeting}, <span className="gradient-text">{firstName}</span>
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Sua plataforma de marketing com IA está pronta para usar.
-          </p>
+          <p className="text-muted-foreground mt-1">{t("dashboardSubtitle")}</p>
         </div>
 
         {/* Quick stats */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-          {modules.map((mod) => {
+          {MODULE_CONFIGS.map((mod) => {
             const Icon = mod.icon;
             return (
               <div key={mod.id} className="glass-card p-4 space-y-3">
@@ -132,7 +115,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-foreground">{statsMap[mod.id]}</div>
-                  <div className="text-xs text-muted-foreground">{mod.stat} criados</div>
+                  <div className="text-xs text-muted-foreground">{statLabels[mod.id]} {t("dashboardCreated")}</div>
                 </div>
               </div>
             );
@@ -143,10 +126,10 @@ export default function Dashboard() {
         <div className="space-y-3 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">Módulos disponíveis</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t("dashboardModulesTitle")}</h2>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
-            {modules.map((mod, i) => {
+            {MODULE_CONFIGS.map((mod, i) => {
               const Icon = mod.icon;
               return (
                 <button
@@ -161,13 +144,13 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-full">
                       <TrendingUp className="w-3 h-3" />
-                      {statsMap[mod.id]} {mod.stat.toLowerCase()}
+                      {statsMap[mod.id]} {statLabels[mod.id].toLowerCase()}
                     </div>
                   </div>
-                  <h3 className="font-semibold text-foreground text-base mb-1">{mod.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{mod.description}</p>
+                  <h3 className="font-semibold text-foreground text-base mb-1">{moduleTitles[mod.id]}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{moduleDescs[mod.id]}</p>
                   <div className={`flex items-center gap-1.5 text-sm font-medium ${mod.color} group-hover:gap-2.5 transition-all duration-200`}>
-                    Acessar módulo
+                    {t("dashboardAccessModule")}
                     <ArrowRight className="w-4 h-4" />
                   </div>
                 </button>

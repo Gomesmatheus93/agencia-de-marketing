@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -258,6 +259,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const { t } = useLanguage();
   const { user, loading, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const isAdmin = user?.role === "admin";
@@ -292,8 +294,8 @@ export default function SettingsPage() {
             <Settings className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Administração</h1>
-            <p className="text-sm text-muted-foreground">Gerencie usuários, planos e funcionalidades da plataforma</p>
+            <h1 className="text-xl font-bold">{t("settingsTitle")}</h1>
+            <p className="text-sm text-muted-foreground">{t("settingsSubtitle")}</p>
           </div>
           <Badge variant="secondary" className="ml-auto text-xs gap-1 border border-border/50">
             <Shield className="w-3 h-3" />

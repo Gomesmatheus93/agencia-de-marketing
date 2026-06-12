@@ -2,6 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ type Conversation = {
 };
 
 export default function Chat() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [input, setInput] = useState("");
@@ -157,8 +159,8 @@ export default function Chat() {
         >
           <div className="p-4 border-b border-border/30 flex items-center justify-between">
             <div>
-              <h2 className="font-semibold text-sm text-foreground">Historico</h2>
-              <p className="text-[11px] text-muted-foreground">Conversas salvas por usuario</p>
+              <h2 className="font-semibold text-sm text-foreground">{t("chatHistory")}</h2>
+              <p className="text-[11px] text-muted-foreground">{t("chatConversations")}</p>
             </div>
             <Button
               size="sm"
@@ -167,7 +169,7 @@ export default function Chat() {
               className="h-8 gap-1.5 rounded-lg border-0 bg-emerald-600 text-xs text-white hover:bg-emerald-700"
             >
               <Plus className="w-3.5 h-3.5" />
-              Nova
+              {t("new")}
             </Button>
           </div>
 
@@ -181,8 +183,8 @@ export default function Chat() {
             ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center px-4">
                 <MessageSquare className="w-8 h-8 text-muted-foreground/40 mb-2" />
-                <p className="text-xs text-muted-foreground">Nenhuma conversa ainda</p>
-                <p className="text-xs text-muted-foreground/60">Clique em "Nova" para começar</p>
+                <p className="text-xs text-muted-foreground">{t("chatNoConversations")}</p>
+                <p className="text-xs text-muted-foreground/60">{t("chatStartNew")}</p>
               </div>
             ) : (
               conversations.map((conv) => (

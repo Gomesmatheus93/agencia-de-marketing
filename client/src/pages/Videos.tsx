@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { type ComponentType, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -207,6 +208,7 @@ function SourceImageUpload({ value, onChange }: { value: string; onChange: (url:
 }
 
 export default function Videos() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
@@ -329,13 +331,13 @@ export default function Videos() {
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-rose-500 shadow-md">
               <Clapperboard className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm font-medium text-muted-foreground">Vídeos com Avatar</span>
+            <span className="text-sm font-medium text-muted-foreground">{t("videosTitle")}</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Gere vídeos falados com <span className="gradient-text-accent">avatar por foto</span>
+            {t("videosTitle")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Monte o roteiro, envie a foto e deixe o vídeo ser gerado e salvo aqui na plataforma.
+            {t("videosSubtitle")}
           </p>
         </div>
 
@@ -390,12 +392,12 @@ export default function Videos() {
         <div className="glass-card space-y-5 p-6 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           <div className="flex items-center gap-2">
             <Wand2 className="w-4 h-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Novo vídeo</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("new")} {t("videos")}</h2>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Título do vídeo</label>
+              <label className="text-sm font-medium text-foreground">{t("videosTitleLabel")}</label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -509,7 +511,7 @@ export default function Videos() {
                 {generateScriptMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 animate-spin" />Gerando roteiro...</>
                 ) : (
-                  <><Sparkles className="w-4 h-4" />Gerar roteiro com IA</>
+                  <><Sparkles className="w-4 h-4" />{t("videosGenerateScript")}</>
                 )}
               </Button>
             </div>
@@ -547,7 +549,7 @@ export default function Videos() {
               {generateVideoMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" />Gerando vídeo…</>
               ) : (
-                <><Mic2 className="w-4 h-4" />Gerar vídeo com {provider === "heygen" ? "HeyGen" : "D-ID"}</>
+                <><Mic2 className="w-4 h-4" />{t("videosGenerateBtn")} — {provider === "heygen" ? "HeyGen" : "D-ID"}</>
               )}
             </Button>
           </div>
@@ -578,7 +580,7 @@ export default function Videos() {
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-rose-500 opacity-40">
                 <Clapperboard className="w-8 h-8 text-white" />
               </div>
-              <h3 className="mb-1 font-semibold text-foreground">Nenhum vídeo ainda</h3>
+              <h3 className="mb-1 font-semibold text-foreground">{t("videosNoVideos")}</h3>
               <p className="text-sm text-muted-foreground">Gere o primeiro avatar em vídeo e ele ficará salvo aqui.</p>
             </div>
           ) : (

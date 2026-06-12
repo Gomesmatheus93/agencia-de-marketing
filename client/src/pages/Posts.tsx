@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -141,6 +142,7 @@ const statusConfig: Record<PostStatus, { label: string; color: string; icon: Rea
 };
 
 export default function Posts() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const [activeChannel, setActiveChannel] = useState<Channel>("instagram");
   const [showCreate, setShowCreate] = useState(false);
@@ -360,13 +362,13 @@ export default function Posts() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-md">
               <Share2 className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm text-muted-foreground font-medium">Planejamento de Postagens</span>
+            <span className="text-sm text-muted-foreground font-medium">{t("postsTitle")}</span>
           </div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Gerencie suas <span className="gradient-text-accent">postagens</span>
+            {t("postsTitle")}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Envie imagens prontas do computador e publique direto no Instagram ou LinkedIn.
+            {t("postsSubtitle")}
           </p>
         </div>
 
@@ -399,9 +401,9 @@ export default function Posts() {
           style={{ animationDelay: "0.15s" }}
         >
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-foreground">Nova postagem</p>
+            <p className="text-sm font-semibold text-foreground">{t("postsNewPost")}</p>
             <p className="text-xs text-muted-foreground">
-              Envie uma imagem pronta do computador e escreva ou gere a legenda com IA.
+              {t("postsSubtitle")}
             </p>
           </div>
           <Button
@@ -409,7 +411,7 @@ export default function Posts() {
             className="gap-2 shrink-0 bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 text-white border-0 hover:opacity-90 shadow-md"
           >
             <Plus className="w-4 h-4" />
-            Nova postagem
+            {t("postsNewPost")}
           </Button>
         </div>
 

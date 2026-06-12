@@ -22,6 +22,7 @@ import {
   Wand2,
   CalendarDays,
   Palette,
+  Globe,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -60,7 +61,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { user, isAuthenticated, loading } = useAuth();
   const { theme, toggleTheme, switchable } = useTheme();
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDarkTheme = theme === "dark";
@@ -198,6 +199,43 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
+        {/* Language switcher */}
+        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
+          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
+            <Globe className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-foreground truncate">{t("language")}</div>
+          </div>
+          <div className="flex rounded-lg overflow-hidden border border-border/50">
+            <button
+              type="button"
+              onClick={() => setLanguage("pt")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold transition-colors duration-150",
+                language === "pt"
+                  ? "bg-primary text-white"
+                  : "bg-muted/40 text-muted-foreground hover:bg-muted"
+              )}
+            >
+              PT
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage("en")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold transition-colors duration-150",
+                language === "en"
+                  ? "bg-primary text-white"
+                  : "bg-muted/40 text-muted-foreground hover:bg-muted"
+              )}
+            >
+              EN
+            </button>
+          </div>
+        </div>
+
+        {/* Theme toggle */}
         <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
           <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
             <ThemeToggleIcon className="w-4 h-4 text-muted-foreground" />

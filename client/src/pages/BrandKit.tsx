@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -216,6 +217,7 @@ function ColorPreview({ primary, secondary, accent, companyName }: { primary: st
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BrandKitPage() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const { data: saved, isLoading } = trpc.brandKit.get.useQuery();
 
@@ -298,9 +300,9 @@ export default function BrandKitPage() {
               <Palette className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Brand Kit</h1>
+              <h1 className="text-xl font-bold">{t("brandTitle")}</h1>
               <p className="text-xs text-muted-foreground">
-                Identidade da sua marca — usada automaticamente em toda geração de conteúdo e imagens
+                {t("brandSubtitle")}
               </p>
             </div>
           </div>
@@ -310,7 +312,7 @@ export default function BrandKitPage() {
               : saved_ok
               ? <Check className="w-4 h-4" />
               : <Save className="w-4 h-4" />}
-            {saved_ok ? "Salvo!" : "Salvar Brand Kit"}
+            {saved_ok ? t("brandSaved") : t("brandSaveBtn")}
           </Button>
         </div>
 

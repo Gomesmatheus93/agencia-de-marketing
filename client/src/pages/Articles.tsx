@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,6 +123,7 @@ const statusConfig = {
 };
 
 export default function Articles() {
+  const { t } = useLanguage();
   const utils = trpc.useUtils();
   const [topic, setTopic] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -366,7 +368,7 @@ export default function Articles() {
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
                 <FileText className="w-3.5 h-3.5 text-white" />
               </div>
-              <h2 className="font-semibold text-sm text-foreground">Artigos</h2>
+              <h2 className="font-semibold text-sm text-foreground">{t("articlesTitle")}</h2>
               <span className="text-xs text-muted-foreground">({articles.length})</span>
             </div>
             <Button
@@ -375,7 +377,7 @@ export default function Articles() {
               className="h-8 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
             >
               <Newspaper className="w-3.5 h-3.5" />
-              Pesquisar
+              {t("articlesResearchBtn")}
             </Button>
           </div>
 

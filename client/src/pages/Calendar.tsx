@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import AppLayout from "@/components/AppLayout";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -770,6 +771,7 @@ function CreatePostDialog({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function Calendar() {
+  const { t } = useLanguage();
   const today = new Date();
   const [viewDate, setViewDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1)
@@ -854,7 +856,7 @@ export default function Calendar() {
               <CalendarDays className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Calendário Editorial</h1>
+              <h1 className="text-xl font-bold text-foreground">{t("calendarTitle")}</h1>
               <p className="text-xs text-muted-foreground">
                 {monthPostsCount} postagem{monthPostsCount !== 1 ? "s" : ""} agendada{monthPostsCount !== 1 ? "s" : ""} · {monthHolidayCount} data{monthHolidayCount !== 1 ? "s" : ""} relevante{monthHolidayCount !== 1 ? "s" : ""} neste mês
               </p>
