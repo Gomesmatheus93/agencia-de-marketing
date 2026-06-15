@@ -1,6 +1,6 @@
-import AppLayout from "@/components/AppLayout";
+﻿import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,11 @@ import {
   Send,
   Settings2,
   Mail,
+  Bell,
+  Phone,
+  FlaskConical,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -255,6 +260,68 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao gerar newsletter: " + err.message),
   });
 
+  // ── Digest settings state ──────────────────────────────────────────────────
+  const [showDigestDialog, setShowDigestDialog] = useState(false);
+  const [digestNumber, setDigestNumber] = useState("");
+  const [digestHour, setDigestHour] = useState(6);
+  const [digestMinute, setDigestMinute] = useState(50);
+  const [digestEnabled, setDigestEnabled] = useState(true);
+
+  const { data: digestSettings, refetch: refetchDigest } = trpc.articles.getDigestSettings.useQuery(undefined, {
+    enabled: showDigestDialog,
+  });
+
+  useEffect(() => {
+    if (digestSettings) {
+      setDigestNumber(digestSettings.whatsappNumber);
+      setDigestHour(digestSettings.digestHour);
+      setDigestMinute(digestSettings.digestMinute);
+      setDigestEnabled(digestSettings.enabled);
+    }
+  }, [digestSettings]);
+
+  const saveDigestMutation = trpc.articles.saveDigestSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Configurações do digest salvas!");
+      void refetchDigest();
+    },
+    onError: (err) => toast.error("Erro ao salvar: " + err.message),
+  });
+
+  const { data: waDiag, refetch: refetchWaDiag, isFetching: isDiagging } =
+    trpc.articles.diagnoseWhatsApp.useQuery(undefined, { enabled: showDigestDialog });
+
+  const [diagResult, setDiagResult] = useState<null | {
+    wabaAccounts: Array<{ id: string; name: string }>;
+    templateFound: boolean;
+    templateLanguage?: string;
+    templateStatus?: string;
+    testSendResults: Array<{ lang: string; ok: boolean; messageId?: string; error?: string }>;
+  }>(null);
+
+  const diagTemplateMutation = trpc.articles.diagnoseTemplate.useMutation({
+    onSuccess: (data) => setDiagResult(data),
+    onError: (err) => toast.error("Erro no diagnóstico: " + err.message),
+  });
+
+  const testDigestMutation = trpc.articles.sendTestDigest.useMutation({
+    onSuccess: (data) => toast.success(`Digest enviado para +${data.to} (${data.sent} notícias). ID: ${data.messageId ?? "n/a"}`),
+    onError: (err) => toast.error("Falha no envio de teste: " + err.message),
+  });
+
+  const handleSaveDigest = () => {
+    if (!/^\d{10,15}$/.test(digestNumber)) {
+      toast.error("Número inválido. Use apenas dígitos com DDI (ex: 5527981244658)");
+      return;
+    }
+    saveDigestMutation.mutate({
+      whatsappNumber: digestNumber,
+      digestHour,
+      digestMinute,
+      enabled: digestEnabled,
+    });
+  };
+
   const handleGenerate = () => {
     if (!topic.trim()) { toast.error("Digite um tema para o artigo"); return; }
     generateMutation.mutate({
@@ -371,14 +438,25 @@ export default function Articles() {
               <h2 className="font-semibold text-sm text-foreground">{t("articlesTitle")}</h2>
               <span className="text-xs text-muted-foreground">({articles.length})</span>
             </div>
-            <Button
-              size="sm"
-              onClick={() => setShowGenerator(true)}
-              className="h-8 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
-            >
-              <Newspaper className="w-3.5 h-3.5" />
-              {t("articlesResearchBtn")}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowDigestDialog(true)}
+                className="h-8 w-8 p-0"
+                title="Configurar digest diário WhatsApp"
+              >
+                <Bell className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowGenerator(true)}
+                className="h-8 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
+              >
+                <Newspaper className="w-3.5 h-3.5" />
+                {t("articlesResearchBtn")}
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1">
@@ -409,6 +487,7 @@ export default function Articles() {
                       src={article.coverImageUrl}
                       alt="Capa do artigo"
                       className="mb-2 h-24 w-full rounded-lg object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                     />
                   )}
                   <div className="flex items-start justify-between gap-2">
@@ -565,11 +644,15 @@ export default function Articles() {
               ) : (
                 <div className="max-w-3xl mx-auto">
                   {selectedArticle.coverImageUrl ? (
-                    <div className="mb-6 overflow-hidden rounded-lg border border-border/40 bg-background/70">
+                    <div className="mb-6 overflow-hidden rounded-lg border border-border/40 bg-background/70 article-cover-wrap">
                       <img
                         src={selectedArticle.coverImageUrl}
                         alt={`Capa do artigo ${selectedArticle.title}`}
                         className="aspect-square w-full object-cover sm:aspect-[16/9]"
+                        onError={(e) => {
+                          const wrap = (e.currentTarget as HTMLImageElement).closest(".article-cover-wrap");
+                          if (wrap) (wrap as HTMLElement).style.display = "none";
+                        }}
                       />
                     </div>
                   ) : (
@@ -1075,6 +1158,184 @@ export default function Articles() {
                 sandbox="allow-same-origin"
               />
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Digest settings dialog */}
+      <Dialog open={showDigestDialog} onOpenChange={setShowDigestDialog}>
+        <DialogContent className="glass-card max-w-md border-border/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center">
+                <Bell className="w-3.5 h-3.5 text-white" />
+              </div>
+              Digest diário de notícias — WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 pt-2">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Todos os dias no horário configurado, o sistema envia as 5 principais notícias de energia para o WhatsApp.
+              Responda com o número (1-5) para gerar artigo + carrossel automaticamente.
+            </p>
+
+            {/* Phone number */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                Número WhatsApp (com DDI)
+              </label>
+              <Input
+                value={digestNumber}
+                onChange={(e) => setDigestNumber(e.target.value.replace(/\D/g, ""))}
+                placeholder="5527981244658"
+                className="glass border-border/50 focus:border-emerald-500/50 font-mono"
+              />
+              <p className="text-xs text-muted-foreground">Somente dígitos. Ex: 5527981244658</p>
+            </div>
+
+            {/* Hour/minute */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                Horário de envio
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={digestHour}
+                  onChange={(e) => setDigestHour(parseInt(e.target.value, 10))}
+                  className="flex h-9 rounded-md border border-border/50 bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground font-semibold">:</span>
+                <select
+                  value={digestMinute}
+                  onChange={(e) => setDigestMinute(parseInt(e.target.value, 10))}
+                  className="flex h-9 rounded-md border border-border/50 bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  {[0, 10, 15, 20, 30, 40, 45, 50].map((m) => (
+                    <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">(horário de Fortaleza)</span>
+              </div>
+            </div>
+
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/60 p-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Digest ativo</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {digestEnabled ? "Enviando todos os dias" : "Envio pausado"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDigestEnabled(!digestEnabled)}
+                className="text-emerald-600 hover:text-emerald-700 transition-colors"
+              >
+                {digestEnabled
+                  ? <ToggleRight className="w-8 h-8" />
+                  : <ToggleLeft className="w-8 h-8 text-muted-foreground" />
+                }
+              </button>
+            </div>
+
+            {digestSettings && (
+              <p className="text-xs text-muted-foreground">
+                Último envio: {digestSettings.lastSentDate ?? "nunca"}
+              </p>
+            )}
+
+            {/* WhatsApp sender diagnostics */}
+            {waDiag && (
+              <div className={cn(
+                "rounded-lg border p-3 text-xs space-y-1",
+                waDiag.ok && waDiag.accountMode !== "SANDBOX"
+                  ? "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
+                  : waDiag.accountMode === "SANDBOX"
+                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
+                  : "border-red-400/50 bg-red-50/60 dark:bg-red-950/20"
+              )}>
+                <p className="font-semibold text-foreground">
+                  {waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "✅ Número remetente ativo" : waDiag.accountMode === "SANDBOX" ? "⚠️ Modo SANDBOX" : "❌ Erro"}
+                </p>
+                {waDiag.senderNumber && <p className="text-muted-foreground">Remetente: <span className="font-mono">{waDiag.senderNumber}</span> · {waDiag.verifiedName} · {waDiag.qualityRating}</p>}
+                {waDiag.accountMode && <p className={waDiag.accountMode === "SANDBOX" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}>Modo: {waDiag.accountMode}</p>}
+                {waDiag.error && <p className="text-red-600 dark:text-red-400">{waDiag.error}</p>}
+                <button onClick={() => void refetchWaDiag()} className="text-primary hover:underline" disabled={isDiagging}>
+                  {isDiagging ? "Consultando..." : "Atualizar"}
+                </button>
+              </div>
+            )}
+
+            {/* Template diagnostics result */}
+            {diagResult && (
+              <div className="rounded-lg border border-border/50 bg-background/60 p-3 text-xs space-y-2">
+                <p className="font-semibold text-foreground">Diagnóstico do template</p>
+                <p className="text-muted-foreground">
+                  WABAs encontradas: <span className="text-foreground">{diagResult.wabaAccounts.map(w => w.name || w.id).join(", ") || "nenhuma"}</span>
+                </p>
+                <p className="text-muted-foreground">
+                  Template <span className="font-mono">envio_de_noticias_diario</span>:{" "}
+                  {diagResult.templateFound
+                    ? <span className="text-emerald-600 dark:text-emerald-400">✅ encontrado · idioma: {diagResult.templateLanguage} · status: {diagResult.templateStatus}</span>
+                    : <span className="text-red-600 dark:text-red-400">❌ não encontrado nas WABAs acessíveis</span>
+                  }
+                </p>
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Testes de envio:</p>
+                  {diagResult.testSendResults.map((r) => (
+                    <p key={r.lang} className={r.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                      {r.ok ? "✅" : "❌"} lang={r.lang}: {r.ok ? `ID ${r.messageId ?? "ok"}` : r.error}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}            {/* Actions */}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testDigestMutation.mutate()}
+                disabled={testDigestMutation.isPending || !digestSettings}
+                className="gap-1.5 text-xs"
+                title="Requer configurações salvas primeiro"
+              >
+                {testDigestMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <FlaskConical className="w-3.5 h-3.5" />
+                }
+                Testar envio
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => diagTemplateMutation.mutate()}
+                disabled={diagTemplateMutation.isPending}
+                className="gap-1.5 text-xs"
+              >
+                {diagTemplateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Settings2 className="w-3.5 h-3.5" />}
+                Diagnosticar
+              </Button>
+              <Button
+                onClick={handleSaveDigest}
+                disabled={saveDigestMutation.isPending}
+                className="flex-1 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
+              >
+                {saveDigestMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Check className="w-3.5 h-3.5" />
+                }
+                Salvar configurações
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

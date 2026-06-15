@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { ENV } from "./env";
+import { storagePut } from "../storage";
 
 export type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
 export type ImageSize = "1:1" | "4:5" | "16:9";
@@ -210,14 +212,25 @@ async function resolveReferenceImageAsset(
   return readRemoteAsset(referenceImageUrl);
 }
 
-function persistGeneratedImage(b64: string, ext = "webp") {
+async function persistGeneratedImage(b64: string, ext = "webp"): Promise<{ url: string }> {
   const buffer = Buffer.from(b64, "base64");
-  const filename = `${Date.now()}.${ext}`;
+  const filename = `${randomUUID()}.${ext}`;
+  const contentType = ext === "webp" ? "image/webp" : ext === "jpg" ? "image/jpeg" : "image/png";
 
+  // Upload to S3 when AWS storage is configured — gives a permanent public URL
+  if (ENV.publicStorageProvider === "aws" || ENV.publicStorageProvider === "s3") {
+    try {
+      const result = await storagePut(`generated/${filename}`, buffer, contentType);
+      return { url: result.url };
+    } catch (err) {
+      console.warn("[imageGeneration] S3 upload failed, falling back to local:", err);
+    }
+  }
+
+  // Local fallback: save to uploads/
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
-
   fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
   return { url: `/uploads/${filename}` };
 }
@@ -296,7 +309,7 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
     );
   }
 
-  return persistGeneratedImage(b64);
+  return await persistGeneratedImage(b64);
 }
 
 async function generateWithHuggingFace(
@@ -333,7 +346,7 @@ async function generateWithHuggingFace(
     throw new Error("No image returned from HuggingFace API");
   }
 
-  return persistGeneratedImage(b64);
+  return await persistGeneratedImage(b64);
 }
 
 export async function generateImage(

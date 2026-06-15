@@ -58,6 +58,7 @@ export const ENV = {
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
   whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
   whatsappRecipientNumber: process.env.WHATSAPP_RECIPIENT_NUMBER ?? "",
+  whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "krythos-webhook-verify",
 };
 
 const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [

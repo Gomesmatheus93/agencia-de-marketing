@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -429,7 +429,7 @@ const videosRouter = router({
   }),
 });
 
-type EnergyNewsItem = {
+export type EnergyNewsItem = {
   title: string;
   url: string;
   source: string;
@@ -470,6 +470,17 @@ const NEWS_KEYWORDS = [
 ];
 
 const ARTICLE_CONTEXT_CHAR_LIMIT = 18000;
+
+export const DEFAULT_NEWS_SITES = [
+  "https://canalsolar.com.br/",
+  "https://www.portalsolar.com.br",
+  "https://www.canalenergia.com.br",
+  "https://agenciainfra.com/blog",
+  "https://eixos.com.br/",
+  "https://petronoticias.com.br/",
+  "https://agenciabrasil.ebc.com.br/",
+  "https://www.pv-magazine-brasil.com",
+];
 
 const selectedNewsSchema = z.object({
   title: z.string().min(3).max(500),
@@ -845,7 +856,7 @@ function extractFeedUrls(html: string, baseUrl: string) {
   );
 }
 
-function dedupeNewsItems(items: EnergyNewsItem[]) {
+export function dedupeNewsItems(items: EnergyNewsItem[]) {
   const byUrl = new Map<string, EnergyNewsItem>();
 
   for (const item of items) {
@@ -868,7 +879,7 @@ function dedupeNewsItems(items: EnergyNewsItem[]) {
   return Array.from(byUrl.values());
 }
 
-function rankNewsItems(items: EnergyNewsItem[], topic: string) {
+export function rankNewsItems(items: EnergyNewsItem[], topic: string) {
   const ranked = items.map<RankedEnergyNewsItem>((item, order) => ({
     ...item,
     order,
@@ -891,7 +902,7 @@ function rankNewsItems(items: EnergyNewsItem[], topic: string) {
     .map(({ order, keywordScore, ...item }) => item);
 }
 
-async function fetchNewsFromSite(siteUrl: string) {
+export async function fetchNewsFromSite(siteUrl: string) {
   const source = inferSourceName(siteUrl);
   const html = await fetchUrlText(siteUrl);
   const rssItems = extractRssItems(html, siteUrl, source);
@@ -948,7 +959,7 @@ function extractArticleTextFromHtml(html: string) {
   return (articleText || stripHtml(mainHtml)).slice(0, ARTICLE_CONTEXT_CHAR_LIMIT);
 }
 
-async function fetchArticleContext(news: z.infer<typeof selectedNewsSchema>) {
+export async function fetchArticleContext(news: z.infer<typeof selectedNewsSchema>) {
   try {
     const html = await fetchUrlText(news.url);
     const title =
@@ -1104,7 +1115,10 @@ Regras:
         articleTitle: title,
         articleContent: content,
       });
-      const coverImageUrl = toPublicAssetUrl(ctx.req, cover.imageUrl);
+      // S3 urls are already absolute; only call toPublicAssetUrl for local /uploads/ paths
+      const coverImageUrl = /^https?:\/\//i.test(cover.imageUrl)
+        ? cover.imageUrl
+        : toPublicAssetUrl(ctx.req, cover.imageUrl);
 
       const saved = await db.saveArticle(ctx.user.id, {
         title,
@@ -1133,7 +1147,10 @@ Regras:
         articleTitle: article.title,
         articleContent: article.content,
       });
-      const coverImageUrl = toPublicAssetUrl(ctx.req, cover.imageUrl);
+      // S3 urls are already absolute; only call toPublicAssetUrl for local /uploads/ paths
+      const coverImageUrl = /^https?:\/\//i.test(cover.imageUrl)
+        ? cover.imageUrl
+        : toPublicAssetUrl(ctx.req, cover.imageUrl);
 
       await db.updateArticle(article.id, ctx.user.id, {
         coverImageUrl,
@@ -1394,6 +1411,84 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
   getStats: protectedProcedure.query(async ({ ctx }) => {
     const count = await db.getArticleCount(ctx.user.id);
     return { count };
+  }),
+
+  getDigestSettings: protectedProcedure.query(async ({ ctx }) => {
+    return db.getUserDigestSettings(ctx.user.id);
+  }),
+
+  saveDigestSettings: protectedProcedure
+    .input(z.object({
+      whatsappNumber: z.string().regex(/^\d{10,15}$/, "Número inválido — use DDI + DDD + número, sem + ou espaços. Ex: 5527981244658"),
+      digestHour: z.number().int().min(0).max(23),
+      digestMinute: z.number().int().min(0).max(59),
+      enabled: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await db.upsertDigestSettings(ctx.user.id, input);
+      return db.getUserDigestSettings(ctx.user.id);
+    }),
+
+  diagnoseTemplate: protectedProcedure.mutation(async ({ ctx }) => {
+    const settings = await db.getUserDigestSettings(ctx.user.id);
+    const testRecipient = settings?.whatsappNumber || ENV.whatsappRecipientNumber;
+    if (!testRecipient) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Configure o numero de WhatsApp primeiro." });
+    }
+    const { diagnoseWhatsAppTemplate } = await import("./_core/whatsapp");
+    return diagnoseWhatsAppTemplate(testRecipient);
+  }),
+
+  diagnoseWhatsApp: protectedProcedure.query(async () => {
+    const { ENV } = await import("./_core/env");
+    const phoneNumberId = ENV.whatsappPhoneNumberId;
+    const accessToken = ENV.whatsappAccessToken;
+
+    if (!phoneNumberId || !accessToken) {
+      return { ok: false, error: "WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_ACCESS_TOKEN nao configurado." };
+    }
+
+    const res = await fetch(
+      `https://graph.facebook.com/v20.0/${phoneNumberId}?fields=display_phone_number,verified_name,code_verification_status,quality_rating,is_official_business_account,account_mode`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const json = await res.json() as Record<string, unknown>;
+
+    return {
+      ok: res.ok,
+      phoneNumberId,
+      senderNumber: json.display_phone_number as string | undefined,
+      verifiedName: json.verified_name as string | undefined,
+      verificationStatus: json.code_verification_status as string | undefined,
+      qualityRating: json.quality_rating as string | undefined,
+      isOfficialBusiness: json.is_official_business_account as boolean | undefined,
+      accountMode: json.account_mode as string | undefined,
+      rawPhoneInfo: json,
+      error: !res.ok ? String((json.error as Record<string, unknown>)?.message ?? json) : undefined,
+    };
+  }),
+
+  sendTestDigest: protectedProcedure.mutation(async ({ ctx }) => {
+    const settings = await db.getUserDigestSettings(ctx.user.id);
+    if (!settings?.whatsappNumber) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Configure o número de WhatsApp antes de enviar o teste." });
+    }
+    const { isWhatsAppConfigured, sendNewsDigest } = await import("./_core/whatsapp");
+    if (!isWhatsAppConfigured()) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "WhatsApp não configurado no servidor. Verifique as variáveis WHATSAPP_* no .env." });
+    }
+    const results = await Promise.allSettled(DEFAULT_NEWS_SITES.map((site) => fetchNewsFromSite(site)));
+    const items = dedupeNewsItems(results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])));
+    const top5 = rankNewsItems(items, "energia").slice(0, 5);
+    if (top5.length === 0) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma notícia encontrada nos sites monitorados no momento." });
+    }
+    await db.saveDigestSession(ctx.user.id, settings.whatsappNumber, top5);
+    const result = await sendNewsDigest(top5, settings.whatsappNumber);
+    if (result.error) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Falha ao enviar: ${result.error}` });
+    }
+    return { sent: top5.length, messageId: result.messageId, to: settings.whatsappNumber };
   }),
 });
 
@@ -3173,7 +3268,11 @@ const analyticsRouter = router({
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query((opts) => {
+      if (!opts.ctx.user) return null;
+      const { passwordHash: _ph, ...safeUser } = opts.ctx.user;
+      return safeUser;
+    }),
 
     register: publicProcedure
       .input(z.object({
@@ -3199,7 +3298,8 @@ export const appRouter = router({
         const sessionToken = await sdk.createSessionToken(openId, { name: input.name, expiresInMs: ONE_YEAR_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return user;
+        const { passwordHash: _rph, ...safeRegUser } = user;
+        return safeRegUser;
       }),
 
     login: publicProcedure
@@ -3225,7 +3325,8 @@ export const appRouter = router({
         const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || "", expiresInMs: ONE_YEAR_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return user;
+        const { passwordHash: _lph, ...safeLoginUser } = user;
+        return safeLoginUser;
       }),
 
     logout: publicProcedure.mutation(({ ctx }) => {

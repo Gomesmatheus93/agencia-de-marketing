@@ -9,8 +9,10 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
+import { startNewsDigestScheduler } from "./newsDigestScheduler";
+import { autoGenerateFromNews } from "./newsAutoGenerator";
 import { serveStatic, setupVite } from "./vite";
-import { validateRequiredEnv } from "./env";
+import { validateRequiredEnv, ENV } from "./env";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
@@ -84,17 +86,46 @@ async function startServer() {
   const server = createServer(app);
   // Trust the first proxy so req.protocol reflects x-forwarded-proto (needed for cookies and OAuth in production)
   app.set("trust proxy", 1);
+  // Basic security headers
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  // Blocks private/link-local IPs to prevent SSRF via proxy endpoints
+  function isPrivateOrLinkLocalHost(hostname: string): boolean {
+    if (hostname === "localhost" || hostname === "::1") return true;
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4) {
+      const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+      if (a === 10) return true;
+      if (a === 127) return true;
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 169 && b === 254) return true; // AWS metadata / link-local
+      if (a === 0) return true;
+    }
+    return false;
+  }
+
   // Image proxy — allows canvas to load cross-origin images without CORS taint
   app.get("/api/image-proxy", async (req, res) => {
+    try { await sdk.authenticateRequest(req); } catch { res.status(401).send("Unauthorized"); return; }
     const url = typeof req.query.url === "string" ? req.query.url : "";
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       res.status(400).send("Invalid URL"); return;
     }
     try {
+      const parsed = new URL(url);
+      if (isPrivateOrLinkLocalHost(parsed.hostname)) {
+        res.status(400).send("Forbidden URL"); return;
+      }
       // For S3 private objects, generate a presigned URL so the proxy can fetch them
       const fetchUrl = await getMetaFetchableStorageUrl(url);
       const upstream = await fetch(fetchUrl, {
@@ -116,11 +147,16 @@ async function startServer() {
   // Video proxy — streams S3 videos to the browser with CORS and range-request support.
   // Direct S3 links fail in browsers because S3 buckets don't have CORS headers for krythoslab.com.
   app.get("/api/video-proxy", async (req, res) => {
+    try { await sdk.authenticateRequest(req); } catch { res.status(401).send("Unauthorized"); return; }
     const url = typeof req.query.url === "string" ? req.query.url : "";
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       res.status(400).send("Invalid URL"); return;
     }
     try {
+      const parsed = new URL(url);
+      if (isPrivateOrLinkLocalHost(parsed.hostname)) {
+        res.status(400).send("Forbidden URL"); return;
+      }
       const fetchUrl = await getMetaFetchableStorageUrl(url);
       const rangeHeader = req.headers.range;
       const upstream = await fetch(fetchUrl, {
@@ -212,6 +248,82 @@ async function startServer() {
     res.send(approvalHtmlPage(result.ok, "rejeitado", result.reason));
   });
 
+  // ── WhatsApp webhook (Meta Cloud API) ──────────────────────────────────────
+  // GET: Meta verification handshake
+  app.get("/api/whatsapp/webhook", (req, res) => {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+    if (mode === "subscribe" && token === ENV.whatsappVerifyToken) {
+      res.status(200).send(challenge);
+    } else {
+      res.status(403).send("Forbidden");
+    }
+  });
+
+  // POST: incoming WhatsApp messages — match digit reply to digest session
+  app.post("/api/whatsapp/webhook", express.json(), async (req, res) => {
+    res.sendStatus(200); // always ACK Meta first to avoid retries
+
+    try {
+      type WaEntry = {
+        changes?: Array<{
+          value?: {
+            messages?: Array<{
+              from?: string;
+              type?: string;
+              text?: { body?: string };
+            }>;
+          };
+        }>;
+      };
+      const body = req.body as { entry?: WaEntry[] };
+      const messages = body.entry?.flatMap((e) =>
+        e.changes?.flatMap((c) => c.value?.messages ?? []) ?? []
+      ) ?? [];
+
+      for (const msg of messages) {
+        if (msg.type !== "text" || !msg.from || !msg.text?.body) continue;
+
+        const senderNumber = msg.from;
+        const text = msg.text.body.trim();
+        const choiceMatch = text.match(/^[1-5]$/);
+        if (!choiceMatch) continue;
+
+        const choiceIndex = parseInt(text, 10) - 1;
+
+        const session = await db.getActiveDigestSession(senderNumber);
+        if (!session) continue;
+
+        const newsItem = session.newsItems[choiceIndex];
+        if (!newsItem) continue;
+
+        // Fire-and-forget background generation
+        void (async () => {
+          try {
+            const { sendWhatsAppText } = await import("./whatsapp");
+            await sendWhatsAppText(
+              senderNumber,
+              `⚙️ Gerando artigo e carrossel sobre:\n*${newsItem.title}*\n\nAguarde — pode levar até 2 minutos.`
+            );
+            await autoGenerateFromNews(session.userId, newsItem, senderNumber);
+          } catch (err) {
+            console.error("[Webhook] Erro na geração automática:", err);
+            try {
+              const { sendWhatsAppText } = await import("./whatsapp");
+              await sendWhatsAppText(
+                senderNumber,
+                `❌ Erro ao gerar o conteúdo. Tente novamente mais tarde.`
+              );
+            } catch { /* silent */ }
+          }
+        })();
+      }
+    } catch (err) {
+      console.error("[Webhook] Erro ao processar mensagem WhatsApp:", err);
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API
@@ -241,6 +353,7 @@ async function startServer() {
   });
 
   startInstagramPostScheduler();
+  startNewsDigestScheduler();
   ensureS3CorsConfigured().then((configured) => {
     if (!configured) {
       console.warn(

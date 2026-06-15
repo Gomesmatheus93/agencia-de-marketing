@@ -1092,7 +1092,7 @@ export async function getSocialPostByApprovalToken(
   const rows = await db.execute(sql`
     SELECT * FROM social_posts WHERE approvalToken = ${token} LIMIT 1
   `) as unknown as [Array<Record<string, unknown>>, unknown];
-  const row = (rows[0] as Array<Record<string, unknown>>)[0];
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   if (!row) return null;
   return row as unknown as SocialPost;
 }
@@ -1441,4 +1441,156 @@ export async function saveBrandKit(userId: number, data: Partial<BrandKitData>):
   const result = await getBrandKit(userId);
   if (!result) throw new Error("Failed to save brand kit");
   return result;
+}
+
+// ─── WhatsApp Digest ───────────────────────────────────────────────────────────
+
+let _digestTablesReady: Promise<void> | null = null;
+
+async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  if (!_digestTablesReady) {
+    _digestTablesReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`user_digest_settings\` (
+          \`id\`              INT AUTO_INCREMENT PRIMARY KEY,
+          \`user_id\`         INT NOT NULL UNIQUE,
+          \`whatsapp_number\` VARCHAR(20) NOT NULL,
+          \`digest_hour\`     TINYINT NOT NULL DEFAULT 6,
+          \`digest_minute\`   TINYINT NOT NULL DEFAULT 50,
+          \`enabled\`         TINYINT(1) NOT NULL DEFAULT 1,
+          \`last_sent_date\`  VARCHAR(12),
+          \`created_at\`      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
+          \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
+          \`user_id\`      INT NOT NULL,
+          \`phone_number\` VARCHAR(20) NOT NULL,
+          \`news_items\`   TEXT NOT NULL,
+          \`sent_at\`      DATETIME NOT NULL,
+          \`expires_at\`   DATETIME NOT NULL,
+          INDEX idx_phone_expires (\`phone_number\`, \`expires_at\`)
+        )
+      `);
+    })();
+  }
+  return _digestTablesReady;
+}
+
+export type DigestSettings = {
+  id: number;
+  userId: number;
+  whatsappNumber: string;
+  digestHour: number;
+  digestMinute: number;
+  enabled: boolean;
+  lastSentDate: string | null;
+};
+
+export async function getUserDigestSettings(userId: number): Promise<DigestSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureDigestTables(db);
+  const rows = await db.execute(sql`SELECT * FROM user_digest_settings WHERE user_id = ${userId} LIMIT 1`);
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    userId: Number(row.user_id),
+    whatsappNumber: String(row.whatsapp_number),
+    digestHour: Number(row.digest_hour),
+    digestMinute: Number(row.digest_minute),
+    enabled: Boolean(Number(row.enabled)),
+    lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
+  };
+}
+
+export async function upsertDigestSettings(
+  userId: number,
+  data: { whatsappNumber: string; digestHour: number; digestMinute: number; enabled: boolean }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureDigestTables(db);
+  await db.execute(sql`
+    INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled)
+    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0})
+    ON DUPLICATE KEY UPDATE
+      whatsapp_number = VALUES(whatsapp_number),
+      digest_hour     = VALUES(digest_hour),
+      digest_minute   = VALUES(digest_minute),
+      enabled         = VALUES(enabled)
+  `);
+}
+
+export async function markDigestLastSent(userId: number, dateStr: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureDigestTables(db);
+  await db.execute(sql`UPDATE user_digest_settings SET last_sent_date = ${dateStr} WHERE user_id = ${userId}`);
+}
+
+export async function getAllEnabledDigestSettings(): Promise<DigestSettings[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureDigestTables(db);
+  const rows = await db.execute(sql`SELECT * FROM user_digest_settings WHERE enabled = 1`);
+  return (rows[0] as unknown as Array<Record<string, unknown>>).map((row) => ({
+    id: Number(row.id),
+    userId: Number(row.user_id),
+    whatsappNumber: String(row.whatsapp_number),
+    digestHour: Number(row.digest_hour),
+    digestMinute: Number(row.digest_minute),
+    enabled: Boolean(Number(row.enabled)),
+    lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
+  }));
+}
+
+export type DigestNewsItem = {
+  title: string;
+  url: string;
+  source: string;
+  excerpt: string | null;
+  publishedAt: string | null;
+};
+
+export async function saveDigestSession(
+  userId: number,
+  phoneNumber: string,
+  newsItems: DigestNewsItem[]
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureDigestTables(db);
+  const now = new Date();
+  const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  await db.execute(sql`
+    INSERT INTO whatsapp_digest_sessions (user_id, phone_number, news_items, sent_at, expires_at)
+    VALUES (${userId}, ${phoneNumber}, ${JSON.stringify(newsItems)}, ${now}, ${expires})
+  `);
+}
+
+export async function getActiveDigestSession(
+  phoneNumber: string
+): Promise<{ userId: number; newsItems: DigestNewsItem[] } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureDigestTables(db);
+  const rows = await db.execute(sql`
+    SELECT user_id, news_items FROM whatsapp_digest_sessions
+    WHERE phone_number = ${phoneNumber} AND expires_at > NOW()
+    ORDER BY sent_at DESC LIMIT 1
+  `);
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+  try {
+    return {
+      userId: Number(row.user_id),
+      newsItems: JSON.parse(String(row.news_items)) as DigestNewsItem[],
+    };
+  } catch {
+    return null;
+  }
 }
