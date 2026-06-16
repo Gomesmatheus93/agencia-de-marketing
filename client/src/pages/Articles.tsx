@@ -268,6 +268,7 @@ export default function Articles() {
   const [digestEnabled, setDigestEnabled] = useState(true);
   const [digestTemplateName, setDigestTemplateName] = useState("envio_de_noticias_diario");
   const [digestTemplateLang, setDigestTemplateLang] = useState("pt_BR");
+  const [digestReplyWebhookUrl, setDigestReplyWebhookUrl] = useState<string>("");
 
   const { data: digestSettings, refetch: refetchDigest } = trpc.articles.getDigestSettings.useQuery(undefined, {
     enabled: showDigestDialog,
@@ -281,6 +282,7 @@ export default function Articles() {
       setDigestEnabled(digestSettings.enabled);
       setDigestTemplateName(digestSettings.templateName);
       setDigestTemplateLang(digestSettings.templateLanguage);
+      setDigestReplyWebhookUrl(digestSettings.replyWebhookUrl ?? "");
     }
   }, [digestSettings]);
 
@@ -355,6 +357,9 @@ export default function Articles() {
       digestHour,
       digestMinute,
       enabled: digestEnabled,
+      templateName: digestTemplateName || undefined,
+      templateLanguage: digestTemplateLang || undefined,
+      replyWebhookUrl: digestReplyWebhookUrl.trim() || null,
     });
   };
 
@@ -1279,6 +1284,25 @@ export default function Articles() {
                   : <ToggleLeft className="w-8 h-8 text-muted-foreground" />
                 }
               </button>
+            </div>
+
+            {/* Aggregator reply webhook URL */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Webhook do agregador (opcional)
+              </label>
+              <Input
+                value={digestReplyWebhookUrl}
+                onChange={(e) => setDigestReplyWebhookUrl(e.target.value)}
+                placeholder="https://agregador.exemplo.com/webhook/seu-numero"
+                className="glass border-border/50 focus:border-emerald-500/50 font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Quando o usuário responder 1-5, o sistema notifica essa URL com o evento e a notícia escolhida.
+              </p>
             </div>
 
             {/* Scheduler status panel */}

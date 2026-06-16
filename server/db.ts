@@ -1468,6 +1468,7 @@ async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
       // Add new columns if table was created before they existed (catch 1060 = duplicate column)
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_name\` VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario'`).catch(() => {});
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_language\` VARCHAR(20) NOT NULL DEFAULT 'pt_BR'`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`reply_webhook_url\` VARCHAR(500) NULL`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
           \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
@@ -1494,6 +1495,7 @@ export type DigestSettings = {
   lastSentDate: string | null;
   templateName: string;
   templateLanguage: string;
+  replyWebhookUrl: string | null;
 };
 
 export async function getUserDigestSettings(userId: number): Promise<DigestSettings | null> {
@@ -1513,28 +1515,31 @@ export async function getUserDigestSettings(userId: number): Promise<DigestSetti
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
     templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
     templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
+    replyWebhookUrl: row.reply_webhook_url ? String(row.reply_webhook_url) : null,
   };
 }
 
 export async function upsertDigestSettings(
   userId: number,
-  data: { whatsappNumber: string; digestHour: number; digestMinute: number; enabled: boolean; templateName?: string; templateLanguage?: string }
+  data: { whatsappNumber: string; digestHour: number; digestMinute: number; enabled: boolean; templateName?: string; templateLanguage?: string; replyWebhookUrl?: string | null }
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await ensureDigestTables(db);
   const tplName = data.templateName ?? "envio_de_noticias_diario";
   const tplLang = data.templateLanguage ?? "pt_BR";
+  const webhookUrl = data.replyWebhookUrl ?? null;
   await db.execute(sql`
-    INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled, template_name, template_language)
-    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0}, ${tplName}, ${tplLang})
+    INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled, template_name, template_language, reply_webhook_url)
+    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0}, ${tplName}, ${tplLang}, ${webhookUrl})
     ON DUPLICATE KEY UPDATE
-      whatsapp_number   = VALUES(whatsapp_number),
-      digest_hour       = VALUES(digest_hour),
-      digest_minute     = VALUES(digest_minute),
-      enabled           = VALUES(enabled),
-      template_name     = VALUES(template_name),
-      template_language = VALUES(template_language)
+      whatsapp_number    = VALUES(whatsapp_number),
+      digest_hour        = VALUES(digest_hour),
+      digest_minute      = VALUES(digest_minute),
+      enabled            = VALUES(enabled),
+      template_name      = VALUES(template_name),
+      template_language  = VALUES(template_language),
+      reply_webhook_url  = VALUES(reply_webhook_url)
   `);
 }
 
@@ -1567,6 +1572,7 @@ export async function getAllEnabledDigestSettings(): Promise<DigestSettings[]> {
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
     templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
     templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
+    replyWebhookUrl: row.reply_webhook_url ? String(row.reply_webhook_url) : null,
   }));
 }
 

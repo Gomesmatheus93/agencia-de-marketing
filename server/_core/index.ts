@@ -298,17 +298,70 @@ async function startServer() {
         const newsItem = session.newsItems[choiceIndex];
         if (!newsItem) continue;
 
+        // Load user settings to get the aggregator webhook URL (if configured)
+        const userSettings = await db.getUserDigestSettings(session.userId);
+        const aggregatorWebhookUrl = userSettings?.replyWebhookUrl ?? null;
+
         // Fire-and-forget background generation
         void (async () => {
+          // Notify aggregator about the reply immediately (before generation)
+          if (aggregatorWebhookUrl) {
+            fetch(aggregatorWebhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                event: "digest_reply",
+                from: senderNumber,
+                choice: choiceIndex + 1,
+                timestamp: new Date().toISOString(),
+                newsItem: { title: newsItem.title, url: newsItem.url, source: newsItem.source },
+              }),
+            }).catch((err) => console.error("[Webhook] Falha ao notificar agregador (reply):", err));
+          }
+
           try {
             const { sendWhatsAppText } = await import("./whatsapp");
             await sendWhatsAppText(
               senderNumber,
               `⚙️ Gerando artigo e carrossel sobre:\n*${newsItem.title}*\n\nAguarde — pode levar até 2 minutos.`
             );
-            await autoGenerateFromNews(session.userId, newsItem, senderNumber);
+            const generated = await autoGenerateFromNews(session.userId, newsItem, senderNumber);
+
+            // Notify aggregator about the completed generation
+            if (aggregatorWebhookUrl) {
+              fetch(aggregatorWebhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  event: "digest_generated",
+                  from: senderNumber,
+                  choice: choiceIndex + 1,
+                  timestamp: new Date().toISOString(),
+                  newsItem: { title: newsItem.title, url: newsItem.url, source: newsItem.source },
+                  articleId: generated.articleId,
+                  carouselId: generated.carouselId,
+                }),
+              }).catch((err) => console.error("[Webhook] Falha ao notificar agregador (generated):", err));
+            }
           } catch (err) {
             console.error("[Webhook] Erro na geração automática:", err);
+
+            // Notify aggregator about the error
+            if (aggregatorWebhookUrl) {
+              fetch(aggregatorWebhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  event: "digest_error",
+                  from: senderNumber,
+                  choice: choiceIndex + 1,
+                  timestamp: new Date().toISOString(),
+                  newsItem: { title: newsItem.title, url: newsItem.url, source: newsItem.source },
+                  error: String(err),
+                }),
+              }).catch(() => {});
+            }
+
             try {
               const { sendWhatsAppText } = await import("./whatsapp");
               await sendWhatsAppText(

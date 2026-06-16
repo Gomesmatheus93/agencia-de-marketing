@@ -1485,6 +1485,7 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
       enabled: z.boolean(),
       templateName: z.string().min(1).optional(),
       templateLanguage: z.string().min(2).optional(),
+      replyWebhookUrl: z.string().url("URL inválida").nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await db.upsertDigestSettings(ctx.user.id, input);
