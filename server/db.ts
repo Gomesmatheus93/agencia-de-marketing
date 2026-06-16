@@ -1,4 +1,4 @@
-import { eq, desc, asc, and, lte, sql, count } from "drizzle-orm";
+﻿import { eq, desc, asc, and, lte, sql, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { ResultSetHeader } from "mysql2";
 
@@ -1453,16 +1453,21 @@ async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
     _digestTablesReady = (async () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS \`user_digest_settings\` (
-          \`id\`              INT AUTO_INCREMENT PRIMARY KEY,
-          \`user_id\`         INT NOT NULL UNIQUE,
-          \`whatsapp_number\` VARCHAR(20) NOT NULL,
-          \`digest_hour\`     TINYINT NOT NULL DEFAULT 6,
-          \`digest_minute\`   TINYINT NOT NULL DEFAULT 50,
-          \`enabled\`         TINYINT(1) NOT NULL DEFAULT 1,
-          \`last_sent_date\`  VARCHAR(12),
-          \`created_at\`      DATETIME DEFAULT CURRENT_TIMESTAMP
+          \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
+          \`user_id\`           INT NOT NULL UNIQUE,
+          \`whatsapp_number\`   VARCHAR(20) NOT NULL,
+          \`digest_hour\`       TINYINT NOT NULL DEFAULT 6,
+          \`digest_minute\`     TINYINT NOT NULL DEFAULT 50,
+          \`enabled\`           TINYINT(1) NOT NULL DEFAULT 1,
+          \`last_sent_date\`    VARCHAR(12),
+          \`template_name\`     VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario',
+          \`template_language\` VARCHAR(20)  NOT NULL DEFAULT 'pt_BR',
+          \`created_at\`        DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      // Add new columns if table was created before they existed (catch 1060 = duplicate column)
+      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_name\` VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario'`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_language\` VARCHAR(20) NOT NULL DEFAULT 'pt_BR'`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
           \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
@@ -1487,6 +1492,8 @@ export type DigestSettings = {
   digestMinute: number;
   enabled: boolean;
   lastSentDate: string | null;
+  templateName: string;
+  templateLanguage: string;
 };
 
 export async function getUserDigestSettings(userId: number): Promise<DigestSettings | null> {
@@ -1504,25 +1511,38 @@ export async function getUserDigestSettings(userId: number): Promise<DigestSetti
     digestMinute: Number(row.digest_minute),
     enabled: Boolean(Number(row.enabled)),
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
+    templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
+    templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
   };
 }
 
 export async function upsertDigestSettings(
   userId: number,
-  data: { whatsappNumber: string; digestHour: number; digestMinute: number; enabled: boolean }
+  data: { whatsappNumber: string; digestHour: number; digestMinute: number; enabled: boolean; templateName?: string; templateLanguage?: string }
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await ensureDigestTables(db);
+  const tplName = data.templateName ?? "envio_de_noticias_diario";
+  const tplLang = data.templateLanguage ?? "pt_BR";
   await db.execute(sql`
-    INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled)
-    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0})
+    INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled, template_name, template_language)
+    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0}, ${tplName}, ${tplLang})
     ON DUPLICATE KEY UPDATE
-      whatsapp_number = VALUES(whatsapp_number),
-      digest_hour     = VALUES(digest_hour),
-      digest_minute   = VALUES(digest_minute),
-      enabled         = VALUES(enabled)
+      whatsapp_number   = VALUES(whatsapp_number),
+      digest_hour       = VALUES(digest_hour),
+      digest_minute     = VALUES(digest_minute),
+      enabled           = VALUES(enabled),
+      template_name     = VALUES(template_name),
+      template_language = VALUES(template_language)
   `);
+}
+
+export async function resetDigestLastSent(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureDigestTables(db);
+  await db.execute(sql`UPDATE user_digest_settings SET last_sent_date = NULL WHERE user_id = ${userId}`);
 }
 
 export async function markDigestLastSent(userId: number, dateStr: string): Promise<void> {
@@ -1545,6 +1565,8 @@ export async function getAllEnabledDigestSettings(): Promise<DigestSettings[]> {
     digestMinute: Number(row.digest_minute),
     enabled: Boolean(Number(row.enabled)),
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
+    templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
+    templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
   }));
 }
 

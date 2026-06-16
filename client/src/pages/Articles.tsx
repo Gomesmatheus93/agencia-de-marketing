@@ -266,6 +266,8 @@ export default function Articles() {
   const [digestHour, setDigestHour] = useState(6);
   const [digestMinute, setDigestMinute] = useState(50);
   const [digestEnabled, setDigestEnabled] = useState(true);
+  const [digestTemplateName, setDigestTemplateName] = useState("envio_de_noticias_diario");
+  const [digestTemplateLang, setDigestTemplateLang] = useState("pt_BR");
 
   const { data: digestSettings, refetch: refetchDigest } = trpc.articles.getDigestSettings.useQuery(undefined, {
     enabled: showDigestDialog,
@@ -277,6 +279,8 @@ export default function Articles() {
       setDigestHour(digestSettings.digestHour);
       setDigestMinute(digestSettings.digestMinute);
       setDigestEnabled(digestSettings.enabled);
+      setDigestTemplateName(digestSettings.templateName);
+      setDigestTemplateLang(digestSettings.templateLanguage);
     }
   }, [digestSettings]);
 
@@ -288,14 +292,21 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao salvar: " + err.message),
   });
 
+  const { data: webhookInfo } =
+    trpc.articles.getWebhookInfo.useQuery(undefined, { enabled: showDigestDialog });
+
   const { data: waDiag, refetch: refetchWaDiag, isFetching: isDiagging } =
     trpc.articles.diagnoseWhatsApp.useQuery(undefined, { enabled: showDigestDialog });
+
+  const { data: waTemplates, isLoading: isLoadingTemplates, refetch: refetchTemplates } =
+    trpc.articles.getWhatsAppTemplates.useQuery(undefined, { enabled: showDigestDialog });
 
   const [diagResult, setDiagResult] = useState<null | {
     wabaAccounts: Array<{ id: string; name: string }>;
     templateFound: boolean;
     templateLanguage?: string;
     templateStatus?: string;
+    templateComponents?: unknown;
     testSendResults: Array<{ lang: string; ok: boolean; messageId?: string; error?: string }>;
   }>(null);
 
@@ -304,9 +315,34 @@ export default function Articles() {
     onError: (err) => toast.error("Erro no diagnóstico: " + err.message),
   });
 
+  const [debugResult, setDebugResult] = useState<null | {
+    to: string;
+    attempts: Array<{ lang: string; format: string; ok: boolean; messageId?: string; error?: string }>;
+  }>(null);
+
+  const debugFormatsMutation = trpc.articles.debugSendFormats.useMutation({
+    onSuccess: (data) => {
+      setDebugResult(data);
+      const success = data.attempts.find(a => a.ok);
+      if (success) toast.success(`Funcionou! lang=${success.lang} formato=${success.format}`);
+      else toast.error("Nenhum formato funcionou — veja os detalhes abaixo");
+    },
+    onError: (err) => toast.error("Erro: " + err.message),
+  });
+
   const testDigestMutation = trpc.articles.sendTestDigest.useMutation({
     onSuccess: (data) => toast.success(`Digest enviado para +${data.to} (${data.sent} notícias). ID: ${data.messageId ?? "n/a"}`),
     onError: (err) => toast.error("Falha no envio de teste: " + err.message),
+  });
+
+  const { data: schedulerStatus, refetch: refetchStatus } = trpc.articles.digestSchedulerStatus.useQuery(undefined, {
+    enabled: showDigestDialog,
+    refetchInterval: 30_000,
+  });
+
+  const resetDigestMutation = trpc.articles.resetDigestToday.useMutation({
+    onSuccess: () => { toast.success("Resetado! O envio automático vai tentar na próxima janela."); void refetchDigest(); void refetchStatus(); },
+    onError: (err) => toast.error(err.message),
   });
 
   const handleSaveDigest = () => {
@@ -1245,10 +1281,66 @@ export default function Articles() {
               </button>
             </div>
 
-            {digestSettings && (
-              <p className="text-xs text-muted-foreground">
-                Último envio: {digestSettings.lastSentDate ?? "nunca"}
-              </p>
+            {/* Scheduler status panel */}
+            {schedulerStatus && (
+              <div className={cn(
+                "rounded-lg border p-3 text-xs space-y-1.5",
+                schedulerStatus.status === "sent_today"
+                  ? "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
+                  : schedulerStatus.status === "in_window"
+                  ? "border-blue-400/50 bg-blue-50/60 dark:bg-blue-950/20"
+                  : schedulerStatus.status === "window_passed"
+                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
+                  : "border-border/50 bg-background/60"
+              )}>
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">
+                    {schedulerStatus.status === "sent_today" && "✅ Enviado hoje"}
+                    {schedulerStatus.status === "in_window" && "🔄 Enviando..."}
+                    {schedulerStatus.status === "window_passed" && "⚠️ Janela passou"}
+                    {schedulerStatus.status === "waiting" && "⏳ Aguardando"}
+                    {schedulerStatus.status === "no_settings" && "⚙️ Sem configuração"}
+                  </p>
+                  <span className="text-muted-foreground font-mono">{schedulerStatus.serverTime} ({schedulerStatus.timezone?.split("/")[1] ?? schedulerStatus.timezone})</span>
+                </div>
+                <p className="text-muted-foreground">{schedulerStatus.message}</p>
+                {(schedulerStatus.status === "sent_today" || schedulerStatus.status === "window_passed") && (
+                  <button
+                    onClick={() => resetDigestMutation.mutate()}
+                    disabled={resetDigestMutation.isPending}
+                    className="text-primary hover:underline text-xs"
+                  >
+                    {resetDigestMutation.isPending ? "Resetando..." : "↺ Resetar para enviar hoje novamente"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Webhook info panel */}
+            {webhookInfo && (
+              <div className={cn(
+                "rounded-lg border p-3 text-xs space-y-2",
+                webhookInfo.isLocalhost
+                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
+                  : "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
+              )}>
+                <p className="font-semibold text-foreground">
+                  {webhookInfo.isLocalhost ? "⚠️ Webhook (localhost — não recebe respostas externas)" : "✅ Webhook configurado"}
+                </p>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">URL do webhook:</p>
+                  <code className="block bg-background/70 border border-border/50 rounded px-2 py-1 font-mono text-[10px] break-all select-all">{webhookInfo.webhookUrl}</code>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Token de verificação:</p>
+                  <code className="block bg-background/70 border border-border/50 rounded px-2 py-1 font-mono text-[10px] select-all">{webhookInfo.verifyToken}</code>
+                </div>
+                {webhookInfo.isLocalhost && (
+                  <p className="text-amber-700 dark:text-amber-400 text-[10px]">
+                    Para receber respostas: defina APP_BASE_URL no .env com a URL pública do servidor e registre o webhook no painel Meta → WhatsApp → Configuração → Webhooks.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* WhatsApp sender diagnostics */}
@@ -1287,6 +1379,11 @@ export default function Articles() {
                     : <span className="text-red-600 dark:text-red-400">❌ não encontrado nas WABAs acessíveis</span>
                   }
                 </p>
+                {diagResult.templateComponents != null && (
+                  <p className="text-muted-foreground break-all">
+                    Componentes: <span className="font-mono text-foreground">{JSON.stringify(diagResult.templateComponents as object).slice(0, 300)}</span>
+                  </p>
+                )}
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">Testes de envio:</p>
                   {diagResult.testSendResults.map((r) => (
@@ -1298,7 +1395,19 @@ export default function Articles() {
               </div>
             )}
 
-            {/* Actions */}            {/* Actions */}
+            {/* Debug formats result */}
+            {debugResult && (
+              <div className="rounded-lg border border-border/50 bg-background/60 p-3 text-xs space-y-2">
+                <p className="font-semibold text-foreground">Debug de formatos — destino: <span className="font-mono">{debugResult.to}</span></p>
+                {debugResult.attempts.map((a, i) => (
+                  <p key={i} className={a.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                    {a.ok ? "✅" : "❌"} lang={a.lang} fmt={a.format}: {a.ok ? `ID ${a.messageId ?? "ok"}` : a.error}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Actions */}
             <div className="flex items-center gap-2 pt-1">
               <Button
                 variant="outline"

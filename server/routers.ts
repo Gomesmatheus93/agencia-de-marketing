@@ -1417,17 +1417,84 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
     return db.getUserDigestSettings(ctx.user.id);
   }),
 
+  digestSchedulerStatus: protectedProcedure.query(async ({ ctx }) => {
+    const { getPostSchedulerTimeZone } = await import("./_core/postScheduling");
+    const settings = await db.getUserDigestSettings(ctx.user.id);
+    const tz = getPostSchedulerTimeZone();
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+    const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+    const currentMins = hour * 60 + minute;
+    const today = now.toLocaleDateString("pt-BR", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    const serverTime = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+
+    if (!settings) return { serverTime, today, timezone: tz, status: "no_settings", message: "Configurações não salvas ainda." };
+
+    const targetMins = settings.digestHour * 60 + settings.digestMinute;
+    const windowEnd = targetMins + 30;
+    const alreadySentToday = settings.lastSentDate === today;
+    const inWindow = currentMins >= targetMins && currentMins < windowEnd;
+    const windowPassed = currentMins >= windowEnd;
+    const minsUntil = targetMins - currentMins;
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const targetStr = `${pad(settings.digestHour)}:${pad(settings.digestMinute)}`;
+    const windowEndStr = `${pad(Math.floor(windowEnd / 60) % 24)}:${pad(windowEnd % 60)}`;
+
+    let status: string;
+    let message: string;
+    if (alreadySentToday) {
+      status = "sent_today";
+      message = `Digest já enviado hoje. Próximo envio: amanhã às ${targetStr}.`;
+    } else if (inWindow) {
+      status = "in_window";
+      message = `Dentro da janela de envio (${targetStr}–${windowEndStr}). Enviando em breve...`;
+    } else if (windowPassed) {
+      status = "window_passed";
+      message = `Janela de hoje passou (${targetStr}–${windowEndStr}). Próximo: amanhã.`;
+    } else {
+      status = "waiting";
+      message = `Aguardando... faltam ${minsUntil} min para ${targetStr} (janela até ${windowEndStr}).`;
+    }
+
+    return { serverTime, today, timezone: tz, status, message };
+  }),
+
+  resetDigestToday: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.resetDigestLastSent(ctx.user.id);
+    return { ok: true };
+  }),
+
+  getWebhookInfo: protectedProcedure.query(() => {
+    const base = (ENV.appBaseUrl || "http://localhost:3000").replace(/\/$/, "");
+    return {
+      webhookUrl: `${base}/api/whatsapp/webhook`,
+      verifyToken: ENV.whatsappVerifyToken || "krythos-webhook-verify",
+      isLocalhost: base.includes("localhost") || base.includes("127.0.0.1"),
+    };
+  }),
+
   saveDigestSettings: protectedProcedure
     .input(z.object({
       whatsappNumber: z.string().regex(/^\d{10,15}$/, "Número inválido — use DDI + DDD + número, sem + ou espaços. Ex: 5527981244658"),
       digestHour: z.number().int().min(0).max(23),
       digestMinute: z.number().int().min(0).max(59),
       enabled: z.boolean(),
+      templateName: z.string().min(1).optional(),
+      templateLanguage: z.string().min(2).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await db.upsertDigestSettings(ctx.user.id, input);
       return db.getUserDigestSettings(ctx.user.id);
     }),
+
+  getWhatsAppTemplates: protectedProcedure.query(async () => {
+    const { getWhatsAppTemplates } = await import("./_core/whatsapp");
+    return getWhatsAppTemplates();
+  }),
 
   diagnoseTemplate: protectedProcedure.mutation(async ({ ctx }) => {
     const settings = await db.getUserDigestSettings(ctx.user.id);
@@ -1484,11 +1551,65 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
       throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma notícia encontrada nos sites monitorados no momento." });
     }
     await db.saveDigestSession(ctx.user.id, settings.whatsappNumber, top5);
-    const result = await sendNewsDigest(top5, settings.whatsappNumber);
+    const result = await sendNewsDigest(top5, settings.whatsappNumber, settings.templateName, settings.templateLanguage);
     if (result.error) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Falha ao enviar: ${result.error}` });
     }
-    return { sent: top5.length, messageId: result.messageId, to: settings.whatsappNumber };
+    return { sent: top5.length, messageId: result.messageId, to: settings.whatsappNumber, template: settings.templateName };
+  }),
+
+  debugSendFormats: protectedProcedure.mutation(async ({ ctx }) => {
+    const settings = await db.getUserDigestSettings(ctx.user.id);
+    const to = settings?.whatsappNumber || ENV.whatsappRecipientNumber;
+    if (!to) throw new TRPCError({ code: "BAD_REQUEST", message: "Configure o numero de WhatsApp primeiro." });
+
+    const phoneNumberId = ENV.whatsappPhoneNumberId;
+    const accessToken = ENV.whatsappAccessToken;
+
+    const LANGS = ["pt_BR", "pt_PT", "pt"];
+
+    // Format A: text only (no emojis, no newlines)
+    const paramsSimple = ["1. Noticia teste A", "2. Noticia teste B", "3. Noticia teste C", "4. Noticia teste D", "5. Noticia teste E"]
+      .map((text) => ({ type: "text" as const, text }));
+
+    // Format B: with newlines only (no emojis)
+    const paramsNewline = Array.from({ length: 5 }, (_, i) => ({
+      type: "text" as const,
+      text: `${i + 1}. Titulo noticia\nFonte: site.com.br\nLink: https://site.com.br/noticia-${i + 1}`,
+    }));
+
+    type Attempt = { lang: string; format: string; ok: boolean; messageId?: string; error?: string };
+    const attempts: Attempt[] = [];
+
+    for (const lang of LANGS) {
+      for (const [fmt, params] of [["simples", paramsSimple], ["com-quebras", paramsNewline]] as const) {
+        const res = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to,
+            type: "template",
+            template: {
+              name: "envio_de_noticias_diario",
+              language: { code: lang },
+              components: [{ type: "body", parameters: params }],
+            },
+          }),
+        });
+        const json = await res.json() as Record<string, unknown>;
+        const err = json.error as Record<string, unknown> | undefined;
+        const detail = (err?.error_data as Record<string, unknown> | undefined)?.details;
+        const errMsg = err ? `[${String(err.code)}] ${String(err.message)}${detail ? ` — ${String(detail)}` : ""}` : undefined;
+        const msgId = (json.messages as Array<{ id: string }> | undefined)?.[0]?.id;
+        console.log(`[Debug] lang=${lang} fmt=${fmt} status=${res.status}:`, JSON.stringify(json));
+        attempts.push({ lang, format: fmt, ok: res.ok, messageId: msgId, error: errMsg });
+        if (res.ok) break; // stop as soon as one works
+      }
+      if (attempts.some(a => a.ok)) break;
+    }
+
+    return { to, attempts };
   }),
 });
 

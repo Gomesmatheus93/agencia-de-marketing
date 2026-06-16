@@ -1,4 +1,4 @@
-import { ENV } from "./env";
+﻿import { ENV } from "./env";
 
 const WA_API_BASE = "https://graph.facebook.com/v20.0";
 
@@ -35,14 +35,21 @@ async function metaGet(path: string): Promise<MetaApiResponse> {
 }
 
 async function callWaApi(endpoint: string, body: object): Promise<WaSendResult> {
-  const res = await fetch(`${WA_API_BASE}/${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ENV.whatsappAccessToken}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${WA_API_BASE}/${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ENV.whatsappAccessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const msg = `Erro de rede: ${String(err)}`;
+    console.error(`[WhatsApp API] ${msg}`);
+    return { error: msg };
+  }
 
   const json = (await res.json()) as MetaApiResponse;
   console.log(`[WhatsApp API] ${res.status} → to=${(body as Record<string, unknown>).to}`, JSON.stringify(json));
@@ -134,82 +141,161 @@ export interface NewsDigestItem {
 function sanitizeParam(text: string, maxLen: number): string {
   return text
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-    .replace(/\t/g, " ")
+    .replace(/[\n\r\t]/g, " ")           // Meta rejects newlines/tabs in template params
+    .replace(/ {5,}/g, "    ")           // Meta rejects >4 consecutive spaces
     .trim()
     .slice(0, maxLen);
 }
 
 function looksGarbled(text: string): boolean {
+  if (text.length < 10) return false;
+  // No spaces in a long string → base64/encoded garbage
+  if (text.length > 15 && !text.includes(" ")) return true;
+  // High ratio of non-readable characters
   const nonReadable = (text.match(/[^a-zA-ZÀ-ÿ0-9 .,;:!?()'"@#%\-_/]/g) ?? []).length;
-  return text.length > 20 && nonReadable / text.length > 0.3;
+  return nonReadable / text.length > 0.3;
 }
 
-function formatNewsItemParam(item: NewsDigestItem, index: number): string {
-  const title = looksGarbled(item.title) ? "Noticia indisponivel" : sanitizeParam(item.title, 200);
-  const source = sanitizeParam(item.source, 60);
-  const url = sanitizeParam(item.url, 250);
-  const excerpt = item.excerpt ? sanitizeParam(item.excerpt.replace(/\n/g, " "), 120) : "";
-
-  const lines: string[] = [`${index + 1}. ${title}`, `📰 ${source}`];
-  if (excerpt) lines.push(excerpt);
-  lines.push(`🔗 ${url}`);
-
-  const result = lines.join("\n");
-  return result.length > 1000 ? result.slice(0, 997) + "…" : result;
+function sanitizePhone(number: string): string {
+  return number.replace(/[\s+\-().]/g, "");
 }
+
+// Budget: 1024 total - ~150 static template chars = 874 for params / 15 params = ~58/param
+// We use: title 80, source 20, url 50 → 5×(80+20+50)=750 + static ≈ 900 < 1024
+function buildNewsItemParams(
+  item: NewsDigestItem
+): [{ type: "text"; text: string }, { type: "text"; text: string }, { type: "text"; text: string }] {
+  const rawTitle = looksGarbled(item.title) ? "Noticia indisponivel" : item.title;
+  const title = sanitizeParam(rawTitle, 80);
+  const source = sanitizeParam(item.source || "—", 20);
+  const url = sanitizeParam(item.url || "—", 50);
+  return [
+    { type: "text", text: title || "Noticia indisponivel" },
+    { type: "text", text: source },
+    { type: "text", text: url },
+  ];
+}
+
+const LANG_CANDIDATES = ["pt_BR", "pt_PT", "pt"];
 
 async function tryTemplateSend(
   to: string,
   parameters: Array<{ type: "text"; text: string }>,
-  langCode: string
+  langCode: string,
+  templateName = "envio_de_noticias_diario"
 ): Promise<WaSendResult> {
   return callWaApi(`${ENV.whatsappPhoneNumberId}/messages`, {
     messaging_product: "whatsapp",
     to,
     type: "template",
     template: {
-      name: "envio_de_noticias_diario",
+      name: templateName,
       language: { code: langCode },
       components: [{ type: "body", parameters }],
     },
   });
 }
 
-// Language codes to try in order
-const LANG_CANDIDATES = ["pt_BR", "pt_PT", "pt"];
-
-export async function sendNewsDigest(items: NewsDigestItem[], recipientNumber?: string): Promise<WaSendResult> {
+export async function sendNewsDigest(
+  items: NewsDigestItem[],
+  recipientNumber?: string,
+  templateName?: string,
+  templateLanguage?: string
+): Promise<WaSendResult> {
   if (!isWhatsAppConfigured()) return { error: "WhatsApp não configurado." };
 
-  const to = recipientNumber || ENV.whatsappRecipientNumber;
-  if (!to) return { error: "Número destinatário não configurado." };
+  const rawTo = recipientNumber || ENV.whatsappRecipientNumber;
+  if (!rawTo) return { error: "Número destinatário não configurado." };
+  const to = sanitizePhone(rawTo);
+  if (!/^\d{10,15}$/.test(to)) {
+    return { error: `Número inválido: "${rawTo}" → "${to}". Use formato DDI+DDD+número (ex: 5527981244658)` };
+  }
+  console.log(`[WhatsApp Digest] Enviando para ${to} (original: "${rawTo}"`);
 
   const padded = [...items.slice(0, 5)];
   while (padded.length < 5) {
-    padded.push({ title: "Sem noticia disponivel", url: "-", source: "-", excerpt: null });
+    padded.push({ title: "Sem noticia disponivel", url: "—", source: "—", excerpt: null });
   }
 
-  const parameters = padded.map((item, i) => ({
-    type: "text" as const,
-    text: formatNewsItemParam(item, i),
-  }));
+  // 15 parameters total: 3 per news item (title, source, url) — no newlines allowed by Meta
+  const parameters = padded.flatMap(buildNewsItemParams);
 
-  console.log("[WhatsApp Digest] Parâmetros:");
+  console.log("[WhatsApp Digest] Parâmetros (15):");
   parameters.forEach((p, i) =>
-    console.log(`  [${i + 1}] ${p.text.length}ch: ${p.text.slice(0, 80).replace(/\n/g, "↵")}`)
+    console.log(`  [${i + 1}] ${p.text.length}ch: ${p.text.slice(0, 80)}`)
   );
 
-  // Try each language code; return first success
-  let lastResult: WaSendResult = { error: "Nenhuma tentativa executada" };
-  for (const lang of LANG_CANDIDATES) {
-    const result = await tryTemplateSend(to, parameters, lang);
-    if (!result.error) return result;
-    lastResult = result;
-    // Only retry on template-related errors
-    if (!result.error.includes("132018") && !result.error.includes("132001")) break;
-    console.warn(`[WhatsApp Digest] lang=${lang} falhou (${result.error}), tentando próximo...`);
+  const tplName = templateName ?? "envio_de_noticias_diario";
+  const tplLang = templateLanguage ?? "pt_BR";
+  console.log(`[WhatsApp Digest] template=${tplName} lang=${tplLang}`);
+  return tryTemplateSend(to, parameters, tplLang, tplName);
+}
+
+// ── Template listing ─────────────────────────────────────────────────────────
+
+export type WaTemplate = {
+  name: string;
+  status: string;
+  language: string;
+  category: string;
+};
+
+export async function getWhatsAppTemplates(): Promise<{ templates: WaTemplate[]; error?: string }> {
+  if (!ENV.whatsappPhoneNumberId || !ENV.whatsappAccessToken) {
+    return { templates: [], error: "WhatsApp não configurado" };
   }
-  return lastResult;
+
+  // Try to discover WABA IDs using multiple tokens
+  const wabaIds: string[] = [];
+  const tokens = [ENV.whatsappAccessToken, ENV.metaAccessToken].filter(Boolean);
+
+  for (const token of tokens) {
+    try {
+      const res = await fetch(`${WA_API_BASE}/me/whatsapp_business_accounts?fields=id,name&limit=50`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json() as { data?: Array<{ id: string }> };
+      for (const w of json.data ?? []) {
+        if (!wabaIds.includes(w.id)) wabaIds.push(w.id);
+      }
+    } catch { /* continue */ }
+  }
+
+  // Also try via Meta App ID
+  if (ENV.metaAppId && ENV.metaAccessToken) {
+    try {
+      const res = await fetch(
+        `${WA_API_BASE}/${ENV.metaAppId}/whatsapp_business_accounts?fields=id,name&limit=50`,
+        { headers: { Authorization: `Bearer ${ENV.metaAccessToken}` } }
+      );
+      const json = await res.json() as { data?: Array<{ id: string }> };
+      for (const w of json.data ?? []) {
+        if (!wabaIds.includes(w.id)) wabaIds.push(w.id);
+      }
+    } catch { /* continue */ }
+  }
+
+  if (wabaIds.length === 0) {
+    return {
+      templates: [],
+      error: "Não foi possível encontrar a conta WhatsApp Business. O token precisa da permissão whatsapp_business_management no Meta Business Manager.",
+    };
+  }
+
+  for (const wabaId of wabaIds) {
+    try {
+      const res = await fetch(
+        `${WA_API_BASE}/${wabaId}/message_templates?fields=name,status,language,category&limit=200`,
+        { headers: { Authorization: `Bearer ${ENV.whatsappAccessToken}` } }
+      );
+      const json = await res.json() as { data?: WaTemplate[]; error?: { message: string } };
+      if (json.data && json.data.length > 0) {
+        return { templates: json.data };
+      }
+    } catch { /* continue */ }
+  }
+
+  return { templates: [], error: "Nenhum template encontrado nas contas acessíveis." };
 }
 
 // ── Diagnostic ───────────────────────────────────────────────────────────────
@@ -260,9 +346,12 @@ export async function diagnoseWhatsAppTemplate(testRecipient: string): Promise<T
     }
   }
 
-  // 3. Test send with simple values across all language codes
-  const simpleParams = ["Noticia 1 teste", "Noticia 2 teste", "Noticia 3 teste", "Noticia 4 teste", "Noticia 5 teste"]
-    .map((text) => ({ type: "text" as const, text }));
+  // 3. Test send with 15 simple values (3 per item × 5 items: title, source, url)
+  const simpleParams = Array.from({ length: 5 }, (_, i) => [
+    { type: "text" as const, text: `Noticia ${i + 1} teste` },
+    { type: "text" as const, text: `site${i + 1}.com.br` },
+    { type: "text" as const, text: `https://site${i + 1}.com.br/link` },
+  ]).flat();
 
   for (const lang of LANG_CANDIDATES) {
     const r = await tryTemplateSend(testRecipient, simpleParams, lang);
