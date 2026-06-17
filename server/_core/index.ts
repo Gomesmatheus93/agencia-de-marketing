@@ -279,17 +279,27 @@ async function startServer() {
         }>;
       };
       const body = req.body as { entry?: WaEntry[] };
+
+      // Log everything received so we can see if replies are arriving here
+      console.log("[MetaWebhook] Payload recebido:", JSON.stringify(body).slice(0, 800));
+
       const messages = body.entry?.flatMap((e) =>
         e.changes?.flatMap((c) => c.value?.messages ?? []) ?? []
       ) ?? [];
 
+      console.log(`[MetaWebhook] ${messages.length} mensagem(ns) encontrada(s)`);
+
       for (const msg of messages) {
+        console.log(`[MetaWebhook] msg type=${msg.type ?? "?"} from=${msg.from ?? "?"} body="${msg.text?.body ?? ""}"`);
         if (msg.type !== "text" || !msg.from || !msg.text?.body) continue;
 
         const senderNumber = msg.from;
         const text = msg.text.body.trim();
         const choiceMatch = text.match(/^[1-5]$/);
-        if (!choiceMatch) continue;
+        if (!choiceMatch) {
+          console.log(`[MetaWebhook] Mensagem de ${senderNumber} não é seleção (1-5): "${text}"`);
+          continue;
+        }
 
         const choiceIndex = parseInt(text, 10) - 1;
 
