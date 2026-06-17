@@ -1601,6 +1601,18 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[\s+\-().]/g, "");
 }
 
+// Brazilian mobile numbers: 55 + 2-digit area + 9 + 8-digit (13 total) ↔ without leading 9 (12 total)
+function brazilianVariant(normalized: string): string | null {
+  if (!normalized.startsWith('55')) return null;
+  if (normalized.length === 13 && normalized[4] === '9') {
+    return normalized.slice(0, 4) + normalized.slice(5);
+  }
+  if (normalized.length === 12) {
+    return normalized.slice(0, 4) + '9' + normalized.slice(4);
+  }
+  return null;
+}
+
 export async function saveDigestSession(
   userId: number,
   phoneNumber: string,
@@ -1632,16 +1644,18 @@ export async function recordSessionResponse(
   await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const withPlus = `+${normalized}`;
-  console.log(`[DigestSession] Buscando sessão para phone=${normalized} choice=${choice}`);
+  const brAlt = brazilianVariant(normalized);
+  const brCondition = brAlt ? sql`OR phone_number = ${brAlt} OR phone_number = ${`+${brAlt}`}` : sql``;
+  console.log(`[DigestSession] Buscando sessão para phone=${normalized}${brAlt ? ` | variante BR: ${brAlt}` : ''} choice=${choice}`);
   const rows = await db.execute(sql`
     SELECT id, campaign_id, user_id, news_items FROM whatsapp_digest_sessions
-    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus})
+    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus} ${brCondition})
       AND expires_at > NOW() AND user_response IS NULL
     ORDER BY sent_at DESC LIMIT 1
   `);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   if (!row) {
-    console.warn(`[DigestSession] Sessão não encontrada para phone=${normalized} nem ${withPlus}`);
+    console.warn(`[DigestSession] Sessão não encontrada para phone=${normalized} nem variantes`);
     return null;
   }
   let newsItems: DigestNewsItem[];
@@ -1676,9 +1690,11 @@ export async function getActiveDigestSession(
   await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const withPlus = `+${normalized}`;
+  const brAlt = brazilianVariant(normalized);
+  const brCondition = brAlt ? sql`OR phone_number = ${brAlt} OR phone_number = ${`+${brAlt}`}` : sql``;
   const rows = await db.execute(sql`
     SELECT user_id, news_items FROM whatsapp_digest_sessions
-    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus}) AND expires_at > NOW()
+    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus} ${brCondition}) AND expires_at > NOW()
     ORDER BY sent_at DESC LIMIT 1
   `);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
