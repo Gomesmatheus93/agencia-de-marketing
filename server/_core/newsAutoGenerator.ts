@@ -94,61 +94,73 @@ Regras:
 
   if (!content) throw new Error("Agente redator não retornou conteúdo para o artigo.");
 
-  // 3. Generate cover image
-  const cover = await generateArticleCoverWithDesigner({
-    newsTitle: newsItem.title,
-    source: newsItem.source,
-    summary,
-    articleTitle: title,
-    articleContent: content,
-  });
-
-  // 4. Save article
+  // 3. Save article immediately as draft so it appears in the platform right away
   const savedArticle = await db.saveArticle(userId, {
     title,
     topic: `Energia: ${newsItem.title}`,
     sourceUrl: newsItem.url,
-    coverImageUrl: cover.imageUrl,
     content,
     summary,
   });
 
+  // 4. Generate cover image and attach it (article already visible as draft)
+  try {
+    const cover = await generateArticleCoverWithDesigner({
+      newsTitle: newsItem.title,
+      source: newsItem.source,
+      summary,
+      articleTitle: title,
+      articleContent: content,
+    });
+    await db.updateArticle(savedArticle.id, userId, { coverImageUrl: cover.imageUrl });
+  } catch (coverErr) {
+    console.warn("[NewsAutoGen] Falha ao gerar capa — artigo salvo sem imagem:", coverErr);
+  }
+
   // 5. Generate carousel from the article content
-  const generatedCarousel = await generateCarouselWithAgent({
-    topic: title,
-    slideCount: 8,
-    carouselFormat: "feed",
-    style: "claude-minimalista",
-    articleContext: `${title}\n\n${content.slice(0, 3000)}`,
-    useAiImages: false,
-  });
+  let carouselId = 0;
+  try {
+    const generatedCarousel = await generateCarouselWithAgent({
+      topic: title,
+      slideCount: 8,
+      carouselFormat: "feed",
+      style: "claude-minimalista",
+      articleContext: `${title}\n\n${content.slice(0, 3000)}`,
+      useAiImages: false,
+    });
 
-  const persistedAssets = await persistCarouselAssets({
-    userId,
-    coverImageUrl: generatedCarousel.coverImageUrl,
-    slides: generatedCarousel.slides,
-  });
+    const persistedAssets = await persistCarouselAssets({
+      userId,
+      coverImageUrl: generatedCarousel.coverImageUrl,
+      slides: generatedCarousel.slides,
+    });
 
-  const savedCarousel = await db.saveCarousel(userId, {
-    topic: title,
-    style: "claude-minimalista",
-    hook: generatedCarousel.hook,
-    caption: generatedCarousel.caption,
-    finalCta: generatedCarousel.finalCta,
-    coverImageUrl: persistedAssets.coverImageUrl,
-    slides: persistedAssets.slides,
-  });
+    const savedCarousel = await db.saveCarousel(userId, {
+      topic: title,
+      style: "claude-minimalista",
+      hook: generatedCarousel.hook,
+      caption: generatedCarousel.caption,
+      finalCta: generatedCarousel.finalCta,
+      coverImageUrl: persistedAssets.coverImageUrl,
+      slides: persistedAssets.slides,
+    });
+
+    carouselId = savedCarousel.id;
+  } catch (carouselErr) {
+    console.warn("[NewsAutoGen] Falha ao gerar carrossel — artigo já salvo:", carouselErr);
+  }
 
   // 6. Notify user via WhatsApp
+  const carouselLine = carouselId ? `\n🎠 *Carrossel:* gerado com sucesso` : "";
   const msg =
-    `✅ *Geração concluída!*\n\n` +
-    `📰 *Artigo:* ${title}\n` +
-    `🎠 *Carrossel:* ${savedCarousel.slides.length} slides criados\n\n` +
-    `Acesse a aba Artigos e Carrosséis no sistema para visualizar e publicar.`;
+    `✅ *Artigo gerado!*\n\n` +
+    `📰 *${title}*` +
+    carouselLine +
+    `\n\nAcesse a aba *Artigos* no sistema para visualizar e publicar.`;
 
   await sendWhatsAppText(whatsappNumber, msg).catch((err) => {
     console.error("[NewsAutoGen] Falha ao enviar notificação WA:", err);
   });
 
-  return { articleId: savedArticle.id, carouselId: savedCarousel.id };
+  return { articleId: savedArticle.id, carouselId };
 }

@@ -1470,10 +1470,14 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
 
   getWebhookInfo: protectedProcedure.query(() => {
     const base = (ENV.appBaseUrl || "http://localhost:3000").replace(/\/$/, "");
+    const isLocalhost = base.includes("localhost") || base.includes("127.0.0.1");
     return {
-      webhookUrl: `${base}/api/whatsapp/webhook`,
+      // URL para registrar no painel Meta (verificação do número)
+      metaWebhookUrl: `${base}/api/whatsapp/webhook`,
       verifyToken: ENV.whatsappVerifyToken || "krythos-webhook-verify",
-      isLocalhost: base.includes("localhost") || base.includes("127.0.0.1"),
+      // URL para configurar no agregador de números ("Webhook do Agente IA")
+      aggregatorWebhookUrl: `${base}/api/aggregator/webhook`,
+      isLocalhost,
     };
   }),
 

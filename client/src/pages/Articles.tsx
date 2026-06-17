@@ -1,4 +1,4 @@
-﻿import AppLayout from "@/components/AppLayout";
+import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -40,9 +40,10 @@ import {
   FlaskConical,
   ToggleLeft,
   ToggleRight,
+  ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type Article = {
   id: number;
@@ -1205,271 +1206,310 @@ export default function Articles() {
 
       {/* Digest settings dialog */}
       <Dialog open={showDigestDialog} onOpenChange={setShowDigestDialog}>
-        <DialogContent className="glass-card max-w-md border-border/50">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center">
-                <Bell className="w-3.5 h-3.5 text-white" />
-              </div>
-              Digest diário de notícias — WhatsApp
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="glass-card max-w-sm border-border/50 p-0 gap-0 flex flex-col max-h-[90vh]">
+          <DialogTitle className="sr-only">Digest diário de notícias</DialogTitle>
+          <DialogDescription className="sr-only">Configure o envio automático de notícias via WhatsApp</DialogDescription>
 
-          <div className="space-y-5 pt-2">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Todos os dias no horário configurado, o sistema envia as 5 principais notícias de energia para o WhatsApp.
-              Responda com o número (1-5) para gerar artigo + carrossel automaticamente.
-            </p>
-
-            {/* Phone number */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                Número WhatsApp (com DDI)
-              </label>
-              <Input
-                value={digestNumber}
-                onChange={(e) => setDigestNumber(e.target.value.replace(/\D/g, ""))}
-                placeholder="5527981244658"
-                className="glass border-border/50 focus:border-emerald-500/50 font-mono"
-              />
-              <p className="text-xs text-muted-foreground">Somente dígitos. Ex: 5527981244658</p>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-border/40">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+              <Bell className="w-4.5 h-4.5 text-white" />
             </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground leading-tight">Digest diário de notícias</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">WhatsApp · responda 1–5 para gerar conteúdo</p>
+            </div>
+          </div>
 
-            {/* Hour/minute */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                Horário de envio
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={digestHour}
-                  onChange={(e) => setDigestHour(parseInt(e.target.value, 10))}
-                  className="flex h-9 rounded-md border border-border/50 bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          {/* Scrollable body */}
+          <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+
+            {/* Config card */}
+            <div className="rounded-xl border border-border/50 bg-background/50 divide-y divide-border/40 overflow-hidden">
+
+              {/* Phone */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Número (com DDI)</p>
+                  <Input
+                    value={digestNumber}
+                    onChange={(e) => setDigestNumber(e.target.value.replace(/\D/g, ""))}
+                    placeholder="5527981244658"
+                    className="h-8 rounded-md border border-border/60 bg-background/80 px-3 font-mono text-sm focus-visible:ring-1 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-0 placeholder:text-muted-foreground/40"
+                  />
+                </div>
+              </div>
+
+              {/* Time + enable toggle */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-1.5">Horário de envio</p>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={digestHour}
+                      onChange={(e) => setDigestHour(parseInt(e.target.value, 10))}
+                      className="h-7 rounded-md border border-border/50 bg-background/80 px-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
+                      ))}
+                    </select>
+                    <span className="text-muted-foreground font-bold text-sm">:</span>
+                    <select
+                      value={digestMinute}
+                      onChange={(e) => setDigestMinute(parseInt(e.target.value, 10))}
+                      className="h-7 rounded-md border border-border/50 bg-background/80 px-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    >
+                      {[0, 10, 15, 20, 30, 40, 45, 50].map((m) => (
+                        <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-muted-foreground ml-1">Fortaleza</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDigestEnabled(!digestEnabled)}
+                  title={digestEnabled ? "Ativo — clique para pausar" : "Pausado — clique para ativar"}
+                  className={cn(
+                    "shrink-0 w-10 h-6 rounded-full transition-colors relative focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                    digestEnabled ? "bg-emerald-500" : "bg-border"
+                  )}
                 >
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
-                  ))}
-                </select>
-                <span className="text-muted-foreground font-semibold">:</span>
-                <select
-                  value={digestMinute}
-                  onChange={(e) => setDigestMinute(parseInt(e.target.value, 10))}
-                  className="flex h-9 rounded-md border border-border/50 bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                >
-                  {[0, 10, 15, 20, 30, 40, 45, 50].map((m) => (
-                    <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
-                  ))}
-                </select>
-                <span className="text-xs text-muted-foreground">(horário de Fortaleza)</span>
+                  <span className={cn(
+                    "absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform",
+                    digestEnabled ? "translate-x-5" : "translate-x-1"
+                  )} />
+                </button>
+              </div>
+
+              {/* Aggregator webhook */}
+              <div className="flex items-start gap-3 px-4 py-3">
+                <Link className="w-4 h-4 text-muted-foreground shrink-0 mt-2.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Webhook do agregador</p>
+                  <Input
+                    value={digestReplyWebhookUrl}
+                    onChange={(e) => setDigestReplyWebhookUrl(e.target.value)}
+                    placeholder="https://agregador.com/webhook/número"
+                    className="h-7 border-0 bg-transparent px-0 font-mono text-xs shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/40"
+                  />
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">Notificado quando o usuário responder 1–5</p>
+                </div>
               </div>
             </div>
 
-            {/* Enable toggle */}
-            <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/60 p-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Digest ativo</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {digestEnabled ? "Enviando todos os dias" : "Envio pausado"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDigestEnabled(!digestEnabled)}
-                className="text-emerald-600 hover:text-emerald-700 transition-colors"
-              >
-                {digestEnabled
-                  ? <ToggleRight className="w-8 h-8" />
-                  : <ToggleLeft className="w-8 h-8 text-muted-foreground" />
-                }
-              </button>
-            </div>
-
-            {/* Aggregator reply webhook URL */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-                Webhook do agregador (opcional)
-              </label>
-              <Input
-                value={digestReplyWebhookUrl}
-                onChange={(e) => setDigestReplyWebhookUrl(e.target.value)}
-                placeholder="https://agregador.exemplo.com/webhook/seu-numero"
-                className="glass border-border/50 focus:border-emerald-500/50 font-mono text-xs"
-              />
-              <p className="text-xs text-muted-foreground">
-                Quando o usuário responder 1-5, o sistema notifica essa URL com o evento e a notícia escolhida.
-              </p>
-            </div>
-
-            {/* Scheduler status panel */}
+            {/* Scheduler status card */}
             {schedulerStatus && (
               <div className={cn(
-                "rounded-lg border p-3 text-xs space-y-1.5",
-                schedulerStatus.status === "sent_today"
-                  ? "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
-                  : schedulerStatus.status === "in_window"
-                  ? "border-blue-400/50 bg-blue-50/60 dark:bg-blue-950/20"
-                  : schedulerStatus.status === "window_passed"
-                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
-                  : "border-border/50 bg-background/60"
+                "rounded-xl border px-4 py-3.5",
+                schedulerStatus.status === "sent_today"   ? "border-emerald-400/40 bg-emerald-50/70 dark:bg-emerald-950/25"
+                : schedulerStatus.status === "in_window"  ? "border-blue-400/40   bg-blue-50/70   dark:bg-blue-950/25"
+                : schedulerStatus.status === "window_passed" ? "border-amber-400/40 bg-amber-50/70 dark:bg-amber-950/25"
+                : "border-border/40 bg-background/50"
               )}>
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-foreground">
-                    {schedulerStatus.status === "sent_today" && "✅ Enviado hoje"}
-                    {schedulerStatus.status === "in_window" && "🔄 Enviando..."}
-                    {schedulerStatus.status === "window_passed" && "⚠️ Janela passou"}
-                    {schedulerStatus.status === "waiting" && "⏳ Aguardando"}
-                    {schedulerStatus.status === "no_settings" && "⚙️ Sem configuração"}
-                  </p>
-                  <span className="text-muted-foreground font-mono">{schedulerStatus.serverTime} ({schedulerStatus.timezone?.split("/")[1] ?? schedulerStatus.timezone})</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base leading-none">
+                      {schedulerStatus.status === "sent_today"    && "✅"}
+                      {schedulerStatus.status === "in_window"     && "🔄"}
+                      {schedulerStatus.status === "window_passed" && "⚠️"}
+                      {schedulerStatus.status === "waiting"       && "⏳"}
+                      {schedulerStatus.status === "no_settings"   && "⚙️"}
+                    </span>
+                    <p className="text-sm font-semibold text-foreground">
+                      {schedulerStatus.status === "sent_today"    && "Enviado hoje"}
+                      {schedulerStatus.status === "in_window"     && "Enviando agora..."}
+                      {schedulerStatus.status === "window_passed" && "Janela expirada"}
+                      {schedulerStatus.status === "waiting"       && "Aguardando"}
+                      {schedulerStatus.status === "no_settings"   && "Sem configuração"}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-mono shrink-0 mt-0.5 tabular-nums">
+                    {schedulerStatus.serverTime}
+                    <span className="text-muted-foreground/60"> · {schedulerStatus.timezone?.split("/")[1] ?? schedulerStatus.timezone}</span>
+                  </span>
                 </div>
-                <p className="text-muted-foreground">{schedulerStatus.message}</p>
+                <p className="text-xs text-muted-foreground mt-1.5 ml-[30px] leading-relaxed">{schedulerStatus.message}</p>
                 {(schedulerStatus.status === "sent_today" || schedulerStatus.status === "window_passed") && (
                   <button
                     onClick={() => resetDigestMutation.mutate()}
                     disabled={resetDigestMutation.isPending}
-                    className="text-primary hover:underline text-xs"
+                    className="mt-2 ml-[30px] text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
                   >
-                    {resetDigestMutation.isPending ? "Resetando..." : "↺ Resetar para enviar hoje novamente"}
+                    <RefreshCw className="w-3 h-3" />
+                    {resetDigestMutation.isPending ? "Resetando..." : "Resetar para enviar hoje"}
                   </button>
                 )}
               </div>
             )}
 
-            {/* Webhook info panel */}
-            {webhookInfo && (
-              <div className={cn(
-                "rounded-lg border p-3 text-xs space-y-2",
-                webhookInfo.isLocalhost
-                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
-                  : "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
-              )}>
-                <p className="font-semibold text-foreground">
-                  {webhookInfo.isLocalhost ? "⚠️ Webhook (localhost — não recebe respostas externas)" : "✅ Webhook configurado"}
-                </p>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground">URL do webhook:</p>
-                  <code className="block bg-background/70 border border-border/50 rounded px-2 py-1 font-mono text-[10px] break-all select-all">{webhookInfo.webhookUrl}</code>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground">Token de verificação:</p>
-                  <code className="block bg-background/70 border border-border/50 rounded px-2 py-1 font-mono text-[10px] select-all">{webhookInfo.verifyToken}</code>
-                </div>
-                {webhookInfo.isLocalhost && (
-                  <p className="text-amber-700 dark:text-amber-400 text-[10px]">
-                    Para receber respostas: defina APP_BASE_URL no .env com a URL pública do servidor e registre o webhook no painel Meta → WhatsApp → Configuração → Webhooks.
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Technical details (collapsible) */}
+            <details className="group">
+              <summary className="flex items-center justify-between cursor-pointer list-none select-none text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+                <span className="flex items-center gap-1.5">
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Configurações técnicas
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform duration-200" />
+              </summary>
 
-            {/* WhatsApp sender diagnostics */}
-            {waDiag && (
-              <div className={cn(
-                "rounded-lg border p-3 text-xs space-y-1",
-                waDiag.ok && waDiag.accountMode !== "SANDBOX"
-                  ? "border-emerald-400/50 bg-emerald-50/60 dark:bg-emerald-950/20"
-                  : waDiag.accountMode === "SANDBOX"
-                  ? "border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20"
-                  : "border-red-400/50 bg-red-50/60 dark:bg-red-950/20"
-              )}>
-                <p className="font-semibold text-foreground">
-                  {waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "✅ Número remetente ativo" : waDiag.accountMode === "SANDBOX" ? "⚠️ Modo SANDBOX" : "❌ Erro"}
-                </p>
-                {waDiag.senderNumber && <p className="text-muted-foreground">Remetente: <span className="font-mono">{waDiag.senderNumber}</span> · {waDiag.verifiedName} · {waDiag.qualityRating}</p>}
-                {waDiag.accountMode && <p className={waDiag.accountMode === "SANDBOX" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}>Modo: {waDiag.accountMode}</p>}
-                {waDiag.error && <p className="text-red-600 dark:text-red-400">{waDiag.error}</p>}
-                <button onClick={() => void refetchWaDiag()} className="text-primary hover:underline" disabled={isDiagging}>
-                  {isDiagging ? "Consultando..." : "Atualizar"}
-                </button>
-              </div>
-            )}
+              <div className="mt-3 space-y-3">
 
-            {/* Template diagnostics result */}
-            {diagResult && (
-              <div className="rounded-lg border border-border/50 bg-background/60 p-3 text-xs space-y-2">
-                <p className="font-semibold text-foreground">Diagnóstico do template</p>
-                <p className="text-muted-foreground">
-                  WABAs encontradas: <span className="text-foreground">{diagResult.wabaAccounts.map(w => w.name || w.id).join(", ") || "nenhuma"}</span>
-                </p>
-                <p className="text-muted-foreground">
-                  Template <span className="font-mono">envio_de_noticias_diario</span>:{" "}
-                  {diagResult.templateFound
-                    ? <span className="text-emerald-600 dark:text-emerald-400">✅ encontrado · idioma: {diagResult.templateLanguage} · status: {diagResult.templateStatus}</span>
-                    : <span className="text-red-600 dark:text-red-400">❌ não encontrado nas WABAs acessíveis</span>
-                  }
-                </p>
-                {diagResult.templateComponents != null && (
-                  <p className="text-muted-foreground break-all">
-                    Componentes: <span className="font-mono text-foreground">{JSON.stringify(diagResult.templateComponents as object).slice(0, 300)}</span>
-                  </p>
+                {/* ── AGREGADOR: URL principal a configurar ── */}
+                {webhookInfo && (
+                  <div className="rounded-xl border-2 border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base leading-none mt-0.5">🔗</span>
+                      <div>
+                        <p className="text-xs font-semibold text-foreground leading-tight">URL para configurar no Agregador</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Cole no campo <span className="font-medium text-foreground">Webhook do Agente IA</span> do número no seu sistema agregador
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <code className="flex-1 bg-background/80 border border-emerald-400/40 rounded-lg px-2.5 py-1.5 font-mono text-[10px] break-all text-emerald-700 dark:text-emerald-300">
+                        {webhookInfo.aggregatorWebhookUrl}
+                      </code>
+                      <button
+                        onClick={() => { void navigator.clipboard.writeText(webhookInfo.aggregatorWebhookUrl); toast.success("URL copiada!"); }}
+                        className="shrink-0 p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                        title="Copiar URL do agregador"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                    {webhookInfo.isLocalhost && (
+                      <p className="text-amber-600 dark:text-amber-400 text-[10px] leading-relaxed bg-amber-50/60 dark:bg-amber-950/20 rounded-md px-2 py-1.5">
+                        ⚠️ localhost — configure APP_BASE_URL=https://krythoslab.com no .env antes do deploy.
+                      </p>
+                    )}
+                  </div>
                 )}
-                <div className="space-y-1">
-                  <p className="font-medium text-foreground">Testes de envio:</p>
-                  {diagResult.testSendResults.map((r) => (
-                    <p key={r.lang} className={r.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
-                      {r.ok ? "✅" : "❌"} lang={r.lang}: {r.ok ? `ID ${r.messageId ?? "ok"}` : r.error}
+
+                {/* ── Meta webhook (para verificação do número no painel Meta) ── */}
+                {webhookInfo && (
+                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-2">
+                    <p className="font-medium text-foreground text-[11px] text-muted-foreground">Meta Webhook (verificação do número)</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-muted-foreground uppercase tracking-wide w-10 shrink-0">URL</span>
+                        <code className="flex-1 bg-background/70 border border-border/40 rounded px-2 py-1 font-mono text-[9px] break-all">{webhookInfo.metaWebhookUrl}</code>
+                        <button onClick={() => { void navigator.clipboard.writeText(webhookInfo.metaWebhookUrl); toast.success("Copiado!"); }} className="shrink-0 p-1.5 rounded hover:bg-background/80 text-muted-foreground hover:text-foreground transition-colors" title="Copiar">
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-muted-foreground uppercase tracking-wide w-10 shrink-0">Token</span>
+                        <code className="flex-1 bg-background/70 border border-border/40 rounded px-2 py-1 font-mono text-[9px]">{webhookInfo.verifyToken}</code>
+                        <button onClick={() => { void navigator.clipboard.writeText(webhookInfo.verifyToken); toast.success("Copiado!"); }} className="shrink-0 p-1.5 rounded hover:bg-background/80 text-muted-foreground hover:text-foreground transition-colors" title="Copiar">
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sender diagnostics */}
+                {waDiag && (
+                  <div className={cn(
+                    "rounded-lg border p-3 text-xs",
+                    waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "border-emerald-400/40 bg-emerald-50/40 dark:bg-emerald-950/15"
+                    : waDiag.accountMode === "SANDBOX"            ? "border-amber-400/40  bg-amber-50/40  dark:bg-amber-950/15"
+                    :                                               "border-red-400/40    bg-red-50/40    dark:bg-red-950/15"
+                  )}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="font-medium text-foreground text-[11px]">
+                        {waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "✅ Remetente ativo" : waDiag.accountMode === "SANDBOX" ? "⚠️ SANDBOX" : "❌ Erro"}
+                      </p>
+                      <button onClick={() => void refetchWaDiag()} disabled={isDiagging} className="text-[10px] text-primary hover:underline disabled:opacity-50">
+                        {isDiagging ? "..." : "Atualizar"}
+                      </button>
+                    </div>
+                    {waDiag.senderNumber && (
+                      <p className="text-muted-foreground font-mono text-[10px]">{waDiag.senderNumber} · {waDiag.verifiedName} · {waDiag.qualityRating}</p>
+                    )}
+                    {waDiag.error && <p className="text-red-600 dark:text-red-400 mt-1">{waDiag.error}</p>}
+                  </div>
+                )}
+
+                {/* Template diagnostics */}
+                {diagResult && (
+                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1.5">
+                    <p className="font-medium text-foreground text-[11px]">Diagnóstico do template</p>
+                    <p className="text-muted-foreground">WABAs: <span className="text-foreground">{diagResult.wabaAccounts.map(w => w.name || w.id).join(", ") || "nenhuma"}</span></p>
+                    <p className="text-muted-foreground">
+                      Template:{" "}
+                      {diagResult.templateFound
+                        ? <span className="text-emerald-600 dark:text-emerald-400">✅ {diagResult.templateLanguage} · {diagResult.templateStatus}</span>
+                        : <span className="text-red-600 dark:text-red-400">❌ não encontrado</span>}
                     </p>
-                  ))}
+                    {diagResult.testSendResults.map((r) => (
+                      <p key={r.lang} className={r.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}>
+                        {r.ok ? "✅" : "❌"} {r.lang}: {r.ok ? `ID ${r.messageId ?? "ok"}` : r.error}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Debug formats */}
+                {debugResult && (
+                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1">
+                    <p className="font-medium text-foreground text-[11px]">Debug · <span className="font-mono font-normal">{debugResult.to}</span></p>
+                    {debugResult.attempts.map((a, i) => (
+                      <p key={i} className={a.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}>
+                        {a.ok ? "✅" : "❌"} {a.lang}/{a.format}: {a.ok ? `ID ${a.messageId ?? "ok"}` : a.error}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Secondary actions */}
+                <div className="flex gap-2 pt-0.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => testDigestMutation.mutate()}
+                    disabled={testDigestMutation.isPending || !digestSettings}
+                    className="flex-1 gap-1 text-xs h-8"
+                    title="Requer configurações salvas"
+                  >
+                    {testDigestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
+                    Testar envio
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => diagTemplateMutation.mutate()}
+                    disabled={diagTemplateMutation.isPending}
+                    className="flex-1 gap-1 text-xs h-8"
+                  >
+                    {diagTemplateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Settings2 className="w-3 h-3" />}
+                    Diagnosticar
+                  </Button>
                 </div>
               </div>
-            )}
-
-            {/* Debug formats result */}
-            {debugResult && (
-              <div className="rounded-lg border border-border/50 bg-background/60 p-3 text-xs space-y-2">
-                <p className="font-semibold text-foreground">Debug de formatos — destino: <span className="font-mono">{debugResult.to}</span></p>
-                {debugResult.attempts.map((a, i) => (
-                  <p key={i} className={a.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
-                    {a.ok ? "✅" : "❌"} lang={a.lang} fmt={a.format}: {a.ok ? `ID ${a.messageId ?? "ok"}` : a.error}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => testDigestMutation.mutate()}
-                disabled={testDigestMutation.isPending || !digestSettings}
-                className="gap-1.5 text-xs"
-                title="Requer configurações salvas primeiro"
-              >
-                {testDigestMutation.isPending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <FlaskConical className="w-3.5 h-3.5" />
-                }
-                Testar envio
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => diagTemplateMutation.mutate()}
-                disabled={diagTemplateMutation.isPending}
-                className="gap-1.5 text-xs"
-              >
-                {diagTemplateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Settings2 className="w-3.5 h-3.5" />}
-                Diagnosticar
-              </Button>
-              <Button
-                onClick={handleSaveDigest}
-                disabled={saveDigestMutation.isPending}
-                className="flex-1 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
-              >
-                {saveDigestMutation.isPending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <Check className="w-3.5 h-3.5" />
-                }
-                Salvar configurações
-              </Button>
-            </div>
+            </details>
           </div>
+
+          {/* Footer — save */}
+          <div className="px-5 py-4 border-t border-border/40 bg-background/30 shrink-0">
+            <Button
+              onClick={handleSaveDigest}
+              disabled={saveDigestMutation.isPending}
+              className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-0 h-10 text-sm font-medium shadow-sm"
+            >
+              {saveDigestMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Check className="w-4 h-4" />
+              }
+              Salvar configurações
+            </Button>
+          </div>
+
         </DialogContent>
       </Dialog>
     </AppLayout>

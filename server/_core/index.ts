@@ -11,6 +11,7 @@ import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { startNewsDigestScheduler } from "./newsDigestScheduler";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
+import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWebhook";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { sdk } from "./sdk";
@@ -374,6 +375,28 @@ async function startServer() {
       }
     } catch (err) {
       console.error("[Webhook] Erro ao processar mensagem WhatsApp:", err);
+    }
+  });
+
+  // ── Agregador webhook ──────────────────────────────────────────────────────
+  // POST: recebe mensagem do usuário vinda do agregador de números.
+  // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
+  app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
+
+  // ── Diagnóstico de sessões (remover após confirmar funcionamento) ──────────
+  app.get("/api/debug/digest-sessions", async (_req, res) => {
+    try {
+      const { getDb } = await import("../db");
+      const database = await getDb();
+      if (!database) { res.json({ error: "DB não disponível" }); return; }
+      const { sql } = await import("drizzle-orm");
+      const rows = await database.execute(sql`
+        SELECT id, campaign_id, user_id, phone_number, sent_at, expires_at, user_response
+        FROM whatsapp_digest_sessions ORDER BY sent_at DESC LIMIT 10
+      `);
+      res.json({ sessions: (rows[0] as unknown as unknown[]) });
+    } catch (err) {
+      res.json({ error: String(err) });
     }
   });
 

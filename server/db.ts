@@ -1471,15 +1471,27 @@ async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`reply_webhook_url\` VARCHAR(500) NULL`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
-          \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
-          \`user_id\`      INT NOT NULL,
-          \`phone_number\` VARCHAR(20) NOT NULL,
-          \`news_items\`   TEXT NOT NULL,
-          \`sent_at\`      DATETIME NOT NULL,
-          \`expires_at\`   DATETIME NOT NULL,
-          INDEX idx_phone_expires (\`phone_number\`, \`expires_at\`)
+          \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
+          \`campaign_id\`    VARCHAR(36) NOT NULL,
+          \`user_id\`        INT NOT NULL,
+          \`phone_number\`   VARCHAR(20) NOT NULL,
+          \`news_items\`     TEXT NOT NULL,
+          \`message_text\`   TEXT,
+          \`sent_at\`        DATETIME NOT NULL,
+          \`expires_at\`     DATETIME NOT NULL,
+          \`user_response\`  VARCHAR(5),
+          \`chosen_index\`   TINYINT,
+          \`responded_at\`   DATETIME,
+          INDEX idx_phone_expires (\`phone_number\`, \`expires_at\`),
+          INDEX idx_campaign (\`campaign_id\`)
         )
       `);
+      // Migrate old sessions table (add columns if not present)
+      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`campaign_id\` VARCHAR(36) NOT NULL DEFAULT ''`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`message_text\` TEXT`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`user_response\` VARCHAR(5)`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`chosen_index\` TINYINT`).catch(() => {});
+      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`responded_at\` DATETIME`).catch(() => {});
     })();
   }
   return _digestTablesReady;
@@ -1584,20 +1596,76 @@ export type DigestNewsItem = {
   publishedAt: string | null;
 };
 
+// Remove +, spaces and dashes so "5511..." and "+55 11..." both match
+function normalizePhone(phone: string): string {
+  return phone.replace(/[\s+\-().]/g, "");
+}
+
 export async function saveDigestSession(
   userId: number,
   phoneNumber: string,
-  newsItems: DigestNewsItem[]
-): Promise<void> {
+  newsItems: DigestNewsItem[],
+  campaignId?: string,
+  messageText?: string
+): Promise<string> {
   const db = await getDb();
-  if (!db) return;
+  const id = campaignId ?? randomCampaignId();
+  if (!db) return id;
   await ensureDigestTables(db);
+  const normalized = normalizePhone(phoneNumber);
   const now = new Date();
   const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  console.log(`[DigestSession] Salvando sessão phone=${normalized} userId=${userId} campaign=${id}`);
   await db.execute(sql`
-    INSERT INTO whatsapp_digest_sessions (user_id, phone_number, news_items, sent_at, expires_at)
-    VALUES (${userId}, ${phoneNumber}, ${JSON.stringify(newsItems)}, ${now}, ${expires})
+    INSERT INTO whatsapp_digest_sessions (campaign_id, user_id, phone_number, news_items, message_text, sent_at, expires_at)
+    VALUES (${id}, ${userId}, ${normalized}, ${JSON.stringify(newsItems)}, ${messageText ?? null}, ${now}, ${expires})
   `);
+  return id;
+}
+
+export async function recordSessionResponse(
+  phoneNumber: string,
+  choice: number
+): Promise<{ userId: number; campaignId: string; newsItems: DigestNewsItem[]; chosenItem: DigestNewsItem } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureDigestTables(db);
+  const normalized = normalizePhone(phoneNumber);
+  const withPlus = `+${normalized}`;
+  console.log(`[DigestSession] Buscando sessão para phone=${normalized} choice=${choice}`);
+  const rows = await db.execute(sql`
+    SELECT id, campaign_id, user_id, news_items FROM whatsapp_digest_sessions
+    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus})
+      AND expires_at > NOW() AND user_response IS NULL
+    ORDER BY sent_at DESC LIMIT 1
+  `);
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
+  if (!row) {
+    console.warn(`[DigestSession] Sessão não encontrada para phone=${normalized} nem ${withPlus}`);
+    return null;
+  }
+  let newsItems: DigestNewsItem[];
+  try { newsItems = JSON.parse(String(row.news_items)) as DigestNewsItem[]; }
+  catch { return null; }
+  const idx = choice - 1;
+  const chosenItem = newsItems[idx];
+  if (!chosenItem) return null;
+  await db.execute(sql`
+    UPDATE whatsapp_digest_sessions
+    SET user_response = ${String(choice)}, chosen_index = ${idx}, responded_at = NOW()
+    WHERE id = ${Number(row.id)}
+  `);
+  console.log(`[DigestSession] Sessão encontrada e registrada: userId=${String(row.user_id)} campaign=${String(row.campaign_id)}`);
+  return {
+    userId: Number(row.user_id),
+    campaignId: String(row.campaign_id),
+    newsItems,
+    chosenItem,
+  };
+}
+
+function randomCampaignId(): string {
+  return `camp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function getActiveDigestSession(
@@ -1606,9 +1674,11 @@ export async function getActiveDigestSession(
   const db = await getDb();
   if (!db) return null;
   await ensureDigestTables(db);
+  const normalized = normalizePhone(phoneNumber);
+  const withPlus = `+${normalized}`;
   const rows = await db.execute(sql`
     SELECT user_id, news_items FROM whatsapp_digest_sessions
-    WHERE phone_number = ${phoneNumber} AND expires_at > NOW()
+    WHERE (phone_number = ${normalized} OR phone_number = ${withPlus}) AND expires_at > NOW()
     ORDER BY sent_at DESC LIMIT 1
   `);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];

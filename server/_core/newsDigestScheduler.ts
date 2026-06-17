@@ -1,6 +1,7 @@
 import { getPostSchedulerTimeZone } from "./postScheduling";
 import { fetchNewsFromSite, dedupeNewsItems, rankNewsItems, DEFAULT_NEWS_SITES } from "../routers";
 import { sendNewsDigest } from "./whatsapp";
+import { buildDigestTextMessage } from "./aggregatorWebhook";
 import { getAllEnabledDigestSettings, saveDigestSession, markDigestLastSent } from "../db";
 import { ENV } from "./env";
 
@@ -69,7 +70,8 @@ async function runDigestForUser(
     publishedAt: item.publishedAt ?? null,
   }));
 
-  await saveDigestSession(userId, whatsappNumber, newsItems);
+  const messageText = buildDigestTextMessage(newsItems);
+  await saveDigestSession(userId, whatsappNumber, newsItems, undefined, messageText);
   const result = await sendNewsDigest(top5, whatsappNumber, templateName, templateLanguage);
 
   if (result.error) {
