@@ -421,6 +421,8 @@ async function startServer() {
 
       res.json({
         userId,
+        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
+        env: process.env.NODE_ENV,
         rawCarousels: rawRows[0],
         dbLayerCount: viaDbLayer.length,
         dbLayerSlides: viaDbLayer.map(c => ({ id: c.id, topic: c.topic, slidesCount: c.slides?.length })),
