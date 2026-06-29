@@ -134,10 +134,9 @@ Regras:
 
     const generatedCarousel = await generateCarouselWithAgent({
       topic: newsItem.title,
-      slideCount: 5,
+      slideCount: 8,
       carouselFormat: "feed",
       style: "claude-minimalista",
-      profileId: "claude-minimalista",
       articleContext: carouselSourceContext,
       useAiImages: false,
     });
