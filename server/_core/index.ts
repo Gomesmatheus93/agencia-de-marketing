@@ -393,6 +393,44 @@ async function startServer() {
   // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
   app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
 
+  // ── Diagnóstico de carrosseis por userId ─────────────────────────────────
+  app.get("/api/debug/carousels/:userId", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+      if (isNaN(userId)) { res.json({ error: "userId inválido" }); return; }
+      const { getDb } = await import("../db");
+      const { sql } = await import("drizzle-orm");
+      const database = await getDb();
+      if (!database) { res.json({ error: "DB não disponível" }); return; }
+
+      // Raw SQL para confirmar que o dado está no banco
+      const rawRows = await database.execute(sql`
+        SELECT id, userId, topic, style, createdAt,
+               CHAR_LENGTH(slides) as slidesLen
+        FROM carousels WHERE userId = ${userId}
+        ORDER BY createdAt DESC LIMIT 5
+      `);
+
+      // Via função db.getCarousels (mesma path da rota tRPC)
+      const viaDbLayer = await db.getCarousels(userId);
+
+      // Usuários cadastrados (para confirmar userId × email)
+      const users = await database.execute(sql`
+        SELECT id, email, name FROM users ORDER BY id DESC LIMIT 20
+      `);
+
+      res.json({
+        userId,
+        rawCarousels: rawRows[0],
+        dbLayerCount: viaDbLayer.length,
+        dbLayerSlides: viaDbLayer.map(c => ({ id: c.id, topic: c.topic, slidesCount: c.slides?.length })),
+        users: users[0],
+      });
+    } catch (err) {
+      res.json({ error: String(err) });
+    }
+  });
+
   // ── Diagnóstico completo do fluxo digest → artigo/carrossel ─────────────
   app.get("/api/debug/digest-sessions", async (_req, res) => {
     try {
