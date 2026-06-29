@@ -1,4 +1,4 @@
-import AppLayout from "@/components/AppLayout";
+﻿import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -3641,7 +3641,10 @@ export default function Carousels() {
   const editorPrimaryFieldRef = useRef<HTMLTextAreaElement | null>(null);
   const previewOpenBlockedUntilRef = useRef(0);
 
-  const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery();
+  const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery(undefined, {
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+  });
 
   const fetchArticleMutation = trpc.carousel.fetchArticle.useMutation({
     onSuccess: (data) => {
