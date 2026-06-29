@@ -118,22 +118,32 @@ Regras:
     console.warn("[NewsAutoGen] Falha ao gerar capa — artigo salvo sem imagem:", coverErr);
   }
 
-  // 5. Generate carousel from the article content and save immediately
+  // 5. Generate carousel from the original news source and save immediately
   let carouselId = 0;
   try {
+    const carouselSourceContext = [
+      `Notícia: ${newsItem.title}`,
+      `Fonte: ${newsItem.source}`,
+      `URL: ${newsItem.url}`,
+      newsItem.excerpt ? `Resumo: ${newsItem.excerpt}` : "",
+      articleContext.content
+        ? `Conteúdo da fonte:\n${articleContext.content.slice(0, 2500)}`
+        : "",
+    ].filter(Boolean).join("\n\n");
+
     const generatedCarousel = await generateCarouselWithAgent({
-      topic: title,
+      topic: newsItem.title,
       slideCount: 8,
       carouselFormat: "feed",
       style: "claude-minimalista",
       profileId: "claude-minimalista",
-      articleContext: `${title}\n\n${content.slice(0, 3000)}`,
+      articleContext: carouselSourceContext,
       useAiImages: false,
     });
 
     // Save carousel immediately so it appears in the platform right away
     const savedCarousel = await db.saveCarousel(userId, {
-      topic: title,
+      topic: newsItem.title,
       style: "claude-minimalista",
       hook: generatedCarousel.hook,
       caption: generatedCarousel.caption,

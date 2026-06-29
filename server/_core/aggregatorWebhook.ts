@@ -205,18 +205,12 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
   } satisfies AggregatorReply);
 
   // ── Geração em background ───────────────────────────────────────────────
+  // newsAutoGenerator.ts envia a notificação WhatsApp ao concluir — sem duplicar aqui
   void (async () => {
     try {
       console.log(`[AggregatorWebhook] Iniciando geração: userId=${userId}`);
       const result = await autoGenerateFromNews(userId, chosenItem, phone);
       console.log(`[AggregatorWebhook] Concluído: articleId=${result.articleId} carouselId=${result.carouselId}`);
-
-      // Notificação de conclusão vai direto via WhatsApp (n8n já retornou)
-      await sendWhatsAppText(
-        phone,
-        `✅ *Artigo publicado!*\n\n📰 *${chosenItem.title}*\n\nAcesse a aba *Artigos* no sistema para visualizar e publicar.`
-      ).catch((err) => console.error("[AggregatorWebhook] Falha ao notificar conclusão:", err));
-
     } catch (err) {
       console.error("[AggregatorWebhook] ERRO NA GERAÇÃO:", err);
       await sendWhatsAppText(
