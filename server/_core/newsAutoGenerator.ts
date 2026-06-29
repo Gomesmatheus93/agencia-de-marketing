@@ -120,6 +120,7 @@ Regras:
 
   // 5. Generate carousel from the original news source and save immediately
   let carouselId = 0;
+  let carouselError = "";
   try {
     const carouselSourceContext = [
       `Notícia: ${newsItem.title}`,
@@ -133,7 +134,7 @@ Regras:
 
     const generatedCarousel = await generateCarouselWithAgent({
       topic: newsItem.title,
-      slideCount: 8,
+      slideCount: 5,
       carouselFormat: "feed",
       style: "claude-minimalista",
       profileId: "claude-minimalista",
@@ -166,11 +167,17 @@ Regras:
       console.warn("[NewsAutoGen] Falha ao persistir assets — carrossel salvo com URLs originais:", persistErr);
     }
   } catch (carouselErr) {
-    console.error("[NewsAutoGen] ERRO ao gerar carrossel:", carouselErr instanceof Error ? carouselErr.stack : String(carouselErr));
+    const msg = carouselErr instanceof Error ? carouselErr.message : String(carouselErr);
+    carouselError = msg.slice(0, 200);
+    console.error("[NewsAutoGen] ERRO ao gerar carrossel:", carouselErr instanceof Error ? carouselErr.stack : msg);
   }
 
   // 6. Notify user via WhatsApp
-  const carouselLine = carouselId ? `\n🎠 *Carrossel:* gerado com sucesso` : "";
+  const carouselLine = carouselId
+    ? `\n🎠 *Carrossel:* gerado com sucesso`
+    : carouselError
+      ? `\n⚠️ *Carrossel:* falha — ${carouselError}`
+      : "";
   const msg =
     `✅ *Artigo gerado!*\n\n` +
     `📰 *${title}*` +

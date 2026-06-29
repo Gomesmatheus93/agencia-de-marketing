@@ -406,16 +406,16 @@ async function startServer() {
         FROM whatsapp_digest_sessions ORDER BY sent_at DESC LIMIT 10
       `);
 
-      // Últimos artigos gerados (ordenados pelos mais recentes)
+      // Últimos artigos gerados (colunas em camelCase conforme schema Drizzle)
       const articles = await database.execute(sql`
-        SELECT id, user_id, title, status, created_at
-        FROM articles ORDER BY created_at DESC LIMIT 10
+        SELECT id, userId, title, status, createdAt
+        FROM articles ORDER BY createdAt DESC LIMIT 10
       `);
 
       // Últimos carrosséis gerados
       const carousels = await database.execute(sql`
-        SELECT id, user_id, topic, style, created_at
-        FROM carousels ORDER BY created_at DESC LIMIT 10
+        SELECT id, userId, topic, style, createdAt
+        FROM carousels ORDER BY createdAt DESC LIMIT 10
       `);
 
       res.json({
