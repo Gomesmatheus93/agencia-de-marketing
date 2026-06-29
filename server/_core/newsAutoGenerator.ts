@@ -6,6 +6,7 @@ import { sendWhatsAppText } from "./whatsapp";
 import { fetchArticleContext } from "../routers";
 import * as db from "../db";
 import type { DigestNewsItem } from "../db";
+import type { CarouselSlideData } from "../../drizzle/schema";
 
 function compact(s: string) {
   return s.replace(/ /g, " ").replace(/\s+/g, " ").trim();
@@ -117,7 +118,7 @@ Regras:
     console.warn("[NewsAutoGen] Falha ao gerar capa — artigo salvo sem imagem:", coverErr);
   }
 
-  // 5. Generate carousel from the article content
+  // 5. Generate carousel from the article content and save immediately
   let carouselId = 0;
   try {
     const generatedCarousel = await generateCarouselWithAgent({
@@ -125,29 +126,37 @@ Regras:
       slideCount: 8,
       carouselFormat: "feed",
       style: "claude-minimalista",
+      profileId: "claude-minimalista",
       articleContext: `${title}\n\n${content.slice(0, 3000)}`,
       useAiImages: false,
     });
 
-    const persistedAssets = await persistCarouselAssets({
-      userId,
-      coverImageUrl: generatedCarousel.coverImageUrl,
-      slides: generatedCarousel.slides,
-    });
-
+    // Save carousel immediately so it appears in the platform right away
     const savedCarousel = await db.saveCarousel(userId, {
       topic: title,
       style: "claude-minimalista",
       hook: generatedCarousel.hook,
       caption: generatedCarousel.caption,
       finalCta: generatedCarousel.finalCta,
-      coverImageUrl: persistedAssets.coverImageUrl,
-      slides: persistedAssets.slides,
+      coverImageUrl: generatedCarousel.coverImageUrl,
+      slides: generatedCarousel.slides as CarouselSlideData[],
     });
-
     carouselId = savedCarousel.id;
+    console.log(`[NewsAutoGen] Carrossel salvo: id=${carouselId}`);
+
+    // Persist local assets and update slide URLs (optional — carousel already visible)
+    try {
+      const persistedAssets = await persistCarouselAssets({
+        userId,
+        coverImageUrl: generatedCarousel.coverImageUrl,
+        slides: generatedCarousel.slides,
+      });
+      await db.updateCarouselSlides(savedCarousel.id, userId, persistedAssets.slides as CarouselSlideData[]);
+    } catch (persistErr) {
+      console.warn("[NewsAutoGen] Falha ao persistir assets — carrossel salvo com URLs originais:", persistErr);
+    }
   } catch (carouselErr) {
-    console.warn("[NewsAutoGen] Falha ao gerar carrossel — artigo já salvo:", carouselErr);
+    console.error("[NewsAutoGen] ERRO ao gerar carrossel:", carouselErr instanceof Error ? carouselErr.stack : String(carouselErr));
   }
 
   // 6. Notify user via WhatsApp

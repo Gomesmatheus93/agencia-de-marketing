@@ -393,18 +393,38 @@ async function startServer() {
   // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
   app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
 
-  // ── Diagnóstico de sessões (remover após confirmar funcionamento) ──────────
+  // ── Diagnóstico completo do fluxo digest → artigo/carrossel ─────────────
   app.get("/api/debug/digest-sessions", async (_req, res) => {
     try {
       const { getDb } = await import("../db");
       const database = await getDb();
       if (!database) { res.json({ error: "DB não disponível" }); return; }
       const { sql } = await import("drizzle-orm");
-      const rows = await database.execute(sql`
-        SELECT id, campaign_id, user_id, phone_number, sent_at, expires_at, user_response
+
+      const sessions = await database.execute(sql`
+        SELECT id, campaign_id, user_id, phone_number, sent_at, expires_at, user_response, chosen_index, responded_at
         FROM whatsapp_digest_sessions ORDER BY sent_at DESC LIMIT 10
       `);
-      res.json({ sessions: (rows[0] as unknown as unknown[]) });
+
+      // Últimos artigos gerados (ordenados pelos mais recentes)
+      const articles = await database.execute(sql`
+        SELECT id, user_id, title, status, created_at
+        FROM articles ORDER BY created_at DESC LIMIT 10
+      `);
+
+      // Últimos carrosséis gerados
+      const carousels = await database.execute(sql`
+        SELECT id, user_id, topic, style, created_at
+        FROM carousels ORDER BY created_at DESC LIMIT 10
+      `);
+
+      res.json({
+        sessions: sessions[0],
+        articles: articles[0],
+        carousels: carousels[0],
+        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
+        env: process.env.NODE_ENV,
+      });
     } catch (err) {
       res.json({ error: String(err) });
     }
