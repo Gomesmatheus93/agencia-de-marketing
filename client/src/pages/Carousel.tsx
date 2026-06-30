@@ -3641,7 +3641,7 @@ export default function Carousels() {
   const editorPrimaryFieldRef = useRef<HTMLTextAreaElement | null>(null);
   const previewOpenBlockedUntilRef = useRef(0);
 
-  const { data: carousels = [], isLoading } = trpc.carousel.getAll.useQuery(undefined, {
+  const { data: carousels = [], isLoading, isError, error } = trpc.carousel.getAll.useQuery(undefined, {
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
   });
@@ -4829,6 +4829,13 @@ export default function Carousels() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : isError ? (
+            <div className="glass-card p-12 text-center">
+              <h3 className="text-base font-semibold text-destructive">Erro ao carregar carrosseis</h3>
+              <p className="mt-2 text-sm text-muted-foreground font-mono break-all">
+                {error instanceof Error ? error.message : String(error)}
+              </p>
             </div>
           ) : carousels.length === 0 ? (
             <div className="glass-card p-12 text-center">
