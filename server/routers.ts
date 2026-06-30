@@ -1702,7 +1702,11 @@ const carouselRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
     const result = await db.getCarousels(ctx.user.id);
     console.log(`[carousel.getAll] userId=${ctx.user.id} count=${result.length}`);
-    return result;
+    // Strip undefined values from slides before superjson serialization.
+    // parseCarouselSlides explicitly sets optional fields to undefined, which
+    // creates 1000+ entries in superjson meta for large carousels causing
+    // client-side deserialization failure. JSON roundtrip removes them safely.
+    return result.map(c => ({ ...c, slides: JSON.parse(JSON.stringify(c.slides)) }));
   }),
 
   getTemplates: protectedProcedure.query(async ({ ctx }) => {

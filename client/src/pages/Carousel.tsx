@@ -3646,6 +3646,9 @@ export default function Carousels() {
     refetchOnWindowFocus: true,
   });
 
+  // Diagnostic: remove after confirming carousels load correctly
+  console.log('[Carousel] count=' + carousels.length + ' isLoading=' + isLoading + ' isError=' + isError + (isError ? ' err=' + String(error) : ''));
+
   const fetchArticleMutation = trpc.carousel.fetchArticle.useMutation({
     onSuccess: (data) => {
       setTopic(data.topic);
