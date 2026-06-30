@@ -1815,16 +1815,17 @@ export default function PrototipoCarrossel() {
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
-  const { data: allCarousels = [], isLoading: isLoadingList } = trpc.carousel.getAll.useQuery();
+  const { data: allCarousels = [], isLoading: isLoadingList } = trpc.carousel.getAll.useQuery(undefined, {
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+  });
 
   const [trendingNiche, setTrendingNiche] = useState("");
   const trendingQuery = trpc.carousel.getTrendingTopics.useQuery(
     { niche: trendingNiche || undefined },
     { enabled: phase === "form", staleTime: 5 * 60 * 1000 }
   );
-  const protoCarousels = (allCarousels as ProtoListItem[]).filter(
-    (c) => c.style === "proto-moderno"
-  );
+  const protoCarousels = allCarousels as ProtoListItem[];
 
   const { data: canvaConnection, refetch: refetchCanvaConnection } = trpc.canva.getConnection.useQuery(undefined, {
     retry: false,
