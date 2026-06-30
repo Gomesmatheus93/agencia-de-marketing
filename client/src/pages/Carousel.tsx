@@ -1,4 +1,4 @@
-﻿import AppLayout from "@/components/AppLayout";
+import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
