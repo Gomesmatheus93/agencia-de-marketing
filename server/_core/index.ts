@@ -393,6 +393,24 @@ async function startServer() {
   // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
   app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
 
+  // ── Diagnóstico: usuário autenticado + seus carrosseis ───────────────────
+  app.get("/api/debug/me", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req).catch(() => null);
+      if (!user) { res.json({ error: "Não autenticado — faça login primeiro" }); return; }
+      const userCarousels = await db.getCarousels(user.id);
+      res.json({
+        userId: user.id,
+        email: (user as Record<string, unknown>).email,
+        name: (user as Record<string, unknown>).name,
+        carouselCount: userCarousels.length,
+        carousels: userCarousels.map(c => ({ id: c.id, topic: c.topic, slides: c.slides?.length })),
+      });
+    } catch (err) {
+      res.json({ error: String(err) });
+    }
+  });
+
   // ── Diagnóstico de carrosseis por userId ─────────────────────────────────
   app.get("/api/debug/carousels/:userId", async (req, res) => {
     try {
