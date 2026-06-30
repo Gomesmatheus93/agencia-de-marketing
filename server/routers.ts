@@ -1700,7 +1700,9 @@ const carouselTemplateInputSchema = z
 
 const carouselRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    return db.getCarousels(ctx.user.id);
+    const result = await db.getCarousels(ctx.user.id);
+    console.log(`[carousel.getAll] userId=${ctx.user.id} count=${result.length}`);
+    return result;
   }),
 
   getTemplates: protectedProcedure.query(async ({ ctx }) => {

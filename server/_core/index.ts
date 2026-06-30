@@ -488,6 +488,27 @@ async function startServer() {
     }
   });
 
+  // ── Diagnóstico: contexto tRPC (simula createContext + getCarousels) ────
+  app.get("/api/debug/carousel-context", async (req, res) => {
+    try {
+      // Simula exatamente o que createContext faz (com try-catch interno)
+      const userFromContext = await sdk.authenticateRequest(req).catch(() => null);
+      if (!userFromContext) {
+        res.json({ error: "Não autenticado" });
+        return;
+      }
+      const carousels = await db.getCarousels(userFromContext.id);
+      res.json({
+        userId: userFromContext.id,
+        carouselCount: carousels.length,
+        firstSlideField: carousels[0]?.slides?.[0] ? Object.keys(carousels[0].slides[0]).join(",") : "n/a",
+        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
+      });
+    } catch (err) {
+      res.json({ error: String(err) });
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API
