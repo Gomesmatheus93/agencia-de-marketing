@@ -1,0 +1,21 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - krythoslab
+
+jobs:
+  deploy:
+    name: Deploy via Portainer Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger redeploy
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}")
+          echo "Portainer responded with HTTP $STATUS"
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "ERROR: Deploy failed (HTTP $STATUS)"
+            exit 1
+          fi
+          echo "Deploy triggered successfully"
