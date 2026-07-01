@@ -37,10 +37,6 @@ import {
   Mail,
   Bell,
   Phone,
-  FlaskConical,
-  ToggleLeft,
-  ToggleRight,
-  ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -266,7 +262,7 @@ export default function Articles() {
   const [digestNumber, setDigestNumber] = useState("");
   const [digestHour, setDigestHour] = useState(6);
   const [digestMinute, setDigestMinute] = useState(50);
-  const [digestEnabled, setDigestEnabled] = useState(true);
+  const [digestEnabled, setDigestEnabled] = useState(false);
   const [digestTemplateName, setDigestTemplateName] = useState("envio_de_noticias_diario");
   const [digestTemplateLang, setDigestTemplateLang] = useState("pt_BR");
   const [digestReplyWebhookUrl, setDigestReplyWebhookUrl] = useState<string>("");
@@ -295,48 +291,6 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao salvar: " + err.message),
   });
 
-  const { data: webhookInfo } =
-    trpc.articles.getWebhookInfo.useQuery(undefined, { enabled: showDigestDialog });
-
-  const { data: waDiag, refetch: refetchWaDiag, isFetching: isDiagging } =
-    trpc.articles.diagnoseWhatsApp.useQuery(undefined, { enabled: showDigestDialog });
-
-  const { data: waTemplates, isLoading: isLoadingTemplates, refetch: refetchTemplates } =
-    trpc.articles.getWhatsAppTemplates.useQuery(undefined, { enabled: showDigestDialog });
-
-  const [diagResult, setDiagResult] = useState<null | {
-    wabaAccounts: Array<{ id: string; name: string }>;
-    templateFound: boolean;
-    templateLanguage?: string;
-    templateStatus?: string;
-    templateComponents?: unknown;
-    testSendResults: Array<{ lang: string; ok: boolean; messageId?: string; error?: string }>;
-  }>(null);
-
-  const diagTemplateMutation = trpc.articles.diagnoseTemplate.useMutation({
-    onSuccess: (data) => setDiagResult(data),
-    onError: (err) => toast.error("Erro no diagnóstico: " + err.message),
-  });
-
-  const [debugResult, setDebugResult] = useState<null | {
-    to: string;
-    attempts: Array<{ lang: string; format: string; ok: boolean; messageId?: string; error?: string }>;
-  }>(null);
-
-  const debugFormatsMutation = trpc.articles.debugSendFormats.useMutation({
-    onSuccess: (data) => {
-      setDebugResult(data);
-      const success = data.attempts.find(a => a.ok);
-      if (success) toast.success(`Funcionou! lang=${success.lang} formato=${success.format}`);
-      else toast.error("Nenhum formato funcionou — veja os detalhes abaixo");
-    },
-    onError: (err) => toast.error("Erro: " + err.message),
-  });
-
-  const testDigestMutation = trpc.articles.sendTestDigest.useMutation({
-    onSuccess: (data) => toast.success(`Digest enviado para +${data.to} (${data.sent} notícias). ID: ${data.messageId ?? "n/a"}`),
-    onError: (err) => toast.error("Falha no envio de teste: " + err.message),
-  });
 
   const { data: schedulerStatus, refetch: refetchStatus } = trpc.articles.digestSchedulerStatus.useQuery(undefined, {
     enabled: showDigestDialog,
@@ -1241,7 +1195,7 @@ export default function Articles() {
                 </div>
               </div>
 
-              {/* Time + enable toggle */}
+              {/* Time */}
               <div className="flex items-center gap-3 px-4 py-3">
                 <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex-1">
@@ -1269,35 +1223,30 @@ export default function Articles() {
                     <span className="text-[10px] text-muted-foreground ml-1">Fortaleza</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Automação ativa toggle */}
+              <div className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Automação</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {digestEnabled ? "Envio automático ativo" : "Envio automático pausado"}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setDigestEnabled(!digestEnabled)}
-                  title={digestEnabled ? "Ativo — clique para pausar" : "Pausado — clique para ativar"}
+                  title={digestEnabled ? "Clique para pausar" : "Clique para ativar"}
                   className={cn(
-                    "shrink-0 w-10 h-6 rounded-full transition-colors relative focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                    "shrink-0 w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
                     digestEnabled ? "bg-emerald-500" : "bg-border"
                   )}
                 >
                   <span className={cn(
-                    "absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform",
-                    digestEnabled ? "translate-x-5" : "translate-x-1"
+                    "absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200",
+                    digestEnabled ? "translate-x-[1.375rem]" : "translate-x-1"
                   )} />
                 </button>
-              </div>
-
-              {/* Aggregator webhook */}
-              <div className="flex items-start gap-3 px-4 py-3">
-                <Link className="w-4 h-4 text-muted-foreground shrink-0 mt-2.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Webhook do agregador</p>
-                  <Input
-                    value={digestReplyWebhookUrl}
-                    onChange={(e) => setDigestReplyWebhookUrl(e.target.value)}
-                    placeholder="https://agregador.com/webhook/número"
-                    className="h-7 border-0 bg-transparent px-0 font-mono text-xs shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/40"
-                  />
-                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">Notificado quando o usuário responder 1–5</p>
-                </div>
               </div>
             </div>
 
@@ -1346,153 +1295,6 @@ export default function Articles() {
               </div>
             )}
 
-            {/* Technical details (collapsible) */}
-            <details className="group">
-              <summary className="flex items-center justify-between cursor-pointer list-none select-none text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
-                <span className="flex items-center gap-1.5">
-                  <Settings2 className="w-3.5 h-3.5" />
-                  Configurações técnicas
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform duration-200" />
-              </summary>
-
-              <div className="mt-3 space-y-3">
-
-                {/* ── AGREGADOR: URL principal a configurar ── */}
-                {webhookInfo && (
-                  <div className="rounded-xl border-2 border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
-                    <div className="flex items-start gap-2">
-                      <span className="text-base leading-none mt-0.5">🔗</span>
-                      <div>
-                        <p className="text-xs font-semibold text-foreground leading-tight">URL para configurar no Agregador</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Cole no campo <span className="font-medium text-foreground">Webhook do Agente IA</span> do número no seu sistema agregador
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <code className="flex-1 bg-background/80 border border-emerald-400/40 rounded-lg px-2.5 py-1.5 font-mono text-[10px] break-all text-emerald-700 dark:text-emerald-300">
-                        {webhookInfo.aggregatorWebhookUrl}
-                      </code>
-                      <button
-                        onClick={() => { void navigator.clipboard.writeText(webhookInfo.aggregatorWebhookUrl); toast.success("URL copiada!"); }}
-                        className="shrink-0 p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
-                        title="Copiar URL do agregador"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                    </div>
-                    {webhookInfo.isLocalhost && (
-                      <p className="text-amber-600 dark:text-amber-400 text-[10px] leading-relaxed bg-amber-50/60 dark:bg-amber-950/20 rounded-md px-2 py-1.5">
-                        ⚠️ localhost — configure APP_BASE_URL=https://krythoslab.com no .env antes do deploy.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* ── Meta webhook (para verificação do número no painel Meta) ── */}
-                {webhookInfo && (
-                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-2">
-                    <p className="font-medium text-foreground text-[11px] text-muted-foreground">Meta Webhook (verificação do número)</p>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-muted-foreground uppercase tracking-wide w-10 shrink-0">URL</span>
-                        <code className="flex-1 bg-background/70 border border-border/40 rounded px-2 py-1 font-mono text-[9px] break-all">{webhookInfo.metaWebhookUrl}</code>
-                        <button onClick={() => { void navigator.clipboard.writeText(webhookInfo.metaWebhookUrl); toast.success("Copiado!"); }} className="shrink-0 p-1.5 rounded hover:bg-background/80 text-muted-foreground hover:text-foreground transition-colors" title="Copiar">
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-muted-foreground uppercase tracking-wide w-10 shrink-0">Token</span>
-                        <code className="flex-1 bg-background/70 border border-border/40 rounded px-2 py-1 font-mono text-[9px]">{webhookInfo.verifyToken}</code>
-                        <button onClick={() => { void navigator.clipboard.writeText(webhookInfo.verifyToken); toast.success("Copiado!"); }} className="shrink-0 p-1.5 rounded hover:bg-background/80 text-muted-foreground hover:text-foreground transition-colors" title="Copiar">
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sender diagnostics */}
-                {waDiag && (
-                  <div className={cn(
-                    "rounded-lg border p-3 text-xs",
-                    waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "border-emerald-400/40 bg-emerald-50/40 dark:bg-emerald-950/15"
-                    : waDiag.accountMode === "SANDBOX"            ? "border-amber-400/40  bg-amber-50/40  dark:bg-amber-950/15"
-                    :                                               "border-red-400/40    bg-red-50/40    dark:bg-red-950/15"
-                  )}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-medium text-foreground text-[11px]">
-                        {waDiag.ok && waDiag.accountMode !== "SANDBOX" ? "✅ Remetente ativo" : waDiag.accountMode === "SANDBOX" ? "⚠️ SANDBOX" : "❌ Erro"}
-                      </p>
-                      <button onClick={() => void refetchWaDiag()} disabled={isDiagging} className="text-[10px] text-primary hover:underline disabled:opacity-50">
-                        {isDiagging ? "..." : "Atualizar"}
-                      </button>
-                    </div>
-                    {waDiag.senderNumber && (
-                      <p className="text-muted-foreground font-mono text-[10px]">{waDiag.senderNumber} · {waDiag.verifiedName} · {waDiag.qualityRating}</p>
-                    )}
-                    {waDiag.error && <p className="text-red-600 dark:text-red-400 mt-1">{waDiag.error}</p>}
-                  </div>
-                )}
-
-                {/* Template diagnostics */}
-                {diagResult && (
-                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1.5">
-                    <p className="font-medium text-foreground text-[11px]">Diagnóstico do template</p>
-                    <p className="text-muted-foreground">WABAs: <span className="text-foreground">{diagResult.wabaAccounts.map(w => w.name || w.id).join(", ") || "nenhuma"}</span></p>
-                    <p className="text-muted-foreground">
-                      Template:{" "}
-                      {diagResult.templateFound
-                        ? <span className="text-emerald-600 dark:text-emerald-400">✅ {diagResult.templateLanguage} · {diagResult.templateStatus}</span>
-                        : <span className="text-red-600 dark:text-red-400">❌ não encontrado</span>}
-                    </p>
-                    {diagResult.testSendResults.map((r) => (
-                      <p key={r.lang} className={r.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}>
-                        {r.ok ? "✅" : "❌"} {r.lang}: {r.ok ? `ID ${r.messageId ?? "ok"}` : r.error}
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                {/* Debug formats */}
-                {debugResult && (
-                  <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1">
-                    <p className="font-medium text-foreground text-[11px]">Debug · <span className="font-mono font-normal">{debugResult.to}</span></p>
-                    {debugResult.attempts.map((a, i) => (
-                      <p key={i} className={a.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}>
-                        {a.ok ? "✅" : "❌"} {a.lang}/{a.format}: {a.ok ? `ID ${a.messageId ?? "ok"}` : a.error}
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                {/* Secondary actions */}
-                <div className="flex gap-2 pt-0.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => testDigestMutation.mutate()}
-                    disabled={testDigestMutation.isPending || !digestSettings}
-                    className="flex-1 gap-1 text-xs h-8"
-                    title="Requer configurações salvas"
-                  >
-                    {testDigestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
-                    Testar envio
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => diagTemplateMutation.mutate()}
-                    disabled={diagTemplateMutation.isPending}
-                    className="flex-1 gap-1 text-xs h-8"
-                  >
-                    {diagTemplateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Settings2 className="w-3 h-3" />}
-                    Diagnosticar
-                  </Button>
-                </div>
-              </div>
-            </details>
           </div>
 
           {/* Footer — save */}
