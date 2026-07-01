@@ -419,7 +419,6 @@ export default function BrandKitPage() {
                 <Textarea
                   value={brandValues}
                   onChange={(e) => setBrandValues(e.target.value)}
-                  placeholder="Ex: Inovação tecnológica, atendimento humanizado, resultados mensuráveis, transparência..."
                   rows={3}
                   className="resize-none text-sm"
                   maxLength={1000}
