@@ -295,6 +295,36 @@ async function startServer() {
 
         const senderNumber = msg.from;
         const text = msg.text.body.trim();
+        // User can request more news by sending "0", "mais", "outras", etc.
+        const wantsMoreNews = /^(0|mais|outra[s]?|outro[s]?|mais not[ií]cias?|outras not[ií]cias?|n[aã]o|nao|refresh|trocar|mudar)$/i.test(text);
+        if (wantsMoreNews) {
+          const session = await db.getActiveDigestSession(senderNumber);
+          if (!session) {
+            console.log(`[MetaWebhook] "mais notícias" de ${senderNumber} mas sem sessão ativa`);
+            continue;
+          }
+          void (async () => {
+            try {
+              const { sendWhatsAppText } = await import("./whatsapp");
+              const { fetchMoreNews } = await import("./newsDigestScheduler");
+              const { buildDigestTextMessage } = await import("./aggregatorWebhook");
+              const excludedUrls = new Set(session.newsItems.map((i) => i.url));
+              const moreItems = await fetchMoreNews(excludedUrls);
+              if (moreItems.length === 0) {
+                await sendWhatsAppText(senderNumber, "😔 Não encontrei outras notícias no momento. Tente novamente mais tarde.");
+                return;
+              }
+              const msgText = buildDigestTextMessage(moreItems, "🔄 *Outras Notícias*");
+              await db.saveDigestSession(session.userId, senderNumber, moreItems, undefined, msgText);
+              await sendWhatsAppText(senderNumber, msgText);
+              console.log(`[MetaWebhook] Mais notícias enviadas para ${senderNumber} (${moreItems.length} itens)`);
+            } catch (err) {
+              console.error("[MetaWebhook] Erro ao buscar mais notícias:", err);
+            }
+          })();
+          continue;
+        }
+
         const choiceMatch = text.match(/^[1-5]$/);
         if (!choiceMatch) {
           console.log(`[MetaWebhook] Mensagem de ${senderNumber} não é seleção (1-5): "${text}"`);

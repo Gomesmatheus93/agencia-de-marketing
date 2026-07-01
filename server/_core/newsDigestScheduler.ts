@@ -55,6 +55,24 @@ async function fetchTop5News() {
   return rankNewsItems(items, "energia").slice(0, 5);
 }
 
+export async function fetchMoreNews(
+  excludedUrls: Set<string>
+): Promise<Array<{ title: string; url: string; source: string; excerpt: string | null; publishedAt: string | null }>> {
+  const results = await Promise.allSettled(DEFAULT_NEWS_SITES.map(fetchNewsFromSite));
+  const items = dedupeNewsItems(
+    results.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+  );
+  const ranked = rankNewsItems(items, "energia");
+  const fresh = ranked.filter((item) => !excludedUrls.has(item.url));
+  return fresh.slice(0, 5).map((item) => ({
+    title: item.title,
+    url: item.url,
+    source: item.source,
+    excerpt: item.excerpt ?? null,
+    publishedAt: item.publishedAt ?? null,
+  }));
+}
+
 async function runDigestForUser(
   userId: number,
   whatsappNumber: string,

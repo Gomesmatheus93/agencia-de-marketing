@@ -225,7 +225,8 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
 const EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
 
 export function buildDigestTextMessage(
-  items: Array<{ title: string; url?: string; source?: string }>
+  items: Array<{ title: string; url?: string; source?: string }>,
+  header = "📰 *Notícias do Dia*"
 ): string {
   const lines = items
     .slice(0, 5)
@@ -233,7 +234,7 @@ export function buildDigestTextMessage(
     .join("\n\n");
 
   return (
-    `📰 *Notícias do Dia*\n\n` +
+    `${header}\n\n` +
     `${lines}\n\n` +
     `Responda com o número da notícia que deseja receber completa.`
   );
