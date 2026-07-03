@@ -634,184 +634,172 @@ function InstagramTab() {
         <>
           {/* ── Profile header ───────────────────────────────────── */}
           <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/80">
-            <div className="h-28 bg-gradient-to-r from-[#7b00ae]/25 via-[#fe6e00]/15 to-[#7b00ae]/10" />
+            <div className="h-24 bg-gradient-to-r from-[#7b00ae]/20 via-[#fe6e00]/12 to-[#7b00ae]/8" />
             <div className="px-5 pb-5">
-              {/* Avatar row */}
-              <div className="flex items-end justify-between -mt-12 mb-4">
-                <div className="shrink-0">
-                  {isLoading ? (
-                    <Skeleton className="h-20 w-20 rounded-full" />
-                  ) : profile?.profile_picture_url ? (
-                    <img src={profile.profile_picture_url} alt="avatar" className="h-20 w-20 rounded-full border-4 border-background object-cover shadow-xl" />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-background bg-gradient-to-br from-[#7b00ae] to-[#fe6e00] text-2xl font-bold text-white shadow-xl">
-                      {profile?.username?.[0]?.toUpperCase() ?? "K"}
-                    </div>
-                  )}
-                </div>
-                {/* Stats inline with avatar row */}
-                <div className="flex gap-6 pb-1">
-                  {[
-                    { label: "Seguidores", value: profile?.followers_count },
-                    { label: "Seguindo", value: profile?.follows_count },
-                    { label: "Posts", value: profile?.media_count },
-                  ].map((s) => (
-                    <div key={s.label} className="text-center">
-                      {isLoading
-                        ? <Skeleton className="mx-auto h-5 w-10 mb-1" />
-                        : <p className="text-lg font-bold text-foreground tabular-nums">{fmt(s.value ?? 0)}</p>
-                      }
-                      <p className="text-[11px] text-muted-foreground/70">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
+              {/* Avatar — overlaps cover, sits alone */}
+              <div className="-mt-10 mb-3">
+                {isLoading ? (
+                  <Skeleton className="h-[72px] w-[72px] rounded-full" />
+                ) : profile?.profile_picture_url ? (
+                  <img src={profile.profile_picture_url} alt="avatar" className="h-[72px] w-[72px] rounded-full border-[3px] border-background object-cover shadow-lg" />
+                ) : (
+                  <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[3px] border-background bg-gradient-to-br from-[#7b00ae] to-[#fe6e00] text-xl font-bold text-white shadow-lg">
+                    {profile?.username?.[0]?.toUpperCase() ?? "K"}
+                  </div>
+                )}
               </div>
-              {/* Name + bio */}
+
+              {/* Name + handle */}
               {isLoading ? (
-                <div className="space-y-2">
+                <div className="space-y-2 mb-3">
                   <Skeleton className="h-5 w-40" />
                   <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-3 w-72 mt-1" />
+                  <Skeleton className="h-3 w-64 mt-1" />
                 </div>
               ) : (
-                <div className="space-y-1">
-                  <p className="text-lg font-bold text-foreground leading-tight">{profile?.name ?? profile?.username}</p>
-                  <p className="text-sm text-muted-foreground/70">@{profile?.username}</p>
+                <div className="mb-3 space-y-0.5">
+                  <p className="text-base font-bold text-foreground leading-tight">{profile?.name ?? profile?.username}</p>
+                  <p className="text-xs text-muted-foreground/60">@{profile?.username}</p>
                   {profile?.biography && (
-                    <p className="text-xs leading-relaxed text-muted-foreground mt-2 max-w-lg">{profile.biography}</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground/80 pt-1.5 max-w-xl">{profile.biography}</p>
                   )}
                 </div>
               )}
+
+              {/* Stats — below bio, separated */}
+              <div className="flex gap-6 border-t border-border/30 pt-3">
+                {[
+                  { label: "Seguidores", value: profile?.followers_count },
+                  { label: "Seguindo", value: profile?.follows_count },
+                  { label: "Posts", value: profile?.media_count },
+                ].map((s) => (
+                  <div key={s.label}>
+                    {isLoading
+                      ? <Skeleton className="h-5 w-10 mb-1" />
+                      : <p className="text-sm font-bold text-foreground tabular-nums">{fmt(s.value ?? 0)}</p>
+                    }
+                    <p className="text-[10px] text-muted-foreground/55">{s.label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* ── HERO: Score de Engajamento ───────────────────────── */}
-          <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-emerald-950/30 via-background to-background p-6 space-y-5">
-            {/* Decorative glow */}
-            <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-emerald-500/8 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full bg-emerald-500/5 blur-2xl" />
+          {/* ── Score de Engajamento ─────────────────────────────── */}
+          <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-background to-background p-5">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-500/6 blur-2xl" />
 
-            {/* Title row */}
-            <div className="relative flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 shadow-md shadow-emerald-500/30">
-                <Zap className="h-4.5 w-4.5 text-white" />
+            {/* Header row */}
+            <div className="relative mb-4 flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 shadow-sm shadow-emerald-500/30">
+                <Zap className="h-3.5 w-3.5 text-white" />
               </div>
               <div>
-                <p className="text-sm font-bold text-foreground">Score de Engajamento</p>
-                <p className="text-[11px] text-muted-foreground/60">Algoritmo 2026 · Últimos {posts.length} posts</p>
+                <p className="text-sm font-semibold text-foreground">Score de Engajamento</p>
+                <p className="text-[10px] text-muted-foreground/55">Algoritmo 2026 · {posts.length} posts</p>
               </div>
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="ml-auto flex items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                    <Info className="h-3 w-3" />
+                  <button className="ml-auto flex items-center gap-1 rounded-md border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                    <Info className="h-2.5 w-2.5" />
                     Fórmula
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="bottom" align="end" className="w-80 p-4">
-                  <p className="text-sm font-bold text-foreground mb-3">Fórmula do Score 2026</p>
-                  <div className="rounded-lg bg-muted/60 px-3 py-2.5 font-mono text-[11px] text-foreground/80 leading-relaxed">
+                <PopoverContent side="bottom" align="end" className="w-76 p-4">
+                  <p className="text-sm font-bold text-foreground mb-2">Fórmula do Score 2026</p>
+                  <div className="rounded-lg bg-muted/60 px-3 py-2 font-mono text-[11px] text-foreground/80 leading-relaxed">
                     (Compart. ×4 + Salv. ×3 + Coment. ×2 + Curtidas ×1)<br />÷ Alcance × 100
                   </div>
-                  <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                    Salvamentos e compartilhamentos têm maior peso por sinalizarem intenção forte ao algoritmo do Instagram em 2026.
+                  <p className="mt-2.5 text-xs text-muted-foreground leading-relaxed">
+                    Salvamentos e compartilhamentos têm maior peso por sinalizarem intenção forte ao algoritmo 2026.
                   </p>
-                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-muted/40 px-2.5 py-2 text-[10px] text-muted-foreground/70">
-                    <Info className="h-3 w-3 shrink-0 mt-0.5" />
+                  <div className="mt-2.5 flex items-start gap-1.5 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[10px] text-muted-foreground/60">
+                    <Info className="h-3 w-3 shrink-0 mt-px" />
                     <span>A API Meta inclui reposts e stories em "compartilhamentos" — DMs não são expostos separadamente.</span>
                   </div>
                 </PopoverContent>
               </Popover>
             </div>
 
-            {/* Score + best post */}
-            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end">
-              {/* Big score number */}
-              <div>
+            {/* Score + best post — side by side */}
+            <div className="relative flex items-center gap-5">
+              {/* Score number */}
+              <div className="shrink-0">
                 {mediaQuery.isLoading ? (
-                  <Skeleton className="h-16 w-36" />
+                  <Skeleton className="h-12 w-28" />
                 ) : posts.length === 0 ? (
-                  <div className="space-y-1">
-                    <p className="text-5xl font-black text-muted-foreground/20 tabular-nums">—</p>
-                    <p className="text-xs text-muted-foreground/50">Publique posts para ver o score</p>
+                  <div>
+                    <p className="text-4xl font-black text-muted-foreground/20 tabular-nums">—</p>
+                    <p className="text-[10px] text-muted-foreground/40 mt-0.5">sem posts</p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-6xl font-black tracking-tight text-emerald-500 dark:text-emerald-400 tabular-nums leading-none">
+                    <p className="text-4xl font-black tracking-tight text-emerald-500 dark:text-emerald-400 tabular-nums leading-none">
                       {avgScore.toFixed(1)}
                     </p>
-                    <p className="mt-1.5 text-xs text-muted-foreground/60">pontos por 100 de alcance</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground/55">pts / 100 alcance</p>
                   </div>
                 )}
               </div>
 
-              {/* Best post mini-card */}
-              {topPost && !mediaQuery.isLoading && (
-                <div className="sm:ml-auto sm:max-w-[260px] w-full">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2 flex items-center gap-1">
-                    <Award className="h-3 w-3" />
-                    Melhor post
-                  </p>
-                  <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-background/60 p-2.5 backdrop-blur-sm">
-                    {(topPost.thumbnail_url || topPost.media_url) ? (
-                      <img
-                        src={topPost.thumbnail_url ?? topPost.media_url}
-                        alt=""
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <ImageIcon className="h-5 w-5 text-muted-foreground/30" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">
-                        {topPost.caption?.slice(0, 60) ?? fmtDate(topPost.timestamp)}
-                      </p>
-                      <p className="mt-1 text-base font-bold text-emerald-500 dark:text-emerald-400 tabular-nums">
-                        {((topPost as typeof topPost & { engagementScore?: number }).engagementScore ?? 0).toFixed(2)} pts
-                      </p>
-                    </div>
-                    <a
-                      href={topPost.permalink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>
+              {/* Divider */}
+              <div className="h-12 w-px bg-border/40 shrink-0" />
 
-            {/* Bar chart */}
-            {!mediaQuery.isLoading && posts.length > 0 && (() => {
-              const chartPosts = [...posts]
-                .map((p) => ({
-                  label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(p.timestamp)),
-                  Score: (p as typeof p & { engagementScore?: number }).engagementScore ?? 0,
-                }))
-                .reverse();
-              return (
-                <div className="relative">
-                  <ResponsiveContainer width="100%" height={120}>
-                    <BarChart data={chartPosts} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="0" stroke="hsl(var(--border))" opacity={0.2} vertical={false} />
-                      <XAxis
-                        dataKey="label"
-                        tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }}
-                        tickLine={false}
-                        axisLine={false}
-                        interval={chartPosts.length > 8 ? Math.floor(chartPosts.length / 6) : "preserveStartEnd"}
-                      />
-                      <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }} tickLine={false} axisLine={false} />
-                      <Tooltip content={<ScoreChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }} />
-                      <Bar dataKey="Score" fill={CHART_COLORS.Score} radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+              {/* Best post mini-card */}
+              {topPost && !mediaQuery.isLoading ? (
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  {(topPost.thumbnail_url || topPost.media_url) ? (
+                    <img
+                      src={topPost.thumbnail_url ?? topPost.media_url}
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <ImageIcon className="h-4 w-4 text-muted-foreground/30" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 flex items-center gap-1 mb-0.5">
+                      <Award className="h-2.5 w-2.5" />melhor post
+                    </p>
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {topPost.caption?.slice(0, 50) ?? fmtDate(topPost.timestamp)}
+                    </p>
+                    <p className="text-sm font-bold text-emerald-500 dark:text-emerald-400 tabular-nums">
+                      {((topPost as typeof topPost & { engagementScore?: number }).engagementScore ?? 0).toFixed(2)} pts
+                    </p>
+                  </div>
+                  <a href={topPost.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
                 </div>
-              );
-            })()}
+              ) : (
+                !mediaQuery.isLoading && <p className="text-xs text-muted-foreground/40">—</p>
+              )}
+
+              {/* Bar chart fills remaining space */}
+              {!mediaQuery.isLoading && posts.length > 0 && (() => {
+                const chartPosts = [...posts]
+                  .map((p) => ({
+                    label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(p.timestamp)),
+                    Score: (p as typeof p & { engagementScore?: number }).engagementScore ?? 0,
+                  }))
+                  .reverse();
+                return (
+                  <div className="hidden sm:block flex-1 min-w-0">
+                    <ResponsiveContainer width="100%" height={72}>
+                      <BarChart data={chartPosts} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="label" hide />
+                        <YAxis hide />
+                        <Tooltip content={<ScoreChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }} />
+                        <Bar dataKey="Score" fill={CHART_COLORS.Score} radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* ── KPI Cards ────────────────────────────────────────── */}
