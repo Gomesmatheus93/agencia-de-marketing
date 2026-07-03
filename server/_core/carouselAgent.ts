@@ -6,6 +6,10 @@ import {
   type AnthropicContent,
 } from "./anthropicClient";
 import { ENV } from "./env";
+import {
+  type CarouselContentPayload,
+  resolveBlockBody,
+} from "./carouselContentSchema";
 
 // ─── Profile contexts ─────────────────────────────────────────────────────────
 
@@ -102,6 +106,78 @@ Retorne APENAS o JSON abaixo, sem texto antes ou depois:
     "formatRespected": true,
     "editableOutput": true
   }
+}
+`;
+
+// ─── Content Agent System Prompt (Fase 1) ────────────────────────────────────
+// Substitui DESIGNER_AGENT_SYSTEM_PROMPT na geração principal.
+// Retorna blocos semânticos independentes de template visual.
+
+const CONTENT_AGENT_SYSTEM_PROMPT = `
+Você é um Agente de Conteúdo Sênior da KrythosLab, especializado em carrosséis para Instagram.
+
+Sua missão: gerar conteúdo estratégico estruturado — independente de template visual. O design será aplicado separadamente.
+
+━━ ALGORITMO DO INSTAGRAM 2026 — REGRAS OBRIGATÓRIAS ━━
+
+ESTRUTURA DE BLOCOS (5 a 10 — 7-10 é o ótimo para engajamento):
+• Bloco 1 (type: "hook") — PERGUNTA-GANCHO OBRIGATÓRIA: sempre formato de pergunta direta. Máximo 10-12 palavras. Cria lacuna de informação. NUNCA entregue a resposta no bloco 1. É o bloco mais importante — carrega 80% do desempenho.
+• Blocos 2..N-2 — escolha o tipo pelo conteúdo:
+  - "stat": quando tiver dado numérico (ex: "38% das famílias...", "R$2.400 ao ano"). Preencha value + label.
+  - "list_item": para checklist, dicas enumeradas, frameworks. Preencha items[] com máx 6 tópicos curtos.
+  - "quote": para depoimento, citação ou afirmação de autoridade. Coloque em body.
+  - "comparison": para contraste antes × depois, opção A × B. Preencha compareA + compareB.
+  DENSIDADE INFORMACIONAL ALTA — cada bloco deve conter dado, fato, contraste ou insight específico. Blocos genéricos ("é importante...", "precisa de atenção...") são PROIBIDOS.
+• Bloco N-1 (type: "list_item") — RESUMO SALVÁVEL: checklist numerado ou síntese em tópicos de alto contraste. Projetado para screenshot isolado — este bloco gera salvamentos.
+• Bloco N (type: "cta") — CTA DE SALVAMENTO: peça EXPLICITAMENTE que o usuário salve com motivo concreto. NUNCA peça curtida.
+
+SINAIS DE ENGAJAMENTO (do mais ao menos importante para o algoritmo):
+1. Compartilhamentos via DM → conteúdo "que preciso mandar pra alguém"
+2. Salvamentos → conteúdo de referência: checklists, guias, dados
+3. Comentários → feche com pergunta aberta ou afirmação polarizante
+4. Curtidas → o sinal mais fraco; não otimize apenas para isso
+
+LEGENDA — ESTRUTURA OBRIGATÓRIA:
+• Linha 1 (visível antes do "ver mais"): GANCHO de 5-10 palavras. SEM emoji na primeira linha.
+• Desenvolvimento: parágrafos de 1-2 linhas, emojis como separadores. OBRIGATÓRIO: distribua 2-3 keywords primárias do tema (indexadas pelo Instagram — 3x mais impacto de descoberta que hashtags).
+• Feche com UM CTA específico: peça salvamento ou compartilhamento. NUNCA peça curtida.
+• Tamanho ideal: 800-1500 caracteres.
+
+HASHTAGS — MÁXIMO 3-5: prefira 3. Nunca mais. 1-2 de nicho (50K-500K posts) + 1 ampla.
+
+IMAGE SLOTS — defina imageSlot para orientar geração de imagem por IA:
+• "hero" — imagem editorial principal (use no bloco 1)
+• "background" — textura ou foto de fundo
+• "portrait" — retrato humano contextualizado
+• "product" — produto ou equipamento central
+• "data_visual" — gráfico, número visual, infográfico
+• "abstract" — composição abstrata, símbolo, textura premium
+
+PROIBIDO: "Você sabia?", "No mundo atual", clichês de autoajuda, pedir curtida.
+
+Retorne APENAS o JSON abaixo, sem texto antes ou depois:
+{
+  "carouselTitle": "título interno descritivo",
+  "caption": "legenda completa para Instagram (800-1500 chars)",
+  "imageSearchQuery": "3-8 English words for editorial photo of the central theme",
+  "hashtags": ["hashtag1", "hashtag2", "hashtag3"],
+  "cta": "chamada para ação final",
+  "blocks": [
+    {
+      "type": "hook | list_item | stat | quote | comparison | cta",
+      "title": "título curto (máx 12 palavras para hook, 8 para demais)",
+      "body": "texto principal (≤150 chars) — use para hook/quote/cta ou como fallback",
+      "value": "para type=stat: o número/métrica (ex: '38%', 'R$ 2.400')",
+      "label": "para type=stat: o que essa métrica representa",
+      "items": ["para type=list_item: tópicos curtos, máx 6"],
+      "compareA": "para type=comparison: lado A (antes / opção ruim)",
+      "compareB": "para type=comparison: lado B (depois / opção melhor)",
+      "imageSlot": "hero | background | portrait | product | data_visual | abstract",
+      "imagePrompt": "detailed English prompt for AI image generation — lighting, composition, mood",
+      "imageSearchQuery": "4-10 English words for stock photo search for this block",
+      "highlightWords": ["palavra-chave1", "palavra-chave2"]
+    }
+  ]
 }
 `;
 
@@ -308,6 +384,39 @@ function getProfileImageArtDirection(profileId?: string) {
     "Prefer concrete scenes with real human tension, strategy-room energy, news-desk atmosphere, or symbolic but specific business situations.",
     "Leave clean negative space for bold typography and avoid generic futuristic visuals unless the topic explicitly requires it.",
   ].join("\n");
+}
+
+
+// ─── Legacy adapter (Fase 1) ─────────────────────────────────────────────────
+// Converte CarouselContentPayload (novo schema) → MappedSlide[] (formato legado).
+// Permite que o pipeline de imagens, caption e export continuem inalterados.
+
+function contentBlockToMappedSlide(
+  block: NonNullable<CarouselContentPayload['blocks']>[number],
+  index: number
+): MappedSlide {
+  const body = resolveBlockBody(block);
+
+  const slideType: MappedSlide['slideType'] =
+    block.type === 'hook' ? 'hook'
+    : block.type === 'cta' ? 'cta'
+    : 'development';
+
+  const shortText = slideType === 'cta' ? body || block.title : undefined;
+
+  return {
+    title: block.title?.trim() || 'Slide ' + (index + 1),
+    body,
+    imageSearchQuery: block.imageSearchQuery?.trim() || '',
+    slideType,
+    shortText,
+    imagePrompt: block.imagePrompt,
+    backgroundPrompt: undefined,
+    visualDirection: undefined,
+    layoutNotes: undefined,
+    highlightWords: block.highlightWords ?? [],
+    editableFields: undefined,
+  };
 }
 
 function assertAnthropicCarouselConfigured() {
@@ -890,34 +999,25 @@ export async function generateCarouselWithAgent(
     : input.slideCount <= 7 ? 6144
     : 8192;
 
-  // ── Invoke LLM com retry automático em caso de parse falhar ────────────────
-  let parsed: CarouselAgentPayload = { slides: [] };
-  let raw = "";
+  // ── Invoke LLM com Content Agent (Fase 1) — retorna blocos semânticos ────────
+  let contentPayload: CarouselContentPayload = { blocks: [] };
+  let raw = '';
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     raw = await invokeAnthropicLLM({
-      system: DESIGNER_AGENT_SYSTEM_PROMPT,
+      system: CONTENT_AGENT_SYSTEM_PROMPT,
       userContent: anthropicParts.length === 1 ? userPrompt : anthropicParts,
       maxTokens: attempt === 1 ? maxTokens : 8192,
     });
-    parsed = parseClaudeJsonResponse<CarouselAgentPayload>(raw, { slides: [] });
-    if ((parsed.slides?.length ?? 0) > 0) break;
-    console.warn(`[CarouselAgent] Tentativa ${attempt}: slides vazios. Raw length=${raw.length}. Retentando com maxTokens=8192...`);
+    contentPayload = parseClaudeJsonResponse<CarouselContentPayload>(raw, { blocks: [] });
+    if ((contentPayload.blocks?.length ?? 0) > 0) break;
+    console.warn('[CarouselAgent] Tentativa ' + attempt + ': blocks vazios. Raw length=' + raw.length + '. Retentando com maxTokens=8192...');
   }
 
-  const slides: MappedSlide[] = (parsed.slides || []).map((slide, index) => ({
-    title: cleanText(slide?.title, `Slide ${index + 1}`),
-    body: cleanText(slide?.text),
-    imageSearchQuery: cleanText(slide?.imageSearchQuery),
-    slideType: slide?.type,
-    shortText: slide?.shortText,
-    imagePrompt: slide?.imagePrompt,
-    backgroundPrompt: slide?.backgroundPrompt,
-    visualDirection: slide?.visualDirection,
-    layoutNotes: slide?.layoutNotes,
-    highlightWords: slide?.highlightWords ?? [],
-    editableFields: slide?.editableFields,
-  }));
+  // Adapter legado: converte content blocks → MappedSlide[]
+  const slides: MappedSlide[] = (contentPayload.blocks || []).map((block, index) =>
+    contentBlockToMappedSlide(block, index)
+  );
 
   if (slides.length === 0) {
     console.error(`[CarouselAgent] Falha após 2 tentativas. Raw (primeiros 500 chars): ${raw.slice(0, 500)}`);
@@ -929,15 +1029,15 @@ export async function generateCarouselWithAgent(
   adjustSlideCount(slides, input.slideCount);
 
   const hook = cleanText(
-    parsed.slides?.find((s) => s.type === "hook")?.title,
+    contentPayload.blocks?.find((b) => b.type === "hook")?.title,
     slides[0]?.title || input.topic
   );
   const finalCta = cleanText(
-    parsed.cta ?? parsed.slides?.find((s) => s.type === "cta")?.title,
+    contentPayload.cta ?? contentPayload.blocks?.find((b) => b.type === "cta")?.title,
     FALLBACK_CTA
   );
   const caption = cleanText(
-    parsed.caption,
+    contentPayload.caption,
     `${hook}\n\n${slides.map((slide) => `${slide.title}: ${slide.body}`).join("\n\n")}\n\n${finalCta}`
   );
   const slidesWithImage: CarouselAgentSlide[] = await Promise.all(
@@ -948,7 +1048,7 @@ export async function generateCarouselWithAgent(
           topic: input.topic,
           hook,
           imageSearchQuery: (() => {
-            const globalQ = cleanText(parsed.imageSearchQuery, "") || normalizeImageSearchQuery(input.topic);
+            const globalQ = cleanText(contentPayload.imageSearchQuery, "") || normalizeImageSearchQuery(input.topic);
             const slideQ = cleanText(slide.imageSearchQuery, "");
             // Always anchor to global theme so per-slide queries don't drift to unrelated subjects
             if (slideQ) return `${globalQ} ${slideQ}`;
@@ -998,7 +1098,7 @@ export async function generateCarouselWithAgent(
     hook,
     caption,
     finalCta,
-    hashtags: parsed.hashtags ?? [],
+    hashtags: contentPayload.hashtags ?? [],
     profileId: input.profileId,
   };
 }

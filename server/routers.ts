@@ -66,6 +66,7 @@ import { hashPassword, verifyPassword } from "./_core/password";
 import { nanoid } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import axios from "axios";
+import { TEMPLATE_REGISTRY, getTemplatesForNiche } from './_core/templateRegistry';
 
 const scheduledAtInputSchema = z.union([z.date(), z.string()]);
 
@@ -1710,7 +1711,25 @@ const carouselRouter = router({
     return result.map(c => ({ ...c, slides: JSON.parse(JSON.stringify(c.slides)) }));
   }),
 
-  getTemplates: protectedProcedure.query(async ({ ctx }) => {
+  listRegistryTemplates: protectedProcedure
+    .input(z.object({ industry: z.string().optional() }).optional())
+    .query(({ input }) => {
+      const templates = input?.industry
+        ? getTemplatesForNiche(input.industry)
+        : TEMPLATE_REGISTRY;
+      return templates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        niches: t.niches,
+        compatibleBlockTypes: t.compatibleBlockTypes,
+        slideCount: t.slideCount,
+        palette: t.palette,
+        profileId: t.profileId,
+      }));
+    }),
+
+    getTemplates: protectedProcedure.query(async ({ ctx }) => {
     return db.getCarouselTemplates(ctx.user.id);
   }),
 

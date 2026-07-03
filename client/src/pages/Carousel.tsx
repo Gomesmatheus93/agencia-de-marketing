@@ -3614,6 +3614,7 @@ export default function Carousels() {
   const [scheduleCarousel, setScheduleCarousel] = useState<CarouselItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState<string>(DEFAULT_PROFILE_ID);
+  const [selectedRegistryTemplateId, setSelectedRegistryTemplateId] = useState<string | null>(null);
   const [useAiImages, setUseAiImages] = useState(true);
   const pendingTemplateSyncsRef = useRef(new Map<number, Promise<CarouselItem>>());
 
@@ -3649,7 +3650,34 @@ export default function Carousels() {
   // Diagnostic: remove after confirming carousels load correctly
   console.log('[Carousel] count=' + carousels.length + ' isLoading=' + isLoading + ' isError=' + isError + (isError ? ' err=' + String(error) : ''));
 
-  const fetchArticleMutation = trpc.carousel.fetchArticle.useMutation({
+  const brandKitQuery = trpc.brandKit.get.useQuery(undefined, { staleTime: 5 * 60_000 });
+  const brandIndustry = brandKitQuery.data?.industry ?? undefined;
+
+  const registryTemplatesQuery = trpc.carousel.listRegistryTemplates.useQuery(
+    { industry: brandIndustry },
+    { staleTime: 60_000, enabled: true }
+  );
+  const registryTemplates = registryTemplatesQuery.data ?? [];
+
+  const suggestedTemplateId = (() => {
+    if (registryTemplates.length === 0) return null;
+    const lower = topic.toLowerCase();
+    const topicHints: Record<string, string> = {
+      energia: 'data-story', solar: 'data-story', conta: 'data-story',
+      fitness: 'checklist-visual', treino: 'checklist-visual', saude: 'checklist-visual',
+      imovel: 'checklist-visual', apartamento: 'checklist-visual',
+      branding: 'brandsdecoded-editorial', marca: 'brandsdecoded-editorial',
+      lideranca: 'flavio-premium', coaching: 'flavio-premium', carreira: 'flavio-premium',
+      marketing: 'krythos-tech-dark', saas: 'krythos-tech-dark', tech: 'krythos-tech-dark',
+    };
+    for (const [kw, tmplId] of Object.entries(topicHints)) {
+      if (lower.includes(kw) && registryTemplates.some((t) => t.id === tmplId)) return tmplId;
+    }
+    if (registryTemplates.length > 0) return registryTemplates[0]!.id;
+    return null;
+  })();
+
+    const fetchArticleMutation = trpc.carousel.fetchArticle.useMutation({
     onSuccess: (data) => {
       setTopic(data.topic);
       setArticleContext(data.articleContext);
@@ -3926,12 +3954,22 @@ export default function Carousels() {
       return;
     }
 
+    // Auto-apply suggestion if user hasn't picked a template yet
+    const effectiveTemplateId = selectedRegistryTemplateId ?? suggestedTemplateId;
+    const effectiveTemplate = registryTemplates.find((t) => t.id === effectiveTemplateId);
+    const effectiveProfileId = effectiveTemplate?.profileId ?? selectedProfileId;
+
+    if (effectiveTemplate && !selectedRegistryTemplateId) {
+      setSelectedRegistryTemplateId(effectiveTemplate.id);
+      setSelectedProfileId(effectiveProfileId);
+    }
+
     generateCarouselMutation.mutate({
       topic: topic.trim(),
       slideCount,
       carouselFormat,
       style: selectedStyle,
-      profileId: selectedProfileId,
+      profileId: effectiveProfileId,
       coverImageDataUrl: coverImageUrl || undefined,
       useAiImages,
       articleContext,
@@ -4599,43 +4637,96 @@ export default function Carousels() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Instagram className="h-3.5 w-3.5" />
-                Perfil do Instagram
-              </label>
-              <div className="flex flex-wrap gap-3">
-                {PROFILE_MODELS.map((profile) => (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <LayoutTemplate className="h-3.5 w-3.5" />
+                  Estilo Visual
+                  {brandIndustry && (
+                    <span className="ml-1 rounded-full border border-border/40 bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                      filtrado: {brandIndustry}
+                    </span>
+                  )}
+                </label>
+                {suggestedTemplateId && !selectedRegistryTemplateId && (
                   <button
-                    key={profile.id}
                     type="button"
-                    disabled={isGenerating}
+                    className="text-[10px] font-medium text-primary hover:underline"
                     onClick={() => {
-                      setSelectedProfileId(profile.id);
+                      const t = registryTemplates.find((x) => x.id === suggestedTemplateId);
+                      if (t) {
+                        setSelectedRegistryTemplateId(t.id);
+                        setSelectedProfileId(t.profileId ?? DEFAULT_PROFILE_ID);
+                      }
                     }}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-medium transition-all duration-150",
-                      selectedProfileId === profile.id
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border/30 text-muted-foreground hover:border-border hover:text-foreground"
-                    )}
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">
-                      {profile.initials}
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-semibold leading-none">{profile.name}</p>
-                      <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">{profile.handle}</p>
-                    </div>
+                    Sugerido: {registryTemplates.find((x) => x.id === suggestedTemplateId)?.name}
                   </button>
-                ))}
+                )}
               </div>
-              {selectedProfileId === BRANDSDECODED_PROFILE_ID ? (
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Modo BrandsDecoded: o agente prioriza hook de autoridade, leitura de negocio,
-                  progressao de diagnostico para impacto e imagem editorial premium.
-                </p>
-              ) : null}
+
+              {registryTemplatesQuery.isLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Carregando templates...
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {registryTemplates.map((tmpl) => {
+                    const isSelected = selectedRegistryTemplateId === tmpl.id;
+                    const isSuggested = suggestedTemplateId === tmpl.id && !selectedRegistryTemplateId;
+                    return (
+                      <button
+                        key={tmpl.id}
+                        type="button"
+                        disabled={isGenerating}
+                        onClick={() => {
+                          setSelectedRegistryTemplateId(tmpl.id);
+                          setSelectedProfileId(tmpl.profileId ?? DEFAULT_PROFILE_ID);
+                        }}
+                        className={cn(
+                          "relative flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-all duration-150",
+                          isSelected
+                            ? "border-primary bg-primary/8"
+                            : isSuggested
+                            ? "border-primary/40 bg-primary/4"
+                            : "border-border/30 hover:border-border"
+                        )}
+                      >
+                        <div
+                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+                          style={{
+                            background: tmpl.palette.background,
+                            color: tmpl.palette.primary,
+                            border: `2px solid ${tmpl.palette.primary}33`,
+                          }}
+                        >
+                          {tmpl.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-semibold text-foreground leading-tight">{tmpl.name}</p>
+                            {isSuggested && (
+                              <span className="flex items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                                <Sparkles className="h-2 w-2" />
+                                sugerido
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground line-clamp-2">
+                            {tmpl.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div className="shrink-0 rounded-full bg-primary p-0.5">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -4668,7 +4759,10 @@ export default function Carousels() {
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-foreground">Pronto para gerar</p>
                 <p className="text-xs text-muted-foreground">
-                  O agente vai devolver os slides no perfil <strong>{PROFILE_MODELS.find((p) => p.id === selectedProfileId)?.handle}</strong>, com imagem tematica aplicada.
+                  {selectedRegistryTemplateId
+                    ? <>Template <strong>{registryTemplates.find((t) => t.id === selectedRegistryTemplateId)?.name}</strong> — conteúdo otimizado para o algoritmo do Instagram 2026.</>
+                    : <>Selecione um estilo visual acima antes de gerar.</>
+                  }
                 </p>
               </div>
               <Button
