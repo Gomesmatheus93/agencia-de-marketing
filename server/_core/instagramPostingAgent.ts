@@ -92,7 +92,7 @@ function buildHashtags(input: InstagramPostingInput) {
 
   const unique = Array.from(new Set(tokens));
   const tags = unique
-    .slice(0, 5)
+    .slice(0, 3)
     .map((token) => normalizeTag(token))
     .filter(Boolean);
 

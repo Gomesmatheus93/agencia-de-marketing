@@ -40,18 +40,16 @@ SINAIS DE ENGAJAMENTO (do mais ao menos importante para o algoritmo):
 3. Comentários → feche com pergunta aberta ou afirmação polarizante
 4. Curtidas → o sinal mais fraco; não otimize apenas para isso
 
-LEGENDA (caption) — ESTRUTURA OBRIGATÓRIA:
+LEGENDA (caption) — ESTRUTURA OBRIGATÓRIA (SEO SOCIAL PRIMEIRO):
 • Linha 1-2 (visíveis antes do "ver mais"): GANCHO de 5-10 palavras — pergunta, dado chocante ou afirmação ousada. SEM emoji na primeira linha.
-• Desenvolvimento: 3-5 frases curtas, parágrafos de 1-2 linhas, emojis como separadores estruturais.
-• Feche com UM CTA específico com benefício claro.
-• Inclua keywords naturais no texto (aumentam 30% de alcance via busca semântica).
+• Desenvolvimento: 3-5 frases curtas, parágrafos de 1-2 linhas, emojis como separadores estruturais. DISTRIBUA 2-3 KEYWORDS PRIMÁRIAS do tema naturalmente no corpo do texto — o algoritmo do Instagram indexa o texto da legenda para busca semântica (impacto de descoberta 3x maior que hashtags). Prefira termos que o público usaria ao buscar o tema.
+• Feche com UM CTA específico — peça salvamento ("Salva pra consultar quando precisar de X") ou compartilhamento. NUNCA peça curtida.
 • Tamanho ideal para salvamentos/autoridade: 800-1500 caracteres.
 
-HASHTAGS — LIMITE TÉCNICO DE 5 (Instagram 2025):
-• Use exatamente 3-5 hashtags — nunca mais.
-• Composição ideal: 2 de nicho (50K-500K posts) + 1-2 de tópico (100K-1M posts) + 0-1 de localização/marca.
-• Hashtags não amplificam mais o alcance — categorizam o conteúdo para o algoritmo.
-• Keywords na legenda têm mais impacto que hashtags.
+HASHTAGS — MÁXIMO 3-5 (Instagram 2026):
+• Use no máximo 3-5 hashtags — de preferência apenas 3. Nunca mais.
+• Composição: 1-2 de nicho específico (50K-500K posts) + 1 de tópico amplo. Evite hashtags genéricas e sem volume real.
+• KEYWORDS NO CORPO DO TEXTO têm maior impacto de descoberta que hashtags. Nunca substitua keywords por hashtags.
 
 ━━ REGRAS DE DESIGN ━━
 1. Não copie o template rigidamente — use como referência de estilo e intenção visual.
@@ -292,11 +290,11 @@ function getProfileCaptionBlueprint(profileId?: string) {
       : "";
 
   return [
-    "LEGENDA — ESTRUTURA OBRIGATÓRIA PARA O ALGORITMO DO INSTAGRAM:",
+    "LEGENDA — ESTRUTURA OBRIGATÓRIA (SEO SOCIAL PRIMEIRO):",
     "• Linha 1 (gancho antes do 'ver mais'): 5-10 palavras impactantes — dado chocante, pergunta provocadora ou afirmação ousada. SEM emoji na primeira linha.",
-    "• Desenvolvimento: parágrafos de 1-2 linhas, emojis como separadores, keywords do tema incorporadas naturalmente no texto.",
-    "• Feche com UM CTA específico que peça salvamento ('Salva pra consultar depois'), compartilhamento ('Manda pra quem precisa ver') ou comentário ('Me conta nos comentários...'). NUNCA peça curtida.",
-    "• 3-5 hashtags ao final — priorize nichos de 50K-500K posts. Nunca mais que 5.",
+    "• Desenvolvimento: parágrafos de 1-2 linhas, emojis como separadores. OBRIGATÓRIO: distribua 2-3 keywords primárias do tema naturalmente no corpo do texto (ex: se o tema é sobre energia solar, use 'energia solar', 'conta de luz', 'painel fotovoltaico' nas frases). Estas keywords são indexadas pelo Instagram para busca semântica — têm 3x mais impacto de descoberta que hashtags.",
+    "• Feche com UM CTA específico: peça salvamento ('Salva pra consultar quando precisar de X') ou compartilhamento ('Manda pra quem precisa ver isso'). NUNCA peça curtida — é o sinal mais fraco do algoritmo.",
+    "• Máximo 3-5 hashtags ao final — de preferência 3. Priorize nichos de 50K-500K posts. Nunca mais que 5.",
     "• Tamanho ideal: 800-1500 caracteres para gerar salvamentos e autoridade.",
     brandedExtra,
   ].filter(Boolean).join("\n");

@@ -1950,7 +1950,7 @@ const carouselRouter = router({
               },
               {
                 type: "text",
-                text: "Analise esta imagem e crie uma legenda envolvente para Instagram em português brasileiro. A legenda deve ser atraente, usar hashtags relevantes e ter um CTA natural no final. Retorne apenas a legenda pronta, sem títulos ou explicações.",
+                text: "Analise esta imagem e crie uma legenda para Instagram em português brasileiro otimizada para SEO social. Estrutura: (1) gancho de 5-10 palavras na linha 1, SEM emoji; (2) desenvolvimento com 2-3 keywords primárias do tema distribuídas naturalmente no corpo — keywords têm 3x mais impacto de descoberta que hashtags; (3) CTA pedindo salvamento ou compartilhamento, NUNCA curtida; (4) máximo 3-5 hashtags de nicho ao final. Retorne apenas a legenda pronta, sem títulos ou explicações.",
               },
             ],
           },
@@ -2579,13 +2579,18 @@ const postsRouter = router({
       const effectiveTone = brand?.toneOfVoice ?? input.tone;
 
       const channelGuide: Record<string, string> = {
-        instagram: `legenda para Instagram em português brasileiro otimizada para o algoritmo 2025.
+        instagram: `legenda para Instagram em português brasileiro otimizada para SEO social e algoritmo 2026.
+
+ESTRATÉGIA SEO SOCIAL (prioridade máxima):
+• Identifique 2-3 keywords primárias do tema (termos que o público usaria para buscar esse conteúdo).
+• Distribua essas keywords naturalmente no corpo do texto — NÃO as concentre em hashtags.
+• O algoritmo do Instagram indexa o texto da legenda para busca semântica: keywords no corpo têm 3x mais impacto de descoberta que hashtags.
 
 ESTRUTURA OBRIGATÓRIA:
-1. GANCHO (linha 1-2, visível antes do "ver mais"): 5-10 palavras — dado surpreendente, pergunta provocadora ou afirmação ousada. SEM emoji na primeira linha.
-2. DESENVOLVIMENTO: 3-5 frases curtas em parágrafos de 1-2 linhas. Use emojis como separadores estruturais. Inclua keywords do tema naturalmente no texto (aumentam 30% de alcance via busca semântica).
-3. CTA FINAL: UM único CTA específico com benefício claro — peça salvamento ("Salva pra consultar quando precisar de X"), compartilhamento ("Manda pra quem precisa ver isso") ou comentário ("Me conta nos comentários: qual foi o seu maior desafio com X?"). NUNCA peça curtida.
-4. HASHTAGS: exatamente 3-5 ao final. Priorize nicho (50K-500K posts). Nunca mais que 5.
+1. GANCHO (linha 1-2, visível antes do "ver mais"): 5-10 palavras — dado surpreendente, pergunta provocadora ou afirmação ousada. SEM emoji na primeira linha. Use uma keyword primária aqui se couber naturalmente.
+2. DESENVOLVIMENTO: 3-5 frases curtas em parágrafos de 1-2 linhas. Emojis como separadores. As 2-3 keywords primárias devem aparecer aqui de forma fluida, não forçada.
+3. CTA FINAL: UM único CTA específico — peça salvamento ("Salva pra consultar quando precisar de X") ou compartilhamento. NUNCA peça curtida.
+4. HASHTAGS: no máximo 3-5 ao final — de preferência apenas 3. Priorize nichos específicos (50K-500K posts). Nunca mais que 5. Não repita como hashtag o que já é keyword no texto.
 Tamanho ideal: 800-1500 caracteres. Tom: ${toneGuide[effectiveTone]}.`,
 
         linkedin: `post para LinkedIn em português brasileiro — tom profissional mas acessível, máx 3000 chars.
@@ -2658,7 +2663,7 @@ Responda em JSON:
     }))
     .mutation(async ({ input }) => {
       const channelGuide: Record<string, string> = {
-        instagram: "uma legenda envolvente para Instagram em português brasileiro, com emojis, hashtags relevantes e um CTA natural no final (máx ~2000 chars)",
+        instagram: `uma legenda para Instagram em português brasileiro otimizada para SEO social (máx ~2000 chars). Estrutura: (1) gancho de 5-10 palavras na linha 1, SEM emoji; (2) desenvolvimento com 2-3 keywords primárias do tema distribuídas naturalmente no corpo do texto — keywords têm 3x mais impacto de descoberta que hashtags; (3) CTA pedindo salvamento ou compartilhamento, NUNCA curtida; (4) no máximo 3-5 hashtags de nicho ao final.`,
         linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
         newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
       };
@@ -2694,7 +2699,7 @@ Responda em JSON:
     }))
     .mutation(async ({ input }) => {
       const channelGuide: Record<string, string> = {
-        instagram: "uma legenda envolvente para Instagram em português brasileiro, com emojis, hashtags relevantes e um CTA natural no final (máx ~2000 chars)",
+        instagram: `uma legenda para Instagram em português brasileiro otimizada para SEO social (máx ~2000 chars). Estrutura: (1) gancho de 5-10 palavras na linha 1, SEM emoji; (2) desenvolvimento com 2-3 keywords primárias do tema distribuídas naturalmente no corpo do texto — keywords têm 3x mais impacto de descoberta que hashtags; (3) CTA pedindo salvamento ou compartilhamento, NUNCA curtida; (4) no máximo 3-5 hashtags de nicho ao final.`,
         linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
         newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
       };
