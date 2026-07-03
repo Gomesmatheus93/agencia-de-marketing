@@ -10,6 +10,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { startNewsDigestScheduler } from "./newsDigestScheduler";
+import { startCommentAlertScheduler } from "./commentAlertScheduler";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
 import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWebhook";
 import { serveStatic, setupVite } from "./vite";
@@ -569,6 +570,7 @@ async function startServer() {
 
   startInstagramPostScheduler();
   startNewsDigestScheduler();
+  startCommentAlertScheduler();
   ensureS3CorsConfigured().then((configured) => {
     if (!configured) {
       console.warn(

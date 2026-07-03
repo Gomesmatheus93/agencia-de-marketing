@@ -38,6 +38,9 @@ import {
   ChevronUp,
   Zap,
   Info,
+  Bell,
+  Clock,
+  CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -714,6 +717,8 @@ function InstagramTab() {
         </div>
       </div>
 
+      {isConnected && <CommentAlertsPanel />}
+
       {/* Media grid */}
       <div className="rounded-2xl border border-border/40 bg-background/80 p-5">
         <div className="mb-4 flex items-center justify-between">
@@ -749,6 +754,173 @@ function InstagramTab() {
     </div>
   );
 }
+
+
+// ─── Comment Alerts Panel ────────────────────────────────────────────────────
+
+function useCountdown(detectedAt: Date): { label: string; urgent: boolean; expired: boolean } {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const msRemaining = 60 * 60 * 1000 - (now - detectedAt.getTime());
+  if (msRemaining <= 0) return { label: "Janela expirada", urgent: false, expired: true };
+  const mins = Math.floor(msRemaining / 60_000);
+  const urgent = mins < 15;
+  return {
+    label: mins >= 60 ? "< 1h restante" : `${mins} min restantes`,
+    urgent,
+    expired: false,
+  };
+}
+
+function AlertCard({
+  alert,
+  onAcknowledge,
+}: {
+  alert: { id: number; mediaCaption: string | null; mediaPermalink: string | null; previousCount: number; newCount: number; detectedAt: string | Date };
+  onAcknowledge: (id: number) => void;
+}) {
+  const detectedAt = alert.detectedAt instanceof Date ? alert.detectedAt : new Date(alert.detectedAt);
+  const { label, urgent, expired } = useCountdown(detectedAt);
+  const increase = alert.newCount - alert.previousCount;
+  const shortCaption = alert.mediaCaption
+    ? alert.mediaCaption.slice(0, 70) + (alert.mediaCaption.length > 70 ? "…" : "")
+    : "(sem legenda)";
+
+  return (
+    <div className={cn(
+      "flex items-start gap-3 rounded-xl border p-3 transition-colors",
+      expired
+        ? "border-border/40 bg-muted/20 opacity-60"
+        : urgent
+        ? "border-red-500/40 bg-red-500/5"
+        : "border-amber-500/40 bg-amber-500/5"
+    )}>
+      <div className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg mt-0.5",
+        expired ? "bg-muted" : urgent ? "bg-red-500/15" : "bg-amber-500/15"
+      )}>
+        <MessageCircle className={cn(
+          "h-4 w-4",
+          expired ? "text-muted-foreground" : urgent ? "text-red-500" : "text-amber-500"
+        )} />
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-foreground">
+            +{increase} comentário{increase !== 1 ? "s" : ""}
+          </span>
+          <span className={cn(
+            "flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5",
+            expired
+              ? "bg-muted text-muted-foreground"
+              : urgent
+              ? "bg-red-500/20 text-red-500"
+              : "bg-amber-500/20 text-amber-600"
+          )}>
+            <Clock className="h-2.5 w-2.5" />
+            {label}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground truncate">{shortCaption}</p>
+        <p className="text-[10px] text-muted-foreground">
+          Detectado às {detectedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-1.5 shrink-0">
+        {alert.mediaPermalink && (
+          <a
+            href={alert.mediaPermalink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border hover:bg-muted transition-colors"
+            title="Abrir no Instagram"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+        <button
+          onClick={() => onAcknowledge(alert.id)}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border hover:bg-muted transition-colors"
+          title="Marcar como visto"
+        >
+          <CheckCheck className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CommentAlertsPanel() {
+  const alertsQuery = trpc.commentAlerts.getAlerts.useQuery(undefined, {
+    refetchInterval: 2 * 60_000,
+    refetchIntervalInBackground: false,
+  });
+  const acknowledgeMut = trpc.commentAlerts.acknowledge.useMutation({
+    onSuccess: () => void alertsQuery.refetch(),
+    onError: (e) => toast.error(e.message),
+  });
+  const acknowledgeAllMut = trpc.commentAlerts.acknowledgeAll.useMutation({
+    onSuccess: (d) => {
+      toast.success(`${d.acknowledged} alerta${d.acknowledged !== 1 ? "s" : ""} marcado${d.acknowledged !== 1 ? "s" : ""} como visto${d.acknowledged !== 1 ? "s" : ""}`);
+      void alertsQuery.refetch();
+    },
+  });
+
+  const alerts = alertsQuery.data ?? [];
+  const openCount = alerts.length;
+
+  if (alertsQuery.isLoading) return null;
+  if (openCount === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20">
+            <Bell className="h-4 w-4 text-amber-500" />
+          </div>
+          <span className="text-sm font-semibold text-foreground">
+            Alertas de Comentários
+          </span>
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+            {openCount}
+          </span>
+        </div>
+        {openCount > 1 && (
+          <button
+            onClick={() => acknowledgeAllMut.mutate()}
+            disabled={acknowledgeAllMut.isPending}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <CheckCheck className="h-3 w-3" />
+            Marcar todos
+          </button>
+        )}
+      </div>
+
+      <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
+        Responda nos primeiros 60 minutos para maximizar o alcance do post.
+      </p>
+
+      <div className="space-y-2">
+        {alerts.map((alert) => (
+          <AlertCard
+            key={alert.id}
+            alert={alert}
+            onAcknowledge={(id) => acknowledgeMut.mutate({ id })}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 function LinkedInTab() {
   const profileQuery = trpc.analytics.getLinkedInProfile.useQuery(undefined, { retry: 1 });

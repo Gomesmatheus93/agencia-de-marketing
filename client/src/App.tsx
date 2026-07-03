@@ -17,6 +17,7 @@ import PrototipoCarrossel from "./pages/PrototipoCarrossel";
 import Analytics from "./pages/Analytics";
 import CalendarPage from "./pages/Calendar";
 import BrandKit from "./pages/BrandKit";
+import Reels from "./pages/Reels";
 
 function Router() {
   return (
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/calendar" component={CalendarPage} />
       <Route path="/dashboard/brand" component={BrandKit} />
+      <Route path="/dashboard/reels" component={Reels} />
       <Route path="/dashboard/settings" component={Settings} />
 <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

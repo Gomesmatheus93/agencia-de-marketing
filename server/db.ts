@@ -44,6 +44,9 @@ let _avatarVideoTableReady: Promise<void> | null = null;
 let _socialPostsMetadataReady: Promise<void> | null = null;
 let _featureFlagsTableReady: Promise<void> | null = null;
 let _canvaConnectionsTableReady: Promise<void> | null = null;
+let _reelsScriptsTableReady: Promise<void> | null = null;
+let _commentPollStateReady: Promise<void> | null = null;
+let _commentAlertsReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -1707,4 +1710,322 @@ export async function getActiveDigestSession(
   } catch {
     return null;
   }
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Reels Scripts
+// ─────────────────────────────────────────────────────────────
+
+export type ReelsScript = {
+  id: number;
+  userId: number;
+  title: string;
+  topic: string;
+  tone: string;
+  duration: string;
+  hook: string;
+  reward: string;
+  loopClose: string;
+  caption: string;
+  hashtags: string[];
+  scenes: import('./_core/reelsScriptAgent').ReelsScene[];
+  status: 'draft' | 'published';
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+async function ensureReelsScriptsTable() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_reelsScriptsTableReady) {
+    _reelsScriptsTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS reels_scripts (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          title varchar(512) NOT NULL,
+          topic text NOT NULL,
+          tone varchar(64) NOT NULL DEFAULT 'educational',
+          duration varchar(32) NOT NULL DEFAULT 'medium',
+          hook text NOT NULL,
+          reward text NOT NULL,
+          loopClose text NOT NULL,
+          caption text NOT NULL,
+          hashtags text NOT NULL,
+          scenes text NOT NULL,
+          status enum('draft','published') NOT NULL DEFAULT 'draft',
+          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+    })().catch((error) => {
+      _reelsScriptsTableReady = null;
+      throw error;
+    });
+  }
+
+  await _reelsScriptsTableReady;
+}
+
+function hydrateReelsScript(row: Record<string, unknown>): ReelsScript {
+  return {
+    id: Number(row.id),
+    userId: Number(row.userId),
+    title: String(row.title),
+    topic: String(row.topic),
+    tone: String(row.tone ?? 'educational'),
+    duration: String(row.duration ?? 'medium'),
+    hook: String(row.hook ?? ''),
+    reward: String(row.reward ?? ''),
+    loopClose: String(row.loopClose ?? ''),
+    caption: String(row.caption ?? ''),
+    hashtags: (() => { try { return JSON.parse(String(row.hashtags ?? '[]')); } catch { return []; } })(),
+    scenes: (() => { try { return JSON.parse(String(row.scenes ?? '[]')); } catch { return []; } })(),
+    status: (row.status as 'draft' | 'published') ?? 'draft',
+    createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(String(row.createdAt)),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(String(row.updatedAt)),
+  };
+}
+
+export async function getReelsScripts(userId: number): Promise<ReelsScript[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureReelsScriptsTable();
+  const rows = await db.execute(sql`
+    SELECT * FROM reels_scripts WHERE userId = ${userId} ORDER BY createdAt DESC
+  `);
+  return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateReelsScript);
+}
+
+export async function saveReelsScript(
+  userId: number,
+  data: {
+    title: string;
+    topic: string;
+    tone: string;
+    duration: string;
+    hook: string;
+    reward: string;
+    loopClose: string;
+    caption: string;
+    hashtags: string[];
+    scenes: import('./_core/reelsScriptAgent').ReelsScene[];
+  }
+): Promise<ReelsScript> {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await ensureReelsScriptsTable();
+  const insertResult = await db.execute(sql`
+    INSERT INTO reels_scripts (userId, title, topic, tone, duration, hook, reward, loopClose, caption, hashtags, scenes)
+    VALUES (
+      ${userId},
+      ${data.title},
+      ${data.topic},
+      ${data.tone},
+      ${data.duration},
+      ${data.hook},
+      ${data.reward},
+      ${data.loopClose},
+      ${data.caption},
+      ${JSON.stringify(data.hashtags)},
+      ${JSON.stringify(data.scenes)}
+    )
+  `);
+  const id = insertId(insertResult[0]);
+  const selectResult = await db.execute(sql`SELECT * FROM reels_scripts WHERE id = ${id}`);
+  return hydrateReelsScript((selectResult[0] as unknown as Record<string, unknown>[])[0]);
+}
+
+export async function deleteReelsScript(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureReelsScriptsTable();
+  await db.execute(sql`DELETE FROM reels_scripts WHERE id = ${id} AND userId = ${userId}`);
+}
+
+export async function getReelsScriptCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureReelsScriptsTable();
+  const cntResult = await db.execute(sql`SELECT COUNT(*) as cnt FROM reels_scripts WHERE userId = ${userId}`);
+  const row = (cntResult[0] as unknown as Record<string, unknown>[])[0];
+  return Number(row?.cnt ?? 0);
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Comment Alerts (Phase 5 — 60-minute engagement window)
+// ─────────────────────────────────────────────────────────────
+
+export type CommentAlert = {
+  id: number;
+  userId: number;
+  mediaId: string;
+  mediaCaption: string | null;
+  mediaPermalink: string | null;
+  previousCount: number;
+  newCount: number;
+  detectedAt: Date;
+  whatsappSentAt: Date | null;
+  acknowledgedAt: Date | null;
+};
+
+async function ensureCommentPollStateTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_commentPollStateReady) {
+    _commentPollStateReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS comment_poll_state (
+          userId int NOT NULL,
+          mediaId varchar(100) NOT NULL,
+          lastKnownCount int NOT NULL DEFAULT 0,
+          lastCheckedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (userId, mediaId)
+        )
+      `);
+    })().catch((err) => {
+      _commentPollStateReady = null;
+      throw err;
+    });
+  }
+  await _commentPollStateReady;
+}
+
+async function ensureCommentAlertsTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_commentAlertsReady) {
+    _commentAlertsReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS comment_alerts (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          mediaId varchar(100) NOT NULL,
+          mediaCaption text,
+          mediaPermalink text,
+          previousCount int NOT NULL DEFAULT 0,
+          newCount int NOT NULL DEFAULT 0,
+          detectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          whatsappSentAt timestamp NULL,
+          acknowledgedAt timestamp NULL,
+          INDEX idx_user_ack (userId, acknowledgedAt)
+        )
+      `);
+    })().catch((err) => {
+      _commentAlertsReady = null;
+      throw err;
+    });
+  }
+  await _commentAlertsReady;
+}
+
+function hydrateAlert(row: Record<string, unknown>): CommentAlert {
+  return {
+    id: Number(row.id),
+    userId: Number(row.userId),
+    mediaId: String(row.mediaId),
+    mediaCaption: row.mediaCaption ? String(row.mediaCaption) : null,
+    mediaPermalink: row.mediaPermalink ? String(row.mediaPermalink) : null,
+    previousCount: Number(row.previousCount ?? 0),
+    newCount: Number(row.newCount ?? 0),
+    detectedAt: row.detectedAt instanceof Date ? row.detectedAt : new Date(String(row.detectedAt)),
+    whatsappSentAt: row.whatsappSentAt ? (row.whatsappSentAt instanceof Date ? row.whatsappSentAt : new Date(String(row.whatsappSentAt))) : null,
+    acknowledgedAt: row.acknowledgedAt ? (row.acknowledgedAt instanceof Date ? row.acknowledgedAt : new Date(String(row.acknowledgedAt))) : null,
+  };
+}
+
+export async function getCommentPollCount(userId: number, mediaId: string): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureCommentPollStateTable();
+  const rows = await db.execute(sql`
+    SELECT lastKnownCount FROM comment_poll_state
+    WHERE userId = ${userId} AND mediaId = ${mediaId}
+  `);
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
+  return row ? Number(row.lastKnownCount) : -1;
+}
+
+export async function upsertCommentPollState(userId: number, mediaId: string, count: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCommentPollStateTable();
+  await db.execute(sql`
+    INSERT INTO comment_poll_state (userId, mediaId, lastKnownCount)
+    VALUES (${userId}, ${mediaId}, ${count})
+    ON DUPLICATE KEY UPDATE lastKnownCount = ${count}, lastCheckedAt = CURRENT_TIMESTAMP
+  `);
+}
+
+export async function insertCommentAlert(
+  userId: number,
+  data: {
+    mediaId: string;
+    mediaCaption?: string | null;
+    mediaPermalink?: string | null;
+    previousCount: number;
+    newCount: number;
+  }
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await ensureCommentAlertsTable();
+  const result = await db.execute(sql`
+    INSERT INTO comment_alerts (userId, mediaId, mediaCaption, mediaPermalink, previousCount, newCount)
+    VALUES (
+      ${userId},
+      ${data.mediaId},
+      ${data.mediaCaption ?? null},
+      ${data.mediaPermalink ?? null},
+      ${data.previousCount},
+      ${data.newCount}
+    )
+  `);
+  return insertId(result[0]);
+}
+
+export async function markAlertWhatsappSent(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`UPDATE comment_alerts SET whatsappSentAt = CURRENT_TIMESTAMP WHERE id = ${id}`);
+}
+
+export async function acknowledgeCommentAlert(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCommentAlertsTable();
+  await db.execute(sql`
+    UPDATE comment_alerts SET acknowledgedAt = CURRENT_TIMESTAMP
+    WHERE id = ${id} AND userId = ${userId}
+  `);
+}
+
+export async function getOpenCommentAlerts(userId: number): Promise<CommentAlert[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureCommentAlertsTable();
+  const rows = await db.execute(sql`
+    SELECT * FROM comment_alerts
+    WHERE userId = ${userId} AND acknowledgedAt IS NULL
+    ORDER BY detectedAt DESC
+    LIMIT 20
+  `);
+  return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAlert);
+}
+
+export async function getAllInstagramConnections(): Promise<Array<{ userId: number; instagramAccountId: string; accessToken: string }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.execute(sql`
+    SELECT userId, instagramAccountId, accessToken FROM instagram_connections
+    WHERE accessToken IS NOT NULL AND instagramAccountId IS NOT NULL
+  `);
+  return (rows[0] as unknown as Array<Record<string, unknown>>).map((r) => ({
+    userId: Number(r.userId),
+    instagramAccountId: String(r.instagramAccountId),
+    accessToken: String(r.accessToken),
+  }));
 }

@@ -23,6 +23,7 @@ import {
 } from "./_core/linkedinArticlePostingAgent";
 import { generateChatAgentReply } from "./_core/chatAgent";
 import { generateVideoScriptWithAgent } from "./_core/videoScriptAgent";
+import { generateReelsScript } from "./_core/reelsScriptAgent";
 import { createOpenAIRealtimeToken } from "./_core/openaiRealtime";
 import {
   prepareDidSourceImage,
@@ -3414,6 +3415,78 @@ const analyticsRouter = router({
     }),
 });
 
+
+
+const commentAlertsRouter = router({
+  getAlerts: protectedProcedure.query(async ({ ctx }) => {
+    return db.getOpenCommentAlerts(ctx.user.id);
+  }),
+
+  acknowledge: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.acknowledgeCommentAlert(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  acknowledgeAll: protectedProcedure.mutation(async ({ ctx }) => {
+    const alerts = await db.getOpenCommentAlerts(ctx.user.id);
+    await Promise.all(alerts.map((a) => db.acknowledgeCommentAlert(a.id, ctx.user.id)));
+    return { acknowledged: alerts.length };
+  }),
+});
+
+
+const reelsRouter = router({
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    return db.getReelsScripts(ctx.user.id);
+  }),
+
+  generate: aiProcedure
+    .input(z.object({
+      topic: z.string().min(3).max(500),
+      tone: z.enum(["educational", "entertaining", "inspiring", "informative"]).optional(),
+      duration: z.enum(["short", "medium", "long"]).optional(),
+      extraContext: z.string().max(1000).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const generated = await generateReelsScript({
+        topic: input.topic,
+        tone: input.tone,
+        duration: input.duration,
+        extraContext: input.extraContext,
+      });
+
+      const saved = await db.saveReelsScript(ctx.user.id, {
+        title: generated.title,
+        topic: input.topic,
+        tone: input.tone ?? "educational",
+        duration: input.duration ?? "medium",
+        hook: generated.hook,
+        reward: generated.reward,
+        loopClose: generated.loopClose,
+        caption: generated.caption,
+        hashtags: generated.hashtags,
+        scenes: generated.scenes,
+      });
+
+      return saved;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteReelsScript(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  getStats: protectedProcedure.query(async ({ ctx }) => {
+    const count = await db.getReelsScriptCount(ctx.user.id);
+    return { count };
+  }),
+});
+
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -3495,6 +3568,8 @@ export const appRouter = router({
   admin: adminRouter,
   features: featuresRouter,
   brandKit: brandKitRouter,
+  reels: reelsRouter,
+  commentAlerts: commentAlertsRouter,
 });
 
 export type AppRouter = typeof appRouter;
