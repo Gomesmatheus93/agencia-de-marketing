@@ -26,13 +26,13 @@ Você é um Agente Designer Sênior da agência KrythosLab, especializado em car
 
 Sua missão é transformar um template base em um carrossel visualmente natural, estratégico e profissional — e que maximize alcance orgânico no Instagram.
 
-━━ ALGORITMO DO INSTAGRAM 2025 — REGRAS OBRIGATÓRIAS ━━
+━━ ALGORITMO DO INSTAGRAM 2026 — REGRAS OBRIGATÓRIAS ━━
 
-ESTRUTURA DE SLIDES (8 a 10 slides é o número ótimo de engajamento):
-• Slide 1 — GANCHO: compreendido em menos de 0,7 segundos. Máximo 10-12 palavras. Deve criar lacuna de informação, provocação ou promessa específica. É o slide mais importante — carrega 80% do desempenho.
-• Slides 2-N-2 — DESENVOLVIMENTO: 1 ideia por slide, máximo 15 palavras por slide, espaço generoso, progressão lógica.
-• Slide N-1 — RESUMO SALVÁVEL: checklist, framework ou síntese visual de alto contraste. Projetado para ser screenshot e salvo isoladamente — este slide gera salvamentos.
-• Slide N — CTA: peça salvamento com motivo específico ("Salva pra consultar quando precisar de X"), ou compartilhamento, ou comentário com pergunta aberta. NUNCA peça curtida.
+ESTRUTURA DE SLIDES (5 a 10 slides — range suportado; 7-10 é o ótimo para engajamento):
+• Slide 1 — PERGUNTA-GANCHO OBRIGATÓRIO: SEMPRE use formato de pergunta direta (ex: "Qual desses 5 erros você comete?", "Por que sua conta de luz ainda é alta?", "Você está perdendo dinheiro sem saber?"). Compreendido em menos de 0,7 segundos. Máximo 10-12 palavras. Cria lacuna de informação. NUNCA entregue a resposta no slide 1. É o slide mais importante — carrega 80% do desempenho.
+• Slides 2-N-2 — DESENVOLVIMENTO: 1 ideia por slide, máximo 15 palavras por slide, espaço generoso, progressão lógica. DENSIDADE INFORMACIONAL ALTA — cada slide deve conter dado, fato, contraste ou insight específico e real. Slides genéricos "de enchimento" são estritamente proibidos.
+• Slide N-1 — RESUMO SALVÁVEL: checklist numerado, framework visual ou síntese em tópicos de alto contraste. Projetado para ser screenshot e salvo isoladamente — este slide gera salvamentos. Deve ser o slide mais "printable" do carrossel.
+• Slide N — CTA DE SALVAMENTO: peça EXPLICITAMENTE que o usuário salve o post com motivo concreto ("Salva esse carrossel pra consultar quando precisar de X"). Alternativamente: compartilhamento com motivo específico. NUNCA peça curtida — é o sinal mais fraco do algoritmo.
 
 SINAIS DE ENGAJAMENTO (do mais ao menos importante para o algoritmo):
 1. Compartilhamentos via DM → design e conteúdo "que preciso mandar pra alguém"
@@ -802,6 +802,13 @@ export async function generateCarouselWithAgent(
 ): Promise<CarouselAgentResult> {
   assertAnthropicCarouselConfigured();
 
+  // Phase 2: enforce 5-10 slide range for optimal Instagram 2026 performance
+  if (input.slideCount < 5 || input.slideCount > 10) {
+    const clamped = Math.max(5, Math.min(10, input.slideCount));
+    console.warn(`[CarouselAgent] slideCount=${input.slideCount} fora do range otimizado (5-10). Ajustando para ${clamped}.`);
+    input = { ...input, slideCount: clamped };
+  }
+
   const referenceImageUrl = input.coverImageDataUrl || input.coverImageUrl;
   const templateImageUrl = input.templateImageDataUrl || input.templateImageUrl;
   const styleGuide = input.templateStyleBrief?.trim()
@@ -845,11 +852,14 @@ export async function generateCarouselWithAgent(
     `Direcao visual: ${styleGuide}`,
     input.templateName ? `Nome do template visual: ${input.templateName}` : undefined,
     `MAPA DE SLIDES (siga obrigatoriamente):`,
-    `  Slide 1 (id:1, type:"hook"): GANCHO — para o scroll, gera curiosidade, promessa ou dor. NAO entrega o conteudo ainda.`,
+    `  Slide 1 (id:1, type:"hook"): PERGUNTA-GANCHO OBRIGATÓRIO — formato de pergunta direta (ex: "Qual desses 5 erros você comete?", "Por que sua ${input.topic.slice(0, 30)} ainda não mudou?"). Máximo 12 palavras. Cria lacuna de informação. NUNCA entregue o conteúdo no slide 1.`,
     input.slideCount > 2
-      ? `  Slides 2 a ${lastSlideIndex - 1} (type:"development"): cada um aprofunda um aspecto diferente do tema com dados, contraste ou descoberta.`
+      ? `  Slides 2 a ${input.slideCount >= 5 ? lastSlideIndex - 2 : lastSlideIndex - 1} (type:"development"): cada um aprofunda um aspecto diferente do tema com dado concreto, fato, contraste ou descoberta específica. PROIBIDO: slides genéricos sem informação real ("é importante...", "precisa de atenção...", etc).`
       : undefined,
-    `  Slide ${lastSlideIndex} (id:${lastSlideIndex}, type:"cta"): CTA DE ENGAJAMENTO — pede curtida, comentario e compartilhamento de forma natural e direta.`,
+    input.slideCount >= 5
+      ? `  Slide ${lastSlideIndex - 1} (id:${lastSlideIndex - 1}, type:"development"): RESUMO SALVÁVEL — checklist numerado, framework em tópicos ou síntese visual de alto contraste. Projetado para ser screenshot e salvo isoladamente. Este é o slide que gera salvamentos.`
+      : undefined,
+    `  Slide ${lastSlideIndex} (id:${lastSlideIndex}, type:"cta"): CTA DE SALVAMENTO — peça EXPLICITAMENTE que o usuário salve o post com motivo concreto e específico ("Salva esse carrossel pra consultar quando precisar de X"). NUNCA peça curtida.`,
     "Gere imageSearchQuery geral em ingles (3-8 palavras) para fotografia editorial do tema central.",
     "Para cada slide, gere imageSearchQuery em ingles especifico (4-10 palavras) e imagePrompt detalhado em ingles.",
     "Nao use consultas abstratas como transformation, growth, future ou innovation sem objeto concreto do tema.",

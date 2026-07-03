@@ -1687,6 +1687,55 @@ function ProtoCarouselCard({
           {carousel.hook}
         </h3>
 
+        {/* Structural validation badges */}
+        {(() => {
+          const firstSlide = carousel.slides[0];
+          const lastSlide = carousel.slides[carousel.slides.length - 1];
+          const hasQuestionHook =
+            firstSlide?.title?.includes("?") ||
+            firstSlide?.body?.includes("?") ||
+            firstSlide?.slideType === "hook";
+          const hasSaveCta =
+            /salv|guardar|save/i.test(carousel.finalCta ?? "") ||
+            /salv|guardar|save/i.test(lastSlide?.title ?? "") ||
+            /salv|guardar|save/i.test(lastSlide?.body ?? "");
+          const slideCountOk = carousel.slides.length >= 5 && carousel.slides.length <= 10;
+          const allOk = hasQuestionHook && hasSaveCta && slideCountOk;
+          return (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              <span className={cn(
+                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full border",
+                hasQuestionHook
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-500"
+              )}>
+                {hasQuestionHook ? "✓" : "!"} Gancho
+              </span>
+              <span className={cn(
+                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full border",
+                hasSaveCta
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-500"
+              )}>
+                {hasSaveCta ? "✓" : "!"} CTA salvar
+              </span>
+              <span className={cn(
+                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full border",
+                slideCountOk
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-500"
+              )}>
+                {slideCountOk ? "✓" : "!"} {carousel.slides.length} slides
+              </span>
+              {allOk && (
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400">
+                  ✓ Otimizado
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Editar + ZIP */}
         <div className="flex gap-2 pt-0.5">
           <Button
