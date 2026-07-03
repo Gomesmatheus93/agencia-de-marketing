@@ -36,6 +36,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Zap,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,6 +105,12 @@ function KpiCard({
   );
 }
 
+function scoreColor(score: number) {
+  if (score >= 10) return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400/40";
+  if (score >= 5) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-400/40";
+  return "text-muted-foreground bg-muted/50 border-border/40";
+}
+
 function PostCard({
   post,
 }: {
@@ -117,12 +125,14 @@ function PostCard({
     comments_count: number;
     permalink: string;
     insights: Record<string, number>;
+    engagementScore?: number;
   };
 }) {
   const thumb = post.thumbnail_url || post.media_url;
   const date = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).format(
     new Date(post.timestamp)
   );
+  const score = post.engagementScore ?? 0;
 
   return (
     <div className="group overflow-hidden rounded-2xl border border-border/40 bg-background/80 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
@@ -146,6 +156,13 @@ function PostCard({
         <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
           {date}
         </span>
+        <span className={cn(
+          "absolute top-2 left-2 flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold",
+          scoreColor(score)
+        )}>
+          <Zap className="h-2.5 w-2.5" />
+          {score.toFixed(1)}
+        </span>
       </div>
 
       <div className="p-3">
@@ -158,7 +175,7 @@ function PostCard({
           <Metric icon={Eye} label="Alcance" value={post.insights.reach ?? 0} />
           <Metric icon={Bookmark} label="Salvamentos" value={post.insights.saved ?? 0} />
           <Metric icon={TrendingUp} label="Impressões" value={post.insights.impressions ?? 0} />
-          <Metric icon={Share2} label="Compartilhamentos" value={post.insights.shares ?? 0} />
+          <Metric icon={Share2} label="Compart." value={post.insights.shares ?? 0} />
         </div>
       </div>
     </div>
@@ -181,6 +198,7 @@ const CHART_COLORS = {
   Alcance: "#7b00ae",
   Impressões: "#fe6e00",
   "Visitas ao Perfil": "#06b6d4",
+  Score: "#10b981",
 };
 
 function InstagramLoginPrompt() {
@@ -559,6 +577,91 @@ function InstagramTab() {
           </>
         )}
       </div>
+
+      {/* Engagement Score highlight card */}
+      {(() => {
+        const posts = mediaQuery.data ?? [];
+        const scores = posts.map((p) => (p as typeof p & { engagementScore?: number }).engagementScore ?? 0);
+        const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+        const top = posts.reduce<(typeof posts[0] & { engagementScore?: number }) | null>((best, p) => {
+          const s = (p as typeof p & { engagementScore?: number }).engagementScore ?? 0;
+          return !best || s > ((best as typeof p & { engagementScore?: number }).engagementScore ?? 0) ? (p as typeof p & { engagementScore?: number }) : best;
+        }, null);
+
+        return (
+          <div className="rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-50/60 to-background dark:from-emerald-950/20 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500">
+                  <Zap className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Score de Engajamento</p>
+                  <p className="text-xs text-muted-foreground">Média dos últimos {posts.length} posts</p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                {mediaQuery.isLoading ? (
+                  <Skeleton className="h-9 w-20" />
+                ) : (
+                  <>
+                    <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{avg.toFixed(1)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">pontos por 100 de alcance</p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Score bar chart */}
+            {!mediaQuery.isLoading && posts.length > 0 && (() => {
+              const chartPosts = [...posts]
+                .map((p) => ({
+                  label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(p.timestamp)),
+                  Score: (p as typeof p & { engagementScore?: number }).engagementScore ?? 0,
+                }))
+                .reverse();
+              return (
+                <ResponsiveContainer width="100%" height={140}>
+                  <BarChart data={chartPosts} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
+                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 11 }}
+                      formatter={(v: number) => [`${v.toFixed(2)} pts`, "Score"]}
+                    />
+                    <Bar dataKey="Score" fill={CHART_COLORS.Score} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })()}
+
+            {/* Top post + formula info */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              {top && (
+                <div className="flex-1 rounded-xl bg-background/60 border border-border/40 px-3 py-2 text-xs">
+                  <p className="text-muted-foreground mb-0.5">Melhor post</p>
+                  <p className="font-semibold text-foreground line-clamp-1">{top.caption?.slice(0, 60) ?? fmtDate(top.timestamp)}</p>
+                  <p className="text-emerald-600 dark:text-emerald-400 font-bold">{((top as typeof top & { engagementScore?: number }).engagementScore ?? 0).toFixed(2)} pts</p>
+                </div>
+              )}
+              <div className="flex-1 rounded-xl bg-background/60 border border-border/40 px-3 py-2 text-xs space-y-1">
+                <p className="font-medium text-foreground">Fórmula do score</p>
+                <p className="text-muted-foreground">Compartilhamentos ×4 + Salvamentos ×3 + Comentários ×2 + Curtidas ×1 ÷ Alcance × 100</p>
+              </div>
+            </div>
+
+            {/* API limitation note */}
+            <div className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-400/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                <strong>Limitação da API Meta:</strong> "Compartilhamentos" inclui todos os tipos (reposts, stories), não apenas envios por DM.
+                A API do Instagram não expõe compartilhamentos por DM separadamente. Comentários não são filtrados por tamanho.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-3">

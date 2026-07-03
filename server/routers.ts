@@ -3386,9 +3386,21 @@ const analyticsRouter = router({
             for (const d of insightsData.data ?? []) {
               insights[d.name] = d.value ?? d.values?.[0]?.value ?? 0;
             }
-            return { ...item, insights };
+
+            // Weighted engagement score (Instagram 2026 algorithm priorities)
+            // shares = total shares via API (DM-specific not available — Meta limitation)
+            // comments = total count (word-count filter not available via API)
+            const reach = insights.reach ?? 0;
+            const engagementScore = reach > 0
+              ? parseFloat((
+                  ((insights.saved ?? 0) * 3 + (insights.shares ?? 0) * 4 + item.comments_count * 2 + item.like_count * 1)
+                  / reach * 100
+                ).toFixed(2))
+              : 0;
+
+            return { ...item, insights, engagementScore };
           } catch {
-            return { ...item, insights: {} as Record<string, number> };
+            return { ...item, insights: {} as Record<string, number>, engagementScore: 0 };
           }
         })
       );
