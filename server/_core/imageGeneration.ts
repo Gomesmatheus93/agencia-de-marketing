@@ -285,7 +285,6 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
           quality: "high",
           output_format: "webp",
           output_compression: 92,
-          response_format: "b64_json",
         }),
       };
 

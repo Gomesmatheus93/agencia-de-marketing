@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import AppLayout from "@/components/AppLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -27,6 +28,9 @@ import {
   ImageIcon,
   RefreshCw,
   MessageCircle,
+  Wand2,
+  Copy,
+  CheckCheck,
 } from "lucide-react";
 import {
   type Holiday,
@@ -291,6 +295,75 @@ function DayCell({
   );
 }
 
+// ── Themes ────────────────────────────────────────────────────────────────────
+
+const THEMES: Array<{ id: string; emoji: string; label: string; description: string; marketingTip: string; color: string }> = [
+  {
+    id: 'theme-religiao',
+    emoji: '🙏',
+    label: 'Religião & Fé',
+    description: 'Conteúdo inspiracional sobre fé e espiritualidade',
+    marketingTip: 'Crie conteúdo inspiracional sobre fé, gratidão e espiritualidade. Conecte valores espirituais com mensagens de esperança, propósito e comunidade. Use linguagem acolhedora e reflexiva.',
+    color: 'from-amber-500/10 to-yellow-500/10 border-amber-500/30 hover:border-amber-500/60',
+  },
+  {
+    id: 'theme-empreendedorismo',
+    emoji: '💼',
+    label: 'Empreendedorismo',
+    description: 'Negócios, mindset e crescimento profissional',
+    marketingTip: 'Crie conteúdo motivacional sobre negócios, crescimento e mindset empreendedor. Aborde temas como produtividade, liderança, inovação e cases de sucesso. Mostre como o produto/serviço transforma resultados.',
+    color: 'from-blue-500/10 to-indigo-500/10 border-blue-500/30 hover:border-blue-500/60',
+  },
+  {
+    id: 'theme-familia',
+    emoji: '👨‍👩‍👧‍👦',
+    label: 'Família',
+    description: 'Vínculos familiares, lar e momentos especiais',
+    marketingTip: 'Crie conteúdo emocional sobre família, vínculos e momentos especiais. Explore temas como amor, cumplicidade, rotina em família e memórias afetivas. Conecte o produto/serviço com o bem-estar e a felicidade familiar.',
+    color: 'from-rose-500/10 to-pink-500/10 border-rose-500/30 hover:border-rose-500/60',
+  },
+  {
+    id: 'theme-esporte',
+    emoji: '⚽',
+    label: 'Esporte',
+    description: 'Performance, superação e vida ativa',
+    marketingTip: 'Crie conteúdo dinâmico com energia esportiva, superação e performance. Use analogias de vitória, treino e conquista. Explore atletas, competições e hábitos saudáveis para engajar o público.',
+    color: 'from-green-500/10 to-emerald-500/10 border-green-500/30 hover:border-green-500/60',
+  },
+  {
+    id: 'theme-saude',
+    emoji: '💪',
+    label: 'Saúde & Bem-estar',
+    description: 'Hábitos saudáveis, qualidade de vida e autocuidado',
+    marketingTip: 'Crie conteúdo sobre saúde, autocuidado e qualidade de vida. Aborde hábitos saudáveis, alimentação, descanso e saúde mental. Conecte o produto/serviço com a jornada de bem-estar do público.',
+    color: 'from-teal-500/10 to-cyan-500/10 border-teal-500/30 hover:border-teal-500/60',
+  },
+  {
+    id: 'theme-educacao',
+    emoji: '📚',
+    label: 'Educação',
+    description: 'Aprendizado, crescimento pessoal e conhecimento',
+    marketingTip: 'Crie conteúdo educativo e de valor sobre aprendizado e crescimento pessoal. Compartilhe dicas, tutoriais, curiosidades e insights que agreguem valor real ao público-alvo.',
+    color: 'from-purple-500/10 to-violet-500/10 border-purple-500/30 hover:border-purple-500/60',
+  },
+  {
+    id: 'theme-humor',
+    emoji: '😄',
+    label: 'Humor',
+    description: 'Leveza, entretenimento e conteúdo divertido',
+    marketingTip: 'Crie conteúdo leve, divertido e com humor inteligente. Use memes, situações do cotidiano e piadas alinhadas à identidade da marca. Entretenimento que gera compartilhamento espontâneo.',
+    color: 'from-orange-500/10 to-amber-500/10 border-orange-500/30 hover:border-orange-500/60',
+  },
+  {
+    id: 'theme-sustentabilidade',
+    emoji: '🌿',
+    label: 'Sustentabilidade',
+    description: 'Meio ambiente, responsabilidade e futuro',
+    marketingTip: 'Crie conteúdo sobre sustentabilidade, responsabilidade ambiental e consumo consciente. Mostre o compromisso da marca com o futuro do planeta e engaje públicos que valorizam causas ambientais.',
+    color: 'from-lime-500/10 to-green-500/10 border-lime-500/30 hover:border-lime-500/60',
+  },
+];
+
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
 function DetailPanel({
@@ -437,6 +510,32 @@ function DetailPanel({
         )}
       </div>
 
+        {/* Themes section */}
+        <div className="px-5 py-4 border-t border-border/30">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
+            <Sparkles className="w-3 h-3" />
+            Criar por tema
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => onCreatePost({
+                  id: theme.id,
+                  name: theme.label,
+                  type: 'commemorative',
+                  description: theme.description,
+                  marketingTip: theme.marketingTip,
+                })}
+                className={`flex items-center gap-2.5 rounded-xl border bg-gradient-to-br ${theme.color} px-3 py-2.5 text-left transition-all hover:shadow-sm`}
+              >
+                <span className="text-xl leading-none shrink-0">{theme.emoji}</span>
+                <span className="text-[11px] font-medium text-foreground leading-tight">{theme.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
       {/* Footer */}
       <div className="px-5 py-3.5 border-t border-border/50">
         <Button
@@ -478,16 +577,19 @@ function CreatePostDialog({
   onClose,
   holiday,
   prefillDate,
+  initialImageDataUrl,
 }: {
   open: boolean;
   onClose: () => void;
   holiday?: Holiday;
   prefillDate?: Date;
+  initialImageDataUrl?: string;
 }) {
   const utils = trpc.useUtils();
   const [channel, setChannel] = useState<Channel>("instagram");
   const [content, setContent] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [imageUrl, setImageUrl] = useState(initialImageDataUrl ?? "");
+  const [displayImageUrl, setDisplayImageUrl] = useState(initialImageDataUrl ?? "");
   const [requireApproval, setRequireApproval] = useState(false);
   const [scheduledAt, setScheduledAt] = useState(() => {
     const base = prefillDate ?? new Date();
@@ -499,6 +601,7 @@ function CreatePostDialog({
   const generateImageMutation = trpc.images.generate.useMutation({
     onSuccess: (data) => {
       setImageUrl(data.imageUrl ?? "");
+      setDisplayImageUrl((data as { displayUrl?: string }).displayUrl ?? data.imageUrl ?? "");
       toast.success("Imagem gerada com sucesso.");
     },
     onError: (e) => toast.error("Erro ao gerar imagem: " + e.message),
@@ -643,7 +746,7 @@ function CreatePostDialog({
             ) : imageUrl ? (
               <div className="relative rounded-xl overflow-hidden border border-border">
                 <img
-                  src={imageUrl}
+                  src={displayImageUrl || imageUrl}
                   alt="Imagem gerada para o post"
                   className={cn(
                     "w-full object-cover",
@@ -768,6 +871,599 @@ function CreatePostDialog({
   );
 }
 
+
+// ── Campaign types ────────────────────────────────────────────────────────────
+
+type CampaignResult = {
+  creativeConcept?: string;
+  artPrompt?: string;
+  artCopy?: { title?: string; subtitle?: string; cta?: string; secondary?: string; badge?: string | null };
+  caption?: string;
+  stories?: Array<{ slide?: number; text?: string; cta?: string }>;
+  reel?: { hook?: string; scene1?: string; scene2?: string; scene3?: string; closing?: string; cta?: string };
+  carousel?: Array<{ slide?: number; title?: string; body?: string }>;
+  variations?: {
+    emotional?: { concept?: string; headline?: string; caption?: string };
+    sales?: { concept?: string; headline?: string; caption?: string };
+  };
+  recommendations?: {
+    bestTime?: string; audience?: string; adObjective?: string;
+    campaignType?: string; segmentation?: string; keywords?: string[];
+  };
+};
+
+function CampaignSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border border-border/40 rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 bg-muted/40 border-b border-border/40">
+        <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">{label}</span>
+      </div>
+      <div className="p-4 text-sm text-foreground leading-relaxed space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = React.useState(false);
+  return (
+    <button
+      onClick={() => { void navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      className="shrink-0 rounded-md p-1 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+      title="Copiar"
+    >
+      {copied ? <CheckCheck className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function CampaignDialog({ open, date, onClose }: { open: boolean; date: Date; onClose: () => void }) {
+  const [subject, setSubject] = React.useState('');
+  const [client, setClient] = React.useState('');
+  const [segment, setSegment] = React.useState('');
+  const [objective, setObjective] = React.useState('');
+  const [socialNetwork, setSocialNetwork] = React.useState('Instagram');
+  const [extraInfo, setExtraInfo] = React.useState('');
+  const [result, setResult] = React.useState<CampaignResult | null>(null);
+
+  const generateMutation = trpc.campaign.generate.useMutation({
+    onSuccess: (data) => setResult(data as CampaignResult),
+    onError: (e) => toast.error(e.message || 'Erro ao gerar campanha'),
+  });
+
+  function handleGenerate() {
+    if (!subject.trim()) { toast.error('Informe o assunto da campanha'); return; }
+    setResult(null);
+    generateMutation.mutate({
+      subject: subject.trim(),
+      client: client.trim() || undefined,
+      segment: segment.trim() || undefined,
+      date: date.toLocaleDateString('pt-BR'),
+      objective: objective.trim() || undefined,
+      socialNetwork: socialNetwork.trim() || undefined,
+      extraInfo: extraInfo.trim() || undefined,
+    });
+  }
+
+  function handleClose() {
+    setSubject(''); setClient(''); setSegment(''); setObjective('');
+    setSocialNetwork('Instagram'); setExtraInfo(''); setResult(null);
+    onClose();
+  }
+
+  const isLoading = generateMutation.isPending;
+  const r = result;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+          <Wand2 className="h-4 w-4 text-primary" />
+          Campanha Completa
+        </DialogTitle>
+        <DialogDescription className="text-xs text-muted-foreground">
+          {date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })} — preencha os dados e o agente criativo gera toda a campanha.
+        </DialogDescription>
+
+        {!r ? (
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Assunto <span className="text-destructive">*</span></label>
+              <Input placeholder='Promoção Renault Kwid, Lançamento produto X…' value={subject} onChange={(e) => setSubject(e.target.value)} disabled={isLoading} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Cliente</label>
+                <Input placeholder="Nome do cliente" value={client} onChange={(e) => setClient(e.target.value)} disabled={isLoading} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Segmento</label>
+                <Input placeholder="Ex: Automóveis, Fitness, Tech" value={segment} onChange={(e) => setSegment(e.target.value)} disabled={isLoading} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Objetivo</label>
+                <Input placeholder="Ex: Gerar leads, Engajamento" value={objective} onChange={(e) => setObjective(e.target.value)} disabled={isLoading} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Rede Social</label>
+                <Input placeholder="Instagram, LinkedIn, TikTok…" value={socialNetwork} onChange={(e) => setSocialNetwork(e.target.value)} disabled={isLoading} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Informações adicionais</label>
+              <Textarea
+                placeholder="Identidade visual, cores, promoção, preço, detalhes extras…"
+                rows={3}
+                value={extraInfo}
+                onChange={(e) => setExtraInfo(e.target.value)}
+                disabled={isLoading}
+                className="resize-none"
+              />
+            </div>
+            <Button
+              className="w-full gap-2 border-0 bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white hover:opacity-90"
+              onClick={handleGenerate}
+              disabled={isLoading || !subject.trim()}
+            >
+              {isLoading
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Gerando campanha completa…</>
+                : <><Sparkles className="h-4 w-4" />Gerar campanha completa</>}
+            </Button>
+            {isLoading && (
+              <p className="text-center text-xs text-muted-foreground animate-pulse">
+                O agente criativo está trabalhando: ideia criativa, prompt de arte, legenda, stories, reel, carrossel, variações e recomendações…
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3 pt-1">
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => setResult(null)}>
+              <RefreshCw className="h-3.5 w-3.5" /> Nova geração
+            </Button>
+
+            {r.creativeConcept && (
+              <CampaignSection label="1 · Ideia Criativa">
+                <div className="flex items-start gap-2"><p className="flex-1">{r.creativeConcept}</p><CopyBtn text={r.creativeConcept} /></div>
+              </CampaignSection>
+            )}
+
+            {r.artPrompt && (
+              <CampaignSection label="2 · Prompt para Geração de Arte">
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 font-mono text-xs bg-muted/50 rounded-lg p-3 whitespace-pre-wrap">{r.artPrompt}</p>
+                  <CopyBtn text={r.artPrompt} />
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.artCopy && (
+              <CampaignSection label="3 · Texto da Arte">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {r.artCopy.title && <div><span className="font-semibold text-muted-foreground">Título: </span>{r.artCopy.title}</div>}
+                  {r.artCopy.subtitle && <div><span className="font-semibold text-muted-foreground">Subtítulo: </span>{r.artCopy.subtitle}</div>}
+                  {r.artCopy.cta && <div><span className="font-semibold text-muted-foreground">CTA: </span>{r.artCopy.cta}</div>}
+                  {r.artCopy.secondary && <div><span className="font-semibold text-muted-foreground">Secundário: </span>{r.artCopy.secondary}</div>}
+                  {r.artCopy.badge && <div className="col-span-2"><span className="font-semibold text-muted-foreground">Selo: </span>{r.artCopy.badge}</div>}
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.caption && (
+              <CampaignSection label="4 · Legenda">
+                <div className="flex items-start gap-2"><p className="flex-1 whitespace-pre-wrap text-xs">{r.caption}</p><CopyBtn text={r.caption} /></div>
+              </CampaignSection>
+            )}
+
+            {r.stories && r.stories.length > 0 && (
+              <CampaignSection label="5 · Stories">
+                <div className="space-y-2">
+                  {r.stories.map((s, i) => (
+                    <div key={i} className="flex items-start gap-3 rounded-lg bg-muted/30 px-3 py-2">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                        {s.slide ?? i + 1}
+                      </span>
+                      <div className="flex-1 text-xs">
+                        <p>{s.text}</p>
+                        {s.cta && <p className="mt-1 font-semibold text-primary">{s.cta}</p>}
+                      </div>
+                      <CopyBtn text={(s.text ?? '') + (s.cta ? ('\n' + s.cta) : '')} />
+                    </div>
+                  ))}
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.reel && (
+              <CampaignSection label="6 · Roteiro de Reel (30s)">
+                <div className="space-y-1.5 text-xs">
+                  {([
+                    ['Gancho (0-3s)', r.reel.hook],
+                    ['Cena 1 (3-10s)', r.reel.scene1],
+                    ['Cena 2 (10-18s)', r.reel.scene2],
+                    ['Cena 3 (18-24s)', r.reel.scene3],
+                    ['Encerramento (24-27s)', r.reel.closing],
+                    ['CTA (27-30s)', r.reel.cta],
+                  ] as [string, string | undefined][]).filter(([, v]) => v).map(([lbl, val], i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="shrink-0 font-semibold text-muted-foreground w-36">{lbl}</span>
+                      <span className="flex-1">{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.carousel && r.carousel.length > 0 && (
+              <CampaignSection label="7 · Carrossel">
+                <div className="space-y-2">
+                  {r.carousel.map((s, i) => (
+                    <div key={i} className="rounded-lg bg-muted/30 px-3 py-2 text-xs">
+                      <p className="font-semibold text-foreground">Slide {s.slide ?? i + 1}{s.title ? ' — ' + s.title : ''}</p>
+                      {s.body && <p className="mt-0.5 text-muted-foreground">{s.body}</p>}
+                    </div>
+                  ))}
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.variations && (
+              <CampaignSection label="8 · Variações">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {r.variations.emotional && (
+                    <div className="rounded-lg border border-border/40 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold tracking-widest uppercase text-rose-500">Emocional</p>
+                      {r.variations.emotional.headline && <p className="font-semibold text-sm">{r.variations.emotional.headline}</p>}
+                      {r.variations.emotional.caption && <p className="text-xs text-muted-foreground line-clamp-4">{r.variations.emotional.caption}</p>}
+                    </div>
+                  )}
+                  {r.variations.sales && (
+                    <div className="rounded-lg border border-border/40 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold tracking-widest uppercase text-amber-500">Vendas</p>
+                      {r.variations.sales.headline && <p className="font-semibold text-sm">{r.variations.sales.headline}</p>}
+                      {r.variations.sales.caption && <p className="text-xs text-muted-foreground line-clamp-4">{r.variations.sales.caption}</p>}
+                    </div>
+                  )}
+                </div>
+              </CampaignSection>
+            )}
+
+            {r.recommendations && (
+              <CampaignSection label="9 · Recomendações">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {r.recommendations.bestTime && <div><span className="font-semibold text-muted-foreground">Melhor horário: </span>{r.recommendations.bestTime}</div>}
+                  {r.recommendations.audience && <div><span className="font-semibold text-muted-foreground">Público: </span>{r.recommendations.audience}</div>}
+                  {r.recommendations.adObjective && <div><span className="font-semibold text-muted-foreground">Objetivo do anúncio: </span>{r.recommendations.adObjective}</div>}
+                  {r.recommendations.campaignType && <div><span className="font-semibold text-muted-foreground">Tipo de campanha: </span>{r.recommendations.campaignType}</div>}
+                  {r.recommendations.segmentation && <div className="col-span-2"><span className="font-semibold text-muted-foreground">Segmentação: </span>{r.recommendations.segmentation}</div>}
+                  {r.recommendations.keywords && r.recommendations.keywords.length > 0 && (
+                    <div className="col-span-2 flex flex-wrap gap-1.5 mt-1">
+                      {r.recommendations.keywords.map((kw, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium border border-primary/20">{kw}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CampaignSection>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ── Quote Card ────────────────────────────────────────────────────────────────
+
+async function renderQuoteCardToPng(
+  quote: string,
+  profilePhotoUrl: string,
+  name: string,
+  handle: string
+): Promise<string> {
+  const W = 1080, H = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Quote mark top-left
+  ctx.fillStyle = '#111111';
+  ctx.font = '220px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('“', 60, 240);
+
+  // Wrap quote text
+  ctx.font = 'bold 62px "Inter", Arial, sans-serif';
+  const maxW = 880;
+  const words = quote.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+    else cur = test;
+  }
+  if (cur) lines.push(cur);
+
+  const lh = 88;
+  const blockH = lines.length * lh;
+  const midY = H * 0.44;
+  const startY = midY - blockH / 2 + lh;
+  ctx.textAlign = 'center';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, startY + i * lh));
+
+  // Separator
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillRect(W / 2 - 100, H - 310, 200, 2);
+
+  // Profile section — try loading photo
+  const drawProfile = (photo: HTMLImageElement | null) => {
+    const photoSize = 110;
+    const sectionW = 320;
+    const sectionX = (W - sectionW) / 2;
+    const centerY = H - 210;
+
+    if (photo) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sectionX + photoSize / 2, centerY, photoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(photo, sectionX, centerY - photoSize / 2, photoSize, photoSize);
+      ctx.restore();
+      // Orange ring
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(sectionX + photoSize / 2, centerY, photoSize / 2 + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Initials placeholder
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(sectionX + photoSize / 2, centerY, photoSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 48px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(name.charAt(0).toUpperCase(), sectionX + photoSize / 2, centerY + 16);
+    }
+
+    // Name
+    const textX = sectionX + photoSize + 18;
+    ctx.fillStyle = '#111111';
+    ctx.font = 'bold 38px "Inter", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(name, textX, centerY - 10);
+
+    // Blue verified badge
+    const nameW = ctx.measureText(name).width;
+    const bx = textX + nameW + 8, by = centerY - 28;
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(bx + 14, by, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bx + 7, by); ctx.lineTo(bx + 12, by + 6); ctx.lineTo(bx + 21, by - 8);
+    ctx.stroke();
+
+    // Handle
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '32px "Inter", Arial, sans-serif';
+    ctx.fillText(handle, textX, centerY + 30);
+  };
+
+  return new Promise((resolve) => {
+    if (!profilePhotoUrl) { drawProfile(null); resolve(canvas.toDataURL('image/png')); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { drawProfile(img); resolve(canvas.toDataURL('image/png')); };
+    img.onerror = () => { drawProfile(null); resolve(canvas.toDataURL('image/png')); };
+    img.src = profilePhotoUrl;
+  });
+}
+
+function QuoteCardDialog({
+  open,
+  date,
+  onClose,
+  onUseImage,
+}: {
+  open: boolean;
+  date: Date;
+  onClose: () => void;
+  onUseImage: (dataUrl: string) => void;
+}) {
+  const [quote, setQuote] = React.useState('');
+  const [profileName, setProfileName] = React.useState('Flavio Vasconcelos');
+  const [profileHandle, setProfileHandle] = React.useState('@comflavio');
+  const [profilePhotoUrl, setProfilePhotoUrl] = React.useState('');
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const bkQuery = trpc.brandKit.get.useQuery(undefined, { staleTime: 5 * 60_000, enabled: open });
+  React.useEffect(() => {
+    const bk = bkQuery.data;
+    if (!bk) return;
+    if (bk.companyName) setProfileName(bk.companyName);
+    const raw = bk.instagramHandle ?? '';
+    if (raw) setProfileHandle(raw.startsWith('@') ? raw : '@' + raw);
+    const logo = (bk as unknown as Record<string, string>).logoUrl;
+    if (logo) setProfilePhotoUrl(logo);
+  }, [bkQuery.data]);
+
+  async function handleUse() {
+    if (!quote.trim()) return;
+    setIsGenerating(true);
+    try {
+      const png = await renderQuoteCardToPng(quote.trim(), profilePhotoUrl, profileName, profileHandle);
+      onUseImage(png);
+    } catch { toast.error('Erro ao gerar arte'); }
+    finally { setIsGenerating(false); }
+  }
+
+  function handleClose() { setQuote(''); onClose(); }
+
+  const hasQuote = quote.trim().length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="max-w-4xl max-h-[96vh] overflow-y-auto p-0">
+        <div className="grid grid-cols-[1fr_380px] min-h-[600px]">
+
+          {/* LEFT — Form */}
+          <div className="p-6 space-y-5 border-r border-border/50">
+            <div>
+              <DialogTitle className="flex items-center gap-2 text-base font-semibold mb-1">
+                <span>🙏</span> Arte de Citação
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                {date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </DialogDescription>
+            </div>
+
+            {/* Quote input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Frase / Versículo</label>
+              <Textarea
+                placeholder="Ao dono dos meus dias consagro a minha semana, minha vida, meus sonhos e cada passo que eu der:"
+                rows={5}
+                value={quote}
+                onChange={(e) => { setQuote(e.target.value); }}
+                className="resize-none text-sm"
+              />
+            </div>
+
+            {/* Profile fields */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Perfil</label>
+
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border/40">
+                {profilePhotoUrl
+                  ? <img src={profilePhotoUrl} className="w-12 h-12 rounded-full object-cover border-[3px] border-orange-400 shrink-0" />
+                  : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                      {profileName.charAt(0).toUpperCase()}
+                    </div>}
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Input
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Nome do perfil"
+                    className="h-7 text-xs font-semibold"
+                  />
+                  <Input
+                    value={profileHandle}
+                    onChange={(e) => setProfileHandle(e.target.value)}
+                    placeholder="@handle"
+                    className="h-7 text-xs text-muted-foreground"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground">URL da foto (opcional)</label>
+                <Input
+                  value={profilePhotoUrl}
+                  onChange={(e) => setProfilePhotoUrl(e.target.value)}
+                  placeholder="https://... ou deixe vazio para usar iniciais"
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+
+            <Button
+              className="w-full gap-2 h-11 text-sm font-semibold border-0 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90 transition-opacity"
+              disabled={!hasQuote || isGenerating}
+              onClick={handleUse}
+            >
+              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {isGenerating ? 'Gerando arte…' : 'Usar esta arte no post'}
+            </Button>
+          </div>
+
+          {/* RIGHT — Live preview */}
+          <div className="bg-muted/20 p-5 flex flex-col">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Preview ao vivo</p>
+
+            {/* Card preview — 4:5 ratio */}
+            <div
+              className="flex-1 rounded-2xl overflow-hidden shadow-lg border border-border/30"
+              style={{ background: '#ffffff', fontFamily: '"Inter", Arial, sans-serif' }}
+            >
+              <div className="h-full flex flex-col p-7">
+                {/* Quote mark */}
+                <div
+                  className="text-black font-black leading-none select-none"
+                  style={{ fontSize: '88px', fontFamily: 'Georgia, "Times New Roman", serif', lineHeight: 0.8, letterSpacing: '-4px' }}
+                >
+                  &#8220;
+                </div>
+
+                {/* Quote text */}
+                <div className="flex-1 flex items-center justify-center py-4">
+                  {hasQuote ? (
+                    <p
+                      className="text-center font-bold text-black break-words"
+                      style={{ fontSize: '18px', lineHeight: '1.55', maxWidth: '100%' }}
+                    >
+                      {quote.trim()}
+                    </p>
+                  ) : (
+                    <p className="text-center text-gray-300 italic" style={{ fontSize: '14px' }}>
+                      A frase aparece aqui…
+                    </p>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="flex justify-center mb-4">
+                  <div style={{ width: '60px', height: '1px', background: '#e5e7eb' }} />
+                </div>
+
+                {/* Profile */}
+                <div className="flex items-center justify-center gap-2.5">
+                  {profilePhotoUrl ? (
+                    <img
+                      src={profilePhotoUrl}
+                      className="rounded-full object-cover shrink-0"
+                      style={{ width: '44px', height: '44px', border: '3px solid #f97316' }}
+                    />
+                  ) : (
+                    <div
+                      className="rounded-full shrink-0 flex items-center justify-center font-bold text-white"
+                      style={{ width: '44px', height: '44px', border: '3px solid #f97316', background: 'linear-gradient(135deg, #fb923c, #f59e0b)', fontSize: '18px' }}
+                    >
+                      {profileName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-bold text-black flex items-center gap-1" style={{ fontSize: '13px' }}>
+                      {profileName}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6" style={{ display: 'inline', verticalAlign: 'middle' }}>
+                        <circle cx="12" cy="12" r="12"/>
+                        <path d="M7 12.5l3.5 3.5 6.5-7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                      </svg>
+                    </p>
+                    <p className="text-gray-500" style={{ fontSize: '11px' }}>{profileHandle}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ── Main Page
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function Calendar() {
@@ -780,6 +1476,11 @@ export default function Calendar() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createHoliday, setCreateHoliday] = useState<Holiday | undefined>(undefined);
   const [createDate, setCreateDate] = useState<Date | undefined>(undefined);
+  const [showCampaignDialog, setShowCampaignDialog] = useState(false);
+  const [campaignDate, setCampaignDate] = useState<Date>(today);
+  const [showQuoteCardDialog, setShowQuoteCardDialog] = useState(false);
+  const [quoteCardDate, setQuoteCardDate] = useState<Date>(today);
+  const [quoteCardPresetImage, setQuoteCardPresetImage] = useState('');
 
   const { data: allPosts = [] } = trpc.posts.getAll.useQuery({});
 
@@ -825,7 +1526,12 @@ export default function Calendar() {
   function openCreatePost(holiday?: Holiday, date?: Date) {
     setCreateHoliday(holiday);
     setCreateDate(date ?? selectedDate ?? today);
-    setShowCreateDialog(true);
+    if (holiday?.id === 'theme-religiao') {
+      setQuoteCardDate(date ?? selectedDate ?? today);
+      setShowQuoteCardDialog(true);
+    } else {
+      setShowCreateDialog(true);
+    }
   }
 
   const selectedHolidays = selectedDate ? getHolidaysForDate(selectedDate) : [];
@@ -862,14 +1568,25 @@ export default function Calendar() {
               </p>
             </div>
           </div>
-          <Button
-            size="sm"
-            className="self-start sm:self-auto gap-2 font-medium"
-            onClick={() => openCreatePost(undefined, today)}
-          >
-            <Plus className="w-4 h-4" />
-            Novo post
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 font-medium border-primary/30 text-primary hover:bg-primary/10"
+              onClick={() => { setCampaignDate(selectedDate ?? today); setShowCampaignDialog(true); }}
+            >
+              <Wand2 className="w-4 h-4" />
+              Campanha completa
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2 font-medium"
+              onClick={() => openCreatePost(undefined, today)}
+            >
+              <Plus className="w-4 h-4" />
+              Novo post
+            </Button>
+          </div>
         </div>
 
         {/* Month navigation bar */}
@@ -983,11 +1700,29 @@ export default function Calendar() {
 
       {/* Create post dialog — key forces full reset when holiday/date changes */}
       <CreatePostDialog
-        key={`${createHoliday?.id ?? "free"}-${createDate?.toDateString() ?? "nodate"}`}
+        key={`${createHoliday?.id ?? "free"}-${createDate?.toDateString() ?? "nodate"}-${quoteCardPresetImage ? 'qc' : ''}`}
         open={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
+        onClose={() => { setShowCreateDialog(false); setQuoteCardPresetImage(''); }}
         holiday={createHoliday}
         prefillDate={createDate}
+        initialImageDataUrl={quoteCardPresetImage || undefined}
+      />
+
+      <QuoteCardDialog
+        open={showQuoteCardDialog}
+        date={quoteCardDate}
+        onClose={() => setShowQuoteCardDialog(false)}
+        onUseImage={(dataUrl) => {
+          setQuoteCardPresetImage(dataUrl);
+          setShowQuoteCardDialog(false);
+          setShowCreateDialog(true);
+        }}
+      />
+
+      <CampaignDialog
+        open={showCampaignDialog}
+        date={campaignDate}
+        onClose={() => setShowCampaignDialog(false)}
       />
     </AppLayout>
   );

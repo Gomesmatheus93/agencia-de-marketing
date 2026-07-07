@@ -217,7 +217,9 @@ const imagesRouter = router({
       const imageUrl = result.url || "";
 
       const saved = await db.saveImage(ctx.user.id, input.prompt, imageUrl);
-      return saved;
+      const { getMetaFetchableStorageUrl } = await import("./storage");
+      const displayUrl = await getMetaFetchableStorageUrl(imageUrl).catch(() => imageUrl);
+      return { ...saved, displayUrl };
     }),
 
   delete: protectedProcedure
@@ -3506,6 +3508,109 @@ const reelsRouter = router({
 });
 
 
+// ─── Campaign Router ──────────────────────────────────────────────────────────
+
+const campaignRouter = router({
+  generate: aiProcedure
+    .input(
+      z.object({
+        subject:       z.string().min(3).max(500),
+        client:        z.string().max(200).optional(),
+        segment:       z.string().max(200).optional(),
+        date:          z.string().max(30).optional(),
+        objective:     z.string().max(300).optional(),
+        socialNetwork: z.string().max(100).optional(),
+        extraInfo:     z.string().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const lines: string[] = [
+        `Cliente: ${input.client || "A definir"}`,
+        `Segmento: ${input.segment || "A definir"}`,
+        `Data: ${input.date || new Date().toLocaleDateString("pt-BR")}`,
+        `Assunto: ${input.subject}`,
+        `Objetivo: ${input.objective || "Engajamento e conversão"}`,
+        `Rede Social: ${input.socialNetwork || "Instagram"}`,
+        input.extraInfo ? `Informações adicionais: ${input.extraInfo}` : null,
+      ].filter(Boolean) as string[];
+
+      const userPrompt = lines.join("\n");
+      const systemPrompt = `Você é o Diretor Criativo de uma agência de marketing premiada. Receba os dados de campanha e retorne APENAS um JSON válido (sem texto antes ou depois, sem markdown) com exatamente estas chaves:
+
+{
+  "creativeConcept": "Ideia criativa: conceito moderno e profissional. 2-4 frases.",
+  "artPrompt": "Prompt detalhado em inglês para gerador de imagens com: composição, iluminação, enquadramento, estilo, tipografia, espaço para texto, identidade visual, cores, elementos gráficos, profundidade, qualidade 8K, visual premium, publicidade profissional.",
+  "artCopy": {
+    "title": "Título forte",
+    "subtitle": "Subtítulo",
+    "cta": "Chamada para ação",
+    "secondary": "Texto secundário",
+    "badge": "Selo promocional (ou null)"
+  },
+  "caption": "Legenda completa com hook forte, desenvolvimento, benefícios, CTA, emojis estratégicos e hashtags.",
+  "stories": [
+    { "slide": 1, "text": "Texto do story 1", "cta": "Ação" },
+    { "slide": 2, "text": "Texto do story 2", "cta": "Ação" },
+    { "slide": 3, "text": "Texto do story 3", "cta": "Ação" }
+  ],
+  "reel": {
+    "hook": "Gancho (0-3s)",
+    "scene1": "Cena 1 (3-10s)",
+    "scene2": "Cena 2 (10-18s)",
+    "scene3": "Cena 3 (18-24s)",
+    "closing": "Encerramento (24-27s)",
+    "cta": "CTA final (27-30s)"
+  },
+  "carousel": [
+    { "slide": 1, "title": "Título", "body": "Texto" }
+  ],
+  "variations": {
+    "emotional": {
+      "concept": "Conceito emocional",
+      "headline": "Headline",
+      "caption": "Legenda emocional"
+    },
+    "sales": {
+      "concept": "Conceito de vendas",
+      "headline": "Headline",
+      "caption": "Legenda de vendas"
+    }
+  },
+  "recommendations": {
+    "bestTime": "Melhor horário",
+    "audience": "Público ideal",
+    "adObjective": "Objetivo do anúncio",
+    "campaignType": "Tipo de campanha",
+    "segmentation": "Segmentação sugerida",
+    "keywords": ["palavra1", "palavra2", "palavra3"]
+  }
+}
+
+Nunca produza conteúdo genérico. Pense como um Diretor de Arte premiado e Copywriter especialista em conversão. Toda peça deve parecer de uma grande agência. Quando o assunto envolver promoções, destaque preços, descontos e condições. Respeite a identidade visual se informada.`;
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4000,
+      });
+
+      const rawContent = response.choices[0]?.message?.content;
+      const raw = typeof rawContent === "string" ? rawContent : "{}";
+      try {
+        return JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Falha ao processar resposta do agente criativo.",
+        });
+      }
+    }),
+});
+
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -3581,6 +3686,7 @@ export const appRouter = router({
   videos: videosRouter,
   articles: articlesRouter,
   carousel: carouselRouter,
+  campaign: campaignRouter,
   canva: canvaRouter,
   posts: postsRouter,
   analytics: analyticsRouter,
