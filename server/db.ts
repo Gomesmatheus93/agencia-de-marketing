@@ -35,6 +35,7 @@ import {
   type FeatureFlag,
   brandKits,
   type BrandKit,
+  type CommentAutomation,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -47,6 +48,7 @@ let _canvaConnectionsTableReady: Promise<void> | null = null;
 let _reelsScriptsTableReady: Promise<void> | null = null;
 let _commentPollStateReady: Promise<void> | null = null;
 let _commentAlertsReady: Promise<void> | null = null;
+let _commentAutomationsTableReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -2028,4 +2030,153 @@ export async function getAllInstagramConnections(): Promise<Array<{ userId: numb
     instagramAccountId: String(r.instagramAccountId),
     accessToken: String(r.accessToken),
   }));
+}
+
+// ─── Comment Automations (Comment-to-DM) ─────────────────────────────────────
+
+async function ensureCommentAutomationsTable(): Promise<void> {
+  if (!_commentAutomationsTableReady) {
+    _commentAutomationsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`comment_automations\` (
+          \`id\`                    INT AUTO_INCREMENT PRIMARY KEY,
+          \`userId\`                INT NOT NULL,
+          \`igAccountId\`           VARCHAR(64) NOT NULL,
+          \`igPostId\`              VARCHAR(64) NOT NULL,
+          \`postCaption\`           TEXT,
+          \`postThumbnailUrl\`      TEXT,
+          \`keywords\`              JSON NOT NULL,
+          \`publicReplyMessage\`    TEXT NOT NULL,
+          \`dmFirstMessage\`        TEXT NOT NULL,
+          \`dmFollowupMessage\`     TEXT,
+          \`dmLink\`                TEXT,
+          \`status\`                VARCHAR(16) NOT NULL DEFAULT 'active',
+          \`commentsMatchedCount\`  INT NOT NULL DEFAULT 0,
+          \`dmsSentCount\`          INT NOT NULL DEFAULT 0,
+          \`linkClicksCount\`       INT NOT NULL DEFAULT 0,
+          \`createdAt\`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX \`idx_ca_userId\` (\`userId\`),
+          INDEX \`idx_ca_igPost\` (\`igAccountId\`, \`igPostId\`)
+        )
+      `);
+    })().catch(() => { _commentAutomationsTableReady = null; });
+  }
+  return _commentAutomationsTableReady!;
+}
+
+function hydrateAutomation(row: Record<string, unknown>): CommentAutomation {
+  return {
+    id: Number(row.id),
+    userId: Number(row.userId),
+    igAccountId: String(row.igAccountId),
+    igPostId: String(row.igPostId),
+    postCaption: row.postCaption != null ? String(row.postCaption) : null,
+    postThumbnailUrl: row.postThumbnailUrl != null ? String(row.postThumbnailUrl) : null,
+    keywords: (() => { try { return typeof row.keywords === 'string' ? JSON.parse(row.keywords) : (row.keywords as string[]); } catch { return []; } })(),
+    publicReplyMessage: String(row.publicReplyMessage ?? ''),
+    dmFirstMessage: String(row.dmFirstMessage ?? ''),
+    dmFollowupMessage: row.dmFollowupMessage != null ? String(row.dmFollowupMessage) : null,
+    dmLink: row.dmLink != null ? String(row.dmLink) : null,
+    status: String(row.status ?? 'active'),
+    commentsMatchedCount: Number(row.commentsMatchedCount ?? 0),
+    dmsSentCount: Number(row.dmsSentCount ?? 0),
+    linkClicksCount: Number(row.linkClicksCount ?? 0),
+    createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(String(row.createdAt)),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(String(row.updatedAt)),
+  };
+}
+
+export async function getCommentAutomations(userId: number): Promise<CommentAutomation[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureCommentAutomationsTable();
+  const rows = await db.execute(sql`
+    SELECT * FROM comment_automations WHERE userId = ${userId} ORDER BY createdAt DESC
+  `);
+  return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAutomation);
+}
+
+export async function createCommentAutomation(
+  userId: number,
+  data: {
+    igAccountId: string;
+    igPostId: string;
+    postCaption?: string | null;
+    postThumbnailUrl?: string | null;
+    keywords: string[];
+    publicReplyMessage: string;
+    dmFirstMessage: string;
+    dmFollowupMessage?: string | null;
+    dmLink?: string | null;
+  }
+): Promise<CommentAutomation> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureCommentAutomationsTable();
+  const result = await db.execute(sql`
+    INSERT INTO comment_automations
+      (userId, igAccountId, igPostId, postCaption, postThumbnailUrl, keywords,
+       publicReplyMessage, dmFirstMessage, dmFollowupMessage, dmLink)
+    VALUES (
+      ${userId}, ${data.igAccountId}, ${data.igPostId},
+      ${data.postCaption ?? null}, ${data.postThumbnailUrl ?? null},
+      ${JSON.stringify(data.keywords)},
+      ${data.publicReplyMessage}, ${data.dmFirstMessage},
+      ${data.dmFollowupMessage ?? null}, ${data.dmLink ?? null}
+    )
+  `);
+  const rows = await db.execute(sql`SELECT * FROM comment_automations WHERE id = ${insertId(result[0])} LIMIT 1`);
+  return hydrateAutomation((rows[0] as unknown as Record<string, unknown>[])[0]);
+}
+
+export async function toggleCommentAutomationStatus(id: number, userId: number): Promise<'active' | 'paused'> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureCommentAutomationsTable();
+  const rows = await db.execute(sql`SELECT status FROM comment_automations WHERE id = ${id} AND userId = ${userId} LIMIT 1`);
+  const current = ((rows[0] as unknown as Record<string, unknown>[])[0])?.status as string ?? 'active';
+  const next = current === 'active' ? 'paused' : 'active';
+  await db.execute(sql`UPDATE comment_automations SET status = ${next} WHERE id = ${id} AND userId = ${userId}`);
+  return next;
+}
+
+export async function deleteCommentAutomation(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCommentAutomationsTable();
+  await db.execute(sql`DELETE FROM comment_automations WHERE id = ${id} AND userId = ${userId}`);
+}
+
+export async function matchCommentAutomation(
+  igAccountId: string,
+  igPostId: string,
+  commentText: string
+): Promise<CommentAutomation | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureCommentAutomationsTable();
+  const rows = await db.execute(sql`
+    SELECT * FROM comment_automations
+    WHERE igAccountId = ${igAccountId} AND igPostId = ${igPostId} AND status = 'active'
+  `);
+  const campaigns = (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAutomation);
+  const lowerComment = commentText.toLowerCase();
+  return campaigns.find((c) =>
+    c.keywords.some((kw) => lowerComment.includes(kw.toLowerCase()))
+  ) ?? null;
+}
+
+export async function incrementCommentMatchedCount(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`UPDATE comment_automations SET commentsMatchedCount = commentsMatchedCount + 1 WHERE id = ${id}`);
+}
+
+export async function incrementDmsSentCount(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`UPDATE comment_automations SET dmsSentCount = dmsSentCount + 1 WHERE id = ${id}`);
 }

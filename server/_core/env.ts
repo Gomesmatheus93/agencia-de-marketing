@@ -59,6 +59,8 @@ export const ENV = {
   whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
   whatsappRecipientNumber: process.env.WHATSAPP_RECIPIENT_NUMBER ?? "",
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "krythos-webhook-verify",
+  // Shared secret for n8n → KrythosLab server-to-server calls
+  n8nSecret: process.env.N8N_SECRET ?? "",
 };
 
 const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [

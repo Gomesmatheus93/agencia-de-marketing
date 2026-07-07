@@ -18,6 +18,7 @@ import Analytics from "./pages/Analytics";
 import CalendarPage from "./pages/Calendar";
 import BrandKit from "./pages/BrandKit";
 import Reels from "./pages/Reels";
+import CommentAutomations from "./pages/CommentAutomations";
 
 function Router() {
   return (
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/dashboard/brand" component={BrandKit} />
       <Route path="/dashboard/reels" component={Reels} />
       <Route path="/dashboard/settings" component={Settings} />
+      <Route path="/dashboard/comment-automations" component={CommentAutomations} />
 <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

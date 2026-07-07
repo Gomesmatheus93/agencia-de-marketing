@@ -540,6 +540,46 @@ async function startServer() {
     }
   });
 
+  // ── n8n: match comment against active automations ────────────────────────
+  // Called by n8n when Instagram sends a comment webhook.
+  // Auth: X-Api-Key header must match N8N_SECRET env var.
+  app.post("/api/automations/match-comment", express.json(), async (req, res) => {
+    const apiKey = req.headers["x-api-key"];
+    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { ig_account_id, media_id, comment_text } = req.body as {
+      ig_account_id?: string;
+      media_id?: string;
+      comment_text?: string;
+    };
+    if (!ig_account_id || !media_id || typeof comment_text !== "string") {
+      res.status(400).json({ error: "Campos obrigatórios: ig_account_id, media_id, comment_text" });
+      return;
+    }
+    try {
+      const match = await db.matchCommentAutomation(ig_account_id, media_id, comment_text);
+      if (!match) {
+        res.status(404).json({ matched: false });
+        return;
+      }
+      // Increment counter asynchronously so we don't delay the response
+      void db.incrementCommentMatchedCount(match.id);
+      res.json({
+        matched: true,
+        automationId: match.id,
+        publicReplyMessage: match.publicReplyMessage,
+        dmFirstMessage: match.dmFirstMessage,
+        dmFollowupMessage: match.dmFollowupMessage ?? null,
+        dmLink: match.dmLink ?? null,
+      });
+    } catch (err) {
+      console.error("[CommentAutomations] match-comment error:", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

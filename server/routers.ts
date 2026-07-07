@@ -3438,6 +3438,51 @@ const analyticsRouter = router({
 
 
 
+// ─── Comment Automations Router ───────────────────────────────────────────────
+
+const commentAutomationsRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    return db.getCommentAutomations(ctx.user.id);
+  }),
+
+  create: protectedProcedure
+    .input(z.object({
+      igAccountId: z.string().min(1),
+      igPostId: z.string().min(1),
+      postCaption: z.string().optional(),
+      postThumbnailUrl: z.string().optional(),
+      keywords: z.array(z.string().min(1)).min(1),
+      publicReplyMessage: z.string().min(1),
+      dmFirstMessage: z.string().min(1),
+      dmFollowupMessage: z.string().optional(),
+      dmLink: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const connection = await db.getInstagramConnection(ctx.user.id);
+      if (!connection || connection.instagramAccountId !== input.igAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Conta Instagram não encontrada ou não autorizada." });
+      }
+      return db.createCommentAutomation(ctx.user.id, {
+        ...input,
+        dmLink: input.dmLink || null,
+      });
+    }),
+
+  toggleStatus: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const next = await db.toggleCommentAutomationStatus(input.id, ctx.user.id);
+      return { status: next };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteCommentAutomation(input.id, ctx.user.id);
+      return { success: true };
+    }),
+});
+
 const commentAlertsRouter = router({
   getAlerts: protectedProcedure.query(async ({ ctx }) => {
     return db.getOpenCommentAlerts(ctx.user.id);
@@ -3695,6 +3740,7 @@ export const appRouter = router({
   brandKit: brandKitRouter,
   reels: reelsRouter,
   commentAlerts: commentAlertsRouter,
+  commentAutomations: commentAutomationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   int,
+  json,
   mysqlEnum,
   mysqlTable,
   text,
@@ -340,3 +341,31 @@ export const brandKits = mysqlTable("brand_kits", {
 
 export type BrandKit = typeof brandKits.$inferSelect;
 export type InsertBrandKit = typeof brandKits.$inferInsert;
+
+// ─── Comment Automations (Comment-to-DM) ─────────────────────────────────────
+export const commentAutomations = mysqlTable(
+  "comment_automations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    igAccountId: varchar("igAccountId", { length: 64 }).notNull(),
+    igPostId: varchar("igPostId", { length: 64 }).notNull(),
+    postCaption: text("postCaption"),
+    postThumbnailUrl: text("postThumbnailUrl"),
+    keywords: json("keywords").$type<string[]>().notNull(),
+    publicReplyMessage: text("publicReplyMessage").notNull(),
+    dmFirstMessage: text("dmFirstMessage").notNull(),
+    dmFollowupMessage: text("dmFollowupMessage"),
+    dmLink: text("dmLink"),
+    status: varchar("status", { length: 16 }).default("active").notNull(),
+    commentsMatchedCount: int("commentsMatchedCount").default(0).notNull(),
+    dmsSentCount: int("dmsSentCount").default(0).notNull(),
+    linkClicksCount: int("linkClicksCount").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_comment_automations_userId").on(t.userId)]
+);
+
+export type CommentAutomation = typeof commentAutomations.$inferSelect;
+export type InsertCommentAutomation = typeof commentAutomations.$inferInsert;
