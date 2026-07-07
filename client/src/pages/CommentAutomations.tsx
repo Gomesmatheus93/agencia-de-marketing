@@ -757,6 +757,11 @@ export default function CommentAutomations() {
     onError: (err) => toast.error(err.message),
   });
 
+  const subscribeMutation = trpc.commentAutomations.subscribeWebhooks.useMutation({
+    onSuccess: () => toast.success("Webhooks de comentários ativados com sucesso!"),
+    onError: (err) => toast.error(err.message),
+  });
+
   const campaigns = (listQuery.data ?? []) as CommentAutomation[];
   const activeCount = campaigns.filter((c) => c.status === "active").length;
 
@@ -778,14 +783,29 @@ export default function CommentAutomations() {
             </div>
           </div>
 
-          <Button
-            size="sm"
-            className="gap-2 font-medium self-start sm:self-auto"
-            onClick={() => setShowNew(true)}
-          >
-            <Plus className="w-4 h-4" />
-            Nova campanha
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 text-xs"
+              onClick={() => subscribeMutation.mutate()}
+              disabled={subscribeMutation.isPending}
+              title="Ativa o recebimento de webhooks de comentários para sua conta Instagram"
+            >
+              {subscribeMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Ativar webhooks
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2 font-medium"
+              onClick={() => setShowNew(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Nova campanha
+            </Button>
+          </div>
         </div>
 
         {/* How it works banner */}

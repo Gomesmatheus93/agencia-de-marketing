@@ -266,6 +266,22 @@ export function registerOAuthRoutes(app: Express) {
         connectedAt: new Date(),
       });
 
+      // 6. Subscribe to comment webhooks for this account
+      try {
+        const subRes = await fetch(
+          `https://graph.facebook.com/v25.0/${userData.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(accessToken)}`,
+          { method: "POST" }
+        );
+        const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
+        if (subData.success) {
+          console.log(`[OAuth/IGLogin] Webhook comments subscrito para @${userData.username}`);
+        } else {
+          console.warn(`[OAuth/IGLogin] Falha ao subscrever webhook:`, subData.error?.message);
+        }
+      } catch (e) {
+        console.warn(`[OAuth/IGLogin] Erro ao subscrever webhook de comments:`, e);
+      }
+
       console.log(`[OAuth/IGLogin] @${userData.username} conectado ao userId=${targetUserId}`);
       res.redirect("/dashboard/analytics?ig_connect=success");
     } catch (err) {
@@ -445,6 +461,21 @@ export function registerOAuthRoutes(app: Express) {
           });
           igConnectStatus = "success";
           console.log(`[OAuth/Instagram] Conta IG conectada: @${resolvedIg.username} (userId=${user.id})`);
+          // Subscribe to comment webhooks
+          try {
+            const subRes = await fetch(
+              `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(resolvedToken)}`,
+              { method: "POST" }
+            );
+            const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
+            if (subData.success) {
+              console.log(`[OAuth/Instagram] Webhook comments subscrito para @${resolvedIg.username}`);
+            } else {
+              console.warn(`[OAuth/Instagram] Falha ao subscrever webhook:`, subData.error?.message);
+            }
+          } catch (e) {
+            console.warn(`[OAuth/Instagram] Erro ao subscrever webhook de comments:`, e);
+          }
         } catch (dbErr) {
           console.error("[OAuth/Instagram] Falha ao salvar instagram_connection (tabela pode não existir):", dbErr);
           igConnectStatus = "db_error";
@@ -618,6 +649,21 @@ export function registerOAuthRoutes(app: Express) {
       });
 
       console.log(`[OAuth/Instagram/Connect] Conta IG @${resolvedIg.username} conectada ao userId=${pending.userId}`);
+      // Subscribe to comment webhooks
+      try {
+        const subRes = await fetch(
+          `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(resolvedToken)}`,
+          { method: "POST" }
+        );
+        const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
+        if (subData.success) {
+          console.log(`[OAuth/Instagram/Connect] Webhook comments subscrito para @${resolvedIg.username}`);
+        } else {
+          console.warn(`[OAuth/Instagram/Connect] Falha ao subscrever webhook:`, subData.error?.message);
+        }
+      } catch (e) {
+        console.warn(`[OAuth/Instagram/Connect] Erro ao subscrever webhook de comments:`, e);
+      }
       res.redirect("/dashboard/analytics?ig_connect=success");
     } catch (err) {
       console.error("[OAuth/Instagram/Connect] Erro:", err);

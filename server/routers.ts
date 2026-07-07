@@ -3481,6 +3481,22 @@ const commentAutomationsRouter = router({
       await db.deleteCommentAutomation(input.id, ctx.user.id);
       return { success: true };
     }),
+
+  subscribeWebhooks: protectedProcedure.mutation(async ({ ctx }) => {
+    const connection = await db.getInstagramConnection(ctx.user.id);
+    if (!connection?.accessToken || !connection.instagramAccountId) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma conta Instagram conectada." });
+    }
+    const res = await fetch(
+      `https://graph.facebook.com/v25.0/${connection.instagramAccountId}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(connection.accessToken)}`,
+      { method: "POST" }
+    );
+    const data = await res.json() as { success?: boolean; error?: { message?: string } };
+    if (!data.success) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: data.error?.message ?? "Falha ao subscrever webhooks." });
+    }
+    return { success: true };
+  }),
 });
 
 const commentAlertsRouter = router({
