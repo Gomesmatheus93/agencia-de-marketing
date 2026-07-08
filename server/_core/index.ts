@@ -651,12 +651,17 @@ async function startServer() {
         res.status(404).json({ error: "Instagram connection not found" });
         return;
       }
-      const resolvedIgId = igConnection.instagramAccountId ?? ig_account_id;
-      const url = `https://graph.facebook.com/v25.0/${resolvedIgId}/messages`;
+      // Prefer Messenger Platform endpoint (/{page-id}/messages) — works with pages_messaging.
+      // Fall back to Instagram Graph API (/{ig-account-id}/messages) if no page ID.
+      const pageId = igConnection.facebookPageId;
+      const resolvedSenderId = pageId ?? (igConnection.instagramAccountId ?? ig_account_id);
+      const url = `https://graph.facebook.com/v25.0/${resolvedSenderId}/messages`;
       const body = JSON.stringify({
         recipient: { id: recipient_id },
         message: { text: message },
+        messaging_type: "RESPONSE",
       });
+      console.log(`[send-dm] calling ${url} pageId=${pageId} igId=${igConnection.instagramAccountId}`);
       const apiRes = await fetch(`${url}?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -664,7 +669,7 @@ async function startServer() {
       });
       const data = await apiRes.json() as Record<string, unknown>;
       if (!apiRes.ok) {
-        console.error("[CommentAutomations] send-dm error:", data);
+        console.error("[CommentAutomations] send-dm error:", JSON.stringify(data));
         res.status(apiRes.status).json({ error: data });
         return;
       }
