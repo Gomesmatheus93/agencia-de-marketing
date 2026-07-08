@@ -586,6 +586,92 @@ async function startServer() {
     }
   });
 
+  // ── n8n: post public reply to a comment ─────────────────────────────────
+  app.post("/api/automations/post-reply", express.json(), async (req, res) => {
+    const apiKey = req.headers["x-api-key"];
+    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { comment_id, message, ig_account_id } = req.body as {
+      comment_id?: string;
+      message?: string;
+      ig_account_id?: string;
+    };
+    if (!comment_id || !message || !ig_account_id) {
+      res.status(400).json({ error: "Campos obrigatórios: comment_id, message, ig_account_id" });
+      return;
+    }
+    try {
+      const igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
+      if (!igConnection?.accessToken) {
+        res.status(404).json({ error: "Instagram connection not found" });
+        return;
+      }
+      const url = `https://graph.facebook.com/v25.0/${comment_id}/replies`;
+      const params = new URLSearchParams({ message, access_token: igConnection.accessToken });
+      const apiRes = await fetch(`${url}?${params.toString()}`, { method: "POST" });
+      const data = await apiRes.json() as Record<string, unknown>;
+      if (!apiRes.ok) {
+        console.error("[CommentAutomations] post-reply error:", data);
+        res.status(apiRes.status).json({ error: data });
+        return;
+      }
+      res.json({ success: true, id: data.id });
+    } catch (err) {
+      console.error("[CommentAutomations] post-reply error:", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ── n8n: send DM to a commenter ─────────────────────────────────────────
+  app.post("/api/automations/send-dm", express.json(), async (req, res) => {
+    const apiKey = req.headers["x-api-key"];
+    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { ig_account_id, recipient_id, message } = req.body as {
+      ig_account_id?: string;
+      recipient_id?: string;
+      message?: string;
+    };
+    if (!ig_account_id || !recipient_id || !message) {
+      res.status(400).json({ error: "Campos obrigatórios: ig_account_id, recipient_id, message" });
+      return;
+    }
+    try {
+      const igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
+      if (!igConnection?.accessToken) {
+        res.status(404).json({ error: "Instagram connection not found" });
+        return;
+      }
+      const url = `https://graph.facebook.com/v25.0/${ig_account_id}/messages`;
+      const body = JSON.stringify({
+        recipient: { id: recipient_id },
+        message: { text: message },
+      });
+      const apiRes = await fetch(`${url}?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      const data = await apiRes.json() as Record<string, unknown>;
+      if (!apiRes.ok) {
+        console.error("[CommentAutomations] send-dm error:", data);
+        res.status(apiRes.status).json({ error: data });
+        return;
+      }
+      void db.incrementDmsSentCount(
+        (req.body as { automation_id?: number }).automation_id ?? 0
+      );
+      res.json({ success: true, message_id: data.message_id });
+    } catch (err) {
+      console.error("[CommentAutomations] send-dm error:", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

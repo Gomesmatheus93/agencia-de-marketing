@@ -1170,6 +1170,14 @@ export async function getInstagramConnection(userId: number): Promise<InstagramC
   return row ?? null;
 }
 
+export async function getInstagramConnectionByIgId(igAccountId: string): Promise<InstagramConnection | null> {
+  await ensureInstagramConnectionsColumns();
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.instagramAccountId, igAccountId));
+  return row ?? null;
+}
+
 export async function upsertInstagramConnection(data: InsertInstagramConnection): Promise<void> {
   await ensureInstagramConnectionsColumns();
   const db = await getDb();
