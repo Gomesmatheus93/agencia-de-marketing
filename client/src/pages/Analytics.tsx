@@ -316,10 +316,10 @@ function InstagramLoginPrompt() {
       </div>
       <Button
         className="bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white shadow-md shadow-[#7b00ae]/20 hover:shadow-lg"
-        onClick={() => { window.location.href = "/api/oauth/instagram/login"; }}
+        onClick={() => { window.location.href = "/auth/instagram"; }}
       >
         <Instagram className="h-4 w-4 mr-2" />
-        Conectar com Instagram
+        Conectar com Facebook
       </Button>
     </div>
   );
