@@ -575,6 +575,7 @@ export function registerOAuthRoutes(app: Express) {
     authUrl.searchParams.set("scope", SCOPES);
     authUrl.searchParams.set("state", state);
     authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("auth_type", "rerequest");
 
     res.redirect(authUrl.toString());
   });
