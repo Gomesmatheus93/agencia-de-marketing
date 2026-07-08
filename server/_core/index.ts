@@ -642,6 +642,7 @@ async function startServer() {
     }
     try {
       const igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
+      console.log(`[send-dm] ig_account_id=${ig_account_id}, connection_found=${!!igConnection}, tokenSource=${igConnection?.tokenSource}, tokenPrefix=${igConnection?.accessToken?.slice(0, 10)}`);
       if (!igConnection?.accessToken) {
         res.status(404).json({ error: "Instagram connection not found" });
         return;
