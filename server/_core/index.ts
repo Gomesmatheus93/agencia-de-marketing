@@ -568,6 +568,8 @@ async function startServer() {
       }
       // Increment counter asynchronously so we don't delay the response
       void db.incrementCommentMatchedCount(match.id);
+      // Fetch the access token for this user's Instagram connection
+      const igConnection = await db.getInstagramConnection(match.userId);
       res.json({
         matched: true,
         automationId: match.id,
@@ -575,6 +577,8 @@ async function startServer() {
         dmFirstMessage: match.dmFirstMessage,
         dmFollowupMessage: match.dmFollowupMessage ?? null,
         dmLink: match.dmLink ?? null,
+        accessToken: igConnection?.accessToken ?? null,
+        igAccountId: igConnection?.instagramAccountId ?? null,
       });
     } catch (err) {
       console.error("[CommentAutomations] match-comment error:", err);
