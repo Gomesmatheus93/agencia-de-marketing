@@ -559,7 +559,9 @@ async function startServer() {
       return;
     }
     try {
+      console.log(`[CommentAutomations] Recebido: ig_account_id=${ig_account_id}, media_id=${media_id}, comment_text=${comment_text}`);
       const match = await db.matchCommentAutomation(ig_account_id, media_id, comment_text);
+      console.log(`[CommentAutomations] Match: ${match ? `id=${match.id}` : "não encontrado"}`);
       if (!match) {
         res.status(404).json({ matched: false });
         return;

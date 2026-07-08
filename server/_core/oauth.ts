@@ -26,6 +26,7 @@ const SCOPES = [
   "public_profile",
   "instagram_basic",
   "instagram_content_publish",
+  "instagram_manage_comments",
   "pages_show_list",
   "pages_read_engagement",
 ].join(",");
@@ -110,6 +111,8 @@ export function registerOAuthRoutes(app: Express) {
   const IG_LOGIN_SCOPES = [
     "instagram_business_basic",
     "instagram_business_content_publish",
+    "instagram_business_manage_comments",
+    "instagram_business_manage_messages",
   ].join(",");
 
   // userId = 0 means "not logged in yet" — a new session will be created in the callback

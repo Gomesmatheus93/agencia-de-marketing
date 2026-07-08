@@ -2163,6 +2163,13 @@ export async function matchCommentAutomation(
     WHERE igAccountId = ${igAccountId} AND igPostId = ${igPostId} AND status = 'active'
   `);
   const campaigns = (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAutomation);
+  console.log(`[DB] matchCommentAutomation: igAccountId=${igAccountId}, igPostId=${igPostId}, campaigns_found=${campaigns.length}`);
+  if (campaigns.length === 0) {
+    // Debug: show all active campaigns to help diagnose mismatch
+    const allRows = await db.execute(sql`SELECT igAccountId, igPostId, status, keywords FROM comment_automations WHERE status = 'active' LIMIT 5`);
+    const allCampaigns = allRows[0] as unknown as Array<{ igAccountId: string; igPostId: string; status: string; keywords: string }>;
+    console.log(`[DB] Campanhas ativas no banco:`, JSON.stringify(allCampaigns));
+  }
   const lowerComment = commentText.toLowerCase();
   return campaigns.find((c) =>
     c.keywords.some((kw) => lowerComment.includes(kw.toLowerCase()))
