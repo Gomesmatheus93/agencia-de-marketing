@@ -2184,6 +2184,16 @@ export async function matchCommentAutomation(
   ) ?? null;
 }
 
+export async function getInstagramConnectionByAutomationId(automationId: number): Promise<InstagramConnection | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureCommentAutomationsTable();
+  const rows = await db.execute(sql`SELECT userId FROM comment_automations WHERE id = ${automationId} LIMIT 1`);
+  const userId = ((rows[0] as unknown as Record<string, unknown>[])[0])?.userId as number | undefined;
+  if (!userId) return null;
+  return getInstagramConnection(userId);
+}
+
 export async function incrementCommentMatchedCount(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;

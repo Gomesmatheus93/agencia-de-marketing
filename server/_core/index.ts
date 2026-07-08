@@ -641,13 +641,18 @@ async function startServer() {
       return;
     }
     try {
-      const igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
-      console.log(`[send-dm] ig_account_id=${ig_account_id}, connection_found=${!!igConnection}, tokenSource=${igConnection?.tokenSource}, tokenPrefix=${igConnection?.accessToken?.slice(0, 10)}`);
+      const automationId = (req.body as { automation_id?: number }).automation_id;
+      // Primary: look up by automationId → userId → connection (survives reconnects)
+      let igConnection = automationId ? await db.getInstagramConnectionByAutomationId(automationId) : null;
+      // Fallback: look up by ig_account_id
+      if (!igConnection) igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
+      console.log(`[send-dm] ig_account_id=${ig_account_id}, automation_id=${automationId}, connection_found=${!!igConnection}, tokenSource=${igConnection?.tokenSource}`);
       if (!igConnection?.accessToken) {
         res.status(404).json({ error: "Instagram connection not found" });
         return;
       }
-      const url = `https://graph.facebook.com/v25.0/${ig_account_id}/messages`;
+      const resolvedIgId = igConnection.instagramAccountId ?? ig_account_id;
+      const url = `https://graph.facebook.com/v25.0/${resolvedIgId}/messages`;
       const body = JSON.stringify({
         recipient: { id: recipient_id },
         message: { text: message },
