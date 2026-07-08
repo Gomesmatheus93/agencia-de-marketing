@@ -631,10 +631,11 @@ async function startServer() {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { ig_account_id, recipient_id, message } = req.body as {
+    const { ig_account_id, recipient_id, message, comment_id } = req.body as {
       ig_account_id?: string;
       recipient_id?: string;
       message?: string;
+      comment_id?: string;
     };
     if (!ig_account_id || !recipient_id || !message) {
       res.status(400).json({ error: "Campos obrigatórios: ig_account_id, recipient_id, message" });
@@ -642,17 +643,39 @@ async function startServer() {
     }
     try {
       const automationId = (req.body as { automation_id?: number }).automation_id;
-      // Primary: look up by automationId → userId → connection (survives reconnects)
       let igConnection = automationId ? await db.getInstagramConnectionByAutomationId(automationId) : null;
-      // Fallback: look up by ig_account_id
       if (!igConnection) igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
-      console.log(`[send-dm] ig_account_id=${ig_account_id}, automation_id=${automationId}, connection_found=${!!igConnection}, tokenSource=${igConnection?.tokenSource}`);
+      console.log(`[send-dm] ig_account_id=${ig_account_id}, automation_id=${automationId}, comment_id=${comment_id}, connection_found=${!!igConnection}`);
       if (!igConnection?.accessToken) {
         res.status(404).json({ error: "Instagram connection not found" });
         return;
       }
-      // Prefer Messenger Platform endpoint (/{page-id}/messages) — works with pages_messaging.
-      // Fall back to Instagram Graph API (/{ig-account-id}/messages) if no page ID.
+
+      // Strategy 1: Instagram Graph API with comment_id as entry point.
+      // This opens the DM window via the comment itself — no prior DM history needed.
+      if (comment_id && igConnection.instagramAccountId) {
+        const igUrl = `https://graph.facebook.com/v25.0/${igConnection.instagramAccountId}/messages`;
+        const igBody = JSON.stringify({
+          recipient: { comment_id },
+          message: { text: message },
+        });
+        console.log(`[send-dm] trying IG comment entry: ${igUrl} comment_id=${comment_id}`);
+        const igRes = await fetch(`${igUrl}?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: igBody,
+        });
+        const igData = await igRes.json() as Record<string, unknown>;
+        if (igRes.ok) {
+          console.log(`[send-dm] IG comment entry succeeded`, igData);
+          void db.incrementDmsSentCount(automationId ?? 0);
+          res.json({ success: true, message_id: igData.message_id, method: "ig_comment" });
+          return;
+        }
+        console.warn(`[send-dm] IG comment entry failed (${igRes.status}):`, JSON.stringify(igData));
+      }
+
+      // Strategy 2: Messenger Platform (/{page-id}/messages) — requires prior DM history.
       const pageId = igConnection.facebookPageId;
       const resolvedSenderId = pageId ?? (igConnection.instagramAccountId ?? ig_account_id);
       const url = `https://graph.facebook.com/v25.0/${resolvedSenderId}/messages`;
@@ -661,7 +684,7 @@ async function startServer() {
         message: { text: message },
         messaging_type: "RESPONSE",
       });
-      console.log(`[send-dm] calling ${url} pageId=${pageId} igId=${igConnection.instagramAccountId}`);
+      console.log(`[send-dm] fallback Messenger Platform: ${url}`);
       const apiRes = await fetch(`${url}?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
