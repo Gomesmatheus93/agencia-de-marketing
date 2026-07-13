@@ -135,6 +135,42 @@ function ResultPanel({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
+
+        {/* Needs-upload state — shown instead of the full result */}
+        {result.needsUpload && (
+          <div className="flex flex-col items-center gap-5 py-8 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+              <Upload className="w-8 h-8 text-amber-500" />
+            </div>
+            <div className="space-y-2 max-w-sm">
+              <h3 className="font-semibold text-foreground">Imagens não disponíveis</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                O servidor não consegue baixar posts de perfis externos — o Instagram bloqueia IPs de servidores.
+              </p>
+            </div>
+            <div className="w-full max-w-sm p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-left space-y-2">
+              <p className="text-xs font-semibold text-violet-700 dark:text-violet-400">Como analisar o {result.profileHandle}:</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside leading-relaxed">
+                <li>Abra o Instagram e acesse o perfil <strong>{result.profileHandle}</strong></li>
+                <li>Tire 4–8 prints do feed com posts gráficos (cards, banners, logos)</li>
+                <li>Clique em <strong>"Nova análise"</strong> e digite <strong>{result.profileHandle}</strong></li>
+                <li>Use a seção <strong>"Capturas de tela do perfil"</strong> para carregar os prints</li>
+                <li>Clique em <strong>Analisar estilo</strong></li>
+              </ol>
+            </div>
+            <Button
+              onClick={onClose}
+              className="gap-2 bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <Plus className="w-4 h-4" />
+              Nova análise com upload
+            </Button>
+          </div>
+        )}
+
+        {/* Regular result content — hidden when needsUpload */}
+        {!result.needsUpload && <>
+
         {/* Posts analisados */}
         {result.rawPostImageUrls && result.rawPostImageUrls.length > 0 && (
           <Section icon={<Instagram className="w-4 h-4" />} title={`Posts analisados (${result.rawPostImageUrls.length})`}>
@@ -253,30 +289,34 @@ function ResultPanel({
             </div>
           </Section>
         )}
+
+        </> /* end !needsUpload */}
       </div>
 
-      {/* Action bar */}
-      <div className="p-4 border-t border-border/30 flex gap-2 flex-shrink-0">
-        {!alreadySaved && (
+      {/* Action bar — hidden when no images were found */}
+      {!result.needsUpload && (
+        <div className="p-4 border-t border-border/30 flex gap-2 flex-shrink-0">
+          {!alreadySaved && (
+            <Button
+              onClick={onSave}
+              disabled={isSaving}
+              variant="outline"
+              className="flex-1 gap-2"
+            >
+              <Check className="w-4 h-4" />
+              {isSaving ? "Salvando..." : "Salvar análise"}
+            </Button>
+          )}
           <Button
-            onClick={onSave}
-            disabled={isSaving}
-            variant="outline"
-            className="flex-1 gap-2"
+            onClick={onApplyToBrandKit}
+            disabled={isApplying}
+            className="flex-1 gap-2 bg-violet-600 hover:bg-violet-700 text-white"
           >
-            <Check className="w-4 h-4" />
-            {isSaving ? "Salvando..." : "Salvar análise"}
+            <Palette className="w-4 h-4" />
+            {isApplying ? "Aplicando..." : "Aplicar ao Brand Kit"}
           </Button>
-        )}
-        <Button
-          onClick={onApplyToBrandKit}
-          disabled={isApplying}
-          className="flex-1 gap-2 bg-violet-600 hover:bg-violet-700 text-white"
-        >
-          <Palette className="w-4 h-4" />
-          {isApplying ? "Aplicando..." : "Aplicar ao Brand Kit"}
-        </Button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -670,7 +710,7 @@ export default function StyleAnalyzer() {
                 source={currentSource}
                 onSave={handleSave}
                 onApplyToBrandKit={handleApplyToBrandKit}
-                onClose={mode === "viewing" ? () => { setMode("list"); setActiveProfileId(null); } : undefined}
+                onClose={mode === "viewing" ? () => { setMode("list"); setActiveProfileId(null); } : handleNewAnalysis}
                 isSaving={saveMutation.isPending}
                 isApplying={brandKitMutation.isPending}
                 alreadySaved={alreadySaved}

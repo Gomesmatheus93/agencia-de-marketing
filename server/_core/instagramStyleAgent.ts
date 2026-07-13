@@ -70,6 +70,9 @@ export interface InstagramStyleResult {
     description: string;
   };
 
+  // ── Estado especial ───────────────────────────────────────────────────
+  needsUpload?: boolean;
+
   // ── Branding ─────────────────────────────────────────────────────────
   brandKeywords?: string[];
   designTokens?: {
@@ -668,7 +671,8 @@ Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visua
       profileHandle: `@${cleanUsername}`,
       profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? null,
       rawPostImageUrls: [],
-      styleSummary: `Não foi possível acessar as imagens do perfil @${cleanUsername}. O servidor não consegue baixar posts de perfis externos (Instagram bloqueia IPs de servidores). Para analisar as cores reais deste perfil, vá em "Nova análise", digite @${cleanUsername} e use a seção "Capturas de tela do perfil" para fazer upload de 4 a 8 prints do feed antes de clicar em Analisar.`,
+      needsUpload: true,
+      styleSummary: `Não foi possível acessar as imagens do perfil @${cleanUsername}. O Instagram bloqueia downloads de posts de perfis externos em servidores. Faça upload de capturas de tela do feed para analisar as cores reais.`,
       toneDescription: "—",
       niche: profile.niche ?? "Não identificado",
       targetAudience: "—",
