@@ -648,31 +648,73 @@ Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visua
   }
 }`;
 
-  const userContent: AnthropicContent[] =
-    imageBlocks.length > 0
-      ? [
-          {
-            type: "text",
-            text: [
-              `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}.`,
-              uploadedBlocks.length > 0
-                ? `As primeiras ${uploadedBlocks.length} imagem(ns) são capturas de tela enviadas pelo usuário com os posts reais do perfil — estas são a REFERÊNCIA PRINCIPAL.`
-                : `A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.`,
-              `\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. ${uploadedBlocks.length > 0 ? "Examine as capturas de tela enviadas — o logo e os elementos gráficos nelas são a referência de cor mais confiável" : "Comece pela foto de perfil — o logo nela é a referência de cor mais confiável"}\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
-            ].join(" "),
-          },
-          ...imageBlocks,
-          {
-            type: "text",
-            text: `Com base EXCLUSIVAMENTE nas imagens analisadas acima, retorne o seguinte JSON completo:\n${jsonSchema}`,
-          },
-        ]
-      : [
-          {
-            type: "text",
-            text: `Não foi possível carregar imagens do perfil ${profileDesc}. Crie uma identidade visual profissional e genérica. Indique no styleSummary que as imagens não estavam disponíveis e explique brevemente o porquê (ex: perfil privado, erro de rede, ou imagens expiradas). Retorne o JSON:\n${jsonSchema}`,
-          },
-        ];
+  // ── Early return when no images available ──────────────────────────────────
+  // Do NOT ask Claude to invent colors when there's no visual data — it generates
+  // plausible-but-wrong palettes based on the niche name, misleading the user.
+  if (imageBlocks.length === 0) {
+    console.log(`[StyleAgent] @${cleanUsername}: no images — returning upload-required result`);
+    return {
+      accentColor: "#8b5cf6",
+      bgColor: "#f8f9fa",
+      primaryColor: "#6d28d9",
+      secondaryColor: "#a78bfa",
+      textColor: "#1a1a1a",
+      fontFamily: "system-ui, sans-serif",
+      secondaryFont: "sans-serif",
+      fontWeight: "regular",
+      titleAlign: "left",
+      titleSize: 1,
+      profileName: profile.name ?? cleanUsername,
+      profileHandle: `@${cleanUsername}`,
+      profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? null,
+      rawPostImageUrls: [],
+      styleSummary: `Não foi possível acessar as imagens do perfil @${cleanUsername}. O servidor não consegue baixar posts de perfis externos (Instagram bloqueia IPs de servidores). Para analisar as cores reais deste perfil, vá em "Nova análise", digite @${cleanUsername} e use a seção "Capturas de tela do perfil" para fazer upload de 4 a 8 prints do feed antes de clicar em Analisar.`,
+      toneDescription: "—",
+      niche: profile.niche ?? "Não identificado",
+      targetAudience: "—",
+      objective: "—",
+      layoutPattern: "—",
+      editingStyle: "—",
+      recurringElements: "—",
+      postStructure: "—",
+      visualEffects: "—",
+      copyType: "—",
+      captionStructure: "—",
+      ctaExamples: [],
+      language: "—",
+      frequentEmojis: "",
+      brandKeywords: [],
+      designTokens: {
+        "--color-primary": "#6d28d9",
+        "--color-secondary": "#a78bfa",
+        "--color-bg": "#f8f9fa",
+        "--color-text": "#1a1a1a",
+        "--color-accent": "#8b5cf6",
+        "--font-primary": "system-ui, sans-serif",
+        "--font-secondary": "system-ui, sans-serif",
+        "--border-radius": "8px",
+        "--spacing-unit": "16px",
+      },
+    };
+  }
+
+  const userContent: AnthropicContent[] = [
+    {
+      type: "text",
+      text: [
+        `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}.`,
+        uploadedBlocks.length > 0
+          ? `As primeiras ${uploadedBlocks.length} imagem(ns) são capturas de tela enviadas pelo usuário com os posts reais do perfil — estas são a REFERÊNCIA PRINCIPAL.`
+          : `A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.`,
+        `\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. ${uploadedBlocks.length > 0 ? "Examine as capturas de tela enviadas — o logo e os elementos gráficos nelas são a referência de cor mais confiável" : "Comece pela foto de perfil — o logo nela é a referência de cor mais confiável"}\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
+      ].join(" "),
+    },
+    ...imageBlocks,
+    {
+      type: "text",
+      text: `Com base EXCLUSIVAMENTE nas imagens analisadas acima, retorne o seguinte JSON completo:\n${jsonSchema}`,
+    },
+  ];
 
   const fallback: InstagramStyleResult = {
     accentColor: "#29d9ff",
