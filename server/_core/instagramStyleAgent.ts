@@ -372,6 +372,81 @@ async function fetchPublicProfilePage(username: string): Promise<Partial<RawProf
   }
 }
 
+// Fetch post images for an external profile via third-party Instagram viewers.
+// These sites render the profile in static HTML with real post image URLs,
+// bypassing the problem that instagram.com uses a JS SPA with no post data in HTML.
+async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
+  const BROWSER_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+  const sources: Array<{ label: string; url: string; headers?: Record<string, string> }> = [
+    {
+      label: "picuki",
+      url: `https://www.picuki.com/profile/${encodeURIComponent(username)}`,
+      headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+    },
+    {
+      label: "imginn",
+      url: `https://imginn.com/${encodeURIComponent(username)}/`,
+      headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+    },
+    {
+      label: "instastories",
+      url: `https://storiesig.info/en/profile/${encodeURIComponent(username)}`,
+      headers: { "User-Agent": BROWSER_UA, Accept: "text/html" },
+    },
+  ];
+
+  // Generic image URL extractor — finds CDN image URLs in HTML
+  function extractImageUrls(html: string): string[] {
+    const seen = new Set<string>();
+    const results: string[] = [];
+
+    // Match any src/data-src attributes pointing to image URLs
+    const srcPattern = /(?:src|data-src|data-original|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = srcPattern.exec(html)) !== null) {
+      const u = m[1].replace(/&amp;/g, "&");
+      if (!u.startsWith("http")) continue;
+      // Skip tiny thumbnails (avatars, icons)
+      if (/[_/]s\d{2,3}x\d{2,3}[_/]|\/emoji\/|spinner|placeholder|logo|icon/i.test(u)) continue;
+      // Skip SVG / static assets
+      if (/\.svg|fonts\.|css\.|js\./i.test(u)) continue;
+      if (seen.has(u)) continue;
+      seen.add(u);
+      results.push(u);
+      if (results.length >= 12) break;
+    }
+    return results;
+  }
+
+  for (const source of sources) {
+    try {
+      console.log(`[StyleAgent] third-party viewer: trying ${source.label} for @${username}`);
+      const res = await fetch(source.url, {
+        headers: source.headers ?? {},
+        signal: AbortSignal.timeout(14_000),
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        console.warn(`[StyleAgent] ${source.label}: HTTP ${res.status}`);
+        continue;
+      }
+
+      const html = await res.text();
+      const urls = extractImageUrls(html);
+      console.log(`[StyleAgent] ${source.label}: found ${urls.length} image URLs`);
+
+      if (urls.length >= 2) return urls.slice(0, 9);
+    } catch (err) {
+      console.warn(`[StyleAgent] ${source.label} failed:`, (err as Error).message);
+    }
+  }
+
+  return [];
+}
+
 // Convert a data URL or HTTP URL into an AnthropicImageContent block.
 function dataUrlToBlock(dataUrl: string): AnthropicImageContent | null {
   if (dataUrl.startsWith("data:")) {
@@ -455,8 +530,9 @@ export async function analyzeInstagramProfileStyle(params: {
     }
   }
 
-  // ── Step 2: HTML scraping fallback (external profiles or Graph API miss) ──────
+  // ── Step 2: HTML scraping + third-party viewers for external profiles ──────────
   if (profile.postImageUrls.length === 0) {
+    // instagram.com HTML rarely has post images (SPA) but gives us name/avatar
     const pub = await fetchPublicProfilePage(cleanUsername);
     profile = {
       username: cleanUsername,
@@ -464,6 +540,15 @@ export async function analyzeInstagramProfileStyle(params: {
       profilePictureUrl: profile.profilePictureUrl ?? pub.profilePictureUrl,
       postImageUrls: pub.postImageUrls ?? [],
     };
+
+    // If still no posts, try third-party Instagram viewers that render the full feed in HTML
+    if (profile.postImageUrls.length === 0) {
+      const thirdPartyUrls = await fetchViaThirdPartyViewer(cleanUsername);
+      if (thirdPartyUrls.length > 0) {
+        profile.postImageUrls = thirdPartyUrls;
+        console.log(`[StyleAgent] ✅ Third-party viewer: ${thirdPartyUrls.length} post URLs for @${cleanUsername}`);
+      }
+    }
   }
 
   // ── Step 3: Build image blocks ────────────────────────────────────────────────
