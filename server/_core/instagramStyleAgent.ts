@@ -369,6 +369,20 @@ async function fetchPublicProfilePage(username: string): Promise<Partial<RawProf
   }
 }
 
+// Convert a data URL or HTTP URL into an AnthropicImageContent block.
+function dataUrlToBlock(dataUrl: string): AnthropicImageContent | null {
+  if (dataUrl.startsWith("data:")) {
+    const m = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/s);
+    if (!m) return null;
+    const mime = m[1] as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+    return { type: "image", source: { type: "base64", media_type: mime, data: m[2] } };
+  }
+  if (dataUrl.startsWith("https://") || dataUrl.startsWith("http://")) {
+    return { type: "image", source: { type: "url", url: dataUrl } };
+  }
+  return null;
+}
+
 export async function analyzeInstagramProfileStyle(params: {
   username: string;
   connectedAccount?: {
@@ -378,9 +392,13 @@ export async function analyzeInstagramProfileStyle(params: {
     name?: string | null;
     profilePictureUrl?: string | null;
   } | null;
+  // Accepts both data: URIs (screenshots from client) and HTTP URLs
+  uploadedImages?: string[];
+  /** @deprecated use uploadedImages */
   uploadedImageUrls?: string[];
 }): Promise<InstagramStyleResult> {
   const { username, connectedAccount } = params;
+  const uploadedImages = params.uploadedImages ?? params.uploadedImageUrls ?? [];
   const cleanUsername = username
     .replace(/^@/, "")
     .replace(/.*instagram\.com\//, "")
@@ -445,10 +463,16 @@ export async function analyzeInstagramProfileStyle(params: {
     };
   }
 
-  // ── Step 3: Download all images (server-side preferred, URL fallback) ─────────
+  // ── Step 3: Build image blocks ────────────────────────────────────────────────
+  // Uploaded images (data URLs or HTTP URLs) come first — user-provided reference is highest priority
+  const uploadedBlocks: AnthropicImageContent[] = uploadedImages
+    .map(dataUrlToBlock)
+    .filter((b): b is AnthropicImageContent => b !== null)
+    .slice(0, 8);
+
+  // CDN URLs from Graph API or HTML scraping go through the download pipeline
   const allImageUrls = [
     profile.profilePictureUrl,
-    ...(params.uploadedImageUrls ?? []),
     ...profile.postImageUrls,
   ].filter((u): u is string => !!u && u.startsWith("http"));
 
@@ -470,7 +494,8 @@ export async function analyzeInstagramProfileStyle(params: {
   }
 
   // Build Claude image blocks and UI thumbnail data URLs
-  const imageBlocks: AnthropicImageContent[] = [];
+  // Uploaded blocks come first so Claude sees user-provided reference immediately
+  const imageBlocks: AnthropicImageContent[] = [...uploadedBlocks];
   const rawPostDataUrls: string[] = [];
   const postStartIndex = picIsFirst ? 1 : 0;
   let serverDownloadsSucceeded = 0;
@@ -628,7 +653,13 @@ Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visua
       ? [
           {
             type: "text",
-            text: `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}. A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.\n\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. Comece pela foto de perfil — o logo nela é a referência de cor mais confiável\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
+            text: [
+              `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}.`,
+              uploadedBlocks.length > 0
+                ? `As primeiras ${uploadedBlocks.length} imagem(ns) são capturas de tela enviadas pelo usuário com os posts reais do perfil — estas são a REFERÊNCIA PRINCIPAL.`
+                : `A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.`,
+              `\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. ${uploadedBlocks.length > 0 ? "Examine as capturas de tela enviadas — o logo e os elementos gráficos nelas são a referência de cor mais confiável" : "Comece pela foto de perfil — o logo nela é a referência de cor mais confiável"}\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
+            ].join(" "),
           },
           ...imageBlocks,
           {

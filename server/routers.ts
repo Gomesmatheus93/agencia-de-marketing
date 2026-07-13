@@ -3698,7 +3698,8 @@ const styleAnalyzerRouter = router({
   analyze: protectedProcedure
     .input(z.object({
       usernameOrUrl: z.string().min(1).max(255),
-      uploadedImageUrls: z.array(z.string().url()).max(12).optional(),
+      // Accepts both HTTP URLs and data: URIs (base64 screenshots from client)
+      uploadedImages: z.array(z.string().max(8_000_000)).max(8).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { analyzeInstagramProfileStyle } = await import("./_core/instagramStyleAgent");
@@ -3713,7 +3714,7 @@ const styleAnalyzerRouter = router({
             name: connection.name,
             profilePictureUrl: connection.profilePictureUrl,
           } : null,
-          uploadedImageUrls: input.uploadedImageUrls,
+          uploadedImages: input.uploadedImages,
         });
       } catch (err) {
         throw new TRPCError({

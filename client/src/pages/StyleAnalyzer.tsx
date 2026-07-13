@@ -15,6 +15,8 @@ import {
   Image,
   AlertCircle,
   Instagram,
+  Upload,
+  ImagePlus,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -335,6 +337,7 @@ function ProfileCard({
 export default function StyleAnalyzer() {
   const [mode, setMode] = useState<Mode>("list");
   const [username, setUsername] = useState("");
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [currentResult, setCurrentResult] = useState<InstagramStyleResult | null>(null);
   const [currentSource, setCurrentSource] = useState<"api" | "scrape" | "upload">("scrape");
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
@@ -389,7 +392,28 @@ export default function StyleAnalyzer() {
       toast.error("Informe o @username ou URL do perfil.");
       return;
     }
-    analyzeMutation.mutate({ usernameOrUrl: username.trim() });
+    analyzeMutation.mutate({
+      usernameOrUrl: username.trim(),
+      ...(uploadedImages.length > 0 ? { uploadedImages } : {}),
+    });
+  };
+
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files) return;
+    const remaining = 8 - uploadedImages.length;
+    if (remaining <= 0) {
+      toast.error("Máximo de 8 imagens atingido.");
+      return;
+    }
+    const toLoad = Array.from(files).slice(0, remaining);
+    toLoad.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) setUploadedImages((prev) => [...prev, dataUrl].slice(0, 8));
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleSave = () => {
@@ -433,6 +457,7 @@ export default function StyleAnalyzer() {
     setActiveProfileId(null);
     setAlreadySaved(false);
     setUsername("");
+    setUploadedImages([]);
   };
 
   return (
@@ -533,6 +558,77 @@ export default function StyleAnalyzer() {
                   <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
                     Esta ferramenta é para referência de estilo e moodboard criativo — não para replicar a identidade de outra marca. Funciona apenas com perfis públicos.
                   </p>
+                </div>
+
+                {/* Optional screenshot upload */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-foreground">
+                      Capturas de tela do perfil <span className="text-muted-foreground font-normal">(opcional)</span>
+                    </label>
+                    {uploadedImages.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setUploadedImages([])}
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        Limpar tudo
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Adicione até 8 prints do feed para melhorar a extração de cores — especialmente útil para perfis externos.
+                  </p>
+
+                  {/* Thumbnails */}
+                  {uploadedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {uploadedImages.map((src, i) => (
+                        <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border shadow-sm">
+                          <img src={src} alt={`Upload ${i + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setUploadedImages((prev) => prev.filter((_, idx) => idx !== i))}
+                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {uploadedImages.length < 8 && (
+                        <label className="w-16 h-16 rounded-lg border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-violet-400 hover:bg-violet-50/20 transition-colors">
+                          <ImagePlus className="w-5 h-5 text-muted-foreground" />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => handleImageUpload(e.target.files)}
+                            disabled={analyzeMutation.isPending}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Drop zone (shown when no images yet) */}
+                  {uploadedImages.length === 0 && (
+                    <label className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-dashed border-border cursor-pointer hover:border-violet-400 hover:bg-violet-50/20 transition-colors">
+                      <Upload className="w-5 h-5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground text-center">
+                        Clique para adicionar prints do perfil<br />
+                        <span className="text-muted-foreground/60">PNG, JPG — até 8 imagens</span>
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e.target.files)}
+                        disabled={analyzeMutation.isPending}
+                      />
+                    </label>
+                  )}
                 </div>
 
                 {/* Analyze button */}
