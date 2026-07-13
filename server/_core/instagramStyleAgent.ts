@@ -205,12 +205,11 @@ async function loadImage(url: string): Promise<ImageLoadResult | null> {
     return bufferToImageResult(proxyBuf, url);
   }
 
-  // Strategy 5: URL block via wsrv.nl proxy — Anthropic's servers fetch through wsrv.nl,
-  // which has full internet access and can always reach Instagram/Facebook CDN.
-  // This is more reliable than passing the raw CDN URL directly.
-  const proxyUrl = toProxyUrl(url);
-  console.warn(`[StyleAgent] ⚠️ Server download failed — passing proxy URL to Claude: ${proxyUrl.slice(0, 80)}`);
-  return { block: { type: "image", source: { type: "url", url: proxyUrl } }, cdnUrl: url };
+  // All download strategies failed — skip this image.
+  // Do NOT pass a URL block to Anthropic: Instagram CDN and wsrv.nl are blocked by
+  // Anthropic's crawler due to robots.txt, which would cause a 400 error.
+  console.warn(`[StyleAgent] ⚠️ All download strategies failed for: ${url.slice(0, 80)} — skipping`);
+  return null;
 }
 
 // Fetch the authenticated user's OWN profile via Graph API.
