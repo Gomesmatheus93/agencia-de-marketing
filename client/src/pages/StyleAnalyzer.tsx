@@ -140,31 +140,34 @@ function ResultPanel({
         {result.needsUpload && (
           <div className="flex flex-col items-center gap-5 py-8 text-center">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-              <Upload className="w-8 h-8 text-amber-500" />
+              <AlertCircle className="w-8 h-8 text-amber-500" />
             </div>
             <div className="space-y-2 max-w-sm">
-              <h3 className="font-semibold text-foreground">Imagens não disponíveis</h3>
+              <h3 className="font-semibold text-foreground">Configuração necessária</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                O servidor não consegue baixar posts de perfis externos — o Instagram bloqueia IPs de servidores.
+                {result.styleSummary}
               </p>
             </div>
             <div className="w-full max-w-sm p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-left space-y-2">
-              <p className="text-xs font-semibold text-violet-700 dark:text-violet-400">Como analisar o {result.profileHandle}:</p>
-              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside leading-relaxed">
-                <li>Abra o Instagram e acesse o perfil <strong>{result.profileHandle}</strong></li>
-                <li>Tire 4–8 prints do feed com posts gráficos (cards, banners, logos)</li>
-                <li>Clique em <strong>"Nova análise"</strong> e digite <strong>{result.profileHandle}</strong></li>
-                <li>Use a seção <strong>"Capturas de tela do perfil"</strong> para carregar os prints</li>
-                <li>Clique em <strong>Analisar estilo</strong></li>
+              <p className="text-xs font-semibold text-violet-700 dark:text-violet-400">Como ativar análise automática de perfis externos:</p>
+              <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside leading-relaxed">
+                <li>Acesse <strong>scraperapi.com</strong> e crie uma conta gratuita</li>
+                <li>Copie sua <strong>API Key</strong> do painel</li>
+                <li>No Easypanel, adicione a variável de ambiente: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">SCRAPERAPI_KEY=sua_chave</code></li>
+                <li>Reinicie o serviço — análise automática estará disponível</li>
               </ol>
+              <p className="text-[10px] text-muted-foreground/60 pt-1">Plano gratuito: 1.000 análises/mês · sem cartão de crédito</p>
             </div>
-            <Button
-              onClick={onClose}
-              className="gap-2 bg-violet-600 hover:bg-violet-700 text-white"
-            >
-              <Plus className="w-4 h-4" />
-              Nova análise com upload
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={onClose}
+                variant="outline"
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Analisar com prints
+              </Button>
+            </div>
           </div>
         )}
 

@@ -371,75 +371,83 @@ async function fetchPublicProfilePage(username: string): Promise<Partial<RawProf
   }
 }
 
-// Fetch post images for an external profile via third-party Instagram viewers.
-// These sites render the profile in static HTML with real post image URLs,
-// bypassing the problem that instagram.com uses a JS SPA with no post data in HTML.
+// Extract image URLs from raw HTML — used by fetchViaThirdPartyViewer.
+function extractImageUrlsFromHtml(html: string): string[] {
+  const seen = new Set<string>();
+  const results: string[] = [];
+
+  // src / data-src / data-original / data-lazy-src attributes
+  const srcPattern = /(?:src|data-src|data-original|data-lazy-src|data-bg|content)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = srcPattern.exec(html)) !== null) {
+    const u = m[1].replace(/&amp;/g, "&");
+    if (!u.startsWith("http")) continue;
+    // Skip tiny thumbnails / static assets
+    if (/[_/]s\d{2,3}x\d{2,3}[_/]|\/emoji\/|spinner|placeholder|logo|icon|avatar|\.svg/i.test(u)) continue;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    results.push(u);
+    if (results.length >= 12) break;
+  }
+  return results;
+}
+
+// Build the URL to fetch a target page through ScraperAPI's residential proxy network.
+// ScraperAPI rotates IPs, bypasses bot detection, and handles CAPTCHAs automatically.
+// Free plan: 1000 req/month — https://www.scraperapi.com
+function buildScraperApiUrl(targetUrl: string, render = false): string {
+  const key = ENV.scraperApiKey;
+  if (!key) return targetUrl; // no key → direct request (may be blocked)
+  const params = new URLSearchParams({ api_key: key, url: targetUrl });
+  if (render) params.set("render", "true");
+  return `http://api.scraperapi.com/?${params.toString()}`;
+}
+
+// Fetch post images for an external profile.
+// Strategy 1 (when SCRAPERAPI_KEY is set): proxy requests through residential IPs →
+//   bypasses Instagram CDN/bot detection reliably.
+// Strategy 2 (fallback): direct request to third-party viewers — may be blocked.
 async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
   const BROWSER_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-  const sources: Array<{ label: string; url: string; headers?: Record<string, string> }> = [
-    {
-      label: "picuki",
-      url: `https://www.picuki.com/profile/${encodeURIComponent(username)}`,
-      headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
-    },
-    {
-      label: "imginn",
-      url: `https://imginn.com/${encodeURIComponent(username)}/`,
-      headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
-    },
-    {
-      label: "instastories",
-      url: `https://storiesig.info/en/profile/${encodeURIComponent(username)}`,
-      headers: { "User-Agent": BROWSER_UA, Accept: "text/html" },
-    },
+  const hasScraperKey = !!ENV.scraperApiKey;
+  console.log(`[StyleAgent] fetchViaThirdPartyViewer: scraperApiKey=${hasScraperKey ? "set" : "NOT SET"}`);
+
+  // Sources to try — picuki.com renders Instagram feeds in plain HTML (not SPA).
+  const targetUrls = [
+    `https://www.picuki.com/profile/${encodeURIComponent(username)}`,
+    `https://imginn.com/${encodeURIComponent(username)}/`,
+    `https://www.instagram.com/${encodeURIComponent(username)}/`,
   ];
 
-  // Generic image URL extractor — finds CDN image URLs in HTML
-  function extractImageUrls(html: string): string[] {
-    const seen = new Set<string>();
-    const results: string[] = [];
+  for (const targetUrl of targetUrls) {
+    const label = targetUrl.includes("picuki") ? "picuki"
+      : targetUrl.includes("imginn") ? "imginn"
+      : "instagram-html";
 
-    // Match any src/data-src attributes pointing to image URLs
-    const srcPattern = /(?:src|data-src|data-original|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)/gi;
-    let m: RegExpExecArray | null;
-    while ((m = srcPattern.exec(html)) !== null) {
-      const u = m[1].replace(/&amp;/g, "&");
-      if (!u.startsWith("http")) continue;
-      // Skip tiny thumbnails (avatars, icons)
-      if (/[_/]s\d{2,3}x\d{2,3}[_/]|\/emoji\/|spinner|placeholder|logo|icon/i.test(u)) continue;
-      // Skip SVG / static assets
-      if (/\.svg|fonts\.|css\.|js\./i.test(u)) continue;
-      if (seen.has(u)) continue;
-      seen.add(u);
-      results.push(u);
-      if (results.length >= 12) break;
-    }
-    return results;
-  }
+    const fetchUrl = buildScraperApiUrl(targetUrl);
 
-  for (const source of sources) {
     try {
-      console.log(`[StyleAgent] third-party viewer: trying ${source.label} for @${username}`);
-      const res = await fetch(source.url, {
-        headers: source.headers ?? {},
-        signal: AbortSignal.timeout(14_000),
+      console.log(`[StyleAgent] trying ${label}${hasScraperKey ? " via ScraperAPI" : " direct"} for @${username}`);
+      const res = await fetch(fetchUrl, {
+        headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+        signal: AbortSignal.timeout(20_000),
         redirect: "follow",
       });
 
       if (!res.ok) {
-        console.warn(`[StyleAgent] ${source.label}: HTTP ${res.status}`);
+        console.warn(`[StyleAgent] ${label}: HTTP ${res.status}`);
         continue;
       }
 
       const html = await res.text();
-      const urls = extractImageUrls(html);
-      console.log(`[StyleAgent] ${source.label}: found ${urls.length} image URLs`);
+      const urls = extractImageUrlsFromHtml(html);
+      console.log(`[StyleAgent] ${label}: found ${urls.length} image URLs`);
 
       if (urls.length >= 2) return urls.slice(0, 9);
     } catch (err) {
-      console.warn(`[StyleAgent] ${source.label} failed:`, (err as Error).message);
+      console.warn(`[StyleAgent] ${label} failed:`, (err as Error).message);
     }
   }
 
@@ -756,7 +764,9 @@ Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visua
       profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? null,
       rawPostImageUrls: [],
       needsUpload: true,
-      styleSummary: `Não foi possível acessar as imagens do perfil @${cleanUsername}. O Instagram bloqueia downloads de posts de perfis externos em servidores. Faça upload de capturas de tela do feed para analisar as cores reais.`,
+      styleSummary: ENV.scraperApiKey
+        ? `Não foi possível baixar imagens do perfil @${cleanUsername} mesmo via ScraperAPI. O perfil pode ser privado, inexistente ou temporariamente bloqueado.`
+        : `Análise automática de perfis externos requer a variável de ambiente SCRAPERAPI_KEY. Cadastre-se gratuitamente em scraperapi.com (1000 req/mês grátis) e adicione a chave no Easypanel.`,
       toneDescription: "—",
       niche: profile.niche ?? "Não identificado",
       targetAudience: "—",
