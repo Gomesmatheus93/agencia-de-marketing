@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import {
   invokeAnthropicLLM,
   parseClaudeJsonResponse,
@@ -18,6 +19,9 @@ export interface InstagramStyleResult {
   profileImageUrl?: string;
   styleSummary: string;
   toneDescription: string;
+
+  // ── Posts analisados (para exibição na UI) ────────────────────────────
+  rawPostImageUrls?: string[];
 
   // ── Identidade do perfil ───────────────────────────────────────────────
   niche?: string;
@@ -88,76 +92,213 @@ interface RawProfile {
   postImageUrls: string[];
 }
 
-// Download image server-side → base64.
-// Instagram CDN URLs expire quickly and are not fetchable by Anthropic's servers.
-async function fetchImageAsBase64(url: string): Promise<AnthropicImageContent | null> {
+// Result from attempting to load one image
+interface ImageLoadResult {
+  // Block to send to Claude (base64 preferred, URL fallback)
+  block: AnthropicImageContent;
+  // If we have the actual bytes (server-side download succeeded), this is the data URL
+  dataUrl?: string;
+  // The original CDN URL (always present for display fallback)
+  cdnUrl: string;
+}
+
+// Try to download a buffer from `url` using the provided headers.
+async function tryDirectDownload(
+  url: string,
+  headers: Record<string, string>
+): Promise<Buffer | null> {
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "image/*,*/*;q=0.8",
-        Referer: "https://www.instagram.com/",
-      },
-      signal: AbortSignal.timeout(12_000),
-    });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return null;
-
-    const contentType = res.headers.get("content-type") ?? "image/jpeg";
-    const mimeType = contentType.split(";")[0].trim();
-    if (!mimeType.startsWith("image/")) return null;
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.byteLength > 4 * 1024 * 1024) return null; // cap at 4 MB
-
-    return {
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-        data: buffer.toString("base64"),
-      },
-    };
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("image/") && !ct.includes("octet-stream")) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.byteLength >= 2_000 ? buf : null; // < 2KB → placeholder/logo, skip
   } catch {
     return null;
   }
 }
 
+// Build the wsrv.nl proxy URL for a CDN image — used both for server-side download
+// AND as the URL block sent to Anthropic when server-side download fails.
+// wsrv.nl has full internet access and is not blocked by Instagram/Facebook CDN.
+function toProxyUrl(cdnUrl: string): string {
+  return `https://wsrv.nl/?url=${encodeURIComponent(cdnUrl)}&output=jpg&n=-1`;
+}
+
+// Try downloading via wsrv.nl — bypasses CDN IP blocks on cloud/VPS hosts.
+async function tryProxyDownload(url: string): Promise<Buffer | null> {
+  const proxyUrls = [
+    toProxyUrl(url),
+    // Second attempt: images.weserv.nl (same service, different domain/IP pool)
+    `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&n=-1`,
+  ];
+  for (const proxyUrl of proxyUrls) {
+    try {
+      const res = await fetch(proxyUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 compatible" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("image/") && !ct.includes("octet-stream")) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.byteLength >= 2_000) return buf;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function bufferToImageResult(buf: Buffer, cdnUrl: string): ImageLoadResult {
+  const data = buf.toString("base64");
+  const safeMime = "image/jpeg" as const;
+  return {
+    block: { type: "image", source: { type: "base64", media_type: safeMime, data } },
+    dataUrl: `data:${safeMime};base64,${data}`,
+    cdnUrl,
+  };
+}
+
+// Download image server-side → base64, with multiple fallback strategies:
+//   1. Direct download (3 header variants)
+//   2. Via wsrv.nl proxy (bypasses CDN IP blocks on cloud/VPS hosts)
+//   3. URL block for Anthropic to fetch directly (last resort)
+async function loadImage(url: string): Promise<ImageLoadResult | null> {
+  const directStrategies: Record<string, string>[] = [
+    {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      Referer: "https://www.instagram.com/",
+    },
+    {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept: "image/*,*/*;q=0.8",
+    },
+    {
+      "User-Agent":
+        "Instagram 155.0.0.37.107 Android (23/6.0.1; 320dpi; 720x1280; samsung; SM-A310F; a3xelte; samsungexynos7580; en_GB; 239490550)",
+      Accept: "image/*,*/*;q=0.8",
+    },
+  ];
+
+  // Strategy 1–3: Direct download
+  for (const headers of directStrategies) {
+    const buf = await tryDirectDownload(url, headers);
+    if (buf) {
+      if (buf.byteLength > 6 * 1024 * 1024) break; // too large even if valid
+      console.log(`[StyleAgent] ✅ Direct download ${Math.round(buf.byteLength / 1024)}KB: ${url.slice(0, 70)}`);
+      return bufferToImageResult(buf, url);
+    }
+  }
+
+  // Strategy 4: Proxy via wsrv.nl
+  const proxyBuf = await tryProxyDownload(url);
+  if (proxyBuf) {
+    console.log(`[StyleAgent] ✅ Proxy download ${Math.round(proxyBuf.byteLength / 1024)}KB: ${url.slice(0, 70)}`);
+    return bufferToImageResult(proxyBuf, url);
+  }
+
+  // Strategy 5: URL block via wsrv.nl proxy — Anthropic's servers fetch through wsrv.nl,
+  // which has full internet access and can always reach Instagram/Facebook CDN.
+  // This is more reliable than passing the raw CDN URL directly.
+  const proxyUrl = toProxyUrl(url);
+  console.warn(`[StyleAgent] ⚠️ Server download failed — passing proxy URL to Claude: ${proxyUrl.slice(0, 80)}`);
+  return { block: { type: "image", source: { type: "url", url: proxyUrl } }, cdnUrl: url };
+}
+
 // Fetch the authenticated user's OWN profile via Graph API.
-// Only call this when the requested username matches the connected account.
+// We prefer IMAGE posts and CAROUSEL slides over video thumbnails because
+// photos are random frames from videos and don't reflect brand identity colors.
 async function fetchOwnProfileViaGraphApi(
   instagramAccountId: string,
   accessToken: string
 ): Promise<RawProfile> {
   const base = `${ENV.metaGraphApiBaseUrl}/${ENV.metaGraphApiVersion}`;
 
+  // Request carousel children so we can pull individual slide images (brand graphics are often in carousels)
+  const mediaFields = "media_url,thumbnail_url,media_type,timestamp,children{media_url,media_type}";
+
   const [profileRes, mediaRes] = await Promise.allSettled([
     fetch(
       `${base}/${instagramAccountId}?fields=name,username,profile_picture_url&access_token=${accessToken}`,
-      { signal: AbortSignal.timeout(10_000) }
+      { signal: AbortSignal.timeout(12_000) }
     ),
     fetch(
-      `${base}/${instagramAccountId}/media?fields=media_url,thumbnail_url,media_type&limit=12&access_token=${accessToken}`,
-      { signal: AbortSignal.timeout(10_000) }
+      // Fetch 25 items so we're more likely to find IMAGE/CAROUSEL posts (not just videos)
+      `${base}/${instagramAccountId}/media?fields=${mediaFields}&limit=25&access_token=${accessToken}`,
+      { signal: AbortSignal.timeout(15_000) }
     ),
   ]);
 
-  type ProfileJson = { name?: string; username?: string; profile_picture_url?: string };
-  type MediaJson = { data?: Array<{ media_url?: string; thumbnail_url?: string; media_type?: string }> };
+  type ChildItem = { media_url?: string; media_type?: string };
+  type MediaItem = {
+    media_url?: string;
+    thumbnail_url?: string;
+    media_type?: string;
+    timestamp?: string;
+    children?: { data?: ChildItem[] };
+  };
+  type ProfileJson = { name?: string; username?: string; profile_picture_url?: string; error?: { code: number; message: string } };
+  type MediaJson = { data?: MediaItem[]; error?: { code: number; message: string } };
 
-  const profile: ProfileJson =
-    profileRes.status === "fulfilled" && profileRes.value.ok
-      ? await profileRes.value.json()
-      : {};
+  let profile: ProfileJson = {};
+  if (profileRes.status === "fulfilled") {
+    const body = (await profileRes.value.json()) as ProfileJson;
+    if (body.error) {
+      console.error(`[StyleAgent] Graph API profile error: code=${body.error.code} — ${body.error.message}`);
+    } else {
+      profile = body;
+    }
+  }
 
-  const mediaItems: NonNullable<MediaJson["data"]> =
-    mediaRes.status === "fulfilled" && mediaRes.value.ok
-      ? ((await mediaRes.value.json()) as MediaJson).data ?? []
-      : [];
+  let mediaItems: MediaItem[] = [];
+  if (mediaRes.status === "fulfilled") {
+    const body = (await mediaRes.value.json()) as MediaJson;
+    if (body.error) {
+      console.error(`[StyleAgent] Graph API media error: code=${body.error.code} — ${body.error.message}`);
+    } else {
+      mediaItems = body.data ?? [];
+    }
+  }
 
-  const postImageUrls = mediaItems
-    .map((m) => m.thumbnail_url ?? m.media_url)
-    .filter((u): u is string => typeof u === "string" && u.startsWith("http"))
-    .slice(0, 12);
+  // Build URL list, strongly preferring IMAGE content over video thumbnails.
+  // Carousels expose individual slide images via children{media_url}.
+  // Brand colors live in graphic/design images, not in random video frames.
+  const imageUrls: string[] = [];   // IMAGE posts and carousel slides (best for color extraction)
+  const videoThumbs: string[] = []; // VIDEO thumbnails (fallback only)
+
+  for (const item of mediaItems) {
+    if (item.media_type === "CAROUSEL_ALBUM") {
+      // Pull each carousel slide image
+      for (const child of item.children?.data ?? []) {
+        if (child.media_url?.startsWith("http") && child.media_type !== "VIDEO") {
+          imageUrls.push(child.media_url);
+        }
+      }
+      // Also keep the cover if no children came back
+      if (item.media_url?.startsWith("http")) {
+        imageUrls.push(item.media_url);
+      }
+    } else if (item.media_type === "IMAGE" && item.media_url?.startsWith("http")) {
+      imageUrls.push(item.media_url);
+    } else if (item.media_type === "VIDEO" && item.thumbnail_url?.startsWith("http")) {
+      videoThumbs.push(item.thumbnail_url);
+    }
+  }
+
+  // Use image posts first; fill remaining slots with video thumbnails (up to 3 video thumbs)
+  const postImageUrls = [
+    ...imageUrls.slice(0, 9),
+    ...videoThumbs.slice(0, Math.max(0, 3 - imageUrls.length)),
+  ].slice(0, 12);
+
+  console.log(
+    `[StyleAgent] Graph API: username="${profile.username}", images=${imageUrls.length}, videoThumbs=${videoThumbs.length}, selected=${postImageUrls.length}`
+  );
 
   return {
     username: profile.username ?? "",
@@ -167,40 +308,43 @@ async function fetchOwnProfileViaGraphApi(
   };
 }
 
-// Try to scrape basic info from a public Instagram profile page.
-// Instagram heavily restricts scraping, so we may only get the og:image (profile pic).
+// Last-resort HTML scraping. Usually only yields og:image (profile pic), rarely post images.
 async function fetchPublicProfilePage(username: string): Promise<Partial<RawProfile>> {
   try {
     const res = await fetch(`https://www.instagram.com/${username}/`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         "Cache-Control": "no-cache",
       },
       signal: AbortSignal.timeout(14_000),
     });
-    if (!res.ok) return {};
+    if (!res.ok) {
+      console.warn(`[StyleAgent] HTML scrape: HTTP ${res.status} for @${username}`);
+      return {};
+    }
     const html = await res.text();
 
-    // Profile picture from OG tag
     const ogImage = html
       .match(/<meta property="og:image" content="([^"]+)"/)?.[1]
       ?.replace(/&amp;/g, "&");
 
-    // Display name from OG title: "Name (@handle) • Instagram..."
     const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/)?.[1] ?? "";
-    const name = ogTitle.match(/^([^(@•\|]+)/)?.[1]?.trim() || undefined;
+    const name = ogTitle.match(/^([^(@•|]+)/)?.[1]?.trim() || undefined;
 
-    // Bio from OG description
-    const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/)?.[1]
-      ?.replace(/&amp;/g, "&")
-      ?.replace(/&#39;/g, "'")
-      ?.replace(/&quot;/g, '"') || "";
+    const ogDesc =
+      html
+        .match(/<meta property="og:description" content="([^"]+)"/)?.[1]
+        ?.replace(/&amp;/g, "&")
+        ?.replace(/&#39;/g, "'")
+        ?.replace(/&quot;/g, '"') || "";
 
-    // Try to find post image URLs embedded in the page JSON
+    // Only scontent CDN (actual user media) with /v/ path — excludes static.cdninstagram.com
     const postImageUrls: string[] = [];
-    const cdnPattern = /https:\/\/[^"']+\.cdninstagram\.com\/[^"']+\.(?:jpg|jpeg|png|webp)/gi;
+    const cdnPattern =
+      /https:\/\/scontent[^"' ]*\.cdninstagram\.com\/v\/[^"' ]+\.(?:jpg|jpeg|png|webp)/gi;
     const allCdnUrls = Array.from(html.matchAll(cdnPattern)).map((m) => m[0]);
     const seen = new Set<string>();
     for (const url of allCdnUrls) {
@@ -211,13 +355,16 @@ async function fetchPublicProfilePage(username: string): Promise<Partial<RawProf
       if (postImageUrls.length >= 9) break;
     }
 
+    console.log(`[StyleAgent] HTML scrape: pic=${!!ogImage}, posts=${postImageUrls.length} for @${username}`);
+
     return {
       username,
       name: ogDesc ? `${name ?? username} — ${ogDesc.slice(0, 120)}` : name,
       profilePictureUrl: ogImage,
       postImageUrls,
     };
-  } catch {
+  } catch (err) {
+    console.warn(`[StyleAgent] HTML scrape failed for @${username}:`, err);
     return { username };
   }
 }
@@ -231,6 +378,7 @@ export async function analyzeInstagramProfileStyle(params: {
     name?: string | null;
     profilePictureUrl?: string | null;
   } | null;
+  uploadedImageUrls?: string[];
 }): Promise<InstagramStyleResult> {
   const { username, connectedAccount } = params;
   const cleanUsername = username
@@ -241,30 +389,52 @@ export async function analyzeInstagramProfileStyle(params: {
     .trim()
     .toLowerCase();
 
+  console.log(`[StyleAgent] Analyzing @${cleanUsername} — connected account: ${connectedAccount?.instagramAccountId ?? "none"}`);
+
   let profile: RawProfile = { username: cleanUsername, postImageUrls: [] };
 
-  const isOwnConnectedProfile =
-    connectedAccount &&
-    connectedAccount.username &&
-    connectedAccount.username.toLowerCase() === cleanUsername;
-
-  if (isOwnConnectedProfile) {
+  // ── Step 1: Graph API for connected account ───────────────────────────────────
+  if (connectedAccount) {
     try {
       const apiData = await fetchOwnProfileViaGraphApi(
-        connectedAccount!.instagramAccountId,
-        connectedAccount!.accessToken
+        connectedAccount.instagramAccountId,
+        connectedAccount.accessToken
       );
-      profile = {
-        ...apiData,
-        name: apiData.name ?? connectedAccount!.name ?? undefined,
-        profilePictureUrl: apiData.profilePictureUrl ?? connectedAccount!.profilePictureUrl ?? undefined,
-      };
-      console.log(`[InstagramStyleAgent] Got ${profile.postImageUrls.length} posts via Graph API for @${cleanUsername}`);
+
+      const apiUsername = apiData.username.toLowerCase();
+      const storedUsername = (connectedAccount.username ?? "").toLowerCase();
+
+      // Use Graph API data if: API or stored username confirms this is the requested profile
+      const isMatch =
+        (apiUsername && apiUsername === cleanUsername) ||
+        (storedUsername && storedUsername === cleanUsername);
+
+      if (isMatch && apiData.postImageUrls.length > 0) {
+        profile = {
+          username: cleanUsername,
+          name: apiData.name ?? connectedAccount.name ?? undefined,
+          profilePictureUrl:
+            apiData.profilePictureUrl ?? connectedAccount.profilePictureUrl ?? undefined,
+          postImageUrls: apiData.postImageUrls,
+        };
+        console.log(`[StyleAgent] ✅ Graph API match for @${cleanUsername}: ${profile.postImageUrls.length} posts`);
+      } else if (apiData.postImageUrls.length === 0) {
+        // Graph API returned no posts — maybe a permissions issue
+        console.warn(`[StyleAgent] ⚠️ Graph API returned 0 posts for account ${connectedAccount.instagramAccountId}. Check instagram_content_publish permission.`);
+        // Still use profile metadata if available
+        if (apiData.profilePictureUrl || connectedAccount.profilePictureUrl) {
+          profile.profilePictureUrl =
+            apiData.profilePictureUrl ?? connectedAccount.profilePictureUrl ?? undefined;
+        }
+      } else {
+        console.warn(`[StyleAgent] ⚠️ Graph API username mismatch: api="${apiUsername}", stored="${storedUsername}", requested="${cleanUsername}"`);
+      }
     } catch (err) {
-      console.warn("[InstagramStyleAgent] Graph API failed:", err);
+      console.error(`[StyleAgent] ❌ Graph API exception:`, err);
     }
   }
 
+  // ── Step 2: HTML scraping fallback (external profiles or Graph API miss) ──────
   if (profile.postImageUrls.length === 0) {
     const pub = await fetchPublicProfilePage(cleanUsername);
     profile = {
@@ -273,74 +443,133 @@ export async function analyzeInstagramProfileStyle(params: {
       profilePictureUrl: profile.profilePictureUrl ?? pub.profilePictureUrl,
       postImageUrls: pub.postImageUrls ?? [],
     };
-    console.log(`[InstagramStyleAgent] Public page scraped: pic=${!!profile.profilePictureUrl}, posts=${profile.postImageUrls.length} for @${cleanUsername}`);
   }
 
-  // Download all images server-side → base64 (Anthropic can't fetch Instagram CDN URLs)
+  // ── Step 3: Download all images (server-side preferred, URL fallback) ─────────
   const allImageUrls = [
     profile.profilePictureUrl,
+    ...(params.uploadedImageUrls ?? []),
     ...profile.postImageUrls,
   ].filter((u): u is string => !!u && u.startsWith("http"));
 
-  const imageBlocks: AnthropicImageContent[] = [];
-  const downloadResults = await Promise.allSettled(
-    allImageUrls.slice(0, 10).map((url) => fetchImageAsBase64(url))
+  console.log(`[StyleAgent] Loading ${allImageUrls.length} image URLs for @${cleanUsername}`);
+
+  const loadResults = await Promise.allSettled(
+    allImageUrls.slice(0, 10).map((url) => loadImage(url))
   );
 
-  // Persist the profile picture as a data URL so it never expires
+  // Persist profile picture as data URL (never expires)
   let profilePictureDataUrl: string | undefined;
-  const picIsFirst = profile.profilePictureUrl && allImageUrls[0] === profile.profilePictureUrl;
-  if (picIsFirst && downloadResults[0]?.status === "fulfilled" && downloadResults[0].value) {
-    const block = downloadResults[0].value;
-    if (block.source.type === "base64") {
-      profilePictureDataUrl = `data:${block.source.media_type};base64,${block.source.data}`;
+  const picIsFirst =
+    !!profile.profilePictureUrl && allImageUrls[0] === profile.profilePictureUrl;
+  if (picIsFirst) {
+    const r = loadResults[0];
+    if (r.status === "fulfilled" && r.value?.dataUrl) {
+      profilePictureDataUrl = r.value.dataUrl;
     }
   }
 
-  for (const r of downloadResults) {
-    if (r.status === "fulfilled" && r.value) imageBlocks.push(r.value);
+  // Build Claude image blocks and UI thumbnail data URLs
+  const imageBlocks: AnthropicImageContent[] = [];
+  const rawPostDataUrls: string[] = [];
+  const postStartIndex = picIsFirst ? 1 : 0;
+  let serverDownloadsSucceeded = 0;
+  let urlFallbacksUsed = 0;
+
+  for (let i = 0; i < loadResults.length; i++) {
+    const r = loadResults[i];
+    if (r.status !== "fulfilled" || !r.value) continue;
+    const result = r.value;
+
+    imageBlocks.push(result.block);
+
+    if (i >= postStartIndex && rawPostDataUrls.length < 6) {
+      if (result.dataUrl) {
+        // Server successfully downloaded → create 480×480 JPEG thumbnail
+        serverDownloadsSucceeded++;
+        try {
+          const buf = Buffer.from(result.dataUrl.split(",")[1], "base64");
+          const thumb = await sharp(buf)
+            .resize(480, 480, { fit: "cover", position: "centre" })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+          rawPostDataUrls.push(`data:image/jpeg;base64,${thumb.toString("base64")}`);
+        } catch {
+          rawPostDataUrls.push(result.dataUrl);
+        }
+      } else {
+        // Server download failed → use raw CDN URL for UI (browser can load it)
+        urlFallbacksUsed++;
+        rawPostDataUrls.push(result.cdnUrl);
+      }
+    }
   }
 
-  console.log(`[InstagramStyleAgent] Sending ${imageBlocks.length} base64 images to Claude for @${cleanUsername}`);
+  console.log(
+    `[StyleAgent] @${cleanUsername}: ${imageBlocks.length} Claude blocks (${serverDownloadsSucceeded} base64, ${urlFallbacksUsed} URL fallback), ${rawPostDataUrls.length} UI thumbnails`
+  );
 
+  // Detect placeholder/logo: if 2+ thumbnails share the same fingerprint → identical images
+  if (rawPostDataUrls.length >= 2) {
+    const dataUrlThumbs = rawPostDataUrls.filter((u) => u.startsWith("data:"));
+    if (dataUrlThumbs.length >= 2) {
+      const fingerprint = (url: string) => url.slice(23, 300);
+      const first = fingerprint(dataUrlThumbs[0]);
+      const allIdentical = dataUrlThumbs.every((u) => fingerprint(u) === first);
+      if (allIdentical) {
+        console.warn(`[StyleAgent] All ${dataUrlThumbs.length} thumbnails identical → placeholder detected, discarding`);
+        rawPostDataUrls.length = 0;
+      }
+    }
+  }
+
+  // ── Step 4: Build Claude prompt ───────────────────────────────────────────────
   const profileDesc = profile.name
     ? `@${cleanUsername} (${profile.name})`
     : `@${cleanUsername}`;
 
-  const systemPrompt = `Você é um agente especialista em análise e clonagem estrutural de perfis do Instagram.
+  const systemPrompt = `Você é um agente especialista em extração de identidade visual e branding de perfis do Instagram.
 
-Seu objetivo é analisar completamente o perfil a partir das imagens enviadas e recriar toda a identidade visual e estratégica automaticamente — sem que o usuário precise configurar nada manualmente.
+Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visual do perfil a partir das imagens enviadas.
 
-# COMPORTAMENTO OBRIGATÓRIO
+# REGRA PRINCIPAL SOBRE CORES — LEIA COM ATENÇÃO
 
-## ANÁLISE VISUAL PROFUNDA
-- Examine cada imagem pixel a pixel
-- Extraia cores HEX EXATAS que aparecem nas imagens — nunca adivinhe baseado no nome da marca ou setor
-- Identifique padrões visuais repetidos entre os posts
-- Detecte estilos gráficos: sombras, bordas, glow, gradientes, filtros
-- Classifique o estilo: moderno, minimalista, luxuoso, esportivo, colorido, etc.
-- Analise a tipografia a partir da aparência visual
-- Identifique o nicho, público-alvo e objetivo comercial a partir dos temas visuais
+## O QUE SÃO CORES DE MARCA (use estas):
+- Cor do logo ou símbolo da marca
+- Cor do fundo de elementos gráficos (banners, cards, carrosseis)
+- Cor de texto em títulos e chamadas (não em fotos)
+- Cor de botões, ícones ou formas geométricas desenhadas
+- Cor de molduras, bordas, overlays sobre as fotos
+- Cor que aparece de forma CONSISTENTE em múltiplos posts
+- Cor do fundo de slides de carrossel
 
-## EXTRAÇÃO DE IDENTIDADE
-- Paleta completa: primária, secundária, fundo, texto, destaque
-- Sistema tipográfico: fontes, pesos, hierarquia
-- DNA visual: layouts, estrutura, elementos recorrentes
-- Estratégia de conteúdo deduzida pelas imagens
-- Tokens de design prontos para reutilização
+## O QUE NÃO SÃO CORES DE MARCA (ignore estas):
+- Cor do céu em fotos externas
+- Cor de pele de pessoas fotografadas
+- Cor de vegetação ou ambiente natural
+- Cor de paredes ou superfícies no background de fotos
+- Qualquer cor que aparece apenas em 1 imagem e não se repete
+
+## PROCESSO DE ANÁLISE
+1. Observe TODAS as imagens enviadas
+2. Identifique quais elementos aparecem de forma repetida (logo, fundo, texto, moldura)
+3. Extraia a cor HEX EXATA desses elementos repetidos — esses são os brand colors
+4. Se houver gráficos/carrosseis nas imagens, priorize as cores deles
+5. Analise a tipografia nos textos sobrepostos às imagens (não o texto das fotos)
 
 ## REGRAS CRÍTICAS
 - Retorne APENAS JSON válido, sem texto antes ou depois
-- Cores SEMPRE em formato #RRGGBB baseado nas imagens reais
+- Cores SEMPRE em formato #RRGGBB baseado em elementos GRÁFICOS repetidos — NUNCA em fundos fotográficos
+- Jamais use cores completamente genéricas como #000000 ou #ffffff a menos que realmente dominam os elementos gráficos
 - Se uma imagem não estiver disponível, indique no styleSummary
-- Analise profundamente antes de responder — priorize fidelidade visual`;
+- Priorize CONSISTÊNCIA entre posts: a cor que aparece em 3+ posts é brand color`;
 
   const jsonSchema = `{
-  "accentColor": "#RRGGBB — cor de destaque mais usada (logo, títulos coloridos, ícones, botões)",
-  "bgColor": "#RRGGBB — cor de fundo dominante dos posts",
-  "primaryColor": "#RRGGBB — cor primária da identidade (pode ser igual ao accentColor)",
-  "secondaryColor": "#RRGGBB — segunda cor mais usada",
-  "textColor": "#RRGGBB — cor predominante dos textos",
+  "accentColor": "#RRGGBB — cor de destaque consistente entre posts: logo, ícone da marca, botão, elemento gráfico colorido. NÃO use cor de fundo fotográfico",
+  "bgColor": "#RRGGBB — cor de fundo dos elementos GRÁFICOS (slides, cards, banners) — NÃO o céu ou parede de fotos",
+  "primaryColor": "#RRGGBB — cor que representa melhor a marca, que aparece no logo ou em elementos repetidos em vários posts",
+  "secondaryColor": "#RRGGBB — segunda cor que aparece de forma recorrente como complemento à cor primária nos gráficos",
+  "textColor": "#RRGGBB — cor do texto sobreposto às imagens ou usado em slides — NÃO cor de texto em fotos de documentos",
   "fontFamily": "uma das opções: 'system-ui, -apple-system, sans-serif' | 'Georgia, Times New Roman, serif' | 'Impact, Arial Black, sans-serif' | 'Courier New, Courier, monospace' | 'Helvetica Neue, Helvetica, Arial, sans-serif'",
   "secondaryFont": "descrição da fonte secundária observada visualmente (ex: 'sans-serif leve')",
   "fontWeight": "descrição do peso visual (ex: 'bold com contraste alto', 'light minimalista')",
@@ -394,24 +623,25 @@ Seu objetivo é analisar completamente o perfil a partir das imagens enviadas e 
   }
 }`;
 
-  const userContent: AnthropicContent[] = imageBlocks.length > 0
-    ? [
-        {
-          type: "text",
-          text: `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}.\n\nFaça uma análise completa e profunda do DNA visual e estratégico deste perfil. Extraia as cores EXATAS em HEX que aparecem nas imagens. Identifique todos os padrões visuais, estilo de edição, estrutura de posts, nicho e estratégia de conteúdo.`,
-        },
-        ...imageBlocks,
-        {
-          type: "text",
-          text: `Com base EXCLUSIVAMENTE nas imagens analisadas acima, retorne o seguinte JSON completo:\n${jsonSchema}`,
-        },
-      ]
-    : [
-        {
-          type: "text",
-          text: `Não foi possível carregar imagens do perfil ${profileDesc}. Indique no styleSummary que as imagens não estavam disponíveis. Sugira uma identidade visual genérica profissional:\n${jsonSchema}`,
-        },
-      ];
+  const userContent: AnthropicContent[] =
+    imageBlocks.length > 0
+      ? [
+          {
+            type: "text",
+            text: `Analise as ${imageBlocks.length} imagens do perfil ${profileDesc}. A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.\n\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. Comece pela foto de perfil — o logo nela é a referência de cor mais confiável\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
+          },
+          ...imageBlocks,
+          {
+            type: "text",
+            text: `Com base EXCLUSIVAMENTE nas imagens analisadas acima, retorne o seguinte JSON completo:\n${jsonSchema}`,
+          },
+        ]
+      : [
+          {
+            type: "text",
+            text: `Não foi possível carregar imagens do perfil ${profileDesc}. Crie uma identidade visual profissional e genérica. Indique no styleSummary que as imagens não estavam disponíveis e explique brevemente o porquê (ex: perfil privado, erro de rede, ou imagens expiradas). Retorne o JSON:\n${jsonSchema}`,
+          },
+        ];
 
   const fallback: InstagramStyleResult = {
     accentColor: "#29d9ff",
@@ -427,6 +657,7 @@ Seu objetivo é analisar completamente o perfil a partir das imagens enviadas e 
     profileName: profile.name ?? cleanUsername,
     profileHandle: `@${cleanUsername}`,
     profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl,
+    rawPostImageUrls: rawPostDataUrls,
     styleSummary: "Não foi possível carregar as imagens do perfil para análise.",
     toneDescription: "Comunicação profissional.",
     niche: "Não identificado",
@@ -469,5 +700,6 @@ Seu objetivo é analisar completamente o perfil a partir das imagens enviadas e 
     ...parsed,
     profileHandle: `@${String(parsed.profileHandle ?? cleanUsername).replace(/^@/, "")}`,
     profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? parsed.profileImageUrl,
+    rawPostImageUrls: rawPostDataUrls,
   };
 }

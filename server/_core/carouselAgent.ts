@@ -269,32 +269,38 @@ async function researchTopicContext(topic: string): Promise<string | null> {
 
 async function searchSerperImages(query: string): Promise<string | undefined> {
   if (!ENV.serperApiKey) return undefined;
-  try {
-    const res = await fetchWithTimeout(
-      "https://google.serper.dev/images",
-      {
-        method: "POST",
-        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ q: query, gl: "br", hl: "pt", num: 10 }),
-      },
-      5000
-    );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as SerperImagesResponse;
-    const images = (data.images ?? []).filter((img) => {
-      if (!img.imageUrl) return false;
-      // Skip strongly landscape images (bad for portrait carousel)
-      if (img.imageWidth && img.imageHeight && img.imageWidth > img.imageHeight * 1.4) return false;
-      return true;
-    });
-    const portrait = images.filter(
-      (img) => !img.imageWidth || !img.imageHeight || img.imageHeight >= img.imageWidth
-    );
-    const pool = portrait.length > 0 ? portrait : images;
-    return pickRandom(pool, 5)?.imageUrl;
-  } catch {
-    return undefined;
+  // Try up to 2 query variants: original, then a shorter fallback
+  const queries = [query, query.split(" ").slice(0, 3).join(" ")].filter(Boolean);
+  for (const q of queries) {
+    try {
+      const res = await fetchWithTimeout(
+        "https://google.serper.dev/images",
+        {
+          method: "POST",
+          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ q, num: 20 }),
+        },
+        7000
+      );
+      if (!res.ok) continue;
+      const data = (await res.json()) as SerperImagesResponse;
+      const images = (data.images ?? []).filter((img) => {
+        if (!img.imageUrl) return false;
+        // Skip strongly landscape images (bad for portrait carousel)
+        if (img.imageWidth && img.imageHeight && img.imageWidth > img.imageHeight * 1.4) return false;
+        return true;
+      });
+      const portrait = images.filter(
+        (img) => !img.imageWidth || !img.imageHeight || img.imageHeight >= img.imageWidth
+      );
+      const pool = portrait.length > 0 ? portrait : images;
+      const result = pickRandom(pool, 8)?.imageUrl;
+      if (result) return result;
+    } catch {
+      continue;
+    }
   }
+  return undefined;
 }
 
 // ─── Style Guide ──────────────────────────────────────────────────────────────
@@ -539,10 +545,15 @@ function buildCentralThemeImageQuery(input: {
   slideTitle: string;
   imageSearchQuery: string;
 }) {
-  // Prefer Claude's slide-specific query (in English, concise); only fall back to topic+title
   const specific = normalizeImageSearchQuery(input.imageSearchQuery);
-  if (specific.length > 8) return specific;
-  return normalizeImageSearchQuery(`${input.topic} ${input.slideTitle}`);
+  const topicNorm = normalizeImageSearchQuery(input.topic);
+  // Combine topic with the slide-specific query for richer, more relevant results.
+  // If the specific query already contains the topic, use it as-is.
+  if (specific.length > 8) {
+    const alreadyHasTopic = specific.toLowerCase().includes(topicNorm.toLowerCase().split(" ")[0]);
+    return alreadyHasTopic ? specific : normalizeImageSearchQuery(`${topicNorm} ${specific}`).slice(0, 120);
+  }
+  return normalizeImageSearchQuery(`${topicNorm} ${input.slideTitle}`);
 }
 
 function pickRandom<T>(arr: T[], max = 3): T | undefined {
@@ -796,21 +807,21 @@ async function resolveCarouselCoverImage(input: {
 }) {
   const query = buildCentralThemeImageQuery(input);
 
-  const stockSources = [
-    searchSerperImages(query),   // real Google Images — highest priority
-    searchUnsplashImage(query),
-    searchPexelsImage(query),
-    searchPixabayImage(query),
-    searchWikimediaImage(query),
-  ].map((p) => p.then((url) => {
-    if (!url) throw new Error("no result");
-    return url;
-  }));
+  // Google Images (Serper) gets first priority — most relevant results.
+  // Only fall back to stock libraries if Google fails.
+  const googleResult = await searchSerperImages(query);
+  if (googleResult) return googleResult;
 
-  try {
-    return await Promise.any(stockSources);
-  } catch {
-    // all sources failed
+  // Sequential fallback through stock photo libraries
+  const fallbacks = [
+    () => searchUnsplashImage(query),
+    () => searchPexelsImage(query),
+    () => searchPixabayImage(query),
+    () => searchWikimediaImage(query),
+  ];
+  for (const fn of fallbacks) {
+    const url = await fn();
+    if (url) return url;
   }
 
   return buildFallbackImageDataUrl(`${input.topic} ${input.slideTitle}`);

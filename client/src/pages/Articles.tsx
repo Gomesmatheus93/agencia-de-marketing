@@ -61,30 +61,6 @@ type EnergyNewsItem = {
   publishedAt: string | null;
 };
 
-type LinkedInDiagnosticCheck = {
-  name: string;
-  ok: boolean;
-  detail: string;
-};
-
-type LinkedInDiagnostic = {
-  success: boolean;
-  apiBaseUrl: string;
-  apiVersion: string;
-  tokenPresent: boolean;
-  tokenPreview: string;
-  configuredAuthorUrn: string;
-  configuredAuthorUrnType: "person" | "organization" | "unknown";
-  configuredAuthorUrnLooksValid: boolean;
-  configuredAuthorUrnIsPlaceholder: boolean;
-  detectedPersonUrn?: string;
-  detectedMemberId?: string;
-  detectedMemberName?: string;
-  administeredOrganizationUrns: string[];
-  recommendedAuthorUrns: string[];
-  checks: LinkedInDiagnosticCheck[];
-  nextSteps: string[];
-};
 
 // Coloque aqui seus sites favoritos de pesquisa sobre energia.
 const FAVORITE_ENERGY_RESEARCH_SITES = [
@@ -134,12 +110,15 @@ export default function Articles() {
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [showGenerator, setShowGenerator] = useState(false);
-  const [researchTopic, setResearchTopic] = useState("energia");
-  const [favoriteSites, setFavoriteSites] = useState(FAVORITE_ENERGY_RESEARCH_SITES.join("\n"));
+  const [researchTopic, setResearchTopic] = useState(() =>
+    localStorage.getItem("articles_research_topic") ?? "energia"
+  );
+  const [favoriteSites, setFavoriteSites] = useState(() =>
+    localStorage.getItem("articles_favorite_sites") ?? FAVORITE_ENERGY_RESEARCH_SITES.join("\n")
+  );
   const [newsResults, setNewsResults] = useState<EnergyNewsItem[]>([]);
   const [selectedNews, setSelectedNews] = useState<EnergyNewsItem | null>(null);
-  const [linkedinDiagnostic, setLinkedinDiagnostic] = useState<LinkedInDiagnostic | null>(null);
-  const [showLinkedInDiagnostic, setShowLinkedInDiagnostic] = useState(false);
+
   const [newsletterHtml, setNewsletterHtml] = useState<string | null>(null);
   const [newsletterSubject, setNewsletterSubject] = useState<string>("");
   const [showNewsletterDialog, setShowNewsletterDialog] = useState(false);
@@ -225,18 +204,6 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao publicar no LinkedIn: " + err.message),
   });
 
-  const diagnoseLinkedInMutation = trpc.articles.diagnoseLinkedIn.useMutation({
-    onSuccess: (result) => {
-      setLinkedinDiagnostic(result as LinkedInDiagnostic);
-      setShowLinkedInDiagnostic(true);
-      if (result.success) {
-        toast.success("Diagnostico do LinkedIn concluido com sucesso.");
-      } else {
-        toast.warning("Diagnostico do LinkedIn concluido com alertas.");
-      }
-    },
-    onError: (err) => toast.error("Erro ao diagnosticar LinkedIn: " + err.message),
-  });
 
   const deleteMutation = trpc.articles.delete.useMutation({
     onSuccess: () => {
@@ -326,6 +293,12 @@ export default function Articles() {
     });
   };
 
+  const handleSavePreferences = () => {
+    localStorage.setItem("articles_favorite_sites", favoriteSites);
+    localStorage.setItem("articles_research_topic", researchTopic);
+    toast.success("Preferências salvas!");
+  };
+
   const handleResearchNews = () => {
     const sites = parseFavoriteSites(favoriteSites);
 
@@ -388,9 +361,6 @@ export default function Articles() {
     publishLinkedInMutation.mutate({ id: article.id });
   };
 
-  const handleDiagnoseLinkedIn = () => {
-    diagnoseLinkedInMutation.mutate();
-  };
 
   const handleCreateNewsletter = (article: Article) => {
     generateNewsletterMutation.mutate({ id: article.id });
@@ -443,14 +413,6 @@ export default function Articles() {
                 title="Configurar digest diário WhatsApp"
               >
                 <Bell className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setShowGenerator(true)}
-                className="h-8 gap-1.5 text-xs bg-emerald-600 text-white border-0 hover:bg-emerald-700"
-              >
-                <Newspaper className="w-3.5 h-3.5" />
-                {t("articlesResearchBtn")}
               </Button>
             </div>
           </div>
@@ -585,20 +547,7 @@ export default function Articles() {
                       )}
                       Newsletter
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleDiagnoseLinkedIn}
-                      disabled={diagnoseLinkedInMutation.isPending}
-                      className="h-8 gap-1.5 text-xs"
-                    >
-                      {diagnoseLinkedInMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Settings2 className="w-3.5 h-3.5" />
-                      )}
-                      LinkedIn
-                    </Button>
+
                     {selectedArticle.status !== "published" && (
                       <Button
                         size="sm"
@@ -706,11 +655,20 @@ export default function Articles() {
           </div>
         ) : (
           <div className="hidden lg:flex flex-1 items-center justify-center">
-            <div className="text-center space-y-3">
+            <div className="text-center space-y-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mx-auto opacity-40">
                 <BookOpen className="w-8 h-8 text-white" />
               </div>
-              <p className="text-muted-foreground text-sm">Selecione um artigo para visualizar</p>
+              <p className="text-muted-foreground text-sm">
+                {articles.length === 0 ? "Nenhum artigo ainda" : "Selecione um artigo para visualizar"}
+              </p>
+              <Button
+                onClick={() => setShowGenerator(true)}
+                className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <Newspaper className="w-4 h-4" />
+                Novo
+              </Button>
             </div>
           </div>
         )}
@@ -744,10 +702,22 @@ export default function Articles() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                    <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
-                    Sites favoritos
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      Sites favoritos
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleSavePreferences}
+                      className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                      disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
+                    >
+                      <Check className="w-3 h-3" />
+                      Salvar
+                    </Button>
+                  </div>
                   <Textarea
                     value={favoriteSites}
                     onChange={(e) => setFavoriteSites(e.target.value)}
@@ -756,19 +726,31 @@ export default function Articles() {
                     disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Tambem da para editar direto no codigo em FAVORITE_ENERGY_RESEARCH_SITES.
+                    Um site por linha. Clique em Salvar para manter suas preferências.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-muted-foreground" />
-                    Termo de pesquisa
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                      Tema de pesquisa
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleSavePreferences}
+                      className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                      disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
+                    >
+                      <Check className="w-3 h-3" />
+                      Salvar
+                    </Button>
+                  </div>
                   <Input
                     value={researchTopic}
                     onChange={(e) => setResearchTopic(e.target.value)}
-                    placeholder="energia, solar, eolica..."
+                    placeholder="energia, marketing, tecnologia..."
                     className="glass border-border/50 focus:border-emerald-500/50"
                     disabled={researchNewsMutation.isPending || generateFromNewsMutation.isPending}
                   />
@@ -979,139 +961,6 @@ export default function Articles() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showLinkedInDiagnostic} onOpenChange={setShowLinkedInDiagnostic}>
-        <DialogContent className="glass-card max-h-[90vh] max-w-3xl overflow-y-auto border-border/50">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4 text-primary" />
-              Diagnostico do LinkedIn
-            </DialogTitle>
-          </DialogHeader>
-
-          {linkedinDiagnostic ? (
-            <div className="space-y-5">
-              <div
-                className={cn(
-                  "rounded-lg border p-4",
-                  linkedinDiagnostic.success
-                    ? "border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20"
-                    : "border-amber-500/30 bg-amber-50/70 dark:bg-amber-950/20"
-                )}
-              >
-                <p className="text-sm font-semibold text-foreground">
-                  {linkedinDiagnostic.success
-                    ? "Configuracao pronta para publicar"
-                    : "Configuracao com pendencias"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  API: {linkedinDiagnostic.apiBaseUrl} · versao {linkedinDiagnostic.apiVersion}
-                </p>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Token
-                  </p>
-                  <p className="mt-2 text-sm text-foreground">
-                    {linkedinDiagnostic.tokenPresent
-                      ? linkedinDiagnostic.tokenPreview
-                      : "Nao configurado"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Author URN atual
-                  </p>
-                  <p className="mt-2 break-all text-sm text-foreground">
-                    {linkedinDiagnostic.configuredAuthorUrn || "Nao configurado"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Checks
-                </p>
-                {linkedinDiagnostic.checks.map((check) => (
-                  <div key={check.name} className="rounded-lg border border-border/50 bg-background/70 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">{check.name}</p>
-                      <Badge
-                        variant={check.ok ? "default" : "outline"}
-                        className={check.ok ? "bg-emerald-600 text-white" : "text-amber-700"}
-                      >
-                        {check.ok ? "OK" : "Ajustar"}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{check.detail}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Pessoa detectada pelo token
-                  </p>
-                  <p className="mt-2 break-all text-sm text-foreground">
-                    {linkedinDiagnostic.detectedPersonUrn || "Nao detectada"}
-                  </p>
-                  {linkedinDiagnostic.detectedMemberName ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {linkedinDiagnostic.detectedMemberName}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Organizacoes administradas
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    {linkedinDiagnostic.administeredOrganizationUrns.length > 0 ? (
-                      linkedinDiagnostic.administeredOrganizationUrns.map((urn) => (
-                        <p key={urn} className="break-all text-sm text-foreground">
-                          {urn}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Nenhuma organizacao retornada.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Proximos passos
-                </p>
-                <div className="mt-2 space-y-2">
-                  {linkedinDiagnostic.nextSteps.map((step, index) => (
-                    <p key={`${index}-${step}`} className="text-sm text-foreground">
-                      {index + 1}. {step}
-                    </p>
-                  ))}
-                </div>
-              </div>
-
-              {linkedinDiagnostic.recommendedAuthorUrns.length > 0 ? (
-                <div className="rounded-lg border border-border/50 bg-background/70 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Author URNs recomendadas
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    {linkedinDiagnostic.recommendedAuthorUrns.map((urn) => (
-                      <p key={urn} className="break-all text-sm text-foreground">
-                        {urn}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
 
       {/* Newsletter preview dialog */}
       <Dialog open={showNewsletterDialog} onOpenChange={setShowNewsletterDialog}>

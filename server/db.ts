@@ -1458,6 +1458,74 @@ export async function saveBrandKit(userId: number, data: Partial<BrandKitData>):
 
 // ─── WhatsApp Digest ───────────────────────────────────────────────────────────
 
+// ── Delivered news deduplication ─────────────────────────────────────────────
+
+let _deliveredNewsTableReady: Promise<void> | null = null;
+
+async function ensureDeliveredNewsTable(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  if (!_deliveredNewsTableReady) {
+    _deliveredNewsTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`delivered_news\` (
+          \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
+          \`user_id\`      INT NOT NULL,
+          \`url_key\`      VARCHAR(500) NOT NULL,
+          \`title\`        VARCHAR(500),
+          \`delivered_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_user_url (\`user_id\`, \`url_key\`(255)),
+          INDEX idx_user_delivered (\`user_id\`, \`delivered_at\`)
+        )
+      `);
+    })();
+  }
+  return _deliveredNewsTableReady;
+}
+
+function normalizeDeliveredUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.href.toLowerCase().slice(0, 500);
+  } catch {
+    return url.toLowerCase().slice(0, 500);
+  }
+}
+
+export async function getDeliveredNewsKeys(userId: number, daysBack = 7): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+  await ensureDeliveredNewsTable(db);
+  const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const rows = await db.execute(sql`
+    SELECT url_key FROM delivered_news
+    WHERE user_id = ${userId} AND delivered_at > ${cutoff}
+  `);
+  const list = (rows[0] as unknown as Array<{ url_key: string }>);
+  return new Set(list.map((r) => r.url_key));
+}
+
+export async function saveDeliveredNews(
+  userId: number,
+  items: { url: string; title?: string | null }[]
+): Promise<void> {
+  const db = await getDb();
+  if (!db || items.length === 0) return;
+  await ensureDeliveredNewsTable(db);
+  for (const item of items) {
+    const key = normalizeDeliveredUrl(item.url);
+    await db
+      .execute(sql`
+        INSERT IGNORE INTO delivered_news (user_id, url_key, title)
+        VALUES (${userId}, ${key}, ${(item.title ?? "").slice(0, 500)})
+      `)
+      .catch(() => {});
+  }
+}
+
+// ── Digest tables ─────────────────────────────────────────────────────────────
+
 let _digestTablesReady: Promise<void> | null = null;
 
 async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
@@ -2204,4 +2272,92 @@ export async function incrementDmsSentCount(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.execute(sql`UPDATE comment_automations SET dmsSentCount = dmsSentCount + 1 WHERE id = ${id}`);
+}
+
+// ── Style profiles ────────────────────────────────────────────────────────────
+
+let _styleProfilesTableReady: Promise<void> | null = null;
+
+async function ensureStyleProfilesTable(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  if (!_styleProfilesTableReady) {
+    _styleProfilesTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`style_profiles\` (
+          \`id\`                  INT AUTO_INCREMENT PRIMARY KEY,
+          \`user_id\`             INT NOT NULL,
+          \`profile_handle\`      VARCHAR(100) NOT NULL,
+          \`profile_name\`        VARCHAR(255),
+          \`profile_picture_url\` TEXT,
+          \`source\`              VARCHAR(20) NOT NULL DEFAULT 'scrape',
+          \`analysis_json\`       LONGTEXT NOT NULL,
+          \`created_at\`          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_user_created (\`user_id\`, \`created_at\`)
+        )
+      `);
+    })();
+  }
+  return _styleProfilesTableReady;
+}
+
+export async function saveStyleProfile(
+  userId: number,
+  data: {
+    profileHandle: string;
+    profileName?: string | null;
+    profilePictureUrl?: string | null;
+    source: string;
+    analysisJson: string;
+  }
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureStyleProfilesTable(db);
+  const result = await db.execute(sql`
+    INSERT INTO \`style_profiles\`
+      (\`user_id\`, \`profile_handle\`, \`profile_name\`, \`profile_picture_url\`, \`source\`, \`analysis_json\`)
+    VALUES
+      (${userId}, ${data.profileHandle}, ${data.profileName ?? null}, ${data.profilePictureUrl ?? null}, ${data.source}, ${data.analysisJson})
+  `);
+  return insertId(result);
+}
+
+export async function listStyleProfiles(userId: number): Promise<Array<{
+  id: number;
+  profileHandle: string;
+  profileName: string | null;
+  profilePictureUrl: string | null;
+  source: string;
+  analysisJson: string;
+  createdAt: Date;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureStyleProfilesTable(db);
+  const rows = await db.execute(sql`
+    SELECT id, profile_handle, profile_name, profile_picture_url, source, analysis_json, created_at
+    FROM \`style_profiles\`
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT 50
+  `);
+  const list = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : [];
+  return list.map((r) => ({
+    id: Number(r.id),
+    profileHandle: String(r.profile_handle ?? ""),
+    profileName: r.profile_name != null ? String(r.profile_name) : null,
+    profilePictureUrl: r.profile_picture_url != null ? String(r.profile_picture_url) : null,
+    source: String(r.source ?? "scrape"),
+    analysisJson: String(r.analysis_json ?? "{}"),
+    createdAt: r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at)),
+  }));
+}
+
+export async function deleteStyleProfile(userId: number, id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureStyleProfilesTable(db);
+  await db.execute(sql`
+    DELETE FROM \`style_profiles\` WHERE id = ${id} AND user_id = ${userId}
+  `);
 }

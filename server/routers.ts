@@ -1012,16 +1012,33 @@ const articlesRouter = router({
       sites: z.array(z.string().url()).min(1).max(12),
       topic: z.string().min(2).max(120).optional().default("energia"),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const sites = Array.from(new Set(input.sites.map((site) => site.trim()).filter(Boolean)));
       const results = await Promise.allSettled(sites.map((site) => fetchNewsFromSite(site)));
-      const items = dedupeNewsItems(
+      const allItems = dedupeNewsItems(
         results.flatMap((result) => (result.status === "fulfilled" ? result.value : []))
       );
       const failedSites = results
         .map((result, index) => (result.status === "rejected" ? sites[index] : ""))
         .filter(Boolean);
-      const topItems = rankNewsItems(items, input.topic).slice(0, 5);
+
+      // Drop items older than 7 days; keep items with no date (can't tell age)
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const recentItems = allItems.filter((item) => {
+        if (!item.publishedAt) return true;
+        const ts = Date.parse(item.publishedAt);
+        return !ts || ts >= sevenDaysAgo;
+      });
+
+      // Exclude news already delivered to this user in the last 7 days
+      const deliveredKeys = await db.getDeliveredNewsKeys(ctx.user.id);
+      const freshItems = recentItems.filter(
+        (item) => !deliveredKeys.has(normalizeNewsUrl(item.url))
+      );
+
+      // Rank fresh items; if fewer than 5 are fresh, supplement with already-seen ones
+      const pool = freshItems.length >= 5 ? freshItems : recentItems;
+      const topItems = rankNewsItems(pool, input.topic).slice(0, 5);
 
       if (topItems.length === 0) {
         throw new TRPCError({
@@ -1030,9 +1047,13 @@ const articlesRouter = router({
         });
       }
 
+      // Persist what was delivered so future calls skip these
+      void db.saveDeliveredNews(ctx.user.id, topItems);
+
       return {
         items: topItems,
         failedSites,
+        freshCount: freshItems.length,
       };
     }),
 
@@ -3672,6 +3693,61 @@ Nunca produza conteúdo genérico. Pense como um Diretor de Arte premiado e Copy
 });
 
 
+// ─── Style Analyzer Router ────────────────────────────────────────────────────
+const styleAnalyzerRouter = router({
+  analyze: protectedProcedure
+    .input(z.object({
+      usernameOrUrl: z.string().min(1).max(255),
+      uploadedImageUrls: z.array(z.string().url()).max(12).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { analyzeInstagramProfileStyle } = await import("./_core/instagramStyleAgent");
+      const connection = await db.getInstagramConnection(ctx.user.id);
+      try {
+        return await analyzeInstagramProfileStyle({
+          username: input.usernameOrUrl,
+          connectedAccount: connection ? {
+            instagramAccountId: connection.instagramAccountId,
+            accessToken: connection.accessToken,
+            username: connection.username ?? undefined,
+            name: connection.name,
+            profilePictureUrl: connection.profilePictureUrl,
+          } : null,
+          uploadedImageUrls: input.uploadedImageUrls,
+        });
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao analisar perfil: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        });
+      }
+    }),
+
+  save: protectedProcedure
+    .input(z.object({
+      profileHandle: z.string().min(1).max(100),
+      profileName: z.string().optional(),
+      profilePictureUrl: z.string().optional(),
+      source: z.enum(["api", "scrape", "upload"]),
+      analysisJson: z.string().max(50000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const id = await db.saveStyleProfile(ctx.user.id, input);
+      return { id };
+    }),
+
+  list: protectedProcedure.query(async ({ ctx }) => {
+    return db.listStyleProfiles(ctx.user.id);
+  }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteStyleProfile(ctx.user.id, input.id);
+      return { success: true };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -3757,6 +3833,7 @@ export const appRouter = router({
   reels: reelsRouter,
   commentAlerts: commentAlertsRouter,
   commentAutomations: commentAutomationsRouter,
+  styleAnalyzer: styleAnalyzerRouter,
 });
 
 export type AppRouter = typeof appRouter;
