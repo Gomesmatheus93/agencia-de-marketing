@@ -17,6 +17,7 @@ import {
   Instagram,
   Upload,
   ImagePlus,
+  Layers,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -82,19 +83,23 @@ function ResultPanel({
   source,
   onSave,
   onApplyToBrandKit,
+  onSaveAsTemplate,
   onClose,
   isSaving,
   isApplying,
   alreadySaved,
+  savedAsTemplate,
 }: {
   result: InstagramStyleResult;
   source: "api" | "scrape" | "upload";
   onSave: () => void;
   onApplyToBrandKit: () => void;
+  onSaveAsTemplate: () => void;
   onClose?: () => void;
   isSaving: boolean;
   isApplying: boolean;
   alreadySaved: boolean;
+  savedAsTemplate: boolean;
 }) {
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
 
@@ -298,25 +303,36 @@ function ResultPanel({
 
       {/* Action bar — hidden when no images were found */}
       {!result.needsUpload && (
-        <div className="p-4 border-t border-border/30 flex gap-2 flex-shrink-0">
-          {!alreadySaved && (
+        <div className="p-4 border-t border-border/30 flex flex-col gap-2 flex-shrink-0">
+          <div className="flex gap-2">
+            {!alreadySaved && (
+              <Button
+                onClick={onSave}
+                disabled={isSaving}
+                variant="outline"
+                className="flex-1 gap-2"
+              >
+                <Check className="w-4 h-4" />
+                {isSaving ? "Salvando..." : "Salvar análise"}
+              </Button>
+            )}
             <Button
-              onClick={onSave}
-              disabled={isSaving}
-              variant="outline"
-              className="flex-1 gap-2"
+              onClick={onApplyToBrandKit}
+              disabled={isApplying}
+              className="flex-1 gap-2 bg-violet-600 hover:bg-violet-700 text-white"
             >
-              <Check className="w-4 h-4" />
-              {isSaving ? "Salvando..." : "Salvar análise"}
+              <Palette className="w-4 h-4" />
+              {isApplying ? "Aplicando..." : "Aplicar ao Brand Kit"}
             </Button>
-          )}
+          </div>
           <Button
-            onClick={onApplyToBrandKit}
-            disabled={isApplying}
-            className="flex-1 gap-2 bg-violet-600 hover:bg-violet-700 text-white"
+            onClick={onSaveAsTemplate}
+            disabled={savedAsTemplate}
+            variant="outline"
+            className="w-full gap-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:border-emerald-500/30"
           >
-            <Palette className="w-4 h-4" />
-            {isApplying ? "Aplicando..." : "Aplicar ao Brand Kit"}
+            <Layers className="w-4 h-4" />
+            {savedAsTemplate ? "Template salvo no carrossel ✓" : "Salvar como template de carrossel"}
           </Button>
         </div>
       )}
@@ -385,6 +401,7 @@ export default function StyleAnalyzer() {
   const [currentSource, setCurrentSource] = useState<"api" | "scrape" | "upload">("scrape");
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [alreadySaved, setAlreadySaved] = useState(false);
+  const [savedAsTemplate, setSavedAsTemplate] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -395,6 +412,7 @@ export default function StyleAnalyzer() {
       setCurrentResult(result);
       setCurrentSource("scrape");
       setAlreadySaved(false);
+      setSavedAsTemplate(false);
       setActiveProfileId(null);
       setMode("result");
     },
@@ -489,8 +507,44 @@ export default function StyleAnalyzer() {
       setAlreadySaved(true);
       setActiveProfileId(profile.id);
       setMode("viewing");
+      // Check if a carousel template for this profile already exists
+      const existingPresets: { presetName: string }[] = JSON.parse(
+        localStorage.getItem("proto_named_presets") ?? "[]"
+      );
+      setSavedAsTemplate(existingPresets.some((p) => p.presetName.startsWith(profile.profileHandle)));
     } catch {
       toast.error("Erro ao carregar análise salva.");
+    }
+  };
+
+  const handleSaveAsCarouselTemplate = () => {
+    if (!currentResult) return;
+    const presetName = currentResult.niche
+      ? `${currentResult.profileHandle} — ${currentResult.niche}`
+      : currentResult.profileHandle;
+    const preset = {
+      presetName,
+      accentColor: currentResult.accentColor,
+      bgColor: currentResult.bgColor,
+      fontFamily: currentResult.fontFamily,
+      titleAlign: currentResult.titleAlign as "left" | "center",
+      titleSize: currentResult.titleSize ?? 1,
+      profileName: currentResult.profileName,
+      profileHandle: currentResult.profileHandle,
+      profileImageUrl: currentResult.profileImageUrl,
+      coverBgColor: currentResult.coverSlideStyle?.bgColor,
+      coverAccentColor: currentResult.coverSlideStyle?.accentColor,
+      coverTitleAlign: currentResult.coverSlideStyle?.titleAlign as "left" | "center" | undefined,
+      template: "dark" as const,
+    };
+    try {
+      const existing: typeof preset[] = JSON.parse(localStorage.getItem("proto_named_presets") ?? "[]");
+      const merged = [...existing.filter((p) => p.presetName !== presetName), preset];
+      localStorage.setItem("proto_named_presets", JSON.stringify(merged));
+      setSavedAsTemplate(true);
+      toast.success(`Template "${presetName}" salvo! Disponível no editor de carrossel.`);
+    } catch {
+      toast.error("Não foi possível salvar o template.");
     }
   };
 
@@ -499,6 +553,7 @@ export default function StyleAnalyzer() {
     setCurrentResult(null);
     setActiveProfileId(null);
     setAlreadySaved(false);
+    setSavedAsTemplate(false);
     setUsername("");
     setUploadedImages([]);
   };
@@ -713,10 +768,12 @@ export default function StyleAnalyzer() {
                 source={currentSource}
                 onSave={handleSave}
                 onApplyToBrandKit={handleApplyToBrandKit}
+                onSaveAsTemplate={handleSaveAsCarouselTemplate}
                 onClose={mode === "viewing" ? () => { setMode("list"); setActiveProfileId(null); } : handleNewAnalysis}
                 isSaving={saveMutation.isPending}
                 isApplying={brandKitMutation.isPending}
                 alreadySaved={alreadySaved}
+                savedAsTemplate={savedAsTemplate}
               />
             )}
           </div>
