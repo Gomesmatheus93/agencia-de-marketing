@@ -154,12 +154,21 @@ async function tryProxyDownload(url: string): Promise<Buffer | null> {
   return null;
 }
 
+function detectMimeType(buf: Buffer): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
+  const h = buf.slice(0, 12);
+  if (h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff) return "image/jpeg";
+  if (h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47) return "image/png";
+  if (h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46) return "image/gif";
+  if (h[8] === 0x57 && h[9] === 0x45 && h[10] === 0x42 && h[11] === 0x50) return "image/webp";
+  return "image/jpeg"; // fallback
+}
+
 function bufferToImageResult(buf: Buffer, cdnUrl: string): ImageLoadResult {
   const data = buf.toString("base64");
-  const safeMime = "image/jpeg" as const;
+  const mime = detectMimeType(buf);
   return {
-    block: { type: "image", source: { type: "base64", media_type: safeMime, data } },
-    dataUrl: `data:${safeMime};base64,${data}`,
+    block: { type: "image", source: { type: "base64", media_type: mime, data } },
+    dataUrl: `data:${mime};base64,${data}`,
     cdnUrl,
   };
 }
