@@ -648,68 +648,66 @@ export async function analyzeInstagramProfileStyle(params: {
     ? `@${cleanUsername} (${profile.name})`
     : `@${cleanUsername}`;
 
-  const systemPrompt = `Você é um agente especialista em extração de identidade visual e branding de perfis do Instagram.
+  const systemPrompt = `Você é um agente especialista em análise de identidade visual de perfis do Instagram.
 
-Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visual do perfil a partir das imagens enviadas.
+Você analisa DOIS tipos de perfis — detecte o tipo automaticamente pelas imagens:
 
-# REGRA PRINCIPAL SOBRE CORES — LEIA COM ATENÇÃO
+## TIPO A — Perfil de marca / empresa / criador de conteúdo com design gráfico
+Sinais: posts com slides, carrosseis com texto, logos visíveis, banners, templates gráficos, identidade visual clara.
 
-## O QUE SÃO CORES DE MARCA (use estas):
-- Cor do logo ou símbolo da marca
-- Cor do fundo de elementos gráficos (banners, cards, carrosseis)
-- Cor de texto em títulos e chamadas (não em fotos)
-- Cor de botões, ícones ou formas geométricas desenhadas
-- Cor de molduras, bordas, overlays sobre as fotos
-- Cor que aparece de forma CONSISTENTE em múltiplos posts
-- Cor do fundo de slides de carrossel
+**Extração de cores para Tipo A:**
+- Use as cores dos ELEMENTOS GRÁFICOS: logo, fundo de slides, texto sobreposto, ícones, molduras
+- IGNORE: céu, vegetação, pele, paredes de fundo fotográfico
+- A cor que aparece em 3+ posts gráficos = cor de marca
 
-## O QUE NÃO SÃO CORES DE MARCA (ignore estas):
-- Cor do céu em fotos externas
-- Cor de pele de pessoas fotografadas
-- Cor de vegetação ou ambiente natural
-- Cor de paredes ou superfícies no background de fotos
-- Qualquer cor que aparece apenas em 1 imagem e não se repete
+## TIPO B — Perfil pessoal / influenciador / criador de lifestyle
+Sinais: predominância de fotos pessoais, retratos, lifestyle, viagens, gastronomia, natureza — sem design gráfico estruturado.
 
-## PROCESSO DE ANÁLISE
-1. Observe TODAS as imagens enviadas
-2. Identifique quais elementos aparecem de forma repetida (logo, fundo, texto, moldura)
-3. Extraia a cor HEX EXATA desses elementos repetidos — esses são os brand colors
-4. Se houver gráficos/carrosseis nas imagens, priorize as cores deles
-5. Analise a tipografia nos textos sobrepostos às imagens (não o texto das fotos)
+**Extração de cores para Tipo B:**
+- Extraia a PALETA ESTÉTICA DOMINANTE das fotografias: tons que o criador usa de forma consistente
+- Exemplos: tons terrosos neutros, azuis frios, pastéis suaves, preto e branco contrastado, cores vivas e saturadas
+- Identifique a "temperatura" visual: quente (dourado, terracota), frio (azul, cinza), neutro
+- Use a cor que DEFINE O MOOD do feed, não a cor mais frequente pixel a pixel
+
+## PROCESSO PARA AMBOS OS TIPOS
+1. Observe TODAS as imagens e decida: Tipo A ou Tipo B
+2. Aplique a extração de cores correta para o tipo identificado
+3. Descreva o estilo visual real observado (não invente — baseie-se apenas nas imagens)
+4. Identifique nicho, tom de comunicação e padrões visuais
 
 ## REGRAS CRÍTICAS
 - Retorne APENAS JSON válido, sem texto antes ou depois
-- Cores SEMPRE em formato #RRGGBB baseado em elementos GRÁFICOS repetidos — NUNCA em fundos fotográficos
-- Jamais use cores completamente genéricas como #000000 ou #ffffff a menos que realmente dominam os elementos gráficos
-- Se uma imagem não estiver disponível, indique no styleSummary
-- Priorize CONSISTÊNCIA entre posts: a cor que aparece em 3+ posts é brand color`;
+- Cores em formato #RRGGBB — baseadas no que você realmente vê nas imagens
+- Jamais use #000000 ou #FFFFFF como cor primária a menos que realmente dominam
+- Para Tipo B: cores de pele podem ser ignoradas, mas tons de roupa, cenário e preset de edição são válidos
+- Se não houver imagens suficientes para análise, indique no styleSummary`;
 
   const jsonSchema = `{
-  "accentColor": "#RRGGBB — cor de destaque consistente entre posts: logo, ícone da marca, botão, elemento gráfico colorido. NÃO use cor de fundo fotográfico",
-  "bgColor": "#RRGGBB — cor de fundo dos elementos GRÁFICOS (slides, cards, banners) — NÃO o céu ou parede de fotos",
-  "primaryColor": "#RRGGBB — cor que representa melhor a marca, que aparece no logo ou em elementos repetidos em vários posts",
-  "secondaryColor": "#RRGGBB — segunda cor que aparece de forma recorrente como complemento à cor primária nos gráficos",
-  "textColor": "#RRGGBB — cor do texto sobreposto às imagens ou usado em slides — NÃO cor de texto em fotos de documentos",
+  "accentColor": "#RRGGBB — Tipo A: cor de destaque do logo/elementos gráficos. Tipo B: cor de pop/acento que aparece nas fotos (roupa, objeto, cenário)",
+  "bgColor": "#RRGGBB — Tipo A: fundo dos slides/cards. Tipo B: tom de fundo predominante das fotos (ex: bege, branco, cinza escuro)",
+  "primaryColor": "#RRGGBB — Tipo A: cor principal da marca. Tipo B: cor mais característica da paleta estética do feed",
+  "secondaryColor": "#RRGGBB — Tipo A: cor secundária dos gráficos. Tipo B: segunda cor mais presente no visual do feed",
+  "textColor": "#RRGGBB — Tipo A: cor do texto em slides. Tipo B: cor de texto se houver, ou cor de contraste na paleta",
   "fontFamily": "uma das opções: 'system-ui, -apple-system, sans-serif' | 'Georgia, Times New Roman, serif' | 'Impact, Arial Black, sans-serif' | 'Courier New, Courier, monospace' | 'Helvetica Neue, Helvetica, Arial, sans-serif'",
-  "secondaryFont": "descrição da fonte secundária observada visualmente (ex: 'sans-serif leve')",
-  "fontWeight": "descrição do peso visual (ex: 'bold com contraste alto', 'light minimalista')",
+  "secondaryFont": "descrição da fonte secundária observada, ou 'não identificado' para perfis pessoais sem texto gráfico",
+  "fontWeight": "peso visual do feed (ex: 'bold com contraste alto', 'light e arejado', 'minimalista delicado')",
   "titleAlign": "left ou center",
   "titleSize": número entre 0.8 e 1.2,
   "profileName": "nome real do perfil",
   "profileHandle": "@handle",
-  "niche": "nicho do perfil (ex: 'Marketing Digital', 'Fitness', 'Gastronomia', 'Moda')",
-  "targetAudience": "público-alvo deduzido (ex: 'Empreendedores 25-40 anos', 'Jovens fitness 18-30')",
-  "objective": "objetivo comercial do perfil (ex: 'Vender cursos', 'Gerar leads', 'Construir autoridade')",
-  "layoutPattern": "padrão de layout predominante (ex: 'grade uniforme com fundo neutro', 'mosaico colorido alternado')",
-  "editingStyle": "estilo de edição das fotos/vídeos (ex: 'tons quentes saturados', 'preto e branco com contraste alto', 'flat lay minimalista')",
-  "recurringElements": "elementos visuais que se repetem (ex: 'moldura branca, ícones de linha, texto centralizado')",
-  "postStructure": "estrutura típica dos posts (ex: 'imagem impactante + texto curto + CTA', 'carrossel educativo com múltiplos slides')",
-  "visualEffects": "efeitos visuais detectados (ex: 'gradientes suaves, sombra drop shadow leve', 'sem efeitos, flat design')",
-  "copyType": "tipo de copy predominante (ex: 'educacional direto', 'emocional storytelling', 'provocativo com pergunta')",
-  "captionStructure": "estrutura das legendas deduzida (ex: 'gancho + desenvolvimento + CTA + hashtags')",
-  "ctaExamples": ["array com exemplos de CTA que o perfil provavelmente usa"],
-  "language": "tom e linguagem (ex: 'informal e próximo com gírias', 'formal e técnico', 'inspiracional e motivacional')",
-  "frequentEmojis": "emojis que o perfil provavelmente usa com base no estilo (ex: '🔥💡✅🎯')",
+  "niche": "nicho do perfil (ex: 'Lifestyle', 'Fitness', 'Gastronomia', 'Moda', 'Viagem', 'Marketing Digital', 'Beleza')",
+  "targetAudience": "público-alvo deduzido pelas imagens (ex: 'Mulheres 25-35 interessadas em lifestyle', 'Homens fitness 20-35')",
+  "objective": "objetivo do perfil (ex: 'Construir audiência pessoal', 'Fechar parcerias', 'Vender cursos', 'Gerar leads')",
+  "layoutPattern": "padrão de layout do feed (ex: 'grade uniforme com tons neutros', 'alternância foto/citação', 'mosaico colorido')",
+  "editingStyle": "estilo de edição predominante (ex: 'tons quentes dourados', 'preset frio azulado', 'preto e branco', 'cores vivas saturadas', 'flat lay minimalista')",
+  "recurringElements": "elementos que se repetem nas imagens (ex: 'rostos sorridentes em close', 'paisagens naturais', 'moldura branca', 'textos motivacionais')",
+  "postStructure": "formato mais usado (ex: 'foto de lifestyle + legenda pessoal', 'carrossel educativo', 'reels curtos de entretenimento')",
+  "visualEffects": "efeitos ou tratamentos visuais percebidos (ex: 'vinheta suave', 'grain vintage', 'sem filtro naturalista', 'alta saturação')",
+  "copyType": "tipo de copy (ex: 'pessoal e narrativo', 'educacional com dicas', 'motivacional', 'humorístico')",
+  "captionStructure": "estrutura das legendas (ex: 'história pessoal + pergunta para engajamento', 'dica rápida + CTA')",
+  "ctaExamples": ["exemplos de CTA típicos desse perfil/nicho"],
+  "language": "tom e linguagem (ex: 'informal e próximo', 'inspiracional', 'técnico e educacional', 'descontraído com humor')",
+  "frequentEmojis": "emojis típicos deste nicho e estilo (ex: '✨🌿💕', '🔥💪🎯', '🌍✈️📸')",
   "coverSlideStyle": {
     "bgColor": "#RRGGBB — cor de fundo predominante nas capas dos carrosseis",
     "accentColor": "#RRGGBB — cor de destaque usada nas capas",
@@ -804,7 +802,7 @@ Seu objetivo é identificar com precisão as CORES DE MARCA e a identidade visua
         uploadedBlocks.length > 0
           ? `As primeiras ${uploadedBlocks.length} imagem(ns) são capturas de tela enviadas pelo usuário com os posts reais do perfil — estas são a REFERÊNCIA PRINCIPAL.`
           : `A PRIMEIRA imagem é a foto de perfil (avatar), que geralmente contém o LOGO com as cores de marca mais representativas.`,
-        `\nFOCO PRINCIPAL: identificar as CORES DE MARCA REAIS do perfil.\n\n1. ${uploadedBlocks.length > 0 ? "Examine as capturas de tela enviadas — o logo e os elementos gráficos nelas são a referência de cor mais confiável" : "Comece pela foto de perfil — o logo nela é a referência de cor mais confiável"}\n2. Procure em TODOS os posts por elementos gráficos repetidos: logo, fundo de slide, cor de texto, ícone, moldura\n3. Extraia a cor HEX EXATA desses elementos consistentes — essas são as brand colors\n4. Priorize carrosseis e posts com design gráfico (fundo colorido, texto grande) sobre fotos naturais\n5. IGNORE: cor do céu, vegetação, pele, paredes de fundo de fotos\n6. Identifique nicho, público-alvo, padrões de layout e estratégia de conteúdo`,
+        `\nPRIMEIRO detecte o tipo de perfil pelas imagens:\n- TIPO A (marca/empresa/creator com design): se houver slides, carrosseis com texto, logos ou templates gráficos\n- TIPO B (pessoa/influenciador/lifestyle): se predominarem fotos pessoais, retratos, lifestyle sem design gráfico estruturado\n\nDepois extraia as cores e o estilo visual conforme as instruções do sistema para cada tipo.\n\nIdentifique também: nicho, público-alvo, padrões de layout, estilo de edição e estratégia de conteúdo com base nas imagens reais.`,
       ].join(" "),
     },
     ...imageBlocks,
