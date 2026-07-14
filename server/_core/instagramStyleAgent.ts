@@ -376,17 +376,27 @@ function extractImageUrlsFromHtml(html: string): string[] {
   const seen = new Set<string>();
   const results: string[] = [];
 
-  // src / data-src / data-original / data-lazy-src attributes
-  const srcPattern = /(?:src|data-src|data-original|data-lazy-src|data-bg|content)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = srcPattern.exec(html)) !== null) {
-    const u = m[1].replace(/&amp;/g, "&");
-    if (!u.startsWith("http")) continue;
-    // Skip tiny thumbnails / static assets
-    if (/[_/]s\d{2,3}x\d{2,3}[_/]|\/emoji\/|spinner|placeholder|logo|icon|avatar|\.svg/i.test(u)) continue;
-    if (seen.has(u)) continue;
-    seen.add(u);
-    results.push(u);
+  // Capture src, data-src, srcset, data-original, data-lazy-src, style background-image
+  const patterns = [
+    /(?:src|data-src|data-original|data-lazy-src|data-bg|data-lazy|data-image)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)/gi,
+    /srcset=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"'\s,]*)/gi,
+    /url\(["']?([^"')]+\.(?:jpg|jpeg|png|webp)[^"')]*)/gi,
+    /"display_url":"([^"]+)"/gi,
+    /"thumbnail_src":"([^"]+)"/gi,
+    /"media_url":"([^"]+)"/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(html)) !== null) {
+      const u = m[1].replace(/\\u0026/g, "&").replace(/\\u002F/g, "/").replace(/&amp;/g, "&");
+      if (!u.startsWith("http")) continue;
+      if (/[_/]s\d{2,3}x\d{2,3}[_/]|\/emoji\/|spinner|placeholder|\.svg|static\.|favicon/i.test(u)) continue;
+      if (seen.has(u)) continue;
+      seen.add(u);
+      results.push(u);
+      if (results.length >= 12) break;
+    }
     if (results.length >= 12) break;
   }
   return results;
@@ -403,10 +413,12 @@ function buildScraperApiUrl(targetUrl: string, render = false): string {
   return `http://api.scraperapi.com/?${params.toString()}`;
 }
 
-// Fetch post images for an external profile.
-// Strategy 1 (when SCRAPERAPI_KEY is set): proxy requests through residential IPs →
-//   bypasses Instagram CDN/bot detection reliably.
-// Strategy 2 (fallback): direct request to third-party viewers — may be blocked.
+// Fetch post images for an external profile via ScraperAPI + multiple sources.
+// Priority order when ScraperAPI key is available:
+//   1. instagram.com with JS rendering (render=true) — gets real post images after SPA loads
+//   2. picuki.com with rendering — third-party viewer, server-rendered
+//   3. imginn.com with rendering — fallback third-party viewer
+// Without ScraperAPI: direct requests (often blocked for data-center IPs)
 async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
   const BROWSER_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -414,40 +426,53 @@ async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
   const hasScraperKey = !!ENV.scraperApiKey;
   console.log(`[StyleAgent] fetchViaThirdPartyViewer: scraperApiKey=${hasScraperKey ? "set" : "NOT SET"}`);
 
-  // Sources to try — picuki.com renders Instagram feeds in plain HTML (not SPA).
-  const targetUrls = [
-    `https://www.picuki.com/profile/${encodeURIComponent(username)}`,
-    `https://imginn.com/${encodeURIComponent(username)}/`,
-    `https://www.instagram.com/${encodeURIComponent(username)}/`,
-  ];
+  type Attempt = { label: string; url: string; timeoutMs: number };
+  const attempts: Attempt[] = [];
 
-  for (const targetUrl of targetUrls) {
-    const label = targetUrl.includes("picuki") ? "picuki"
-      : targetUrl.includes("imginn") ? "imginn"
-      : "instagram-html";
+  if (hasScraperKey) {
+    // Best option: ScraperAPI renders instagram.com SPA with real browser → gets actual post images
+    attempts.push({
+      label: "scraperapi-instagram-rendered",
+      url: buildScraperApiUrl(`https://www.instagram.com/${encodeURIComponent(username)}/`, true),
+      timeoutMs: 45_000, // JS rendering takes longer
+    });
+    // Fallback: third-party viewers via ScraperAPI proxy (they have server-rendered HTML)
+    attempts.push({
+      label: "scraperapi-picuki",
+      url: buildScraperApiUrl(`https://www.picuki.com/profile/${encodeURIComponent(username)}`, true),
+      timeoutMs: 35_000,
+    });
+    attempts.push({
+      label: "scraperapi-imginn",
+      url: buildScraperApiUrl(`https://imginn.com/${encodeURIComponent(username)}/`, true),
+      timeoutMs: 35_000,
+    });
+  } else {
+    // No ScraperAPI key — direct requests (usually blocked for VPS/cloud IPs)
+    attempts.push({ label: "picuki-direct", url: `https://www.picuki.com/profile/${encodeURIComponent(username)}`, timeoutMs: 14_000 });
+    attempts.push({ label: "imginn-direct", url: `https://imginn.com/${encodeURIComponent(username)}/`, timeoutMs: 14_000 });
+    attempts.push({ label: "instagram-direct", url: `https://www.instagram.com/${encodeURIComponent(username)}/`, timeoutMs: 14_000 });
+  }
 
-    const fetchUrl = buildScraperApiUrl(targetUrl);
-
+  for (const attempt of attempts) {
     try {
-      console.log(`[StyleAgent] trying ${label}${hasScraperKey ? " via ScraperAPI" : " direct"} for @${username}`);
-      const res = await fetch(fetchUrl, {
-        headers: { "User-Agent": BROWSER_UA, Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
-        signal: AbortSignal.timeout(20_000),
+      console.log(`[StyleAgent] trying ${attempt.label} for @${username}`);
+      const res = await fetch(attempt.url, {
+        headers: { "User-Agent": BROWSER_UA, Accept: "text/html,*/*", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+        signal: AbortSignal.timeout(attempt.timeoutMs),
         redirect: "follow",
       });
 
-      if (!res.ok) {
-        console.warn(`[StyleAgent] ${label}: HTTP ${res.status}`);
-        continue;
-      }
+      console.log(`[StyleAgent] ${attempt.label}: HTTP ${res.status}`);
+      if (!res.ok) continue;
 
       const html = await res.text();
       const urls = extractImageUrlsFromHtml(html);
-      console.log(`[StyleAgent] ${label}: found ${urls.length} image URLs`);
+      console.log(`[StyleAgent] ${attempt.label}: found ${urls.length} image URLs (html length: ${html.length})`);
 
       if (urls.length >= 2) return urls.slice(0, 9);
     } catch (err) {
-      console.warn(`[StyleAgent] ${label} failed:`, (err as Error).message);
+      console.warn(`[StyleAgent] ${attempt.label} failed:`, (err as Error).message);
     }
   }
 
