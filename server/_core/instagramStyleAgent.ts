@@ -413,46 +413,82 @@ function buildScraperApiUrl(targetUrl: string, render = false): string {
   return `http://api.scraperapi.com/?${params.toString()}`;
 }
 
-// Fetch post images for an external profile via ScraperAPI + multiple sources.
-// Priority order when ScraperAPI key is available:
-//   1. instagram.com with JS rendering (render=true) — gets real post images after SPA loads
-//   2. picuki.com with rendering — third-party viewer, server-rendered
-//   3. imginn.com with rendering — fallback third-party viewer
-// Without ScraperAPI: direct requests (often blocked for data-center IPs)
+// Strategy A: Instagram internal JSON API via ScraperAPI residential proxy.
+// Returns structured post data without needing JS rendering.
+// Uses Instagram mobile app headers so the endpoint responds with full JSON.
+async function fetchViaInstagramJsonApi(username: string): Promise<string[]> {
+  if (!ENV.scraperApiKey) return [];
+
+  const igApiUrl = `https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+  const fetchUrl = buildScraperApiUrl(igApiUrl, false); // no JS rendering needed for JSON API
+
+  try {
+    console.log(`[StyleAgent] trying instagram-json-api via ScraperAPI for @${username}`);
+    const res = await fetch(fetchUrl, {
+      headers: {
+        "x-ig-app-id": "936619743392459",
+        "User-Agent": "Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; OnePlus; ONEPLUS A3003; OnePlus3; qcom; en_US; 314665256)",
+        "Accept": "*/*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "x-ig-bandwidth-speed-kbps": "2000",
+      },
+      signal: AbortSignal.timeout(25_000),
+    });
+
+    console.log(`[StyleAgent] instagram-json-api: HTTP ${res.status}`);
+    if (!res.ok) return [];
+
+    const json = await res.json() as Record<string, unknown>;
+    const user = (json?.data as Record<string, unknown>)?.user as Record<string, unknown> | undefined
+      ?? (json?.user as Record<string, unknown> | undefined);
+
+    if (!user) {
+      console.warn(`[StyleAgent] instagram-json-api: no user object in response. Keys: ${Object.keys(json).join(", ")}`);
+      return [];
+    }
+
+    const edges = (user.edge_owner_to_timeline_media as Record<string, unknown>)?.edges as Array<Record<string, unknown>> ?? [];
+    const urls: string[] = [];
+
+    for (const edge of edges) {
+      const node = edge.node as Record<string, unknown>;
+      // Carousel children
+      const children = (node.edge_sidecar_to_children as Record<string, unknown>)?.edges as Array<Record<string, unknown>> ?? [];
+      for (const child of children) {
+        const childNode = child.node as Record<string, unknown>;
+        if (childNode?.display_url) urls.push(childNode.display_url as string);
+        if (urls.length >= 9) break;
+      }
+      if (node?.display_url && urls.length < 9) urls.push(node.display_url as string);
+      if (urls.length >= 9) break;
+    }
+
+    console.log(`[StyleAgent] instagram-json-api: found ${urls.length} post URLs for @${username}`);
+    return urls;
+  } catch (err) {
+    console.warn(`[StyleAgent] instagram-json-api failed:`, (err as Error).message);
+    return [];
+  }
+}
+
+// Strategy B: third-party Instagram viewers via ScraperAPI / direct requests.
 async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
   const BROWSER_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
   const hasScraperKey = !!ENV.scraperApiKey;
-  console.log(`[StyleAgent] fetchViaThirdPartyViewer: scraperApiKey=${hasScraperKey ? "set" : "NOT SET"}`);
 
-  type Attempt = { label: string; url: string; timeoutMs: number };
-  const attempts: Attempt[] = [];
-
-  if (hasScraperKey) {
-    // Best option: ScraperAPI renders instagram.com SPA with real browser → gets actual post images
-    attempts.push({
-      label: "scraperapi-instagram-rendered",
-      url: buildScraperApiUrl(`https://www.instagram.com/${encodeURIComponent(username)}/`, true),
-      timeoutMs: 45_000, // JS rendering takes longer
-    });
-    // Fallback: third-party viewers via ScraperAPI proxy (they have server-rendered HTML)
-    attempts.push({
-      label: "scraperapi-picuki",
-      url: buildScraperApiUrl(`https://www.picuki.com/profile/${encodeURIComponent(username)}`, true),
-      timeoutMs: 35_000,
-    });
-    attempts.push({
-      label: "scraperapi-imginn",
-      url: buildScraperApiUrl(`https://imginn.com/${encodeURIComponent(username)}/`, true),
-      timeoutMs: 35_000,
-    });
-  } else {
-    // No ScraperAPI key — direct requests (usually blocked for VPS/cloud IPs)
-    attempts.push({ label: "picuki-direct", url: `https://www.picuki.com/profile/${encodeURIComponent(username)}`, timeoutMs: 14_000 });
-    attempts.push({ label: "imginn-direct", url: `https://imginn.com/${encodeURIComponent(username)}/`, timeoutMs: 14_000 });
-    attempts.push({ label: "instagram-direct", url: `https://www.instagram.com/${encodeURIComponent(username)}/`, timeoutMs: 14_000 });
-  }
+  type Attempt = { label: string; url: string; render: boolean; timeoutMs: number };
+  const attempts: Attempt[] = hasScraperKey
+    ? [
+        { label: "scraperapi-picuki",  url: buildScraperApiUrl(`https://www.picuki.com/profile/${encodeURIComponent(username)}`, false), render: false, timeoutMs: 25_000 },
+        { label: "scraperapi-imginn",  url: buildScraperApiUrl(`https://imginn.com/${encodeURIComponent(username)}/`, false),             render: false, timeoutMs: 25_000 },
+      ]
+    : [
+        { label: "picuki-direct",   url: `https://www.picuki.com/profile/${encodeURIComponent(username)}`, render: false, timeoutMs: 14_000 },
+        { label: "imginn-direct",   url: `https://imginn.com/${encodeURIComponent(username)}/`,            render: false, timeoutMs: 14_000 },
+        { label: "instagram-direct",url: `https://www.instagram.com/${encodeURIComponent(username)}/`,    render: false, timeoutMs: 14_000 },
+      ];
 
   for (const attempt of attempts) {
     try {
@@ -468,7 +504,7 @@ async function fetchViaThirdPartyViewer(username: string): Promise<string[]> {
 
       const html = await res.text();
       const urls = extractImageUrlsFromHtml(html);
-      console.log(`[StyleAgent] ${attempt.label}: found ${urls.length} image URLs (html length: ${html.length})`);
+      console.log(`[StyleAgent] ${attempt.label}: found ${urls.length} image URLs (html: ${html.length} chars)`);
 
       if (urls.length >= 2) return urls.slice(0, 9);
     } catch (err) {
@@ -573,7 +609,16 @@ export async function analyzeInstagramProfileStyle(params: {
       postImageUrls: pub.postImageUrls ?? [],
     };
 
-    // If still no posts, try third-party Instagram viewers that render the full feed in HTML
+    // Strategy A: Instagram internal JSON API via ScraperAPI residential proxy (best quality)
+    if (profile.postImageUrls.length === 0) {
+      const jsonApiUrls = await fetchViaInstagramJsonApi(cleanUsername);
+      if (jsonApiUrls.length > 0) {
+        profile.postImageUrls = jsonApiUrls;
+        console.log(`[StyleAgent] ✅ Instagram JSON API: ${jsonApiUrls.length} post URLs for @${cleanUsername}`);
+      }
+    }
+
+    // Strategy B: third-party HTML viewers (picuki, imginn) as fallback
     if (profile.postImageUrls.length === 0) {
       const thirdPartyUrls = await fetchViaThirdPartyViewer(cleanUsername);
       if (thirdPartyUrls.length > 0) {
