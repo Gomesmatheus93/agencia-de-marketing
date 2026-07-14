@@ -141,43 +141,18 @@ function ResultPanel({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
 
-        {/* Needs-upload state — shown instead of the full result */}
-        {result.needsUpload && (
-          <div className="flex flex-col items-center gap-5 py-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-amber-500" />
-            </div>
-            <div className="space-y-2 max-w-sm">
-              <h3 className="font-semibold text-foreground">Configuração necessária</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {result.styleSummary}
-              </p>
-            </div>
-            <div className="w-full max-w-sm p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-left space-y-2">
-              <p className="text-xs font-semibold text-violet-700 dark:text-violet-400">Como ativar análise automática de perfis externos:</p>
-              <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside leading-relaxed">
-                <li>Acesse <strong>scraperapi.com</strong> e crie uma conta gratuita</li>
-                <li>Copie sua <strong>API Key</strong> do painel</li>
-                <li>No Easypanel, adicione a variável de ambiente: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">SCRAPERAPI_KEY=sua_chave</code></li>
-                <li>Reinicie o serviço — análise automática estará disponível</li>
-              </ol>
-              <p className="text-[10px] text-muted-foreground/60 pt-1">Plano gratuito: 1.000 análises/mês · sem cartão de crédito</p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={onClose}
-                variant="outline"
-                className="gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Analisar com prints
-              </Button>
-            </div>
+        {/* Estimate banner — shown when analysis was done without images */}
+        {result.isEstimate && (
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-2">
+            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+              <strong>Análise estimada</strong> — não foi possível acessar as imagens deste perfil. As cores e estilos abaixo são uma sugestão genérica baseada no nicho deduzido pelo nome do perfil.
+            </p>
           </div>
         )}
 
-        {/* Regular result content — hidden when needsUpload */}
-        {!result.needsUpload && <>
+        {/* Regular result content */}
+        <>
 
         {/* Posts analisados */}
         {result.rawPostImageUrls && result.rawPostImageUrls.length > 0 && (
@@ -298,12 +273,11 @@ function ResultPanel({
           </Section>
         )}
 
-        </> /* end !needsUpload */}
+        </>
       </div>
 
-      {/* Action bar — hidden when no images were found */}
-      {!result.needsUpload && (
-        <div className="p-4 border-t border-border/30 flex flex-col gap-2 flex-shrink-0">
+      {/* Action bar */}
+      <div className="p-4 border-t border-border/30 flex flex-col gap-2 flex-shrink-0">
           <div className="flex gap-2">
             {!alreadySaved && (
               <Button
@@ -335,7 +309,6 @@ function ResultPanel({
             {savedAsTemplate ? "Template salvo no carrossel ✓" : "Salvar como template de carrossel"}
           </Button>
         </div>
-      )}
     </div>
   );
 }

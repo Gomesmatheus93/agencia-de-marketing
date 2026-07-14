@@ -72,6 +72,7 @@ export interface InstagramStyleResult {
 
   // ── Estado especial ───────────────────────────────────────────────────
   needsUpload?: boolean;
+  isEstimate?: boolean;
 
   // ── Branding ─────────────────────────────────────────────────────────
   brandKeywords?: string[];
@@ -765,57 +766,70 @@ Sinais: predominância de fotos pessoais, retratos, lifestyle, viagens, gastrono
   }
 }`;
 
-  // ── Early return when no images available ──────────────────────────────────
-  // Do NOT ask Claude to invent colors when there's no visual data — it generates
-  // plausible-but-wrong palettes based on the niche name, misleading the user.
+  // ── Text-only estimate when no images available ────────────────────────────
+  // Instead of blocking with an error, call Claude with a text-only prompt to
+  // generate a GENERIC estimated style for the profile. Clearly marked as isEstimate.
   if (imageBlocks.length === 0) {
-    console.log(`[StyleAgent] @${cleanUsername}: no images — returning upload-required result`);
-    return {
+    console.log(`[StyleAgent] @${cleanUsername}: no images — requesting text-only estimate from Claude`);
+
+    const estimateFallback: InstagramStyleResult = {
       accentColor: "#8b5cf6",
-      bgColor: "#f8f9fa",
+      bgColor: "#0f172a",
       primaryColor: "#6d28d9",
       secondaryColor: "#a78bfa",
-      textColor: "#1a1a1a",
-      fontFamily: "system-ui, sans-serif",
+      textColor: "#ffffff",
+      fontFamily: "system-ui, -apple-system, sans-serif",
       secondaryFont: "sans-serif",
-      fontWeight: "regular",
+      fontWeight: "medium",
       titleAlign: "left",
       titleSize: 1,
       profileName: profile.name ?? cleanUsername,
       profileHandle: `@${cleanUsername}`,
-      profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? null,
+      profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? undefined,
       rawPostImageUrls: [],
-      needsUpload: true,
-      styleSummary: ENV.scraperApiKey
-        ? `Não foi possível baixar imagens do perfil @${cleanUsername} mesmo via ScraperAPI. O perfil pode ser privado, inexistente ou temporariamente bloqueado.`
-        : `Análise automática de perfis externos requer a variável de ambiente SCRAPERAPI_KEY. Cadastre-se gratuitamente em scraperapi.com (1000 req/mês grátis) e adicione a chave no Easypanel.`,
-      toneDescription: "—",
-      niche: profile.niche ?? "Não identificado",
-      targetAudience: "—",
-      objective: "—",
-      layoutPattern: "—",
-      editingStyle: "—",
-      recurringElements: "—",
-      postStructure: "—",
-      visualEffects: "—",
-      copyType: "—",
-      captionStructure: "—",
-      ctaExamples: [],
-      language: "—",
-      frequentEmojis: "",
-      brandKeywords: [],
-      designTokens: {
-        "--color-primary": "#6d28d9",
-        "--color-secondary": "#a78bfa",
-        "--color-bg": "#f8f9fa",
-        "--color-text": "#1a1a1a",
-        "--color-accent": "#8b5cf6",
-        "--font-primary": "system-ui, sans-serif",
-        "--font-secondary": "system-ui, sans-serif",
-        "--border-radius": "8px",
-        "--spacing-unit": "16px",
-      },
+      isEstimate: true,
+      styleSummary: `Estimativa gerada sem acesso às imagens do perfil @${cleanUsername}. As cores e estilos são uma sugestão genérica baseada no nicho deduzido — não representam a identidade visual real do perfil.`,
+      toneDescription: "Comunicação profissional.",
+      niche: "Não identificado",
     };
+
+    try {
+      const estimateContent: AnthropicContent[] = [
+        {
+          type: "text",
+          text: [
+            `Não foi possível acessar imagens do perfil @${cleanUsername}.`,
+            `Com base APENAS no username/handle "${cleanUsername}", gere uma estimativa genérica de identidade visual adequada para esse tipo de perfil.`,
+            `\nREGRAS PARA ESTIMATIVA SEM IMAGENS:`,
+            `- Deduza o possível nicho pelo nome do handle (ex: "brandsdecoded" sugere marketing/branding/análise de marcas)`,
+            `- Use cores profissionais e neutras adequadas ao nicho — NÃO invente cores específicas de uma marca real`,
+            `- No campo "styleSummary", mencione EXPLICITAMENTE que é uma estimativa gerada sem imagens`,
+            `- No campo "niche", deduza pelo handle; se não conseguir, use "Não identificado"`,
+            `\nRetorne o JSON completo:\n${jsonSchema}`,
+          ].join("\n"),
+        },
+      ];
+
+      const estimateRaw = await invokeAnthropicLLM({
+        system: systemPrompt,
+        userContent: estimateContent,
+        maxTokens: 1500,
+      });
+
+      const estimateParsed = parseClaudeJsonResponse<Partial<InstagramStyleResult>>(estimateRaw, {});
+      return {
+        ...estimateFallback,
+        ...estimateParsed,
+        profileName: profile.name ?? cleanUsername,
+        profileHandle: `@${String(estimateParsed.profileHandle ?? cleanUsername).replace(/^@/, "")}`,
+        profileImageUrl: profilePictureDataUrl ?? profile.profilePictureUrl ?? undefined,
+        rawPostImageUrls: [],
+        isEstimate: true,
+      };
+    } catch (err) {
+      console.warn(`[StyleAgent] text-only estimate failed for @${cleanUsername}:`, err);
+      return estimateFallback;
+    }
   }
 
   const userContent: AnthropicContent[] = [
