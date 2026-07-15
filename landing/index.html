@@ -1,13 +1,1052 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="scroll-smooth">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KrythosLab — Plataforma de Marketing com IA</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KrythosLab | Sua Agência de Marketing Movida a IA</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6', // Primary Purple
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95',
+                        },
+                        accent: {
+                            500: '#3b82f6', // Secondary Blue
+                        },
+                        dark: '#0f172a',
+                        darker: '#020617',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom Styles for Glow Effects and Animations */
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        .text-gradient {
+            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .bg-gradient-custom {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+        }
+
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(139, 92, 246, 0.3);
+            box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.2);
+        }
+
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.4;
+            animation: float 10s infinite alternate;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(20px, -20px) scale(1.1); }
+        }
+
+        .glow-btn {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .glow-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(45deg, #8b5cf6, #3b82f6);
+            z-index: -1;
+            border-radius: inherit;
+            filter: blur(8px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .glow-btn:hover::before {
+            opacity: 0.8;
+        }
+
+        /* ── Platform Preview Animations ── */
+        .preview-panel {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .preview-panel.active {
+            opacity: 1 !important;
+            transform: translateX(0) !important;
+            pointer-events: auto !important;
+        }
+        .preview-panel.exit-left {
+            opacity: 0;
+            transform: translateX(-12px);
+        }
+
+        /* Shimmer loading bar for image gen */
+        .shimmer-bar {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.15) 50%, transparent 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.8s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        /* Typing cursor blink */
+        .typing-cursor {
+            animation: blink 0.7s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Article lines animation */
+        .article-line {
+            animation: fadeInLine 0.4s ease both;
+        }
+        @keyframes fadeInLine {
+            from { width: 0; opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Sound wave animation */
+        .sound-wave {
+            animation: soundWave 0.8s ease-in-out infinite alternate;
+        }
+        @keyframes soundWave {
+            from { transform: scaleY(0.4); }
+            to { transform: scaleY(1.4); }
+        }
+
+        /* Sidebar active state */
+        .sidebar-btn.active {
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #a78bfa;
+        }
+    </style>
 </head>
-<body>
+<body class="antialiased selection:bg-brand-500 selection:text-white">
 
-  <!-- Cole seu código aqui -->
+    <!-- Background Blobs -->
+    <div class="blob bg-brand-600 w-96 h-96 rounded-full top-0 left-[-10%]"></div>
+    <div class="blob bg-accent-500 w-96 h-96 rounded-full top-[20%] right-[-10%]"></div>
 
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 glass-card border-b-0 border-white/10 transition-all duration-300" id="navbar">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <div class="flex-shrink-0 flex items-center cursor-pointer">
+                    <span class="text-2xl font-bold tracking-tighter flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-brand-500"></i>
+                        Krythos<span class="text-gradient">Lab</span>
+                    </span>
+                </div>
+                
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#features" class="text-gray-300 hover:text-white transition-colors text-sm font-medium">Recursos</a>
+                    <a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors text-sm font-medium">Como Funciona</a>
+                    <a href="#pricing" class="text-gray-300 hover:text-white transition-colors text-sm font-medium">Preços</a>
+                    <a href="#" class="text-gray-300 hover:text-white transition-colors text-sm font-medium">Login</a>
+                    <a href="#pricing" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-full font-medium transition-all glow-btn">
+                        Teste Grátis
+                    </a>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-btn" class="text-gray-300 hover:text-white focus:outline-none">
+                        <i class="fa-solid fa-bars text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu (Hidden by default) -->
+        <div id="mobile-menu" class="hidden md:hidden bg-darker border-t border-white/10">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#features" class="block px-3 py-2 text-base font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-md">Recursos</a>
+                <a href="#how-it-works" class="block px-3 py-2 text-base font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-md">Como Funciona</a>
+                <a href="#pricing" class="block px-3 py-2 text-base font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-md">Preços</a>
+                <a href="#" class="block px-3 py-2 text-base font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-md">Login</a>
+                <a href="#pricing" class="block w-full text-center mt-4 bg-brand-600 text-white px-5 py-3 rounded-md font-medium">Teste Grátis</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                
+                <!-- Hero Text -->
+                <div class="text-center lg:text-left z-10">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-sm font-medium mb-6">
+                        <span class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+                        KrythosLab v2.0 já está no ar
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight">
+                        A primeira agência de marketing <br class="hidden lg:block"/>
+                        <span class="text-gradient">totalmente movida a IA.</span>
+                    </h1>
+                    <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto lg:mx-0">
+                        Substitua dezenas de ferramentas. Crie imagens, desenhe carrosséis, escreva artigos, analise métricas e automatize seu Instagram em um único dashboard focado em conversão.
+                    </p>
+                    <div class="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
+                        <a href="#pricing" class="w-full sm:w-auto bg-white text-darker px-8 py-4 rounded-full font-bold hover:bg-gray-100 transition-colors shadow-lg shadow-white/10 text-center">
+                            Começar Teste de 7 Dias
+                        </a>
+                        <a href="#features" class="w-full sm:w-auto px-8 py-4 rounded-full font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 text-center flex items-center justify-center gap-2">
+                            <i class="fa-regular fa-circle-play"></i> Ver demonstração
+                        </a>
+                    </div>
+                    <div class="mt-8 flex items-center justify-center lg:justify-start gap-4 text-sm text-gray-500">
+                        <div class="flex -space-x-2">
+                            <img class="w-8 h-8 rounded-full border-2 border-darker" src="https://placehold.co/100x100/1e293b/ffffff?text=U1" alt="User">
+                            <img class="w-8 h-8 rounded-full border-2 border-darker" src="https://placehold.co/100x100/1e293b/ffffff?text=U2" alt="User">
+                            <img class="w-8 h-8 rounded-full border-2 border-darker" src="https://placehold.co/100x100/1e293b/ffffff?text=U3" alt="User">
+                        </div>
+                        <p>Aprovado por <span class="text-white font-medium">2.000+</span> agências e criadores.</p>
+                    </div>
+                </div>
+
+                <!-- Animated Platform Preview -->
+                <div class="relative z-10 hidden md:block" id="platform-preview">
+                    <!-- Glow behind dashboard -->
+                    <div class="absolute inset-0 bg-gradient-to-tr from-brand-600 to-accent-500 blur-3xl opacity-20 rounded-[2rem]"></div>
+
+                    <!-- Browser chrome -->
+                    <div class="relative bg-[#0f172a] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+                        <!-- Top bar -->
+                        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-[#1e293b]/50">
+                            <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                            <div class="ml-4 h-4 w-48 bg-white/5 rounded-full flex items-center px-3">
+                                <span class="text-[9px] text-white/20 truncate">localhost:3000/dashboard</span>
+                            </div>
+                        </div>
+
+                        <!-- App shell -->
+                        <div class="flex" style="height:420px">
+
+                            <!-- Sidebar -->
+                            <div class="w-14 border-r border-white/5 flex flex-col items-center pt-4 pb-4 gap-1 bg-[#0a1020]/80 flex-shrink-0">
+                                <!-- Logo mark -->
+                                <div class="w-8 h-8 rounded-lg bg-brand-500/20 flex items-center justify-center mb-3">
+                                    <i class="fa-solid fa-layer-group text-brand-400 text-xs"></i>
+                                </div>
+                                <div id="sb-0" class="sidebar-btn w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 bg-brand-500/20 border border-brand-500/30" title="Dashboard">
+                                    <i class="fa-solid fa-house text-brand-400 text-xs"></i>
+                                </div>
+                                <div id="sb-1" class="sidebar-btn w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-gray-600 hover:text-gray-400 hover:bg-white/5" title="Gerar Imagens">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i>
+                                </div>
+                                <div id="sb-2" class="sidebar-btn w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-gray-600 hover:text-gray-400 hover:bg-white/5" title="Carrossel">
+                                    <i class="fa-solid fa-layer-group text-xs"></i>
+                                </div>
+                                <div id="sb-3" class="sidebar-btn w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-gray-600 hover:text-gray-400 hover:bg-white/5" title="Artigos">
+                                    <i class="fa-solid fa-file-lines text-xs"></i>
+                                </div>
+                                <div id="sb-4" class="sidebar-btn w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-gray-600 hover:text-gray-400 hover:bg-white/5" title="Vídeos IA">
+                                    <i class="fa-solid fa-clapperboard text-xs"></i>
+                                </div>
+                            </div>
+
+                            <!-- Content panels -->
+                            <div class="flex-1 overflow-hidden relative bg-gradient-to-br from-[#0f172a] to-[#020617]">
+
+                                <!-- PANEL 0: Dashboard -->
+                                <div id="panel-0" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div>
+                                            <div class="h-3 w-16 bg-white/10 rounded mb-1.5"></div>
+                                            <div class="h-5 w-36 bg-white/20 rounded"></div>
+                                        </div>
+                                        <div class="h-6 w-20 bg-brand-500/20 border border-brand-500/20 rounded-lg text-brand-400 text-[9px] flex items-center justify-center gap-1">
+                                            <i class="fa-solid fa-circle text-[5px] animate-pulse"></i> Ao vivo
+                                        </div>
+                                    </div>
+                                    <!-- Metric cards -->
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div class="bg-white/5 border border-white/5 rounded-xl p-3">
+                                            <div class="h-2 w-12 bg-white/10 rounded mb-2"></div>
+                                            <div class="text-lg font-bold text-white">2.4k</div>
+                                            <div class="text-[9px] text-green-400 flex items-center gap-0.5 mt-0.5"><i class="fa-solid fa-arrow-up text-[8px]"></i>+18%</div>
+                                        </div>
+                                        <div class="bg-white/5 border border-white/5 rounded-xl p-3">
+                                            <div class="h-2 w-12 bg-white/10 rounded mb-2"></div>
+                                            <div class="text-lg font-bold text-white">87</div>
+                                            <div class="text-[9px] text-green-400 flex items-center gap-0.5 mt-0.5"><i class="fa-solid fa-arrow-up text-[8px]"></i>+5</div>
+                                        </div>
+                                        <div class="bg-white/5 border border-white/5 rounded-xl p-3">
+                                            <div class="h-2 w-12 bg-white/10 rounded mb-2"></div>
+                                            <div class="text-lg font-bold text-brand-400">12</div>
+                                            <div class="text-[9px] text-gray-500 mt-0.5">pendentes</div>
+                                        </div>
+                                    </div>
+                                    <!-- Mini chart -->
+                                    <div class="flex-1 bg-white/5 border border-white/5 rounded-xl p-3">
+                                        <div class="h-2 w-20 bg-white/10 rounded mb-3"></div>
+                                        <div class="flex items-end gap-1 h-16">
+                                            <div class="flex-1 bg-brand-500/30 rounded-t" style="height:45%"></div>
+                                            <div class="flex-1 bg-brand-500/40 rounded-t" style="height:60%"></div>
+                                            <div class="flex-1 bg-brand-500/50 rounded-t" style="height:40%"></div>
+                                            <div class="flex-1 bg-brand-500/60 rounded-t" style="height:75%"></div>
+                                            <div class="flex-1 bg-brand-500/70 rounded-t" style="height:55%"></div>
+                                            <div class="flex-1 bg-brand-500/80 rounded-t" style="height:90%"></div>
+                                            <div class="flex-1 bg-brand-400 rounded-t" style="height:100%" id="chart-bar-anim"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 1: Gerar Imagens -->
+                                <div id="panel-1" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                                            <i class="fa-solid fa-wand-magic-sparkles text-white text-[8px]"></i>
+                                        </div>
+                                        <div class="h-4 w-32 bg-white/20 rounded"></div>
+                                    </div>
+                                    <!-- Style chips -->
+                                    <div class="flex gap-1.5">
+                                        <div class="px-2 py-1 rounded-lg bg-brand-500/20 border border-brand-500/30 text-brand-400 text-[9px]">Produto</div>
+                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Banner</div>
+                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Social</div>
+                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Logo</div>
+                                    </div>
+                                    <!-- Prompt box -->
+                                    <div class="bg-white/5 border border-white/10 rounded-xl p-3 h-14 relative overflow-hidden">
+                                        <span id="typing-text" class="text-[10px] text-gray-400"></span><span class="typing-cursor text-brand-400">|</span>
+                                    </div>
+                                    <!-- Generating button -->
+                                    <div class="h-8 rounded-xl bg-gradient-to-r from-brand-600 to-accent-500 flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-wand-magic-sparkles text-white text-[10px] animate-spin" style="animation-duration:2s"></i>
+                                        <span class="text-white text-[10px] font-semibold">Gerando imagem com IA...</span>
+                                    </div>
+                                    <!-- Image grid result -->
+                                    <div class="grid grid-cols-3 gap-2 flex-1">
+                                        <div class="rounded-xl bg-gradient-to-br from-brand-900 via-brand-800 to-dark border border-brand-500/20 overflow-hidden relative" id="img-gen-1">
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
+                                            </div>
+                                            <div class="shimmer-bar"></div>
+                                        </div>
+                                        <div class="rounded-xl bg-gradient-to-br from-accent-500/30 to-dark border border-accent-500/20 overflow-hidden relative" id="img-gen-2">
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
+                                            </div>
+                                            <div class="shimmer-bar" style="animation-delay:.4s"></div>
+                                        </div>
+                                        <div class="rounded-xl bg-gradient-to-br from-purple-900/60 to-dark border border-purple-500/20 overflow-hidden relative" id="img-gen-3">
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
+                                            </div>
+                                            <div class="shimmer-bar" style="animation-delay:.8s"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 2: Carrossel -->
+                                <div id="panel-2" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center flex-shrink-0">
+                                            <i class="fa-solid fa-layer-group text-white text-[8px]"></i>
+                                        </div>
+                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
+                                        <div class="ml-auto h-5 w-16 rounded-lg bg-brand-500/20 border border-brand-500/20 text-brand-400 text-[9px] flex items-center justify-center">+ Novo</div>
+                                    </div>
+                                    <!-- Carousel slides preview -->
+                                    <div class="flex gap-2 overflow-hidden">
+                                        <!-- Cover slide -->
+                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 p-3 flex flex-col justify-end border-2 border-brand-400/50 relative overflow-hidden">
+                                            <div class="absolute top-2 left-2 text-[8px] text-white/50 font-mono">01</div>
+                                            <div class="h-2 w-16 bg-white/80 rounded mb-1"></div>
+                                            <div class="h-1.5 w-12 bg-white/40 rounded"></div>
+                                        </div>
+                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-[#1e293b] border border-white/10 p-3 flex flex-col gap-1.5 relative overflow-hidden">
+                                            <div class="absolute top-2 left-2 text-[8px] text-white/30 font-mono">02</div>
+                                            <div class="mt-4 h-1.5 w-full bg-white/20 rounded"></div>
+                                            <div class="h-1.5 w-4/5 bg-white/15 rounded"></div>
+                                            <div class="h-1.5 w-3/5 bg-white/10 rounded"></div>
+                                            <div class="mt-auto h-5 w-12 rounded bg-brand-500/30 border border-brand-500/20"></div>
+                                        </div>
+                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-[#1e293b] border border-white/10 p-3 flex flex-col gap-1.5 relative overflow-hidden opacity-70">
+                                            <div class="absolute top-2 left-2 text-[8px] text-white/30 font-mono">03</div>
+                                            <div class="mt-4 h-1.5 w-full bg-white/20 rounded"></div>
+                                            <div class="h-1.5 w-3/5 bg-white/15 rounded"></div>
+                                            <div class="mt-auto flex gap-1">
+                                                <div class="h-5 w-5 rounded bg-brand-500/20 border border-brand-500/10"></div>
+                                                <div class="h-5 w-5 rounded bg-white/5 border border-white/10"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Controls -->
+                                    <div class="flex gap-2">
+                                        <div class="flex-1 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center px-3 gap-2">
+                                            <i class="fa-solid fa-palette text-gray-600 text-[10px]"></i>
+                                            <div class="h-2 w-20 bg-white/10 rounded"></div>
+                                        </div>
+                                        <div class="h-8 w-8 rounded-xl bg-brand-500/20 border border-brand-500/20 flex items-center justify-center">
+                                            <i class="fa-solid fa-download text-brand-400 text-[10px]"></i>
+                                        </div>
+                                    </div>
+                                    <!-- Text editor area -->
+                                    <div class="flex-1 bg-white/5 border border-white/5 rounded-xl p-3">
+                                        <div class="h-2 w-16 bg-white/10 rounded mb-2"></div>
+                                        <div class="space-y-1.5">
+                                            <div class="h-1.5 w-full bg-white/10 rounded"></div>
+                                            <div class="h-1.5 w-4/5 bg-white/8 rounded"></div>
+                                            <div class="h-1.5 w-3/5 bg-white/6 rounded"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 3: Artigos -->
+                                <div id="panel-3" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0">
+                                            <i class="fa-solid fa-file-lines text-white text-[8px]"></i>
+                                        </div>
+                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
+                                    </div>
+                                    <!-- Article card being generated -->
+                                    <div class="flex-1 bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-2.5 relative overflow-hidden">
+                                        <!-- Animated writing effect -->
+                                        <div class="h-5 w-3/4 bg-white/20 rounded"></div>
+                                        <div class="space-y-1.5 mt-1">
+                                            <div class="h-1.5 w-full bg-white/10 rounded article-line" style="animation-delay:0s"></div>
+                                            <div class="h-1.5 w-full bg-white/10 rounded article-line" style="animation-delay:.15s"></div>
+                                            <div class="h-1.5 w-4/5 bg-white/10 rounded article-line" style="animation-delay:.3s"></div>
+                                        </div>
+                                        <div class="space-y-1.5 mt-2">
+                                            <div class="h-1.5 w-full bg-white/8 rounded article-line" style="animation-delay:.5s"></div>
+                                            <div class="h-1.5 w-full bg-white/8 rounded article-line" style="animation-delay:.65s"></div>
+                                            <div class="h-1.5 w-3/5 bg-white/8 rounded article-line" style="animation-delay:.8s"></div>
+                                        </div>
+                                        <div class="space-y-1.5 mt-2">
+                                            <div class="h-1.5 w-full bg-white/6 rounded article-line" style="animation-delay:1s"></div>
+                                            <div class="h-1.5 w-4/5 bg-white/6 rounded article-line" style="animation-delay:1.15s"></div>
+                                        </div>
+                                        <!-- Cursor blink at end -->
+                                        <div class="h-4 w-0.5 bg-brand-400 rounded animate-pulse mt-1 ml-0.5"></div>
+                                        <!-- AI generating badge -->
+                                        <div class="absolute bottom-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                            <span class="text-emerald-400 text-[9px]">IA escrevendo...</span>
+                                        </div>
+                                    </div>
+                                    <!-- Bottom toolbar -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex gap-1">
+                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-bold text-gray-600 text-[8px]"></i></div>
+                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-italic text-gray-600 text-[8px]"></i></div>
+                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-link text-gray-600 text-[8px]"></i></div>
+                                        </div>
+                                        <div class="ml-auto flex gap-1.5">
+                                            <div class="h-6 w-16 rounded-lg bg-white/5 border border-white/10 text-[9px] text-gray-500 flex items-center justify-center">Rascunho</div>
+                                            <div class="h-6 w-16 rounded-lg bg-brand-500/20 border border-brand-500/30 text-[9px] text-brand-400 flex items-center justify-center">Publicar</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 4: Vídeos IA -->
+                                <div id="panel-4" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center flex-shrink-0">
+                                            <i class="fa-solid fa-clapperboard text-white text-[8px]"></i>
+                                        </div>
+                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
+                                    </div>
+                                    <!-- Video avatar preview -->
+                                    <div class="flex gap-3 flex-1">
+                                        <div class="w-24 flex-shrink-0 aspect-[9/16] rounded-xl bg-gradient-to-b from-[#1e293b] to-[#0f172a] border border-white/10 relative overflow-hidden">
+                                            <!-- Avatar silhouette -->
+                                            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-14 h-20 bg-gradient-to-t from-brand-500/20 to-transparent rounded-t-full"></div>
+                                            <div class="absolute top-6 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-gradient-to-br from-brand-400/40 to-brand-600/40 border border-brand-400/20"></div>
+                                            <!-- Sound waves -->
+                                            <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-0.5">
+                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:4px;animation-delay:0s"></div>
+                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:8px;animation-delay:.1s"></div>
+                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:12px;animation-delay:.2s"></div>
+                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:8px;animation-delay:.3s"></div>
+                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:4px;animation-delay:.4s"></div>
+                                            </div>
+                                            <!-- Processing overlay -->
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <div class="w-8 h-8 rounded-full border-2 border-brand-500/50 border-t-brand-400 animate-spin"></div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-1 flex flex-col gap-2">
+                                            <div class="h-2 w-20 bg-white/10 rounded"></div>
+                                            <div class="bg-white/5 border border-white/5 rounded-xl p-2 flex-1">
+                                                <div class="h-1.5 w-full bg-white/10 rounded mb-1.5"></div>
+                                                <div class="h-1.5 w-4/5 bg-white/8 rounded mb-1.5"></div>
+                                                <div class="h-1.5 w-3/5 bg-white/6 rounded"></div>
+                                            </div>
+                                            <div class="flex gap-1.5">
+                                                <div class="flex-1 h-7 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center gap-1">
+                                                    <i class="fa-solid fa-microphone text-gray-600 text-[9px]"></i>
+                                                    <span class="text-[9px] text-gray-500">Voz PT-BR</span>
+                                                </div>
+                                                <div class="flex-1 h-7 rounded-lg bg-orange-500/20 border border-orange-500/20 flex items-center justify-center gap-1">
+                                                    <i class="fa-solid fa-video text-orange-400 text-[9px]"></i>
+                                                    <span class="text-[9px] text-orange-400">Gerar Avatar</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div><!-- /content panels -->
+                        </div><!-- /app shell -->
+
+                        <!-- Tab indicator bar at bottom -->
+                        <div class="flex items-center gap-1 px-4 py-2 border-t border-white/5 bg-[#0a1020]/80">
+                            <div id="tab-0" class="tab-dot h-1.5 rounded-full bg-brand-400 transition-all duration-300" style="width:20px"></div>
+                            <div id="tab-1" class="tab-dot h-1.5 rounded-full bg-white/20 transition-all duration-300" style="width:8px"></div>
+                            <div id="tab-2" class="tab-dot h-1.5 rounded-full bg-white/20 transition-all duration-300" style="width:8px"></div>
+                            <div id="tab-3" class="tab-dot h-1.5 rounded-full bg-white/20 transition-all duration-300" style="width:8px"></div>
+                            <div id="tab-4" class="tab-dot h-1.5 rounded-full bg-white/20 transition-all duration-300" style="width:8px"></div>
+                            <div class="ml-auto text-[9px] text-gray-600" id="tab-label">Dashboard</div>
+                        </div>
+                    </div><!-- /browser chrome -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 relative bg-[#020617]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-brand-500 font-semibold tracking-wide uppercase text-sm mb-3">Tudo o que você precisa</h2>
+                <h3 class="text-3xl md:text-4xl font-bold mb-4">O ecossistema completo para dominar as redes sociais</h3>
+                <p class="text-gray-400">A KrythosLab unifica criação, análise e automação em um só lugar. Diga adeus às assinaturas múltiplas e fluxos de trabalho confusos.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <!-- Feature 1 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-brand-500/10 flex items-center justify-center mb-6 group-hover:bg-brand-500/20 transition-colors border border-brand-500/20">
+                        <i class="fa-solid fa-image text-brand-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Estúdio de Imagens IA</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Gere imagens hiper-realistas, ilustrações ou artes abstratas a partir de simples textos. Mantenha a consistência visual da sua marca sem precisar de designers caros.
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-accent-500/10 flex items-center justify-center mb-6 group-hover:bg-accent-500/20 transition-colors border border-accent-500/20">
+                        <i class="fa-solid fa-layer-group text-accent-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Carrosséis Automáticos</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Transforme uma ideia ou um link de blog em um carrossel de 10 páginas desenhado e otimizado para retenção no Instagram. Textos e design gerados em segundos.
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center mb-6 group-hover:bg-purple-500/20 transition-colors border border-purple-500/20">
+                        <i class="fa-solid fa-pen-nib text-purple-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Copywriting & Artigos</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Nossa IA aprende o tom de voz da sua marca. Gere artigos para SEO, roteiros para Reels, legendas persuasivas e e-mails de vendas que convertem.
+                    </p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-pink-500/10 flex items-center justify-center mb-6 group-hover:bg-pink-500/20 transition-colors border border-pink-500/20">
+                        <i class="fa-solid fa-chart-line text-pink-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Gestão e Analytics</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Agende postagens para os melhores horários. Analise métricas profundas do Instagram e descubra exatamente qual tipo de conteúdo traz mais seguidores e vendas.
+                    </p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center mb-6 group-hover:bg-green-500/20 transition-colors border border-green-500/20">
+                        <i class="fa-solid fa-robot text-green-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Automação de DM</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Configure fluxos inteligentes. "Comente EU QUERO para receber o link". A IA envia o direct, responde dúvidas e qualifica leads automaticamente 24/7.
+                    </p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="glass-card p-8 rounded-2xl relative group">
+                    <div class="w-12 h-12 rounded-lg bg-yellow-500/10 flex items-center justify-center mb-6 group-hover:bg-yellow-500/20 transition-colors border border-yellow-500/20">
+                        <i class="fa-solid fa-magnifying-glass-chart text-yellow-400 text-xl"></i>
+                    </div>
+                    <h4 class="text-xl font-bold mb-3 text-white">Auditoria de Perfil IA</h4>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Insira a @ de um perfil e nossa IA fará uma varredura completa. Receba um relatório apontando falhas na bio, paleta de cores e frequência de postagens.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how-it-works" class="py-24 relative border-t border-white/5">
+        <div class="blob bg-brand-900 w-full h-96 top-1/2 left-0 transform -translate-y-1/2 opacity-20"></div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="flex flex-col lg:flex-row items-center gap-16">
+                <div class="lg:w-1/2">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-6">Trabalhe <span class="text-gradient">mais inteligente</span>, não mais duro.</h2>
+                    <p class="text-gray-400 mb-8 text-lg">
+                        O processo tradicional de agências exige um designer, um copywriter, um analista e um gestor de tráfego. Com a KrythosLab, você orquestra tudo isso sozinho ou potencializa sua equipe existente em 10x.
+                    </p>
+                    
+                    <div class="space-y-6">
+                        <div class="flex gap-4">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center flex-shrink-0 border border-brand-500/30">
+                                <span class="text-brand-400 font-bold text-sm">1</span>
+                            </div>
+                            <div>
+                                <h5 class="text-white font-bold text-lg">Conecte suas contas</h5>
+                                <p class="text-gray-400 text-sm mt-1">Sincronize o Instagram e outras redes com segurança em poucos cliques.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center flex-shrink-0 border border-brand-500/30">
+                                <span class="text-brand-400 font-bold text-sm">2</span>
+                            </div>
+                            <div>
+                                <h5 class="text-white font-bold text-lg">Gere e Aprove</h5>
+                                <p class="text-gray-400 text-sm mt-1">Dê instruções simples para a IA. Ela desenha, escreve e sugere. Você apenas aprova ou ajusta.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center flex-shrink-0 border border-brand-500/30">
+                                <span class="text-brand-400 font-bold text-sm">3</span>
+                            </div>
+                            <div>
+                                <h5 class="text-white font-bold text-lg">Programe e Converta</h5>
+                                <p class="text-gray-400 text-sm mt-1">Agende para o mês inteiro e deixe nossas automações de DM transformarem visualizações em vendas.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="lg:w-1/2 w-full">
+                    <div class="glass-card p-6 rounded-2xl relative">
+                        <!-- Code/Stats Window Simulation -->
+                        <div class="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+                            <div class="text-sm font-medium text-gray-300">Relatório de Desempenho - @suaagencia</div>
+                            <div class="text-green-400 text-sm"><i class="fa-solid fa-arrow-trend-up"></i> +145% vs mês anterior</div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>Tempo salvo na criação (h/semana)</span>
+                                    <span class="text-white">32 horas</span>
+                                </div>
+                                <div class="w-full bg-dark rounded-full h-2">
+                                    <div class="bg-brand-500 h-2 rounded-full" style="width: 85%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>Taxa de Engajamento (%)</span>
+                                    <span class="text-white">8.4%</span>
+                                </div>
+                                <div class="w-full bg-dark rounded-full h-2">
+                                    <div class="bg-accent-500 h-2 rounded-full" style="width: 70%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>Leads capturados via Auto-DM</span>
+                                    <span class="text-white">1.204</span>
+                                </div>
+                                <div class="w-full bg-dark rounded-full h-2">
+                                    <div class="bg-green-500 h-2 rounded-full" style="width: 92%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-white/5 flex items-center justify-center">
+                            <button class="text-brand-400 text-sm font-medium hover:text-brand-300 transition-colors">
+                                Ver Dashboard Completo <i class="fa-solid fa-arrow-right ml-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-24 relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Planos simples para escalar sua operação</h2>
+                <p class="text-gray-400">Sem taxas ocultas. Escolha o plano perfeito para o seu momento.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                
+                <!-- Starter Plan -->
+                <div class="glass-card rounded-2xl p-8 border border-white/5 flex flex-col">
+                    <h3 class="text-xl font-bold text-white mb-2">Creator</h3>
+                    <p class="text-gray-400 text-sm mb-6">Para empreendedores solo e criadores de conteúdo.</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-bold text-white">R$ 97</span><span class="text-gray-500">/mês</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 flex-1">
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> 1 Perfil do Instagram
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> 50 Imagens IA por mês
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> 10 Carrosséis Automáticos
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> Agendamento Básico
+                        </li>
+                        <li class="flex items-start text-sm text-gray-500 gap-3 opacity-50">
+                            <i class="fa-solid fa-xmark mt-1"></i> Automação de DM
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-lg border border-white/10 hover:bg-white/5 transition-colors font-medium text-white">
+                        Assinar Creator
+                    </button>
+                </div>
+
+                <!-- Pro Plan (Highlighted) -->
+                <div class="glass-card rounded-2xl p-8 border border-brand-500 shadow-[0_0_30px_rgba(139,92,246,0.15)] flex flex-col relative transform md:-translate-y-4">
+                    <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-brand-600 to-accent-500 text-white px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+                        Mais Popular
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-2">Agência Pro</h3>
+                    <p class="text-gray-400 text-sm mb-6">O arsenal completo para dominar o mercado.</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-bold text-white">R$ 197</span><span class="text-gray-500">/mês</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 flex-1">
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-400 mt-1"></i> <span class="font-bold text-white">Até 5 Perfis do Instagram</span>
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-400 mt-1"></i> Imagens e Carrosséis Ilimitados
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-400 mt-1"></i> <span class="font-bold text-white">Automação de DM Avançada</span>
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-400 mt-1"></i> Analytics Completo e Auditoria
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-400 mt-1"></i> Treinamento de Voz de Marca (IA)
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-lg bg-brand-600 hover:bg-brand-500 transition-colors font-medium text-white shadow-lg glow-btn">
+                        Começar Teste Grátis
+                    </button>
+                </div>
+
+                <!-- Enterprise Plan -->
+                <div class="glass-card rounded-2xl p-8 border border-white/5 flex flex-col">
+                    <h3 class="text-xl font-bold text-white mb-2">Scale</h3>
+                    <p class="text-gray-400 text-sm mb-6">Para grandes operações e alta demanda de contas.</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-bold text-white">R$ 497</span><span class="text-gray-500">/mês</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 flex-1">
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> Perfis Ilimitados
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> Tudo do plano Pro
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> API e Webhooks
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> Gerenciamento de Equipe
+                        </li>
+                        <li class="flex items-start text-sm text-gray-300 gap-3">
+                            <i class="fa-solid fa-check text-brand-500 mt-1"></i> Suporte Prioritário no WhatsApp
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-lg border border-white/10 hover:bg-white/5 transition-colors font-medium text-white">
+                        Falar com Consultor
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent to-brand-900/20"></div>
+        <div class="max-w-4xl mx-auto px-4 relative z-10 text-center">
+            <h2 class="text-4xl font-bold mb-6">Pronto para transformar sua agência?</h2>
+            <p class="text-xl text-gray-400 mb-8">Junte-se a milhares de profissionais que estão escalando seus resultados com a KrythosLab.</p>
+            <button class="bg-white text-darker px-10 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                Criar Conta Gratuitamente
+            </button>
+            <p class="mt-4 text-sm text-gray-500">Não exige cartão de crédito no teste de 7 dias.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/10 bg-darker pt-16 pb-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                <div class="col-span-1 md:col-span-1">
+                    <span class="text-2xl font-bold tracking-tighter flex items-center gap-2 mb-4">
+                        <i class="fa-solid fa-layer-group text-brand-500"></i>
+                        Krythos<span class="text-white">Lab</span>
+                    </span>
+                    <p class="text-sm text-gray-400 leading-relaxed mb-6">
+                        A plataforma de inteligência artificial definitiva para agências de marketing e criadores de conteúdo escalarem suas operações.
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors"><i class="fa-brands fa-instagram text-xl"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors"><i class="fa-brands fa-linkedin text-xl"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors"><i class="fa-brands fa-x-twitter text-xl"></i></a>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Produto</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Geração de Imagens IA</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Carrosséis Automáticos</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Automação de DM</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Preços</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Recursos</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Blog</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Tutoriais</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Comunidade</a></li>
+                        <li><a href="#" class="hover:text-brand-400 transition-colors">Central de Ajuda</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Legal</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#" class="hover:text-white transition-colors">Termos de Uso</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Política de Privacidade</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Contato</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-sm text-gray-500">
+                    &copy; 2026 KrythosLab. Todos os direitos reservados.
+                </p>
+                <div class="text-sm text-gray-500 flex items-center gap-2">
+                    Feito com <i class="fa-solid fa-heart text-red-500/50 text-xs"></i> para o futuro do marketing.
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // Mobile Menu Toggle
+        const btn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+
+        btn.addEventListener('click', () => {
+            menu.classList.toggle('hidden');
+        });
+
+        // Navbar blur effect on scroll
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 10) {
+                nav.classList.add('bg-darker/80', 'backdrop-blur-md', 'shadow-lg');
+                nav.classList.remove('border-b-0');
+            } else {
+                nav.classList.remove('bg-darker/80', 'backdrop-blur-md', 'shadow-lg');
+                nav.classList.add('border-b-0');
+            }
+        });
+
+        // ── Platform Preview Tab Cycling ──────────────────────────────
+        const TABS = [
+            { id: 0, label: 'Dashboard',     sbIcon: 'house' },
+            { id: 1, label: 'Gerar Imagens', sbIcon: 'wand-magic-sparkles' },
+            { id: 2, label: 'Carrossel',     sbIcon: 'layer-group' },
+            { id: 3, label: 'Artigos',       sbIcon: 'file-lines' },
+            { id: 4, label: 'Vídeos IA',     sbIcon: 'clapperboard' },
+        ];
+        const DWELL = 3800; // ms per tab
+        let currentTab = 0;
+        let cycleTimer = null;
+
+        // Typing animation state for panel-1
+        const TYPING_PHRASES = [
+            'Promoção de perfume: frasco em fundo preto, texto "50% OFF" em dourado',
+            'Anúncio de academia: atleta em ação, cores neon, energia máxima',
+            'Post de lançamento: produto cosmético premium, estilo minimalista',
+        ];
+        let typingPhrase = 0;
+        let typingIndex = 0;
+        let typingTimer = null;
+
+        function startTyping() {
+            const el = document.getElementById('typing-text');
+            if (!el) return;
+            const text = TYPING_PHRASES[typingPhrase % TYPING_PHRASES.length];
+            el.textContent = '';
+            typingIndex = 0;
+            clearInterval(typingTimer);
+            typingTimer = setInterval(() => {
+                if (typingIndex < text.length) {
+                    el.textContent += text[typingIndex++];
+                } else {
+                    clearInterval(typingTimer);
+                }
+            }, 35);
+        }
+
+        function showTab(idx) {
+            const prev = currentTab;
+            currentTab = idx;
+
+            // Update panels
+            TABS.forEach(t => {
+                const panel = document.getElementById('panel-' + t.id);
+                if (!panel) return;
+                panel.classList.remove('active', 'exit-left');
+                panel.classList.add('opacity-0', 'translate-x-4', 'pointer-events-none');
+            });
+
+            // Exit previous
+            const prevPanel = document.getElementById('panel-' + prev);
+            if (prevPanel && prev !== idx) {
+                prevPanel.classList.add('exit-left');
+                setTimeout(() => prevPanel && prevPanel.classList.remove('exit-left'), 450);
+            }
+
+            // Enter current
+            const curPanel = document.getElementById('panel-' + idx);
+            if (curPanel) {
+                curPanel.classList.remove('opacity-0', 'translate-x-4', 'pointer-events-none');
+                curPanel.classList.add('active');
+            }
+
+            // Update sidebar buttons
+            document.querySelectorAll('.sidebar-btn').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+                el.style.color = i === idx ? '#a78bfa' : '';
+            });
+
+            // Update tab dots
+            document.querySelectorAll('.tab-dot').forEach((dot, i) => {
+                dot.style.width = i === idx ? '20px' : '8px';
+                dot.style.background = i === idx ? '#a78bfa' : 'rgba(255,255,255,0.2)';
+            });
+
+            // Update label
+            const label = document.getElementById('tab-label');
+            if (label) label.textContent = TABS[idx].label;
+
+            // Start typing if image gen tab
+            if (idx === 1) {
+                clearInterval(typingTimer);
+                setTimeout(() => { typingPhrase++; startTyping(); }, 200);
+            }
+        }
+
+        function nextTab() {
+            showTab((currentTab + 1) % TABS.length);
+        }
+
+        function startCycle() {
+            clearInterval(cycleTimer);
+            cycleTimer = setInterval(nextTab, DWELL);
+        }
+
+        // Sidebar click handlers (manual override)
+        TABS.forEach(t => {
+            const btn = document.getElementById('sb-' + t.id);
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                clearInterval(cycleTimer);
+                showTab(t.id);
+                startCycle(); // restart cycle from this tab
+            });
+        });
+
+        // Boot
+        showTab(0);
+        startTyping();
+        startCycle();
+    </script>
 </body>
 </html>
