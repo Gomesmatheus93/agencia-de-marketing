@@ -31,7 +31,15 @@ import {
   Wand2,
   Copy,
   CheckCheck,
+  Camera,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   type Holiday,
   type HolidayType,
@@ -563,11 +571,11 @@ const IMAGE_SIZE_BY_CHANNEL: Record<Channel, "1:1" | "4:5" | "16:9"> = {
 function buildImagePrompt(holidayName: string, holidayDescription: string, channel: Channel): string {
   const format =
     channel === "instagram"
-      ? "square social media post, portrait format"
+      ? "Instagram portrait post (4:5), visually impactful, thumb-stopping"
       : channel === "linkedin"
-      ? "professional LinkedIn banner, wide format"
-      : "email newsletter header, wide format";
-  return `Professional marketing image celebrating ${holidayName}. ${holidayDescription}. ${format}. Modern clean design, no text overlays, high quality, vibrant yet elegant.`;
+      ? "LinkedIn professional banner, wide format, corporate aesthetic"
+      : "email newsletter header, wide format, clean editorial style";
+  return `Create a professional marketing visual for "${holidayName}". Context: ${holidayDescription}. Platform: ${format}. The image must feel designed by a senior art director — strong composition, intentional color palette, no generic stock-photo look. No text overlays unless critical. High production value.`;
 }
 
 // ── Create Post Dialog ────────────────────────────────────────────────────────
@@ -641,7 +649,7 @@ function CreatePostDialog({
   function handleGenerateImage() {
     const prompt = holiday
       ? buildImagePrompt(holiday.name, holiday.description, channel)
-      : `Professional marketing social media image, modern clean design, no text overlays, ${channel} format.`;
+      : `Create a professional marketing visual for ${channel === "instagram" ? "Instagram" : channel === "linkedin" ? "LinkedIn" : "newsletter"}. Strong composition, intentional color palette, senior art director quality. No generic stock photo look.`;
     generateImageMutation.mutate({
       prompt,
       style: "social",
@@ -1156,11 +1164,21 @@ function CampaignDialog({ open, date, onClose }: { open: boolean; date: Date; on
 
 // ── Quote Card ────────────────────────────────────────────────────────────────
 
+const QUOTE_FONTS = [
+  { label: 'Inter', value: '"Inter", Arial, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Playfair Display', value: '"Playfair Display", Georgia, serif' },
+  { label: 'Merriweather', value: '"Merriweather", Georgia, serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+];
+
 async function renderQuoteCardToPng(
   quote: string,
   profilePhotoUrl: string,
   name: string,
-  handle: string
+  handle: string,
+  fontFamily = '"Inter", Arial, sans-serif'
 ): Promise<string> {
   const W = 1080, H = 1350;
   const canvas = document.createElement('canvas');
@@ -1170,14 +1188,16 @@ async function renderQuoteCardToPng(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
+  try { await document.fonts.load(`bold 62px ${fontFamily}`); } catch {}
+
   // Quote mark top-left
   ctx.fillStyle = '#111111';
   ctx.font = '220px Georgia, serif';
   ctx.textAlign = 'left';
-  ctx.fillText('“', 60, 240);
+  ctx.fillText('”', 60, 240);
 
   // Wrap quote text
-  ctx.font = 'bold 62px "Inter", Arial, sans-serif';
+  ctx.font = `bold 62px ${fontFamily}`;
   const maxW = 880;
   const words = quote.split(' ');
   const lines: string[] = [];
@@ -1285,7 +1305,26 @@ function QuoteCardDialog({
   const [profileName, setProfileName] = React.useState('Flavio Vasconcelos');
   const [profileHandle, setProfileHandle] = React.useState('@comflavio');
   const [profilePhotoUrl, setProfilePhotoUrl] = React.useState('');
+  const [fontFamily, setFontFamily] = React.useState('"Inter", Arial, sans-serif');
   const [isGenerating, setIsGenerating] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!document.getElementById('gf-quote-fonts')) {
+      const link = document.createElement('link');
+      link.id = 'gf-quote-fonts';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Merriweather:wght@400;700&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setProfilePhotoUrl(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
 
   const bkQuery = trpc.brandKit.get.useQuery(undefined, { staleTime: 5 * 60_000, enabled: open });
   React.useEffect(() => {
@@ -1302,7 +1341,7 @@ function QuoteCardDialog({
     if (!quote.trim()) return;
     setIsGenerating(true);
     try {
-      const png = await renderQuoteCardToPng(quote.trim(), profilePhotoUrl, profileName, profileHandle);
+      const png = await renderQuoteCardToPng(quote.trim(), profilePhotoUrl, profileName, profileHandle, fontFamily);
       onUseImage(png);
     } catch { toast.error('Erro ao gerar arte'); }
     finally { setIsGenerating(false); }
@@ -1314,11 +1353,11 @@ function QuoteCardDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[96vh] overflow-y-auto p-0">
-        <div className="grid grid-cols-[1fr_380px] min-h-[600px]">
+      <DialogContent className="sm:max-w-none p-0 h-[90vh] max-h-[720px] overflow-hidden" style={{ width: 'min(92vw, 1100px)' }}>
+        <div className="grid grid-cols-[1fr_420px] h-full">
 
           {/* LEFT — Form */}
-          <div className="p-6 space-y-5 border-r border-border/50">
+          <div className="p-6 space-y-5 border-r border-border/50 overflow-y-auto">
             <div>
               <DialogTitle className="flex items-center gap-2 text-base font-semibold mb-1">
                 <span>🙏</span> Arte de Citação
@@ -1337,7 +1376,23 @@ function QuoteCardDialog({
                 value={quote}
                 onChange={(e) => { setQuote(e.target.value); }}
                 className="resize-none text-sm"
+                style={{ fontFamily }}
               />
+              <div className="flex items-center gap-2 pt-1">
+                <label className="text-[10px] text-muted-foreground whitespace-nowrap">Fonte:</label>
+                <Select value={fontFamily} onValueChange={setFontFamily}>
+                  <SelectTrigger className="h-7 text-xs flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUOTE_FONTS.map(f => (
+                      <SelectItem key={f.value} value={f.value}>
+                        <span style={{ fontFamily: f.value }}>{f.label}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Profile fields */}
@@ -1345,11 +1400,17 @@ function QuoteCardDialog({
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Perfil</label>
 
               <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border/40">
-                {profilePhotoUrl
-                  ? <img src={profilePhotoUrl} className="w-12 h-12 rounded-full object-cover border-[3px] border-orange-400 shrink-0" />
-                  : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
-                      {profileName.charAt(0).toUpperCase()}
-                    </div>}
+                <label className="relative w-12 h-12 rounded-full shrink-0 cursor-pointer group">
+                  {profilePhotoUrl
+                    ? <img src={profilePhotoUrl} className="w-12 h-12 rounded-full object-cover border-[3px] border-orange-400" />
+                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-lg">
+                        {profileName.charAt(0).toUpperCase()}
+                      </div>}
+                  <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-4 h-4 text-white" />
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                </label>
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <Input
                     value={profileName}
@@ -1388,7 +1449,7 @@ function QuoteCardDialog({
           </div>
 
           {/* RIGHT — Live preview */}
-          <div className="bg-muted/20 p-5 flex flex-col">
+          <div className="bg-muted/20 p-5 flex flex-col overflow-hidden">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Preview ao vivo</p>
 
             {/* Card preview — 4:5 ratio */}
@@ -1410,7 +1471,7 @@ function QuoteCardDialog({
                   {hasQuote ? (
                     <p
                       className="text-center font-bold text-black break-words"
-                      style={{ fontSize: '18px', lineHeight: '1.55', maxWidth: '100%' }}
+                      style={{ fontSize: '18px', lineHeight: '1.55', maxWidth: '100%', fontFamily }}
                     >
                       {quote.trim()}
                     </p>

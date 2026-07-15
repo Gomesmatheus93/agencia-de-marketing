@@ -22,8 +22,10 @@ import {
   LayoutGrid,
   Brush,
   Camera,
+  Layers,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
  
 type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
@@ -217,8 +219,13 @@ export default function Images() {
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
   const [selectedImage, setSelectedImage] = useState<{ id: number; imageUrl: string; prompt: string } | null>(null);
   const [style, setStyle] = useState<ImageStyle>("commercial");
+  const [genMode, setGenMode] = useState<"single" | "variations">("single");
+  const [selectedNiche, setSelectedNiche] = useState<string>("none");
+  const [variations, setVariations] = useState<{ url: string }[]>([]);
 
   const { data: images = [], isLoading } = trpc.images.getAll.useQuery();
+  const { data: nichesData } = trpc.brandKit.listNiches.useQuery();
+  const niches = nichesData ?? [];
 
   const generateMutation = trpc.images.generate.useMutation({
     onSuccess: () => {
@@ -232,7 +239,17 @@ export default function Images() {
       toast.error("Erro ao gerar imagem: " + err.message);
     },
   });
- 
+
+  const generateVariationsMutation = trpc.images.generateVariations.useMutation({
+    onSuccess: (data) => {
+      utils.images.getAll.invalidate();
+      utils.images.getStats.invalidate();
+      setVariations((data.variations as { url: string }[]).filter((v) => v?.url));
+      toast.success(`${data.variations.length} variações geradas!`);
+    },
+    onError: (err) => toast.error("Erro ao gerar variações: " + err.message),
+  });
+
   const deleteMutation = trpc.images.delete.useMutation({
     onSuccess: () => {
       utils.images.getAll.invalidate();
@@ -242,13 +259,24 @@ export default function Images() {
     },
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
   });
- 
+
   const handleGenerate = () => {
     if (!prompt.trim()) { toast.error("Digite um prompt para gerar a imagem"); return; }
+    if (genMode === "variations") {
+      setVariations([]);
+      generateVariationsMutation.mutate({
+        prompt: prompt.trim(),
+        style,
+        nicheId: (selectedNiche && selectedNiche !== "none") ? selectedNiche : undefined,
+        count: 3,
+      });
+      return;
+    }
     generateMutation.mutate({
       prompt: prompt.trim(),
       referenceImageUrl: referenceImageUrl || undefined,
       style,
+      nicheId: (selectedNiche && selectedNiche !== "none") ? selectedNiche : undefined,
     });
   };
  
@@ -298,6 +326,46 @@ export default function Images() {
             <Wand2 className="w-4 h-4 text-primary" />
             <h2 className="font-semibold text-sm text-foreground">Nova imagem</h2>
           </div>
+
+          {/* Mode toggle */}
+          <div className="flex gap-2 p-1 bg-muted/40 rounded-xl w-fit">
+            <button
+              onClick={() => { setGenMode("single"); setVariations([]); }}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                genMode === "single" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Sparkles className="w-3 h-3" /> Única
+            </button>
+            <button
+              onClick={() => { setGenMode("variations"); setVariations([]); }}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                genMode === "variations" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Layers className="w-3 h-3" /> 3 Variações
+            </button>
+          </div>
+
+          {/* Niche selector */}
+          {niches.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Nicho (opcional — melhora a gramática visual)</p>
+              <Select value={selectedNiche} onValueChange={setSelectedNiche}>
+                <SelectTrigger className="h-9 text-sm glass border-border/50">
+                  <SelectValue placeholder="Selecionar nicho..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem nicho específico</SelectItem>
+                  {niches.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>{n.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Style selector */}
           <div className="space-y-2">
@@ -359,30 +427,69 @@ export default function Images() {
           <div className="flex items-center justify-end">
             <Button
               onClick={handleGenerate}
-              disabled={!prompt.trim() || generateMutation.isPending}
+              disabled={!prompt.trim() || generateMutation.isPending || generateVariationsMutation.isPending}
               className="ml-auto gradient-primary text-white border-0 hover:opacity-90 gap-2 shadow-md"
             >
-              {generateMutation.isPending ? (
+              {(generateMutation.isPending || generateVariationsMutation.isPending) ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Gerando imagem comercial...
+                  {genMode === "variations" ? "Gerando 3 variações..." : "Gerando imagem..."}
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  {referenceImageUrl ? "Gerar com Referência" : "Gerar Imagem"}
+                  {genMode === "variations" ? <Layers className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                  {genMode === "variations" ? "Gerar 3 Variações" : referenceImageUrl ? "Gerar com Referência" : "Gerar Imagem"}
                 </>
               )}
             </Button>
           </div>
 
-          {generateMutation.isPending && (
+          {(generateMutation.isPending || generateVariationsMutation.isPending) && (
             <div className="rounded-xl overflow-hidden border border-border/30">
-              <div className="aspect-square max-w-xs mx-auto shimmer flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <Loader2 className="w-8 h-8 text-muted-foreground/40 animate-spin mx-auto" />
-                  <p className="text-xs text-muted-foreground">Gerando imagem comercial de alta qualidade...</p>
+              {genMode === "variations" ? (
+                <div className="grid grid-cols-3 gap-3 p-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="aspect-square shimmer rounded-xl flex items-center justify-center">
+                      <div className="text-center space-y-1">
+                        <Loader2 className="w-5 h-5 text-muted-foreground/40 animate-spin mx-auto" />
+                        <p className="text-[10px] text-muted-foreground">Variação {i}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <div className="aspect-square max-w-xs mx-auto shimmer flex items-center justify-center">
+                  <div className="text-center space-y-2">
+                    <Loader2 className="w-8 h-8 text-muted-foreground/40 animate-spin mx-auto" />
+                    <p className="text-xs text-muted-foreground">Gerando com agente designer + nicho...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Variations result grid */}
+          {genMode === "variations" && variations.length > 0 && !generateVariationsMutation.isPending && (
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">Escolha a melhor variação:</p>
+              <div className="grid grid-cols-3 gap-3">
+                {variations.map((v, i) => (
+                  <div key={i} className="group relative aspect-square rounded-xl overflow-hidden border border-border/40 cursor-pointer hover:border-primary/60 transition-all hover:scale-[1.02]">
+                    <img src={v.url} alt={`Variação ${i + 1}`} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex flex-col items-center justify-end p-2 gap-1.5 opacity-0 group-hover:opacity-100">
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[11px] gradient-primary text-white border-0"
+                        onClick={() => handleDownload(v.url, `variação ${i + 1}`)}
+                      >
+                        <Download className="w-3 h-3 mr-1" /> Baixar
+                      </Button>
+                    </div>
+                    <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md font-medium">
+                      {i + 1}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

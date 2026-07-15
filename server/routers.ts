@@ -189,30 +189,37 @@ const imagesRouter = router({
         referenceImageUrl: z.string().optional(),
         style: z.enum(["commercial", "produto", "banner", "social", "logo", "lifestyle"]).optional(),
         size: z.enum(["1:1", "4:5", "16:9"]).optional(),
+        nicheId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const brand = await db.getBrandKit(ctx.user.id);
+      const [brand, nicheData] = await Promise.all([
+        db.getBrandKit(ctx.user.id),
+        input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
+      ]);
 
-      const brandPrefix = brand
+      const effectiveNicheId = input.nicheId ?? (brand as unknown as { nicheId?: string })?.nicheId ?? undefined;
+      const resolvedNiche = nicheData ?? (effectiveNicheId && effectiveNicheId !== input.nicheId
+        ? await db.getNicheProfile(effectiveNicheId)
+        : null);
+
+      const brandContext = brand
         ? [
-            brand.companyName ? `Marca: ${brand.companyName}.` : null,
-            brand.industry ? `Setor: ${brand.industry}.` : null,
+            brand.companyName ? `Company name: ${brand.companyName}` : null,
+            brand.industry ? `Industry/sector: ${brand.industry}` : null,
             (brand.primaryColor && brand.primaryColor !== "#6366f1")
-              ? `Paleta de cores obrigatória — primária: ${brand.primaryColor}${brand.secondaryColor && brand.secondaryColor !== "#8b5cf6" ? `, secundária: ${brand.secondaryColor}` : ""}${brand.accentColor && brand.accentColor !== "#06b6d4" ? `, destaque: ${brand.accentColor}` : ""}. Use estas cores como paleta dominante.`
+              ? `Brand color palette — primary: ${brand.primaryColor}${brand.secondaryColor && brand.secondaryColor !== "#8b5cf6" ? `, secondary: ${brand.secondaryColor}` : ""}${brand.accentColor && brand.accentColor !== "#06b6d4" ? `, accent: ${brand.accentColor}` : ""}. These colors MUST be used as the dominant palette.`
               : null,
-          ].filter(Boolean).join(" ")
-        : null;
-
-      const enhancedPrompt = brandPrefix
-        ? `${brandPrefix} ${input.prompt}`
-        : input.prompt;
+          ].filter(Boolean).join(". ")
+        : undefined;
 
       const result = await generateImage({
-        prompt: enhancedPrompt,
+        prompt: input.prompt,
         referenceImageUrl: input.referenceImageUrl,
         style: input.style as ImageStyle | undefined,
         size: input.size as ImageSize | undefined,
+        brandContext,
+        nicheProfile: resolvedNiche?.visualGrammar as import("./_core/imageGeneration").NicheVisualGrammar | undefined,
       });
       const imageUrl = result.url || "";
 
@@ -220,6 +227,67 @@ const imagesRouter = router({
       const { getMetaFetchableStorageUrl } = await import("./storage");
       const displayUrl = await getMetaFetchableStorageUrl(imageUrl).catch(() => imageUrl);
       return { ...saved, displayUrl };
+    }),
+
+  generateVariations: aiProcedure
+    .input(z.object({
+      prompt: z.string().min(1),
+      nicheId: z.string().optional(),
+      style: z.enum(["commercial", "produto", "banner", "social", "logo", "lifestyle"]).optional(),
+      count: z.number().min(1).max(4).default(3),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [brand, nicheData] = await Promise.all([
+        db.getBrandKit(ctx.user.id),
+        input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
+      ]);
+
+      const effectiveNicheId = input.nicheId ?? (brand as unknown as { nicheId?: string })?.nicheId ?? undefined;
+      const resolvedNiche = nicheData ?? (effectiveNicheId && effectiveNicheId !== input.nicheId
+        ? await db.getNicheProfile(effectiveNicheId)
+        : null);
+
+      const brandContext = brand
+        ? [
+            brand.companyName ? `Company name: ${brand.companyName}` : null,
+            brand.industry ? `Industry/sector: ${brand.industry}` : null,
+            (brand.primaryColor && brand.primaryColor !== "#6366f1")
+              ? `Brand color palette — primary: ${brand.primaryColor}${brand.secondaryColor ? `, secondary: ${brand.secondaryColor}` : ""}${brand.accentColor ? `, accent: ${brand.accentColor}` : ""}. Use as dominant palette.`
+              : null,
+          ].filter(Boolean).join(". ")
+        : undefined;
+
+      const nicheProfile = resolvedNiche?.visualGrammar as import("./_core/imageGeneration").NicheVisualGrammar | undefined;
+
+      const creativeAngles = [
+        `${input.prompt} — editorial composition, high contrast, dramatic professional lighting`,
+        `${input.prompt} — soft natural light, lifestyle aesthetic, authentic warm atmosphere`,
+        `${input.prompt} — bold graphic design, strong typography, vibrant brand colors`,
+        `${input.prompt} — minimal clean layout, negative space, premium editorial feel`,
+      ].slice(0, input.count);
+
+      const results = await Promise.all(
+        creativeAngles.map((p) =>
+          generateImage({
+            prompt: p,
+            style: input.style as ImageStyle | undefined ?? "commercial",
+            brandContext,
+            nicheProfile,
+          }).catch(() => ({ url: "" }))
+        )
+      );
+
+      const { getMetaFetchableStorageUrl } = await import("./storage");
+      const variations = await Promise.all(
+        results.map(async (r) => {
+          if (!r.url) return null;
+          const displayUrl = await getMetaFetchableStorageUrl(r.url).catch(() => r.url);
+          await db.saveImage(ctx.user.id, input.prompt, r.url ?? "").catch(() => null);
+          return { url: displayUrl };
+        })
+      );
+
+      return { variations: variations.filter(Boolean) };
     }),
 
   delete: protectedProcedure
@@ -2951,6 +3019,10 @@ const brandKitRouter = router({
     return db.getBrandKit(ctx.user.id);
   }),
 
+  listNiches: protectedProcedure.query(async () => {
+    return db.listNicheProfiles();
+  }),
+
   save: protectedProcedure
     .input(z.object({
       companyName: z.string().max(255).optional(),
@@ -2965,6 +3037,23 @@ const brandKitRouter = router({
       accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
       instagramHandle: z.string().max(128).optional(),
       linkedinUrl: z.string().max(255).optional(),
+      nicheId: z.string().max(64).optional(),
+      subNicheId: z.string().max(64).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return db.saveBrandKit(ctx.user.id, input);
+    }),
+
+  importFromAnalysis: protectedProcedure
+    .input(z.object({
+      companyName: z.string().optional(),
+      instagramHandle: z.string().optional(),
+      primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      toneOfVoice: z.enum(["professional", "casual", "inspiring", "educational"]).optional(),
+      industry: z.string().max(128).optional(),
+      nicheId: z.string().max(64).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return db.saveBrandKit(ctx.user.id, input);

@@ -5033,7 +5033,7 @@ export default function Carousels() {
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {selectedCarousel.slides.map((slide, index) => (
+                  {selectedCarousel.slides.map((slide: CarouselSlide, index: number) => (
                     <button
                       key={index}
                       type="button"
@@ -5179,7 +5179,7 @@ export default function Carousels() {
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Todos os slides
                     </p>
-                    {selectedSlides.map((slide, index) => (
+                    {selectedSlides.map((slide: CarouselSlide, index: number) => (
                       <button
                         key={index}
                         type="button"

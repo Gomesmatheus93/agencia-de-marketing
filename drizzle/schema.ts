@@ -319,6 +319,25 @@ export const featureFlags = mysqlTable("feature_flags", {
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
 
+// ─── Niche Profiles ───────────────────────────────────────────────────────────
+export const nicheProfiles = mysqlTable("niche_profiles", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  parentId: varchar("parentId", { length: 64 }),
+  label: varchar("label", { length: 128 }).notNull(),
+  version: int("version").notNull().default(1),
+  subNiches: json("subNiches"),
+  visualGrammar: json("visualGrammar"),
+  copyTone: json("copyTone"),
+  referenceImageTags: json("referenceImageTags"),
+  carouselPatterns: json("carouselPatterns"),
+  keywords: json("keywords"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type NicheProfile = typeof nicheProfiles.$inferSelect;
+
 // ─── Brand Kits ───────────────────────────────────────────────────────────────
 export const brandKits = mysqlTable("brand_kits", {
   id: int("id").autoincrement().primaryKey(),
@@ -335,6 +354,8 @@ export const brandKits = mysqlTable("brand_kits", {
   accentColor: varchar("accentColor", { length: 7 }).default("#06b6d4"),
   instagramHandle: varchar("instagramHandle", { length: 128 }),
   linkedinUrl: varchar("linkedinUrl", { length: 255 }),
+  nicheId: varchar("nicheId", { length: 64 }),
+  subNicheId: varchar("subNicheId", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -7,11 +7,21 @@ import { storagePut } from "../storage";
 export type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
 export type ImageSize = "1:1" | "4:5" | "16:9";
 
+export type NicheVisualGrammar = {
+  framing?: string[];
+  lighting?: string;
+  color_tendency?: string[];
+  composition?: string;
+  avoid?: string[];
+};
+
 export type GenerateImageOptions = {
   prompt: string;
   referenceImageUrl?: string;
   style?: ImageStyle;
   size?: ImageSize;
+  brandContext?: string;
+  nicheProfile?: NicheVisualGrammar;
 };
 
 const STYLE_INSTRUCTIONS: Record<ImageStyle, string> = {
@@ -61,12 +71,160 @@ const SIZE_MAP: Record<ImageSize, string> = {
 // All posts are 1080x1350 (4:5) for Instagram by default
 const DEFAULT_API_SIZE = "1024x1536";
 
-function buildEnhancedPrompt(prompt: string, style?: ImageStyle): string {
-  const instructions = style
-    ? STYLE_INSTRUCTIONS[style]
-    : STYLE_INSTRUCTIONS.commercial;
-  return `${instructions}\n\nUser request: ${prompt}`;
+// ── Creative Director Layer ───────────────────────────────────────────────────
+
+async function searchDesignReferences(topic: string): Promise<string> {
+  if (!ENV.serperApiKey) return "";
+
+  const queries = [
+    `${topic} design criativo poster profissional`,
+    `${topic} creative advertisement design inspiration`,
+  ];
+
+  const parts: string[] = [];
+
+  for (const q of queries.slice(0, 1)) {
+    try {
+      const [webRes, imgRes] = await Promise.all([
+        fetch("https://google.serper.dev/search", {
+          method: "POST",
+          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ q, gl: "br", hl: "pt", num: 5 }),
+          signal: AbortSignal.timeout(4000),
+        }),
+        fetch("https://google.serper.dev/images", {
+          method: "POST",
+          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ q: `${topic} design aesthetic visual`, num: 8 }),
+          signal: AbortSignal.timeout(4000),
+        }),
+      ]);
+
+      if (webRes.ok) {
+        const data = (await webRes.json()) as {
+          organic?: Array<{ title?: string; snippet?: string }>;
+          answerBox?: { snippet?: string };
+        };
+        const snippets = (data.organic ?? [])
+          .slice(0, 4)
+          .map((r) => r.snippet?.replace(/\n/g, " ").trim())
+          .filter(Boolean);
+        if (data.answerBox?.snippet) parts.push(`Context: ${data.answerBox.snippet}`);
+        if (snippets.length) parts.push(`Web references:\n${snippets.map((s) => `• ${s}`).join("\n")}`);
+      }
+
+      if (imgRes.ok) {
+        const data = (await imgRes.json()) as {
+          images?: Array<{ title?: string; imageUrl?: string }>;
+        };
+        const titles = (data.images ?? [])
+          .slice(0, 6)
+          .map((i) => i.title?.trim())
+          .filter(Boolean);
+        if (titles.length) parts.push(`Visual references found online:\n${titles.map((t) => `• ${t}`).join("\n")}`);
+      }
+    } catch {
+      // Serper failed — continue without references
+    }
+  }
+
+  return parts.join("\n\n");
 }
+
+async function buildDesignerPromptWithAI(
+  userRequest: string,
+  style: ImageStyle,
+  references: string,
+  brandContext?: string,
+  nicheProfile?: NicheVisualGrammar
+): Promise<string> {
+  if (!ENV.anthropicApiKey) return "";
+
+  const styleLabel: Record<ImageStyle, string> = {
+    commercial: "peça publicitária comercial",
+    produto: "anúncio de produto",
+    banner: "banner publicitário",
+    social: "post para redes sociais",
+    logo: "identidade visual / logo",
+    lifestyle: "foto lifestyle publicitária",
+  };
+
+  const nicheBlock = nicheProfile ? `
+GRAMÁTICA VISUAL DO NICHO (seguir obrigatoriamente):
+${nicheProfile.framing?.length ? `- Enquadramentos preferidos: ${nicheProfile.framing.join("; ")}` : ""}
+${nicheProfile.lighting ? `- Iluminação: ${nicheProfile.lighting}` : ""}
+${nicheProfile.color_tendency?.length ? `- Tendência de cor: ${nicheProfile.color_tendency.join(", ")}` : ""}
+${nicheProfile.composition ? `- Regra de composição: ${nicheProfile.composition}` : ""}
+${nicheProfile.avoid?.length ? `- EVITAR ABSOLUTAMENTE: ${nicheProfile.avoid.join("; ")}` : ""}`.trim() : "";
+
+  const systemPrompt = `Você é um diretor criativo sênior de uma agência de publicidade premiada internacionalmente.
+Sua especialidade é criar briefs visuais ultra-detalhados para geração de imagens por IA.
+Você analisa referências, entende tendências e transforma pedidos simples em descrições visuais precisas e profissionais.
+Responda APENAS com o prompt de imagem, sem explicações ou texto adicional.`;
+
+  const userPrompt = `Pedido do cliente: "${userRequest}"
+Tipo de peça: ${styleLabel[style]}
+${brandContext ? `\nContexto da marca:\n${brandContext}` : ""}
+${nicheBlock ? `\n${nicheBlock}` : ""}
+${references ? `\nReferências visuais encontradas:\n${references}` : ""}
+
+Com base nessas referências e no pedido, crie um prompt detalhado em inglês para geração de imagem profissional.
+O prompt deve descrever com precisão:
+- Composição e layout (o que está onde na imagem)
+- Paleta de cores específica (cores exatas que funcionam para este tema e nicho)
+- Estilo visual (estético, minimalista, vibrante, sombrio, editorial, etc.) — respeitando a gramática visual do nicho
+- Tipografia e elementos gráficos
+- Iluminação e atmosfera — seguindo as diretrizes do nicho
+- Qualidade e acabamento final
+
+Seja extremamente específico. Evite descrições genéricas. Pense como um designer especialista neste nicho que já viu 100 referências.`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ENV.anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 900,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (!res.ok) return "";
+    const data = (await res.json()) as { content?: Array<{ text?: string }> };
+    return data.content?.[0]?.text?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+async function buildEnhancedPromptWithDesigner(
+  prompt: string,
+  style: ImageStyle,
+  brandContext?: string,
+  nicheProfile?: NicheVisualGrammar
+): Promise<string> {
+  console.log("[ImageGen] Buscando referências visuais para:", prompt.slice(0, 60));
+  const references = await searchDesignReferences(prompt);
+
+  console.log("[ImageGen] Gerando brief com diretor criativo IA...");
+  const designerPrompt = await buildDesignerPromptWithAI(prompt, style, references, brandContext, nicheProfile);
+
+  if (designerPrompt) {
+    console.log("[ImageGen] Brief gerado com sucesso, usando prompt do diretor criativo.");
+    return designerPrompt;
+  }
+
+  console.log("[ImageGen] Fallback para prompt padrão.");
+  return `${STYLE_INSTRUCTIONS[style]}\n\nUser request: ${prompt}`;
+}
+
 
 function buildReferencePrompt(prompt: string, style?: ImageStyle): string {
   const instructions = style
@@ -249,7 +407,7 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
 
   const prompt = hasReference
     ? buildReferencePrompt(options.prompt, options.style)
-    : buildEnhancedPrompt(options.prompt, options.style);
+    : await buildEnhancedPromptWithDesigner(options.prompt, options.style ?? "commercial", options.brandContext, options.nicheProfile);
 
   const requestInit: RequestInit = hasReference
     ? (() => {

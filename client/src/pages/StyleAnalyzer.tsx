@@ -27,6 +27,29 @@ import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
 import type { InstagramStyleResult } from "../../../server/_core/instagramStyleAgent";
 
+const NICHE_KEYWORDS: [string, string[]][] = [
+  ["estetica_beleza", ["beleza", "estética", "skincare", "salão", "spa", "dermato", "maquiagem", "cosmétic", "beauty"]],
+  ["imobiliario", ["imóvel", "imobiliário", "corretor", "construtora", "apartamento", "aluguel", "real estate"]],
+  ["gastronomia", ["restaurante", "gastronomia", "food", "culinária", "chef", "delivery", "confeitaria", "bistro", "padaria"]],
+  ["saude_bemestar", ["saúde", "fitness", "academia", "nutrição", "médico", "psicolog", "odontolog", "health", "bem-estar"]],
+  ["moda_ecommerce", ["moda", "fashion", "roupa", "vestuário", "calçado", "boutique"]],
+  ["educacao_cursos", ["curso", "educação", "coach", "mentoria", "treinamento", "infoproduto"]],
+  ["tecnologia_saas", ["tech", "software", "startup", "saas", "app", "plataforma"]],
+  ["juridico_servicos", ["jurídico", "advogado", "direito", "advocacia", "contabilidade"]],
+  ["automotivo", ["carro", "veículo", "automotivo", "concessionária", "moto"]],
+  ["varejo_local", ["varejo", "loja", "supermercado", "farmácia", "petshop"]],
+  ["energia_utilities", ["energia solar", "solar", "construção", "engenharia", "elétrica"]],
+];
+
+function detectNicheIdFromText(text: string | undefined | null): string | undefined {
+  if (!text) return undefined;
+  const lower = text.toLowerCase();
+  for (const [id, kws] of NICHE_KEYWORDS) {
+    if (kws.some((kw) => lower.includes(kw))) return id;
+  }
+  return undefined;
+}
+
 type Mode = "list" | "new" | "result" | "viewing";
 
 type SavedProfile = {
@@ -416,8 +439,8 @@ export default function StyleAnalyzer() {
     onError: () => toast.error("Erro ao remover."),
   });
 
-  const brandKitMutation = trpc.brandKit.save.useMutation({
-    onSuccess: () => toast.success("Cores aplicadas ao Brand Kit!"),
+  const brandKitMutation = trpc.brandKit.importFromAnalysis.useMutation({
+    onSuccess: () => toast.success("Brand Kit atualizado com cores, nicho e handle do perfil!"),
     onError: () => toast.error("Erro ao aplicar ao Brand Kit."),
   });
 
@@ -465,10 +488,25 @@ export default function StyleAnalyzer() {
 
   const handleApplyToBrandKit = () => {
     if (!currentResult) return;
+    const nicheId = detectNicheIdFromText(currentResult.niche);
+    const toneMap: Record<string, "professional" | "casual" | "inspiring" | "educational"> = {
+      profissional: "professional", professional: "professional",
+      casual: "casual", descontraído: "casual", informal: "casual",
+      inspirador: "inspiring", inspiring: "inspiring", motivacional: "inspiring",
+      educativo: "educational", educational: "educational", informativo: "educational",
+    };
+    const toneKey = Object.keys(toneMap).find((k) =>
+      currentResult.toneDescription?.toLowerCase().includes(k)
+    );
     brandKitMutation.mutate({
+      companyName: currentResult.profileName || undefined,
+      instagramHandle: currentResult.profileHandle?.replace(/^@/, "") || undefined,
       primaryColor: currentResult.primaryColor,
       secondaryColor: currentResult.secondaryColor,
       accentColor: currentResult.accentColor,
+      toneOfVoice: toneKey ? toneMap[toneKey] : "professional",
+      industry: currentResult.niche || undefined,
+      nicheId: nicheId || undefined,
     });
   };
 

@@ -1397,6 +1397,7 @@ export async function getBrandKit(userId: number): Promise<BrandKit | null> {
   if (!db) return null;
   try {
     await ensureBrandKitTable(db);
+    await ensureBrandKitNicheColumns();
     const [rows] = await db.execute(
       sql`SELECT * FROM brand_kits WHERE userId = ${userId} LIMIT 1`
     ) as unknown as [Array<Record<string, unknown>>, unknown];
@@ -1408,12 +1409,16 @@ export async function getBrandKit(userId: number): Promise<BrandKit | null> {
   }
 }
 
-export type BrandKitData = Omit<BrandKit, "id" | "userId" | "createdAt" | "updatedAt">;
+export type BrandKitData = Omit<BrandKit, "id" | "userId" | "createdAt" | "updatedAt"> & {
+  nicheId?: string | null;
+  subNicheId?: string | null;
+};
 
 export async function saveBrandKit(userId: number, data: Partial<BrandKitData>): Promise<BrandKit> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await ensureBrandKitTable(db);
+  await ensureBrandKitNicheColumns();
 
   // Coerce empty strings to null so MySQL doesn't reject them
   const n = (v: string | null | undefined) => (v === "" || v == null ? null : v);
@@ -1430,9 +1435,9 @@ export async function saveBrandKit(userId: number, data: Partial<BrandKitData>):
   const ac  = n(data.accentColor)    ?? "#06b6d4";
   const ig  = n(data.instagramHandle);
   const li  = n(data.linkedinUrl);
+  const ni  = n((data as { nicheId?: string | null }).nicheId);
+  const sni = n((data as { subNicheId?: string | null }).subNicheId);
 
-  // Use INSERT IGNORE to create the row if it doesn't exist, then always UPDATE.
-  // Avoids VALUES() reference which causes issues with MySQL2 + Drizzle.
   await db.execute(sql`INSERT IGNORE INTO brand_kits (userId) VALUES (${userId})`);
   await db.execute(sql`
     UPDATE brand_kits SET
@@ -1447,7 +1452,9 @@ export async function saveBrandKit(userId: number, data: Partial<BrandKitData>):
       secondaryColor  = ${sc},
       accentColor     = ${ac},
       instagramHandle = ${ig},
-      linkedinUrl     = ${li}
+      linkedinUrl     = ${li},
+      nicheId         = COALESCE(${ni}, nicheId),
+      subNicheId      = COALESCE(${sni}, subNicheId)
     WHERE userId = ${userId}
   `);
 
@@ -2360,4 +2367,107 @@ export async function deleteStyleProfile(userId: number, id: number): Promise<vo
   await db.execute(sql`
     DELETE FROM \`style_profiles\` WHERE id = ${id} AND user_id = ${userId}
   `);
+}
+
+// ─── Niche Profiles ───────────────────────────────────────────────────────────
+
+let _nicheProfilesReady: Promise<void> | null = null;
+
+async function ensureNicheProfilesTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_nicheProfilesReady) {
+    _nicheProfilesReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`niche_profiles\` (
+          \`id\`                 VARCHAR(64)  NOT NULL PRIMARY KEY,
+          \`parentId\`           VARCHAR(64),
+          \`label\`              VARCHAR(128) NOT NULL,
+          \`version\`            INT          NOT NULL DEFAULT 1,
+          \`subNiches\`          JSON,
+          \`visualGrammar\`      JSON,
+          \`copyTone\`           JSON,
+          \`referenceImageTags\` JSON,
+          \`carouselPatterns\`   JSON,
+          \`keywords\`           JSON,
+          \`isActive\`           TINYINT(1)   NOT NULL DEFAULT 1,
+          \`createdAt\`          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\`          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+      await seedNicheProfiles(db);
+    })().catch((e) => { _nicheProfilesReady = null; throw e; });
+  }
+  await _nicheProfilesReady;
+}
+
+async function seedNicheProfiles(db: Awaited<ReturnType<typeof getDb>>) {
+  if (!db) return;
+  const { NICHE_PROFILES } = await import('./_core/nicheProfilesSeed');
+  const [rows] = await db.execute(sql`SELECT COUNT(*) as cnt FROM niche_profiles`) as unknown as [Array<{ cnt: number }>, unknown];
+  if (Number((rows as Array<{ cnt: number }>)[0]?.cnt) > 0) return;
+  for (const p of NICHE_PROFILES) {
+    await db.execute(sql`
+      INSERT IGNORE INTO niche_profiles (id, label, version, subNiches, visualGrammar, copyTone, referenceImageTags, carouselPatterns, keywords)
+      VALUES (
+        ${p.id}, ${p.label}, ${p.version},
+        ${JSON.stringify(p.subNiches)},
+        ${JSON.stringify(p.visualGrammar)},
+        ${JSON.stringify(p.copyTone)},
+        ${JSON.stringify(p.referenceImageTags)},
+        ${JSON.stringify(p.carouselPatterns)},
+        ${JSON.stringify(p.keywords)}
+      )
+    `);
+  }
+  console.log(`[NicheProfiles] Seeded ${NICHE_PROFILES.length} niche profiles.`);
+}
+
+export async function listNicheProfiles(): Promise<Array<{ id: string; label: string; version: number; subNiches: unknown; keywords: unknown }>> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureNicheProfilesTable();
+  const [rows] = await db.execute(sql`SELECT id, label, version, subNiches, keywords FROM niche_profiles WHERE isActive = 1 ORDER BY label`) as unknown as [Array<Record<string, unknown>>, unknown];
+  return (rows as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    label: String(r.label),
+    version: Number(r.version ?? 1),
+    subNiches: r.subNiches ? (typeof r.subNiches === 'string' ? JSON.parse(r.subNiches) : r.subNiches) : [],
+    keywords: r.keywords ? (typeof r.keywords === 'string' ? JSON.parse(r.keywords) : r.keywords) : [],
+  }));
+}
+
+export async function getNicheProfile(id: string): Promise<{ id: string; label: string; version: number; visualGrammar: unknown; copyTone: unknown; referenceImageTags: unknown; carouselPatterns: unknown } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureNicheProfilesTable();
+  const [rows] = await db.execute(sql`SELECT * FROM niche_profiles WHERE id = ${id} AND isActive = 1 LIMIT 1`) as unknown as [Array<Record<string, unknown>>, unknown];
+  const row = (rows as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+  const parse = (v: unknown) => v ? (typeof v === 'string' ? JSON.parse(v) : v) : null;
+  return {
+    id: String(row.id),
+    label: String(row.label),
+    version: Number(row.version ?? 1),
+    visualGrammar: parse(row.visualGrammar),
+    copyTone: parse(row.copyTone),
+    referenceImageTags: parse(row.referenceImageTags),
+    carouselPatterns: parse(row.carouselPatterns),
+  };
+}
+
+// ─── Brand Kit niche columns migration ───────────────────────────────────────
+
+let _brandKitNicheColumnsReady: Promise<void> | null = null;
+
+async function ensureBrandKitNicheColumns() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_brandKitNicheColumnsReady) {
+    _brandKitNicheColumnsReady = (async () => {
+      await db.execute(sql`ALTER TABLE brand_kits ADD COLUMN nicheId VARCHAR(64)`).catch(() => {});
+      await db.execute(sql`ALTER TABLE brand_kits ADD COLUMN subNicheId VARCHAR(64)`).catch(() => {});
+    })().catch((e) => { _brandKitNicheColumnsReady = null; throw e; });
+  }
+  await _brandKitNicheColumnsReady;
 }
