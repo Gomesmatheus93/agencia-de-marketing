@@ -29,36 +29,42 @@ const STYLE_INSTRUCTIONS: Record<ImageStyle, string> = {
 Layout: bold headline text overlaid on image, product hero shot, marketing tagline, price or offer if mentioned, CTA button area.
 Style: dark dramatic background, high contrast, cinematic lighting on product, ultra-sharp details.
 Typography: large bold modern font for headline, clean sans-serif for body copy.
+CRITICAL: All text visible in the image MUST be written in Brazilian Portuguese. Use Portuguese CTAs like "Saiba Mais", "Clique Aqui", "Garanta o Seu". Never use English words in the image.
 Quality: professional ad agency level, social media ready, Brazilian marketing aesthetic.`,
 
   produto: `Create a complete product advertisement graphic (like a professional e-commerce ad or social media sale post).
-Layout: product image as hero centered or angled, large bold product name as headline text, price prominently displayed (big, bold), 3-4 feature bullet points with icons on the side, "Compre Agora" or relevant CTA button at bottom.
+Layout: product image as hero centered or angled, large bold product name as headline text, price prominently displayed (big, bold), 3-4 feature bullet points with icons on the side, CTA button at bottom.
 Style: dark or gradient background (black/navy/charcoal), electric accent color (blue, orange or brand color), high contrast, dramatic product lighting.
 Typography: ultra-bold headline, clean supporting text.
+CRITICAL: All text visible in the image MUST be written in Brazilian Portuguese. CTA must be in Portuguese: "Compre Agora", "Peça Já", "Adquira o Seu". Never use English words in the image.
 Quality: professional Brazilian digital marketing ad, Instagram/Facebook ad level.`,
 
   banner: `Create a complete advertising banner graphic design.
 Layout: strong bold headline text as focal point, supporting subheadline, product or offer image, prominent CTA button, logo area.
 Style: high contrast color scheme, bold typography hierarchy, modern graphic design elements (geometric shapes, gradients, lines).
 Typography: massive bold font for main message, clean readable body text.
+CRITICAL: All text visible in the image MUST be written in Brazilian Portuguese. Use Portuguese CTAs like "Aproveite", "Garanta Já", "Ligue Agora". Never use English words in the image.
 Quality: professional agency-level banner, print and digital ready.`,
 
   social: `Create a complete social media advertisement post design (Instagram/Facebook ad style).
 Layout: eye-catching headline overlaid on image, product or person featured prominently, price or offer badge if relevant, CTA text, brand colors.
 Style: modern trendy aesthetic, high saturation, bold typography over image, clean composition.
-Typography: large impactful headline, supporting text, hashtag area.
+Typography: large impactful headline, supporting text.
+CRITICAL: All text visible in the image MUST be written in Brazilian Portuguese. Use Portuguese CTAs like "Arrasta pra Cima", "Clique no Link", "Compre Agora". Never use English words in the image.
 Quality: thumb-stopping social media ad, professionally designed, Brazilian audience.`,
 
   logo: `Create a professional logo / brand mark design.
 Layout: centered symbol or wordmark, clean negative space, balanced composition.
 Style: minimalist, vector-clean, timeless, works on white background.
 Typography: strong brand typeface if wordmark, geometric or custom letterforms.
+CRITICAL: If there is any text or tagline in the logo, it must be written in Brazilian Portuguese.
 Quality: professional brand identity design, scalable, versatile.`,
 
   lifestyle: `Create a lifestyle commercial photograph with professional advertising quality.
-Scene: authentic real-life context with product or service naturally integrated, diverse relatable people if applicable.
+Scene: authentic real-life context with product or service naturally integrated, diverse relatable people if applicable, Brazilian setting if relevant.
 Style: natural warm lighting, shallow depth of field, cinematic color grade, editorial magazine quality.
 Mood: aspirational, authentic, energetic or calm depending on product.
+CRITICAL: Any text overlay or caption visible in the image MUST be written in Brazilian Portuguese.
 Quality: high-end advertising campaign photography, Brazilian lifestyle aesthetic.`,
 };
 
@@ -240,9 +246,14 @@ ${brandContext ? `\nContexto da marca:\n${brandContext}` : ""}
 ${nicheBlock ? `\n${nicheBlock}` : ""}
 ${references ? `\nReferências visuais encontradas:\n${references}` : ""}
 
-REGRA CRÍTICA — TEXTOS LITERAIS:
+REGRA CRÍTICA — IDIOMA DOS TEXTOS NA IMAGEM:
+TODOS os textos que aparecerão visualmente na imagem DEVEM estar em português brasileiro.
+Isso inclui: títulos, subtítulos, botões de CTA, slogans, legendas, badges, descrições de produto, preços, números de telefone e qualquer outro texto visual.
+JAMAIS use palavras em inglês que aparecerão visualmente na imagem. Nem "Shop Now", nem "Buy Now", nem "Click Here", nem "Learn More" — sempre use o equivalente em português: "Compre Agora", "Clique Aqui", "Saiba Mais", "Garanta o Seu".
+
+REGRA CRÍTICA — TEXTOS LITERAIS DO PEDIDO:
 Se o pedido do cliente contiver textos específicos que devem aparecer visualmente na imagem (nomes de cidade, telefones, endereços, frases, slogans, preços, números), você DEVE incluí-los no prompt com a instrução exata:
-"TEXT IN IMAGE: [texto exato]"
+"TEXT IN IMAGE: [texto exato em português]"
 Esses textos devem aparecer na imagem como texto visual tipografado — não os omita, não os parafraseie.
 
 Com base nessas referências e no pedido, crie um prompt detalhado em inglês para geração de imagem profissional.
@@ -253,9 +264,11 @@ O prompt deve descrever com precisão:
 - Tipografia e elementos gráficos
 - Iluminação e atmosfera — seguindo as diretrizes do nicho
 - Qualidade e acabamento final
-- Todos os textos literais que devem aparecer na imagem (usando "TEXT IN IMAGE:")
+- Todos os textos que aparecerão na imagem, em português brasileiro, usando "TEXT IN IMAGE: [texto em português]" para cada elemento textual
 
-Seja extremamente específico. Evite descrições genéricas. Pense como um designer especialista neste nicho que já viu 100 referências.`;
+ATENÇÃO: A estrutura do prompt pode ser em inglês para melhor desempenho do modelo de IA, mas qualquer diretiva "TEXT IN IMAGE:" deve conter o texto em português. Indique também: "All visible text in the image must be in Brazilian Portuguese."
+
+Seja extremamente específico. Evite descrições genéricas. Pense como um designer especialista neste nicho brasileiro que já viu 100 referências.`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -311,6 +324,8 @@ function buildReferencePrompt(prompt: string, style?: ImageStyle): string {
   return `IMPORTANT — BRAND REFERENCE IMAGE: The attached image is a REFERENCE ONLY for brand identity (logo, colors, visual style, product). Do NOT copy, reproduce or edit this image. Use it only to extract brand elements (logo, colors, typography style) and create a completely NEW original advertisement design from scratch.
 
 ${instructions}
+
+CRITICAL LANGUAGE RULE: All text visible in the final image MUST be written in Brazilian Portuguese. This includes headlines, CTAs, labels, slogans, badges, and any other visible text. Never use English words in the image — use Portuguese equivalents: "Compre Agora", "Saiba Mais", "Clique Aqui", "Garanta o Seu", "Ligue Agora", etc.
 
 User request: ${prompt}`;
 }
