@@ -73,62 +73,134 @@ const DEFAULT_API_SIZE = "1024x1536";
 
 // ── Creative Director Layer ───────────────────────────────────────────────────
 
-async function searchDesignReferences(topic: string): Promise<string> {
-  if (!ENV.serperApiKey) return "";
-
-  const queries = [
-    `${topic} design criativo poster profissional`,
-    `${topic} creative advertisement design inspiration`,
-  ];
-
-  const parts: string[] = [];
-
-  for (const q of queries.slice(0, 1)) {
-    try {
-      const [webRes, imgRes] = await Promise.all([
-        fetch("https://google.serper.dev/search", {
-          method: "POST",
-          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ q, gl: "br", hl: "pt", num: 5 }),
-          signal: AbortSignal.timeout(4000),
-        }),
-        fetch("https://google.serper.dev/images", {
-          method: "POST",
-          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ q: `${topic} design aesthetic visual`, num: 8 }),
-          signal: AbortSignal.timeout(4000),
-        }),
-      ]);
-
-      if (webRes.ok) {
-        const data = (await webRes.json()) as {
-          organic?: Array<{ title?: string; snippet?: string }>;
-          answerBox?: { snippet?: string };
-        };
-        const snippets = (data.organic ?? [])
-          .slice(0, 4)
-          .map((r) => r.snippet?.replace(/\n/g, " ").trim())
-          .filter(Boolean);
-        if (data.answerBox?.snippet) parts.push(`Context: ${data.answerBox.snippet}`);
-        if (snippets.length) parts.push(`Web references:\n${snippets.map((s) => `• ${s}`).join("\n")}`);
-      }
-
-      if (imgRes.ok) {
-        const data = (await imgRes.json()) as {
-          images?: Array<{ title?: string; imageUrl?: string }>;
-        };
-        const titles = (data.images ?? [])
-          .slice(0, 6)
-          .map((i) => i.title?.trim())
-          .filter(Boolean);
-        if (titles.length) parts.push(`Visual references found online:\n${titles.map((t) => `• ${t}`).join("\n")}`);
-      }
-    } catch {
-      // Serper failed — continue without references
-    }
+async function searchPexelsReferences(topic: string): Promise<string> {
+  if (!ENV.pexelsApiKey) return "";
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(topic)}&per_page=8&orientation=portrait`,
+      { headers: { Authorization: ENV.pexelsApiKey }, signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return "";
+    const data = (await res.json()) as {
+      photos?: Array<{ alt?: string; photographer?: string; avg_color?: string }>;
+    };
+    const entries = (data.photos ?? [])
+      .slice(0, 8)
+      .map((p) => {
+        const parts = [p.alt?.trim(), p.avg_color ? `dominant color: ${p.avg_color}` : ""].filter(Boolean);
+        return parts.join(" — ");
+      })
+      .filter(Boolean);
+    if (!entries.length) return "";
+    return `Pexels stock references (visual context):\n${entries.map((e) => `• ${e}`).join("\n")}`;
+  } catch {
+    return "";
   }
+}
 
+async function searchPixabayReferences(topic: string): Promise<string> {
+  if (!ENV.pixabayApiKey) return "";
+  try {
+    const url = new URL("https://pixabay.com/api/");
+    url.searchParams.set("key", ENV.pixabayApiKey);
+    url.searchParams.set("q", topic);
+    url.searchParams.set("image_type", "photo");
+    url.searchParams.set("per_page", "8");
+    url.searchParams.set("safesearch", "true");
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return "";
+    const data = (await res.json()) as {
+      hits?: Array<{ tags?: string; user?: string; userImageURL?: string }>;
+    };
+    const entries = (data.hits ?? [])
+      .slice(0, 8)
+      .map((h) => h.tags?.trim())
+      .filter(Boolean);
+    if (!entries.length) return "";
+    return `Pixabay visual tags (mood & aesthetic reference):\n${entries.map((t) => `• ${t}`).join("\n")}`;
+  } catch {
+    return "";
+  }
+}
+
+async function searchUnsplashReferences(topic: string): Promise<string> {
+  if (!ENV.unsplashAccessKey) return "";
+  try {
+    const url = new URL("https://api.unsplash.com/search/photos");
+    url.searchParams.set("query", topic);
+    url.searchParams.set("per_page", "8");
+    url.searchParams.set("client_id", ENV.unsplashAccessKey);
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return "";
+    const data = (await res.json()) as {
+      results?: Array<{ description?: string; alt_description?: string; color?: string }>;
+    };
+    const entries = (data.results ?? [])
+      .slice(0, 8)
+      .map((r) => {
+        const desc = r.description?.trim() || r.alt_description?.trim();
+        return desc ? `${desc}${r.color ? ` (tone: ${r.color})` : ""}` : "";
+      })
+      .filter(Boolean);
+    if (!entries.length) return "";
+    return `Unsplash visual references (style & mood):\n${entries.map((e) => `• ${e}`).join("\n")}`;
+  } catch {
+    return "";
+  }
+}
+
+async function searchSerperReferences(topic: string): Promise<string> {
+  if (!ENV.serperApiKey) return "";
+  const parts: string[] = [];
+  try {
+    const [webRes, imgRes] = await Promise.all([
+      fetch("https://google.serper.dev/search", {
+        method: "POST",
+        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: `${topic} design criativo poster profissional`, gl: "br", hl: "pt", num: 5 }),
+        signal: AbortSignal.timeout(4000),
+      }),
+      fetch("https://google.serper.dev/images", {
+        method: "POST",
+        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ q: `${topic} design aesthetic visual`, num: 8 }),
+        signal: AbortSignal.timeout(4000),
+      }),
+    ]);
+    if (webRes.ok) {
+      const data = (await webRes.json()) as {
+        organic?: Array<{ title?: string; snippet?: string }>;
+        answerBox?: { snippet?: string };
+      };
+      const snippets = (data.organic ?? []).slice(0, 4).map((r) => r.snippet?.replace(/\n/g, " ").trim()).filter(Boolean);
+      if (data.answerBox?.snippet) parts.push(`Context: ${data.answerBox.snippet}`);
+      if (snippets.length) parts.push(`Web references:\n${snippets.map((s) => `• ${s}`).join("\n")}`);
+    }
+    if (imgRes.ok) {
+      const data = (await imgRes.json()) as { images?: Array<{ title?: string }> };
+      const titles = (data.images ?? []).slice(0, 6).map((i) => i.title?.trim()).filter(Boolean);
+      if (titles.length) parts.push(`Google Images references:\n${titles.map((t) => `• ${t}`).join("\n")}`);
+    }
+  } catch { /* ignore */ }
   return parts.join("\n\n");
+}
+
+async function searchDesignReferences(topic: string): Promise<string> {
+  // Run all available sources in parallel — use whichever APIs are configured
+  const [serper, pexels, pixabay, unsplash] = await Promise.all([
+    searchSerperReferences(topic),
+    searchPexelsReferences(topic),
+    searchPixabayReferences(topic),
+    searchUnsplashReferences(topic),
+  ]);
+
+  const collected = [serper, pexels, pixabay, unsplash].filter(Boolean);
+  if (!collected.length) {
+    console.log("[ImageGen] Nenhuma API de referência configurada (SERPER_API_KEY, PEXELS_API_KEY, PIXABAY_API_KEY, UNSPLASH_ACCESS_KEY).");
+  } else {
+    console.log(`[ImageGen] Referências coletadas de ${collected.length} fonte(s): ${[serper && "Serper", pexels && "Pexels", pixabay && "Pixabay", unsplash && "Unsplash"].filter(Boolean).join(", ")}`);
+  }
+  return collected.join("\n\n");
 }
 
 async function buildDesignerPromptWithAI(
