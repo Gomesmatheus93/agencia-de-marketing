@@ -159,6 +159,7 @@ export default function Images() {
   const [genMode, setGenMode] = useState<"single" | "variations">("single");
   const [selectedNiche, setSelectedNiche] = useState<string>("none");
   const [variations, setVariations] = useState<{ url: string }[]>([]);
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
 
   const { data: images = [], isLoading } = trpc.images.getAll.useQuery();
   const { data: nichesData } = trpc.brandKit.listNiches.useQuery();
@@ -502,31 +503,61 @@ export default function Images() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {images.map((img, i) => (
-                <div
-                  key={img.id}
-                  className="group relative aspect-square rounded-2xl overflow-hidden glass-card cursor-pointer hover:scale-[1.02] transition-all duration-200"
-                  style={{ animationDelay: `${i * 0.04}s` }}
-                  onClick={() => setSelectedImage(img)}
-                >
-                  <img src={img.imageUrl} alt={img.prompt} className="w-full h-full object-cover" loading="lazy" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-200" />
-                  <div className="absolute bottom-0 left-0 right-0 p-2.5 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDownload(img.imageUrl); }}
-                      className="flex-1 py-1.5 rounded-xl bg-white/90 hover:bg-white text-gray-900 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <Download className="w-3 h-3" /> Baixar
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedImage(img); }}
-                      className="w-8 h-7 rounded-xl bg-white/90 hover:bg-white flex items-center justify-center transition-colors"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5 text-gray-900" />
-                    </button>
+              {images.map((img, i) => {
+                const isBroken = brokenImages.has(img.id);
+                return (
+                  <div
+                    key={img.id}
+                    className={cn(
+                      "group relative aspect-square rounded-2xl overflow-hidden glass-card transition-all duration-200",
+                      isBroken ? "cursor-default" : "cursor-pointer hover:scale-[1.02]"
+                    )}
+                    style={{ animationDelay: `${i * 0.04}s` }}
+                    onClick={() => !isBroken && setSelectedImage(img)}
+                  >
+                    {isBroken ? (
+                      /* Placeholder for expired/broken image URLs */
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3 bg-muted/30">
+                        <div className="w-10 h-10 rounded-xl bg-muted/60 flex items-center justify-center">
+                          <Image className="w-5 h-5 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/50 text-center line-clamp-3 leading-relaxed">{img.prompt}</p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: img.id }); }}
+                          className="mt-1 text-[10px] text-destructive/60 hover:text-destructive transition-colors flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" /> Remover
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <img
+                          src={img.imageUrl}
+                          alt={img.prompt}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={() => setBrokenImages((prev) => new Set([...prev, img.id]))}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-200" />
+                        <div className="absolute bottom-0 left-0 right-0 p-2.5 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownload(img.imageUrl); }}
+                            className="flex-1 py-1.5 rounded-xl bg-white/90 hover:bg-white text-gray-900 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Download className="w-3 h-3" /> Baixar
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedImage(img); }}
+                            className="w-8 h-7 rounded-xl bg-white/90 hover:bg-white flex items-center justify-center transition-colors"
+                          >
+                            <ZoomIn className="w-3.5 h-3.5 text-gray-900" />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

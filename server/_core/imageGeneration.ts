@@ -168,6 +168,11 @@ ${brandContext ? `\nContexto da marca:\n${brandContext}` : ""}
 ${nicheBlock ? `\n${nicheBlock}` : ""}
 ${references ? `\nReferências visuais encontradas:\n${references}` : ""}
 
+REGRA CRÍTICA — TEXTOS LITERAIS:
+Se o pedido do cliente contiver textos específicos que devem aparecer visualmente na imagem (nomes de cidade, telefones, endereços, frases, slogans, preços, números), você DEVE incluí-los no prompt com a instrução exata:
+"TEXT IN IMAGE: [texto exato]"
+Esses textos devem aparecer na imagem como texto visual tipografado — não os omita, não os parafraseie.
+
 Com base nessas referências e no pedido, crie um prompt detalhado em inglês para geração de imagem profissional.
 O prompt deve descrever com precisão:
 - Composição e layout (o que está onde na imagem)
@@ -176,6 +181,7 @@ O prompt deve descrever com precisão:
 - Tipografia e elementos gráficos
 - Iluminação e atmosfera — seguindo as diretrizes do nicho
 - Qualidade e acabamento final
+- Todos os textos literais que devem aparecer na imagem (usando "TEXT IN IMAGE:")
 
 Seja extremamente específico. Evite descrições genéricas. Pense como um designer especialista neste nicho que já viu 100 referências.`;
 
