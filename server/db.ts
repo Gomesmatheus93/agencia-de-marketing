@@ -539,6 +539,18 @@ export async function setUserRole(id: number, role: "user" | "admin") {
   await db.update(users).set({ role }).where(eq(users.id, id));
 }
 
+// Backfill legacy accounts (trialExpiresAt IS NULL, plan='free', not admin) with a 7-day trial from now.
+export async function migrateNullTrialDates(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserExtraColumns();
+  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.execute(
+    sql`UPDATE users SET trialExpiresAt = ${sevenDaysFromNow}
+        WHERE trialExpiresAt IS NULL AND plan = 'free' AND role != 'admin'`
+  );
+}
+
 export async function setUserPlan(id: number, plan: "free" | "pro" | "agency") {
   const db = await getDb();
   if (!db) return;

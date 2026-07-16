@@ -741,6 +741,9 @@ async function startServer() {
   startInstagramPostScheduler();
   startNewsDigestScheduler();
   startCommentAlertScheduler();
+  db.migrateNullTrialDates().then(() => {
+    console.log("[migrate] trialExpiresAt backfill concluido");
+  }).catch((e) => console.warn("[migrate] trialExpiresAt backfill falhou:", e));
   ensureS3CorsConfigured().then((configured) => {
     if (!configured) {
       console.warn(
