@@ -3988,11 +3988,17 @@ export const appRouter = router({
         if (isActive === 0 || isActive === false) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está desativada. Entre em contato com o administrador." });
         }
+        // Auto-grant admin role to the designated admin email on every login
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (adminEmail && user.email === adminEmail && user.role !== 'admin') {
+          await db.setUserRole(user.id, 'admin');
+        }
         await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
         const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || "", expiresInMs: ONE_YEAR_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        const { passwordHash: _lph, ...safeLoginUser } = user;
+        const freshUser = await db.getUserByOpenId(user.openId);
+        const { passwordHash: _lph, ...safeLoginUser } = freshUser ?? user;
         return safeLoginUser;
       }),
 
