@@ -26,6 +26,8 @@ import {
   Globe,
   MessageCircle,
   ScanSearch,
+  Lock,
+  Crown,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -38,6 +40,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePlan } from "@/_core/hooks/usePlan";
+import UpgradeModal from "@/components/UpgradeModal";
 
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-violet-500 to-purple-600", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const },
@@ -70,6 +74,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { t, language, setLanguage } = useLanguage();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; featureName?: string }>({ open: false });
+  const { isLocked, isExpired, isTrialActive, isLegacy, isPaid, daysLeft } = usePlan();
   const isDarkTheme = theme === "dark";
   const themeToggleLabel = isDarkTheme ? t("lightTheme") : t("darkTheme");
   const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
@@ -122,9 +128,15 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const NavButton = ({ item }: { item: NavItem }) => {
     const Icon = item.icon;
     const isActive = activeModule === item.id;
+    const locked = isLocked(item.id);
     return (
       <button
         onClick={() => {
+          if (locked) {
+            setUpgradeModal({ open: true, featureName: item.label });
+            setSidebarOpen(false);
+            return;
+          }
           navigate(item.path);
           setSidebarOpen(false);
         }}
@@ -132,6 +144,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           "w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group",
           isActive
             ? "bg-primary/10 text-primary"
+            : locked
+            ? "text-muted-foreground/50 hover:bg-accent/30"
             : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
         )}
       >
@@ -140,10 +154,12 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200",
             isActive
               ? `bg-gradient-to-br ${item.color} shadow-md`
+              : locked
+              ? "bg-muted/40"
               : "bg-muted/60 group-hover:bg-muted"
           )}
         >
-          <Icon className={cn("w-4 h-4", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+          <Icon className={cn("w-4 h-4", isActive ? "text-white" : locked ? "text-muted-foreground/40" : "text-muted-foreground group-hover:text-foreground")} />
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="truncate leading-tight">{item.label}</div>
@@ -156,6 +172,9 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
         </div>
         {isActive && (
           <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+        )}
+        {locked && !isActive && (
+          <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
         )}
       </button>
     );
@@ -202,6 +221,37 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           </>
         )}
       </nav>
+
+      {/* Trial / Upgrade banner */}
+      {!isPaid && !isLegacy && (isTrialActive || isExpired) && (
+        <div className="px-3 pb-2">
+          {isExpired ? (
+            <button
+              onClick={() => setUpgradeModal({ open: true })}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 hover:bg-destructive/15 transition-colors group"
+            >
+              <Lock className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
+              <div className="flex-1 text-left min-w-0">
+                <div className="text-[11px] font-semibold text-destructive leading-tight">Trial expirado</div>
+                <div className="text-[10px] text-destructive/70">Clique para fazer upgrade</div>
+              </div>
+            </button>
+          ) : (
+            <button
+              onClick={() => setUpgradeModal({ open: true })}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15 transition-colors group"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <div className="flex-1 text-left min-w-0">
+                <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
+                  Trial — {daysLeft}d restante{daysLeft !== 1 ? "s" : ""}
+                </div>
+                <div className="text-[10px] text-amber-600/70 dark:text-amber-500/70">Clique para fazer upgrade</div>
+              </div>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
@@ -304,6 +354,12 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen gradient-bg flex relative overflow-hidden">
+      <UpgradeModal
+        open={upgradeModal.open}
+        onClose={() => setUpgradeModal({ open: false })}
+        featureName={upgradeModal.featureName}
+        expired={isExpired}
+      />
       {/* Ambient orbs */}
       <div className="fixed top-[-15%] left-[-5%] w-[400px] h-[400px] rounded-full bg-violet-400/10 blur-[100px] pointer-events-none z-0" />
       <div className="fixed bottom-[-15%] right-[-5%] w-[350px] h-[350px] rounded-full bg-blue-400/10 blur-[80px] pointer-events-none z-0" />

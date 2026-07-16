@@ -86,18 +86,42 @@ export const TRIAL_DAILY_LIMITS = {
   images:   5,
   carousel: 3,
   articles: 3,
-  videos:   2,
+  posts:    1,
 } as const;
 
 type TrialFeature = keyof typeof TRIAL_DAILY_LIMITS;
 
+type PlanUser = { plan?: string; trialExpiresAt?: Date | null; role?: string };
+
+type TrialStatus = 'paid' | 'trial' | 'expired' | 'legacy';
+
+function getTrialState(user: PlanUser): { isPaid: boolean; status: TrialStatus } {
+  // Admins always have full access regardless of plan
+  if ((user as any).role === 'admin') return { isPaid: true, status: 'paid' };
+  const plan = (user as any).plan ?? 'free';
+  if (plan === 'pro' || plan === 'agency') return { isPaid: true, status: 'paid' };
+  const expires = user.trialExpiresAt instanceof Date ? user.trialExpiresAt : null;
+  // Legacy accounts (no trialExpiresAt): treat as having trial access without expiry
+  if (!expires) return { isPaid: false, status: 'legacy' };
+  if (expires > new Date()) return { isPaid: false, status: 'trial' };
+  return { isPaid: false, status: 'expired' };
+}
+
+// Enforce daily limit for features available in trial. Paid and legacy users skip entirely.
 async function checkAndIncrTrialUsage(
   userId: number,
-  trialExpiresAt: Date | null | undefined,
+  user: PlanUser,
   feature: TrialFeature,
 ): Promise<void> {
-  const expires = trialExpiresAt instanceof Date ? trialExpiresAt : null;
-  if (!expires || expires < new Date()) return; // not on active trial → no limit
+  const { isPaid, status } = getTrialState(user);
+  if (isPaid || status === 'legacy') return;
+
+  if (status === 'expired') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Seu período de teste gratuito expirou. Assine um plano para continuar usando a plataforma.',
+    });
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const used  = await db.getDailyUsageCount(userId, feature, today);
@@ -105,7 +129,7 @@ async function checkAndIncrTrialUsage(
 
   if (used >= limit) {
     const labels: Record<TrialFeature, string> = {
-      images: 'imagens', carousel: 'carrosséis', articles: 'artigos', videos: 'vídeos',
+      images: 'imagens', carousel: 'carrosséis', articles: 'artigos', posts: 'posts',
     };
     throw new TRPCError({
       code: 'TOO_MANY_REQUESTS',
@@ -114,6 +138,22 @@ async function checkAndIncrTrialUsage(
   }
 
   await db.incrementDailyUsage(userId, feature, today);
+}
+
+// Block access entirely unless account has a paid plan.
+function requirePaidPlan(user: PlanUser): void {
+  const { isPaid, status } = getTrialState(user);
+  if (isPaid) return;
+  if (status === 'expired') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Seu período de teste gratuito expirou. Assine um plano para continuar usando a plataforma.',
+    });
+  }
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'Este recurso está disponível apenas nos planos pagos. Faça upgrade para desbloquear.',
+  });
 }
 
 // ─── Chat Router ──────────────────────────────────────────────────────────────
@@ -154,6 +194,7 @@ const chatRouter = router({
       content: z.string().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
       // Save user message
       const userMsg = await db.addMessage(input.conversationId, ctx.user.id, "user", input.content);
 
@@ -228,7 +269,7 @@ const imagesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'images');
+      await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'images');
       const [brand, nicheData] = await Promise.all([
         db.getBrandKit(ctx.user.id),
         input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
@@ -273,7 +314,7 @@ const imagesRouter = router({
       count: z.number().min(1).max(4).default(3),
     }))
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'images');
+      await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'images');
       const [brand, nicheData] = await Promise.all([
         db.getBrandKit(ctx.user.id),
         input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
@@ -413,7 +454,7 @@ const videosRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'videos');
+      requirePaidPlan(ctx.user as PlanUser);
       const normalizedScript = input.script.replace(/\s+/g, " ").trim();
 
       const preparedSourceImage = await prepareDidSourceImage({
@@ -1168,7 +1209,7 @@ const articlesRouter = router({
       news: selectedNewsSchema,
     }))
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'articles');
+      await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'articles');
       const articleContext = await fetchArticleContext(input.news);
       const contextBlocks = [
         `Titulo original: ${articleContext.title}`,
@@ -1302,7 +1343,7 @@ Regras:
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'articles');
+      await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'articles');
       let title = "";
       let content = "";
       let summary = "";
@@ -1953,7 +1994,7 @@ const carouselRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'carousel');
+      await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'carousel');
       try {
         const selectedTemplate = input.templateId
           ? await db.getCarouselTemplate(input.templateId, ctx.user.id)
@@ -2686,6 +2727,14 @@ const postsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { scheduledAt: scheduledAtInput, extraImageUrls, ...data } = input;
+
+      // Trial users: only Instagram posts, 1 per day. Non-Instagram channels require paid plan.
+      if (input.channel !== 'instagram') {
+        requirePaidPlan(ctx.user as PlanUser);
+      } else {
+        await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, 'posts');
+      }
+
       const scheduledAt = scheduledAtInput
         ? parseScheduledAtInput(scheduledAtInput)
         : undefined;
@@ -3609,6 +3658,7 @@ const commentAutomationsRouter = router({
       dmLink: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
       const connection = await db.getInstagramConnection(ctx.user.id);
       if (!connection || connection.instagramAccountId !== input.igAccountId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Conta Instagram não encontrada ou não autorizada." });
@@ -3683,6 +3733,7 @@ const reelsRouter = router({
       extraContext: z.string().max(1000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
       const generated = await generateReelsScript({
         topic: input.topic,
         tone: input.tone,
@@ -3832,6 +3883,7 @@ const styleAnalyzerRouter = router({
       uploadedImages: z.array(z.string().max(8_000_000)).max(8).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
       const { analyzeInstagramProfileStyle } = await import("./_core/instagramStyleAgent");
       const connection = await db.getInstagramConnection(ctx.user.id);
       try {
@@ -3951,17 +4003,25 @@ export const appRouter = router({
     }),
 
     trialStatus: protectedProcedure.query(async ({ ctx }) => {
-      const user = ctx.user as typeof ctx.user & { trialExpiresAt?: Date | null };
+      const user = ctx.user as typeof ctx.user & { trialExpiresAt?: Date | null; plan?: string; role?: string };
+      const { isPaid, status } = getTrialState(user);
+      const plan = (user.plan ?? 'free') as string;
       const expires = user.trialExpiresAt instanceof Date ? user.trialExpiresAt : null;
       const now = new Date();
-      const isActive = !!expires && expires > now;
+      const isActive = status === 'trial';
+      const isExpired = status === 'expired';
+      const isLegacy = status === 'legacy';
       const daysLeft = isActive
-        ? Math.ceil((expires.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+        ? Math.ceil((expires!.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
         : 0;
       const today = now.toISOString().slice(0, 10);
-      const usage = isActive ? await db.getDailyUsageAll(ctx.user.id, today) : {};
+      const usage = (isActive || isLegacy) ? await db.getDailyUsageAll(ctx.user.id, today) : {};
       return {
+        plan,
+        isPaid,
         isActive,
+        isExpired,
+        isLegacy,
         daysLeft,
         expiresAt: expires?.toISOString() ?? null,
         limits: TRIAL_DAILY_LIMITS,
@@ -3969,10 +4029,31 @@ export const appRouter = router({
           images:   usage['images']   ?? 0,
           carousel: usage['carousel'] ?? 0,
           articles: usage['articles'] ?? 0,
-          videos:   usage['videos']   ?? 0,
+          posts:    usage['posts']    ?? 0,
         },
       };
     }),
+
+    upgradePlan: publicProcedure
+      .input(z.object({
+        webhookSecret: z.string(),
+        userEmail: z.string().email(),
+        plan: z.enum(["pro", "agency"]),
+        paymentId: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+        if (!secret || input.webhookSecret !== secret) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Webhook secret inválido.' });
+        }
+        const user = await db.getUserByEmail(input.userEmail);
+        if (!user) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuário não encontrado para este email.' });
+        }
+        await db.setUserPlan(user.id, input.plan);
+        console.log(`[Payment] Upgraded user ${user.email} (id=${user.id}) to plan=${input.plan} paymentId=${input.paymentId ?? 'n/a'}`);
+        return { success: true, userId: user.id, plan: input.plan };
+      }),
   }),
   chat: chatRouter,
   images: imagesRouter,

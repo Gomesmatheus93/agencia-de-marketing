@@ -15,7 +15,12 @@ import {
   GalleryHorizontal,
   Clapperboard,
   Clock,
+  Lock,
+  Crown,
 } from "lucide-react";
+import { usePlan } from "@/_core/hooks/usePlan";
+import UpgradeModal from "@/components/UpgradeModal";
+import { useState } from "react";
 
 type ModuleConfig = {
   id: string;
@@ -38,6 +43,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const { isLocked, isExpired, isTrialActive, isLegacy, isPaid, daysLeft, usage, limits } = usePlan();
 
   const { data: trialStatus } = trpc.auth.trialStatus.useQuery();
 
@@ -107,20 +114,50 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">{t("dashboardSubtitle")}</p>
         </div>
 
-        {/* Trial banner */}
-        {trialStatus?.isActive && (
+        {/* Trial / Expired banner */}
+        {!isPaid && !isLegacy && isExpired && (
+          <div className="animate-fade-in-up flex items-start gap-4 p-4 rounded-2xl border border-destructive/30 bg-destructive/10">
+            <Lock className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-destructive">
+                Seu trial gratuito expirou
+              </p>
+              <p className="text-xs text-destructive/70 mt-0.5">
+                Assine um plano para continuar usando a plataforma com acesso completo.
+              </p>
+            </div>
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-semibold shadow hover:opacity-90 transition-opacity flex-shrink-0"
+            >
+              <Crown className="w-3.5 h-3.5" />
+              Assinar
+            </button>
+          </div>
+        )}
+
+        {!isPaid && !isLegacy && isTrialActive && (
           <div className="animate-fade-in-up flex items-start gap-4 p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
             <Clock className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                Teste gratuito — {trialStatus.daysLeft} {trialStatus.daysLeft === 1 ? "dia restante" : "dias restantes"}
+                Teste gratuito — {daysLeft} {daysLeft === 1 ? "dia restante" : "dias restantes"}
               </p>
               <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
-                Uso hoje: {trialStatus.usage.images ?? 0}/{trialStatus.limits.images} imagens &bull; {trialStatus.usage.carousel ?? 0}/{trialStatus.limits.carousel} carrosséis &bull; {trialStatus.usage.articles ?? 0}/{trialStatus.limits.articles} artigos &bull; {trialStatus.usage.videos ?? 0}/{trialStatus.limits.videos} vídeos
+                Uso hoje: {usage?.images ?? 0}/{limits?.images ?? 5} imagens &bull; {usage?.carousel ?? 0}/{limits?.carousel ?? 3} carrosséis &bull; {usage?.articles ?? 0}/{limits?.articles ?? 3} artigos &bull; {usage?.posts ?? 0}/{limits?.posts ?? 1} post Instagram
               </p>
             </div>
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-semibold shadow hover:opacity-90 transition-opacity flex-shrink-0"
+            >
+              <Crown className="w-3.5 h-3.5" />
+              Upgrade
+            </button>
           </div>
         )}
+
+        <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} expired={isExpired} />
 
         {/* Quick stats */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
@@ -149,28 +186,43 @@ export default function Dashboard() {
           <div className="grid md:grid-cols-2 gap-4">
             {MODULE_CONFIGS.map((mod, i) => {
               const Icon = mod.icon;
+              const locked = isLocked(mod.id);
               return (
                 <button
                   key={mod.id}
-                  onClick={() => navigate(mod.path)}
-                  className="glass-card p-6 text-left group hover:scale-[1.02] hover:shadow-xl transition-all duration-300 animate-fade-in-up"
+                  onClick={() => locked ? setUpgradeOpen(true) : navigate(mod.path)}
+                  className={`glass-card p-6 text-left group transition-all duration-300 animate-fade-in-up ${locked ? "opacity-60 hover:opacity-75" : "hover:scale-[1.02] hover:shadow-xl"}`}
                   style={{ animationDelay: `${0.1 * (i + 1)}s` }}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${mod.gradient} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                      <Icon className="w-6 h-6 text-white" />
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${locked ? "from-muted to-muted/60" : mod.gradient} flex items-center justify-center shadow-lg ${!locked && "group-hover:scale-110"} transition-transform duration-300`}>
+                      {locked ? <Lock className="w-6 h-6 text-muted-foreground" /> : <Icon className="w-6 h-6 text-white" />}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-full">
-                      <TrendingUp className="w-3 h-3" />
-                      {statsMap[mod.id]} {statLabels[mod.id].toLowerCase()}
-                    </div>
+                    {locked ? (
+                      <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                        <Crown className="w-3 h-3" />
+                        Pro
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-full">
+                        <TrendingUp className="w-3 h-3" />
+                        {statsMap[mod.id]} {statLabels[mod.id].toLowerCase()}
+                      </div>
+                    )}
                   </div>
-                  <h3 className="font-semibold text-foreground text-base mb-1">{moduleTitles[mod.id]}</h3>
+                  <h3 className={`font-semibold text-base mb-1 ${locked ? "text-muted-foreground" : "text-foreground"}`}>{moduleTitles[mod.id]}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed mb-4">{moduleDescs[mod.id]}</p>
-                  <div className={`flex items-center gap-1.5 text-sm font-medium ${mod.color} group-hover:gap-2.5 transition-all duration-200`}>
-                    {t("dashboardAccessModule")}
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
+                  {locked ? (
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                      <Crown className="w-4 h-4" />
+                      Disponível no plano Pro
+                    </div>
+                  ) : (
+                    <div className={`flex items-center gap-1.5 text-sm font-medium ${mod.color} group-hover:gap-2.5 transition-all duration-200`}>
+                      {t("dashboardAccessModule")}
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+                  )}
                 </button>
               );
             })}
