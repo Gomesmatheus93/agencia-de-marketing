@@ -180,6 +180,62 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     );
   };
 
+  // ── Plan walls ──────────────────────────────────────────────────────────────
+  const ExpiredWall = () => (
+    <div className="flex items-center justify-center p-8 min-h-[70vh]">
+      <div className="glass-card max-w-md w-full p-8 flex flex-col items-center text-center gap-5 animate-fade-in-up">
+        <div className="w-16 h-16 rounded-2xl bg-destructive/15 border border-destructive/20 flex items-center justify-center shadow-md">
+          <Lock className="w-8 h-8 text-destructive" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Trial expirado</h2>
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            Seu período de teste gratuito de 7 dias encerrou. Assine um plano para continuar criando conteúdo ilimitado.
+          </p>
+        </div>
+        <button
+          onClick={() => setUpgradeModal({ open: true })}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl gradient-primary text-white font-semibold text-sm shadow-lg hover:opacity-90 transition-opacity"
+        >
+          <Crown className="w-4 h-4" />
+          Assinar agora
+        </button>
+        <p className="text-xs text-muted-foreground">Acesso imediato após confirmação do pagamento.</p>
+      </div>
+    </div>
+  );
+
+  const ProFeatureWall = ({ featureName }: { featureName?: string }) => (
+    <div className="flex items-center justify-center p-8 min-h-[70vh]">
+      <div className="glass-card max-w-md w-full p-8 flex flex-col items-center text-center gap-5 animate-fade-in-up">
+        <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
+          <Crown className="w-8 h-8 text-white" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Recurso do Plano Pro</h2>
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            {featureName ? `${featureName} está` : "Este recurso está"} disponível apenas nos planos pagos. Faça upgrade para desbloquear acesso completo.
+          </p>
+        </div>
+        <button
+          onClick={() => setUpgradeModal({ open: true })}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl gradient-primary text-white font-semibold text-sm shadow-lg hover:opacity-90 transition-opacity"
+        >
+          <Crown className="w-4 h-4" />
+          Ver planos
+        </button>
+        <p className="text-xs text-muted-foreground">
+          No trial você tem acesso a imagens (5/dia), carrosséis (3/dia), artigos (3/dia) e 1 post no Instagram.
+        </p>
+      </div>
+    </div>
+  );
+
+  // Gate: determine if current module should be blocked
+  const ALWAYS_OPEN = new Set(["dashboard", "settings"]);
+  const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
+  const activeLabel = navItems.find((n) => n.id === activeModule)?.label;
+
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -452,7 +508,11 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
         {/* Page content */}
         <div className="flex-1 overflow-auto">
-          {children}
+          {gateActive
+            ? isExpired
+              ? <ExpiredWall />
+              : <ProFeatureWall featureName={activeLabel} />
+            : children}
         </div>
       </main>
     </div>
