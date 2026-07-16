@@ -3934,8 +3934,17 @@ const styleAnalyzerRouter = router({
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query((opts) => {
+    me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail && opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
+        await db.setUserRole(opts.ctx.user.id, "admin");
+        const fresh = await db.getUserByOpenId(opts.ctx.user.openId);
+        if (fresh) {
+          const { passwordHash: _ph, ...safeUser } = fresh;
+          return safeUser;
+        }
+      }
       const { passwordHash: _ph, ...safeUser } = opts.ctx.user;
       return safeUser;
     }),
