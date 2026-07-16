@@ -568,6 +568,49 @@ export async function listAllUsers() {
     ...u,
     plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
     isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
+    trialExpiresAt: (u as unknown as { trialExpiresAt?: Date | null }).trialExpiresAt ?? null,
+  }));
+}
+
+export async function listUsersWithStats() {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureUserExtraColumns();
+  const rows = await db.select().from(users).orderBy(desc(users.createdAt));
+
+  // Aggregate content counts per userId in parallel
+  const [imgCounts, artCounts, carCounts, vidCounts, postCounts, chatCounts] = await Promise.all([
+    db.select({ userId: generatedImages.userId, n: count() }).from(generatedImages).groupBy(generatedImages.userId),
+    db.select({ userId: articles.userId, n: count() }).from(articles).groupBy(articles.userId),
+    db.select({ userId: carousels.userId, n: count() }).from(carousels).groupBy(carousels.userId),
+    db.select({ userId: avatarVideos.userId, n: count() }).from(avatarVideos).groupBy(avatarVideos.userId),
+    db.select({ userId: socialPosts.userId, n: count() }).from(socialPosts).groupBy(socialPosts.userId),
+    db.select({ userId: chatConversations.userId, n: count() }).from(chatConversations).groupBy(chatConversations.userId),
+  ]);
+
+  const toMap = (arr: { userId: number; n: number }[]) =>
+    Object.fromEntries(arr.map((r) => [r.userId, r.n]));
+
+  const imgs  = toMap(imgCounts  as { userId: number; n: number }[]);
+  const arts  = toMap(artCounts  as { userId: number; n: number }[]);
+  const cars  = toMap(carCounts  as { userId: number; n: number }[]);
+  const vids  = toMap(vidCounts  as { userId: number; n: number }[]);
+  const posts = toMap(postCounts as { userId: number; n: number }[]);
+  const chats = toMap(chatCounts as { userId: number; n: number }[]);
+
+  return rows.map((u) => ({
+    ...u,
+    plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
+    isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
+    trialExpiresAt: (u as unknown as { trialExpiresAt?: Date | null }).trialExpiresAt ?? null,
+    usage: {
+      images:   imgs[u.id]  ?? 0,
+      articles: arts[u.id]  ?? 0,
+      carousel: cars[u.id]  ?? 0,
+      videos:   vids[u.id]  ?? 0,
+      posts:    posts[u.id] ?? 0,
+      chats:    chats[u.id] ?? 0,
+    },
   }));
 }
 

@@ -26,6 +26,20 @@ import {
   Loader2,
   MailPlus,
   Lock,
+  LayoutDashboard,
+  Image,
+  FileText,
+  GalleryHorizontal,
+  Clapperboard,
+  Share2,
+  MessageSquare,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  TrendingUp,
+  Search,
+  Download,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -48,18 +62,42 @@ type UserRow = {
   loginMethod: string | null;
   lastSignedIn: Date;
   createdAt: Date;
+  trialExpiresAt: Date | null;
+  usage: {
+    images: number;
+    articles: number;
+    carousel: number;
+    videos: number;
+    posts: number;
+    chats: number;
+  };
 };
 
-const PLAN_CONFIG: Record<Plan, { label: string; badge: string }> = {
-  free:   { label: "Free",    badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700" },
-  pro:    { label: "Pro",     badge: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-800" },
-  agency: { label: "Agência", badge: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border-violet-200 dark:border-violet-800" },
+const PLAN_CONFIG: Record<Plan, { label: string; badge: string; color: string }> = {
+  free:   { label: "Free",    badge: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700", color: "text-zinc-500" },
+  pro:    { label: "Pro",     badge: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-800", color: "text-blue-600" },
+  agency: { label: "Agência", badge: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border-violet-200 dark:border-violet-800", color: "text-violet-600" },
 };
 
 const ROLE_CONFIG: Record<Role, { label: string; badge: string }> = {
   user:  { label: "Usuário", badge: "bg-secondary text-secondary-foreground border-border" },
   admin: { label: "Admin",   badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800" },
 };
+
+function trialStatus(u: UserRow): { label: string; color: string; icon: React.ReactNode } {
+  if (u.plan === "pro" || u.plan === "agency") {
+    return { label: "Pago", color: "text-emerald-600 dark:text-emerald-400", icon: <CheckCircle2 className="w-3.5 h-3.5" /> };
+  }
+  const exp = u.trialExpiresAt ? new Date(u.trialExpiresAt) : null;
+  if (!exp) {
+    return { label: "Legacy", color: "text-muted-foreground", icon: <Clock className="w-3.5 h-3.5" /> };
+  }
+  if (exp > new Date()) {
+    const days = Math.ceil((exp.getTime() - Date.now()) / 86400000);
+    return { label: `Trial (${days}d)`, color: "text-amber-600 dark:text-amber-400", icon: <Clock className="w-3.5 h-3.5" /> };
+  }
+  return { label: "Expirado", color: "text-destructive", icon: <XCircle className="w-3.5 h-3.5" /> };
+}
 
 // ── Invite User Form ──────────────────────────────────────────────────────────
 
@@ -85,7 +123,7 @@ function InviteUserForm({ onSuccess }: { onSuccess: () => void }) {
     return (
       <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-2">
         <MailPlus className="w-4 h-4" />
-        Convidar usuário
+        Criar usuário
       </Button>
     );
   }
@@ -163,7 +201,6 @@ function FlagForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Chave (key)</label>
           <Input placeholder="ex: new_feature" value={key} onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
-          <p className="text-[10px] text-muted-foreground">Letras minúsculas, números e _</p>
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Nome exibido</label>
@@ -184,7 +221,7 @@ function FlagForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-// ── User Row Actions ──────────────────────────────────────────────────────────
+// ── User Actions ──────────────────────────────────────────────────────────────
 
 function UserActions({ u, currentUserId, onRefresh }: { u: UserRow; currentUserId: number; onRefresh: () => void }) {
   const isSelf = u.id === currentUserId;
@@ -201,23 +238,28 @@ function UserActions({ u, currentUserId, onRefresh }: { u: UserRow; currentUserI
           {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronDown className="w-3 h-3" />}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        {!isSelf && (
-          <>
-            <DropdownMenuItem className="text-xs" onClick={() => setRole.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" })}>
-              <Shield className="w-3.5 h-3.5 mr-2" />
-              {u.role === "admin" ? "Rebaixar para Usuário" : "Promover para Admin"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
-        {(["free", "pro", "agency"] as Plan[]).filter((p) => p !== u.plan).map((p) => (
-          <DropdownMenuItem key={p} className="text-xs" onClick={() => setPlan.mutate({ id: u.id, plan: p })}>
-            Mudar plano → {PLAN_CONFIG[p].label}
+      <DropdownMenuContent align="end" className="w-56">
+        <div className="px-2 py-1.5">
+          <p className="text-xs font-semibold truncate">{u.name || u.email}</p>
+          <p className="text-[10px] text-muted-foreground">{u.email}</p>
+        </div>
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mudar plano</div>
+        {(["free", "pro", "agency"] as Plan[]).map((p) => (
+          <DropdownMenuItem key={p} className={cn("text-xs gap-2", u.plan === p && "text-primary font-semibold")} onClick={() => u.plan !== p && setPlan.mutate({ id: u.id, plan: p })}>
+            <Crown className={cn("w-3.5 h-3.5", PLAN_CONFIG[p].color)} />
+            {PLAN_CONFIG[p].label}
+            {u.plan === p && <CheckCircle2 className="w-3 h-3 ml-auto text-primary" />}
           </DropdownMenuItem>
         ))}
         {!isSelf && (
           <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Permissões</div>
+            <DropdownMenuItem className="text-xs" onClick={() => setRole.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" })}>
+              <Shield className="w-3.5 h-3.5 mr-2" />
+              {u.role === "admin" ? "Rebaixar para Usuário" : "Promover para Admin"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-xs" onClick={() => setActive.mutate({ id: u.id, isActive: !u.isActive })}>
               {u.isActive
@@ -236,7 +278,7 @@ function UserActions({ u, currentUserId, onRefresh }: { u: UserRow; currentUserI
   );
 }
 
-// ── Toggle Switch ─────────────────────────────────────────────────────────────
+// ── Toggle ────────────────────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
@@ -256,21 +298,56 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
   );
 }
 
+// ── Usage Bar ─────────────────────────────────────────────────────────────────
+
+function UsageBar({ label, value, max, icon: Icon, color }: { label: string; value: number; max: number; icon: React.ComponentType<{ className?: string }>; color: string }) {
+  const pct = Math.min(100, max > 0 ? (value / max) * 100 : 0);
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <Icon className={cn("w-3 h-3 shrink-0", color)} />
+      <span className="text-[10px] text-muted-foreground w-4 text-right font-mono tabular-nums shrink-0">{value}</span>
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-0">
+        <div className={cn("h-full rounded-full transition-all", color.replace("text-", "bg-"))} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, sub, color, icon: Icon }: { label: string; value: number | string; sub?: string; color: string; icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <div className="glass-card rounded-xl p-5">
+      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3", color.replace("text-", "bg-").replace("-500", "-100").replace("-600", "-100") + " dark:" + color.replace("text-", "bg-").replace("-500", "-950/30").replace("-600", "-950/30"))}>
+        <Icon className={cn("w-4.5 h-4.5", color)} />
+      </div>
+      <div className="text-2xl font-bold tabular-nums">{value}</div>
+      <div className="text-xs font-medium text-foreground mt-0.5">{label}</div>
+      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
+
+type Tab = "overview" | "users" | "platform";
 
 export default function SettingsPage() {
   const { t } = useLanguage();
   const { user, loading, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const isAdmin = user?.role === "admin";
+  const [tab, setTab] = useState<Tab>("overview");
+  const [search, setSearch] = useState("");
+  const [planFilter, setPlanFilter] = useState<Plan | "all">("all");
 
   useEffect(() => {
     if (!loading && isAuthenticated && !isAdmin) navigate("/dashboard");
   }, [loading, isAuthenticated, isAdmin, navigate]);
 
-  const statsQuery = trpc.admin.getStats.useQuery(undefined, { enabled: isAdmin });
-  const flagsQuery = trpc.admin.getFeatureFlags.useQuery(undefined, { enabled: isAdmin });
-  const usersQuery = trpc.admin.listUsers.useQuery(undefined, { enabled: isAdmin });
+  const statsQuery  = trpc.admin.getStats.useQuery(undefined, { enabled: isAdmin });
+  const flagsQuery  = trpc.admin.getFeatureFlags.useQuery(undefined, { enabled: isAdmin });
+  const detailQuery = trpc.admin.listUsersDetailed.useQuery(undefined, { enabled: isAdmin });
 
   const toggleFlag = trpc.admin.toggleFeatureFlag.useMutation({ onSuccess: () => flagsQuery.refetch(), onError: (e) => toast.error(e.message) });
   const deleteFlag = trpc.admin.deleteFeatureFlag.useMutation({ onSuccess: () => { toast.success("Flag removida"); flagsQuery.refetch(); }, onError: (e) => toast.error(e.message) });
@@ -280,160 +357,360 @@ export default function SettingsPage() {
 
   const stats    = statsQuery.data;
   const flags    = flagsQuery.data ?? [];
-  const allUsers = (usersQuery.data ?? []) as UserRow[];
-  const regFlag  = flags.find((f) => f.key === "open_registration");
+  const allUsers = (detailQuery.data ?? []) as UserRow[];
+
+  const regFlag = flags.find((f) => f.key === "open_registration");
   const registrationOpen = regFlag ? regFlag.enabled : true;
+
+  // Computed KPIs from user list
+  const paidUsers    = allUsers.filter((u) => u.plan === "pro" || u.plan === "agency");
+  const trialUsers   = allUsers.filter((u) => u.plan === "free" && u.trialExpiresAt && new Date(u.trialExpiresAt) > new Date());
+  const expiredUsers = allUsers.filter((u) => u.plan === "free" && u.trialExpiresAt && new Date(u.trialExpiresAt) <= new Date());
+  const newThisWeek  = allUsers.filter((u) => Date.now() - new Date(u.createdAt).getTime() < 7 * 86400000);
+
+  // Total content generated across all users
+  const totalContent = allUsers.reduce((acc, u) => {
+    return acc + u.usage.images + u.usage.articles + u.usage.carousel + u.usage.videos + u.usage.posts + u.usage.chats;
+  }, 0);
+
+  // Filtered users
+  const filteredUsers = allUsers.filter((u) => {
+    const matchPlan = planFilter === "all" || u.plan === planFilter;
+    const matchSearch = !search || [u.name, u.email].some((s) => s?.toLowerCase().includes(search.toLowerCase()));
+    return matchPlan && matchSearch;
+  });
+
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
+    { id: "users",    label: "Usuários",    icon: Users },
+    { id: "platform", label: "Plataforma",  icon: Settings },
+  ];
 
   return (
     <AppLayout activeModule="settings">
-      <div className="p-6 max-w-5xl mx-auto space-y-8">
+      <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center shadow-md">
-            <Settings className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center shadow-md">
+            <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">{t("settingsTitle")}</h1>
-            <p className="text-sm text-muted-foreground">{t("settingsSubtitle")}</p>
+            <h1 className="text-xl font-bold">Painel Admin</h1>
+            <p className="text-sm text-muted-foreground">Controle total da plataforma KrythosLab</p>
           </div>
           <Badge variant="secondary" className="ml-auto text-xs gap-1 border border-border/50">
             <Shield className="w-3 h-3" />
-            Admin
+            {user.name}
           </Badge>
         </div>
 
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total de usuários", value: stats.totalUsers,        sub: `${stats.activeUsers} ativos`,                                       icon: Users,       color: "text-blue-500" },
-              { label: "Admins",            value: stats.adminUsers,        sub: "com acesso total",                                                  icon: Crown,       color: "text-amber-500" },
-              { label: "Plano Agência",     value: stats.planCounts.agency, sub: `${stats.planCounts.pro} Pro · ${stats.planCounts.free} Free`,        icon: Shield,      color: "text-violet-500" },
-              { label: "Flags ativas",      value: stats.enabledFlags,      sub: `de ${stats.totalFlags} flags`,                                      icon: ToggleRight, color: "text-emerald-500" },
-            ].map(({ label, value, sub, icon: Icon, color }) => (
-              <div key={label} className="glass-card rounded-xl p-4">
-                <Icon className={cn("w-4 h-4 mb-2", color)} />
-                <div className="text-2xl font-bold">{value}</div>
-                <div className="text-xs font-medium text-foreground mt-0.5">{label}</div>
-                <div className="text-[11px] text-muted-foreground">{sub}</div>
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 glass-card rounded-xl w-fit">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+                tab === id
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── OVERVIEW TAB ── */}
+        {tab === "overview" && (
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <StatCard label="Total de contas" value={allUsers.length} sub={`${newThisWeek.length} esta semana`} color="text-blue-500" icon={Users} />
+              <StatCard label="Pagantes" value={paidUsers.length} sub={`${stats?.planCounts.pro ?? 0} Pro · ${stats?.planCounts.agency ?? 0} Agência`} color="text-emerald-500" icon={CheckCircle2} />
+              <StatCard label="Em trial" value={trialUsers.length} sub="período ativo" color="text-amber-500" icon={Clock} />
+              <StatCard label="Trial expirado" value={expiredUsers.length} sub="sem assinatura" color="text-destructive" icon={XCircle} />
+              <StatCard label="Novos (7d)" value={newThisWeek.length} sub="cadastros recentes" color="text-violet-500" icon={TrendingUp} />
+              <StatCard label="Conteúdo gerado" value={totalContent} sub="todos os usuários" color="text-cyan-500" icon={Sparkles} />
+            </div>
+
+            {/* Recent signups */}
+            <div className="space-y-3">
+              <h2 className="font-semibold text-sm flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                Cadastros recentes
+              </h2>
+              <div className="glass-card rounded-xl divide-y divide-border/30 overflow-hidden">
+                {allUsers.slice(0, 8).map((u) => {
+                  const ts = trialStatus(u);
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", u.role === "admin" ? "bg-amber-100 dark:bg-amber-950/40" : "bg-muted")}>
+                        {u.role === "admin" ? <Crown className="w-4 h-4 text-amber-500" /> : <User className="w-4 h-4 text-muted-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{u.name || "Sem nome"}</div>
+                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                      </div>
+                      <div className={cn("flex items-center gap-1 text-xs font-medium shrink-0", ts.color)}>
+                        {ts.icon}
+                        {ts.label}
+                      </div>
+                      <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0", PLAN_CONFIG[u.plan].badge)}>{PLAN_CONFIG[u.plan].label}</span>
+                      <div className="text-[11px] text-muted-foreground shrink-0 w-20 text-right">
+                        {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                      </div>
+                    </div>
+                  );
+                })}
+                {allUsers.length === 0 && (
+                  <div className="p-8 text-center text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
+                )}
               </div>
-            ))}
+            </div>
+
+            {/* Content breakdown */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                { label: "Imagens geradas",   key: "images"   as const, icon: Image,           color: "text-blue-500" },
+                { label: "Artigos criados",    key: "articles" as const, icon: FileText,        color: "text-emerald-500" },
+                { label: "Carrosséis",         key: "carousel" as const, icon: GalleryHorizontal, color: "text-amber-500" },
+                { label: "Vídeos com avatar",  key: "videos"   as const, icon: Clapperboard,   color: "text-fuchsia-500" },
+                { label: "Posts publicados",   key: "posts"    as const, icon: Share2,          color: "text-orange-500" },
+                { label: "Conversas de Chat",  key: "chats"    as const, icon: MessageSquare,   color: "text-violet-500" },
+              ].map(({ label, key, icon: Icon, color }) => {
+                const total = allUsers.reduce((acc, u) => acc + u.usage[key], 0);
+                const topUser = allUsers.reduce<UserRow | null>((best, u) => (!best || u.usage[key] > best.usage[key] ? u : best), null);
+                return (
+                  <div key={key} className="glass-card rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Icon className={cn("w-4 h-4", color)} />
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    <div className="text-2xl font-bold tabular-nums">{total}</div>
+                    {topUser && topUser.usage[key] > 0 && (
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        Top: <span className="text-foreground font-medium">{topUser.name || topUser.email}</span> ({topUser.usage[key]})
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* Users */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="font-semibold text-base flex items-center gap-2"><Users className="w-4 h-4" />Usuários</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Gerencie funções, planos e acesso de cada usuário</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => usersQuery.refetch()}>
-                <RefreshCw className={cn("w-4 h-4", usersQuery.isFetching && "animate-spin")} />
-              </Button>
-              <InviteUserForm onSuccess={() => usersQuery.refetch()} />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {allUsers.length === 0 ? (
-              <div className="glass-card rounded-xl p-8 text-center text-muted-foreground text-sm">Nenhum usuário encontrado.</div>
-            ) : allUsers.map((u) => (
-              <div key={u.id} className={cn("glass-card rounded-xl px-4 py-3 flex items-center gap-3 border transition-opacity", u.isActive ? "border-border/40" : "border-border/20 opacity-60")}>
-                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", u.role === "admin" ? "bg-amber-100 dark:bg-amber-950/40" : "bg-muted")}>
-                  {u.role === "admin" ? <Crown className="w-4 h-4 text-amber-500" /> : u.isActive ? <User className="w-4 h-4 text-muted-foreground" /> : <UserX className="w-4 h-4 text-muted-foreground/50" />}
+        {/* ── USERS TAB ── */}
+        {tab === "users" && (
+          <div className="space-y-4 animate-fade-in-up">
+            <div className="flex flex-wrap items-center gap-3 justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Buscar por nome ou email..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 h-8 w-56 text-sm"
+                  />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">{u.name || "Sem nome"}</span>
-                    {u.id === user.id && <span className="text-[10px] text-muted-foreground">(você)</span>}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">{u.email || u.loginMethod || "—"}</div>
+                <div className="flex rounded-lg overflow-hidden border border-border/50 h-8">
+                  {(["all", "free", "pro", "agency"] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPlanFilter(p)}
+                      className={cn(
+                        "px-3 text-xs font-medium transition-colors",
+                        planFilter === p ? "bg-primary text-white" : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {p === "all" ? "Todos" : PLAN_CONFIG[p].label}
+                    </button>
+                  ))}
                 </div>
-                <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                  <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", ROLE_CONFIG[u.role].badge)}>{ROLE_CONFIG[u.role].label}</span>
-                  <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", PLAN_CONFIG[u.plan].badge)}>{PLAN_CONFIG[u.plan].label}</span>
-                  {!u.isActive && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border-red-200 dark:border-red-800">Inativo</span>}
-                </div>
-                <div className="text-[11px] text-muted-foreground shrink-0 hidden md:block w-20 text-right">
-                  {new Date(u.lastSignedIn).toLocaleDateString("pt-BR")}
-                </div>
-                <UserActions u={u} currentUserId={user.id} onRefresh={() => usersQuery.refetch()} />
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Registration control */}
-        <section className="space-y-3">
-          <div>
-            <h2 className="font-semibold text-base flex items-center gap-2"><Lock className="w-4 h-4" />Registro público</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Controle se qualquer pessoa pode se cadastrar ou apenas convidados</p>
-          </div>
-          <div className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 border border-border/40">
-            <div className="flex-1">
-              <p className="text-sm font-medium">{registrationOpen ? "Registro aberto" : "Somente convite"}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {registrationOpen ? "Qualquer pessoa com o link pode criar uma conta." : "Somente usuários criados pelo admin podem entrar."}
-              </p>
+              <div className="flex items-center gap-2">
+                <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => detailQuery.refetch()}>
+                  <RefreshCw className={cn("w-4 h-4", detailQuery.isFetching && "animate-spin")} />
+                </Button>
+                <InviteUserForm onSuccess={() => detailQuery.refetch()} />
+              </div>
             </div>
-            <Toggle
-              checked={registrationOpen}
-              disabled={toggleFlag.isPending || upsertFlag.isPending}
-              onChange={() => {
-                if (regFlag) {
-                  toggleFlag.mutate({ key: "open_registration", enabled: !registrationOpen });
-                } else {
-                  upsertFlag.mutate({ key: "open_registration", label: "Registro público", enabled: false });
-                }
-              }}
-            />
-          </div>
-        </section>
 
-        {/* Feature Flags */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-base flex items-center gap-2"><ToggleRight className="w-4 h-4" />Feature Flags</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Ative funcionalidades globalmente. Admins sempre veem tudo.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => flagsQuery.refetch()}>
-                <RefreshCw className={cn("w-4 h-4", flagsQuery.isFetching && "animate-spin")} />
-              </Button>
-              <FlagForm onSuccess={() => flagsQuery.refetch()} />
-            </div>
-          </div>
+            <div className="text-xs text-muted-foreground">{filteredUsers.length} usuário{filteredUsers.length !== 1 ? "s" : ""}</div>
 
-          {flags.length === 0 ? (
-            <div className="glass-card rounded-xl p-8 text-center text-muted-foreground text-sm">Nenhuma feature flag criada ainda.</div>
-          ) : (
             <div className="space-y-2">
-              {flags.map((flag) => (
-                <div key={flag.key} className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 border border-border/40">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{flag.label}</span>
-                      <Badge variant="outline" className="text-[10px] font-mono shrink-0">{flag.key}</Badge>
+              {filteredUsers.length === 0 ? (
+                <div className="glass-card rounded-xl p-8 text-center text-muted-foreground text-sm">Nenhum usuário encontrado.</div>
+              ) : filteredUsers.map((u) => {
+                const ts = trialStatus(u);
+                const exp = u.trialExpiresAt ? new Date(u.trialExpiresAt) : null;
+                const totalGen = u.usage.images + u.usage.articles + u.usage.carousel + u.usage.videos + u.usage.posts;
+                return (
+                  <div
+                    key={u.id}
+                    className={cn(
+                      "glass-card rounded-xl border transition-opacity",
+                      u.isActive ? "border-border/40" : "border-border/20 opacity-60"
+                    )}
+                  >
+                    {/* Main row */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold",
+                        u.role === "admin" ? "bg-amber-100 dark:bg-amber-950/40 text-amber-600" : "bg-muted text-muted-foreground"
+                      )}>
+                        {u.name ? u.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : "?"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium truncate">{u.name || "Sem nome"}</span>
+                          {u.id === user.id && <span className="text-[10px] text-muted-foreground">(você)</span>}
+                          <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full border", ROLE_CONFIG[u.role].badge)}>{ROLE_CONFIG[u.role].label}</span>
+                          {!u.isActive && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border-red-200">Inativo</span>}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                      </div>
+
+                      {/* Plan */}
+                      <div className="hidden sm:flex flex-col items-end shrink-0 gap-0.5">
+                        <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", PLAN_CONFIG[u.plan].badge)}>{PLAN_CONFIG[u.plan].label}</span>
+                        <div className={cn("flex items-center gap-1 text-[10px] font-medium", ts.color)}>
+                          {ts.icon}
+                          {ts.label}
+                        </div>
+                      </div>
+
+                      {/* Trial expiry */}
+                      <div className="hidden md:flex flex-col items-end shrink-0 gap-0.5 w-28">
+                        {exp ? (
+                          <>
+                            <div className="text-[10px] text-muted-foreground">Vencimento</div>
+                            <div className={cn("text-[11px] font-medium", exp <= new Date() && u.plan === "free" ? "text-destructive" : "text-foreground")}>
+                              {exp.toLocaleDateString("pt-BR")}
+                            </div>
+                          </>
+                        ) : u.plan !== "free" ? (
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Ativo
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-muted-foreground">Sem trial</div>
+                        )}
+                        <div className="text-[10px] text-muted-foreground">
+                          Entrou {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                        </div>
+                      </div>
+
+                      {/* Total content */}
+                      <div className="hidden lg:flex flex-col items-end shrink-0 gap-0.5 w-20">
+                        <div className="text-base font-bold tabular-nums text-foreground">{totalGen}</div>
+                        <div className="text-[10px] text-muted-foreground">conteúdos</div>
+                        <div className="text-[10px] text-muted-foreground">{u.usage.chats} chats</div>
+                      </div>
+
+                      <UserActions u={u} currentUserId={user.id} onRefresh={() => detailQuery.refetch()} />
                     </div>
-                    {flag.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{flag.description}</p>}
+
+                    {/* Usage bars */}
+                    <div className="px-4 pb-3 grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-1.5">
+                      <UsageBar label="Imagens"   value={u.usage.images}   max={Math.max(1, ...allUsers.map((x) => x.usage.images))}   icon={Image}              color="text-blue-500" />
+                      <UsageBar label="Artigos"   value={u.usage.articles} max={Math.max(1, ...allUsers.map((x) => x.usage.articles))} icon={FileText}           color="text-emerald-500" />
+                      <UsageBar label="Carrossel" value={u.usage.carousel} max={Math.max(1, ...allUsers.map((x) => x.usage.carousel))} icon={GalleryHorizontal}  color="text-amber-500" />
+                      <UsageBar label="Vídeos"    value={u.usage.videos}   max={Math.max(1, ...allUsers.map((x) => x.usage.videos))}   icon={Clapperboard}       color="text-fuchsia-500" />
+                      <UsageBar label="Posts"     value={u.usage.posts}    max={Math.max(1, ...allUsers.map((x) => x.usage.posts))}    icon={Share2}             color="text-orange-500" />
+                      <UsageBar label="Chats"     value={u.usage.chats}    max={Math.max(1, ...allUsers.map((x) => x.usage.chats))}    icon={MessageSquare}      color="text-violet-500" />
+                    </div>
                   </div>
-                  <Toggle checked={flag.enabled} disabled={toggleFlag.isPending} onChange={() => toggleFlag.mutate({ key: flag.key, enabled: !flag.enabled })} />
-                  <Badge variant={flag.enabled ? "default" : "secondary"} className={cn("text-xs shrink-0", flag.enabled && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30")}>
-                    {flag.enabled ? "Ativo" : "Inativo"}
-                  </Badge>
-                  <Button size="icon" variant="ghost" className="w-7 h-7 text-destructive/60 hover:text-destructive shrink-0" onClick={() => { if (confirm(`Remover flag "${flag.key}"?`)) deleteFlag.mutate({ key: flag.key }); }}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          )}
-        </section>
+          </div>
+        )}
+
+        {/* ── PLATFORM TAB ── */}
+        {tab === "platform" && (
+          <div className="space-y-6 animate-fade-in-up">
+
+            {/* Registration control */}
+            <section className="space-y-3">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2"><Lock className="w-4 h-4" />Registro público</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Controle se qualquer pessoa pode se cadastrar ou apenas convidados</p>
+              </div>
+              <div className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 border border-border/40">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{registrationOpen ? "Registro aberto" : "Somente convite"}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {registrationOpen ? "Qualquer pessoa com o link pode criar uma conta." : "Somente usuários criados pelo admin podem entrar."}
+                  </p>
+                </div>
+                <Toggle
+                  checked={registrationOpen}
+                  disabled={toggleFlag.isPending || upsertFlag.isPending}
+                  onChange={() => {
+                    if (regFlag) {
+                      toggleFlag.mutate({ key: "open_registration", enabled: !registrationOpen });
+                    } else {
+                      upsertFlag.mutate({ key: "open_registration", label: "Registro público", enabled: false });
+                    }
+                  }}
+                />
+              </div>
+            </section>
+
+            {/* Feature Flags */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2"><ToggleRight className="w-4 h-4" />Feature Flags</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Ative funcionalidades globalmente. Admins sempre veem tudo.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => flagsQuery.refetch()}>
+                    <RefreshCw className={cn("w-4 h-4", flagsQuery.isFetching && "animate-spin")} />
+                  </Button>
+                  <FlagForm onSuccess={() => flagsQuery.refetch()} />
+                </div>
+              </div>
+              {flags.length === 0 ? (
+                <div className="glass-card rounded-xl p-8 text-center text-muted-foreground text-sm">Nenhuma feature flag criada ainda.</div>
+              ) : (
+                <div className="space-y-2">
+                  {flags.map((flag) => (
+                    <div key={flag.key} className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 border border-border/40">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">{flag.label}</span>
+                          <Badge variant="outline" className="text-[10px] font-mono shrink-0">{flag.key}</Badge>
+                        </div>
+                        {flag.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{flag.description}</p>}
+                      </div>
+                      <Toggle checked={flag.enabled} disabled={toggleFlag.isPending} onChange={() => toggleFlag.mutate({ key: flag.key, enabled: !flag.enabled })} />
+                      <Badge variant={flag.enabled ? "default" : "secondary"} className={cn("text-xs shrink-0", flag.enabled && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30")}>
+                        {flag.enabled ? "Ativo" : "Inativo"}
+                      </Badge>
+                      <Button size="icon" variant="ghost" className="w-7 h-7 text-destructive/60 hover:text-destructive shrink-0" onClick={() => { if (confirm(`Remover flag "${flag.key}"?`)) deleteFlag.mutate({ key: flag.key }); }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
       </div>
     </AppLayout>
+  );
+}
+
+// Missing import for Sparkles
+function Sparkles({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    </svg>
   );
 }

@@ -30,6 +30,11 @@ export const adminRouter = router({
     return rows.map(({ passwordHash: _ph, ...u }) => u);
   }),
 
+  listUsersDetailed: ownerProcedure.query(async () => {
+    const rows = await db.listUsersWithStats();
+    return rows.map(({ passwordHash: _ph, ...u }) => u);
+  }),
+
   setUserRole: ownerProcedure
     .input(z.object({ id: z.number(), role: z.enum(["user", "admin"]) }))
     .mutation(async ({ input, ctx }) => {
