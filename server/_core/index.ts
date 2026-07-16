@@ -708,6 +708,10 @@ async function startServer() {
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Landing pages
+  app.get("/demo", (_req, res) => {
+    res.sendFile(path.join(process.cwd(), "landing", "demo.html"));
+  });
   // tRPC API
   app.use(
     "/api/trpc",

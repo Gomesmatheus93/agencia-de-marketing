@@ -173,6 +173,61 @@
             border: 1px solid rgba(139, 92, 246, 0.3);
             color: #a78bfa;
         }
+
+        /* ── DEMO MODAL ───────────────────────────────── */
+        #demo-modal {
+            position: fixed; inset: 0; z-index: 9999;
+            background: #020617;
+            display: none; flex-direction: column;
+            overflow: hidden;
+        }
+        #demo-modal.open {
+            display: flex;
+            animation: demoIn .22s cubic-bezier(.25,.46,.45,.94);
+        }
+        @keyframes demoIn {
+            from { opacity: 0; transform: scale(.98); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        .dni {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 12px; border-radius: 10px;
+            font-size: 13px; color: rgb(156,163,175);
+            cursor: pointer; transition: all .15s;
+            user-select: none; border: 1px solid transparent;
+        }
+        .dni:hover { background: rgba(255,255,255,.04); color: rgba(255,255,255,.75); }
+        .dni.active { background: rgba(139,92,246,.14); border-color: rgba(139,92,246,.24); color: #a78bfa; }
+        .dp {
+            position: absolute; inset: 0; padding: 28px 36px;
+            overflow-y: auto; display: none;
+        }
+        .dp.d-active { display: block; animation: dpIn .2s ease; }
+        @keyframes dpIn { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+        .d-chip {
+            padding: 7px 14px; border-radius: 20px; cursor: pointer;
+            font-size: 12px; border: 1px solid rgba(255,255,255,.1);
+            background: rgba(255,255,255,.04); color: rgb(156,163,175);
+            transition: all .15s; user-select: none;
+        }
+        .d-chip:hover { background: rgba(255,255,255,.08); color: white; }
+        .d-chip.dc-on { background: rgba(139,92,246,.18); border-color: rgba(139,92,246,.4); color: #a78bfa; }
+        .d-card {
+            border-radius: 14px; overflow: hidden; position: relative;
+            aspect-ratio: 3/4; background: #1e293b;
+        }
+        .d-card-loading { position: absolute; inset: 0; transition: opacity .6s ease; }
+        .d-card-result  { position: absolute; inset: 0; transition: opacity .6s ease; opacity: 0; }
+        .d-card:hover .d-card-actions { opacity: 1 !important; }
+        .d-card-actions {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            padding: 10px; display: flex; gap: 6px; opacity: 0; transition: opacity .2s;
+            background: linear-gradient(transparent, rgba(0,0,0,.85));
+        }
+        .d-stat {
+            background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+            border-radius: 14px; padding: 18px;
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-brand-500 selection:text-white">
@@ -242,12 +297,12 @@
                         Substitua dezenas de ferramentas. Crie imagens, desenhe carrosséis, escreva artigos, analise métricas e automatize seu Instagram em um único dashboard focado em conversão.
                     </p>
                     <div class="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
-                        <a href="#pricing" class="w-full sm:w-auto bg-white text-darker px-8 py-4 rounded-full font-bold hover:bg-gray-100 transition-colors shadow-lg shadow-white/10 text-center">
+                        <a href="demo.html" class="w-full sm:w-auto bg-white text-darker px-8 py-4 rounded-full font-bold hover:bg-gray-100 transition-colors shadow-lg shadow-white/10 text-center">
                             Começar Teste de 7 Dias
                         </a>
-                        <a href="#features" class="w-full sm:w-auto px-8 py-4 rounded-full font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 text-center flex items-center justify-center gap-2">
+                        <button onclick="openDemo()" class="w-full sm:w-auto px-8 py-4 rounded-full font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 text-center flex items-center justify-center gap-2 cursor-pointer bg-transparent">
                             <i class="fa-regular fa-circle-play"></i> Ver demonstração
-                        </a>
+                        </button>
                     </div>
                     <div class="mt-8 flex items-center justify-center lg:justify-start gap-4 text-sm text-gray-500">
                         <div class="flex -space-x-2">
@@ -272,7 +327,7 @@
                             <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
                             <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
                             <div class="ml-4 h-4 w-48 bg-white/5 rounded-full flex items-center px-3">
-                                <span class="text-[9px] text-white/20 truncate">localhost:3000/dashboard</span>
+                                <span class="text-[9px] text-white/20 truncate">Krythoslab/dashboard</span>
                             </div>
                         </div>
 
@@ -348,198 +403,249 @@
                                 </div>
 
                                 <!-- PANEL 1: Gerar Imagens -->
-                                <div id="panel-1" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                                <div id="panel-1" class="preview-panel absolute inset-0 p-4 flex flex-col gap-2 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <!-- Header -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center flex-shrink-0">
                                             <i class="fa-solid fa-wand-magic-sparkles text-white text-[8px]"></i>
                                         </div>
-                                        <div class="h-4 w-32 bg-white/20 rounded"></div>
+                                        <span class="text-[11px] font-semibold text-white/80">Gerar Imagens</span>
+                                        <div class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20">
+                                            <div class="w-1 h-1 rounded-full bg-green-400 animate-pulse"></div>
+                                            <span class="text-[8px] text-green-400">47 geradas</span>
+                                        </div>
                                     </div>
-                                    <!-- Style chips -->
-                                    <div class="flex gap-1.5">
-                                        <div class="px-2 py-1 rounded-lg bg-brand-500/20 border border-brand-500/30 text-brand-400 text-[9px]">Produto</div>
-                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Banner</div>
-                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Social</div>
-                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">Logo</div>
+                                    <!-- Style chips (animated by JS) -->
+                                    <div class="flex gap-1" id="style-chips-row">
+                                        <div class="style-chip px-2 py-1 rounded-lg text-[9px] transition-all duration-300 bg-brand-500/20 border border-brand-500/30 text-brand-400" data-chip="0">Produto</div>
+                                        <div class="style-chip px-2 py-1 rounded-lg text-[9px] transition-all duration-300 bg-white/5 border border-white/10 text-gray-500" data-chip="1">Banner</div>
+                                        <div class="style-chip px-2 py-1 rounded-lg text-[9px] transition-all duration-300 bg-white/5 border border-white/10 text-gray-500" data-chip="2">Social</div>
+                                        <div class="style-chip px-2 py-1 rounded-lg text-[9px] transition-all duration-300 bg-white/5 border border-white/10 text-gray-500" data-chip="3">Logo</div>
                                     </div>
                                     <!-- Prompt box -->
-                                    <div class="bg-white/5 border border-white/10 rounded-xl p-3 h-14 relative overflow-hidden">
-                                        <span id="typing-text" class="text-[10px] text-gray-400"></span><span class="typing-cursor text-brand-400">|</span>
+                                    <div class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 h-11 relative overflow-hidden flex-shrink-0 flex items-start">
+                                        <span id="typing-text" class="text-[10px] text-gray-300 leading-snug"></span><span class="typing-cursor text-brand-400 text-[10px]">|</span>
                                     </div>
-                                    <!-- Generating button -->
-                                    <div class="h-8 rounded-xl bg-gradient-to-r from-brand-600 to-accent-500 flex items-center justify-center gap-2">
-                                        <i class="fa-solid fa-wand-magic-sparkles text-white text-[10px] animate-spin" style="animation-duration:2s"></i>
-                                        <span class="text-white text-[10px] font-semibold">Gerando imagem com IA...</span>
+                                    <!-- Generate button (state changes via JS) -->
+                                    <div id="gen-btn" class="h-8 rounded-xl flex items-center justify-center gap-1.5 flex-shrink-0 transition-all duration-500" style="background:linear-gradient(90deg,#7c3aed,#3b82f6)">
+                                        <i id="gen-btn-icon" class="fa-solid fa-wand-magic-sparkles text-white text-[9px]" style="animation:spin 2s linear infinite"></i>
+                                        <span id="gen-btn-text" class="text-white text-[10px] font-semibold">Gerando imagem com IA...</span>
                                     </div>
-                                    <!-- Image grid result -->
-                                    <div class="grid grid-cols-3 gap-2 flex-1">
-                                        <div class="rounded-xl bg-gradient-to-br from-brand-900 via-brand-800 to-dark border border-brand-500/20 overflow-hidden relative" id="img-gen-1">
-                                            <div class="absolute inset-0 flex items-center justify-center">
-                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
-                                            </div>
-                                            <div class="shimmer-bar"></div>
+                                    <!-- Image cards (each has loading + result layer) -->
+                                    <div class="grid grid-cols-3 gap-2 flex-1 min-h-0">
+                                        <div class="gen-card rounded-xl overflow-hidden relative" id="gc-0">
+                                            <div class="gen-loading absolute inset-0" style="transition:opacity .6s ease;opacity:1"><div style="background:linear-gradient(135deg,#3b0764,#1e1b4b);width:100%;height:100%;position:relative"><div class="shimmer-bar"></div><div class="absolute inset-0 flex items-center justify-center"><i class="fa-regular fa-image text-white/10 text-lg"></i></div></div></div>
+                                            <div class="gen-result absolute inset-0" style="transition:opacity .6s ease;opacity:0" id="gr-0"></div>
                                         </div>
-                                        <div class="rounded-xl bg-gradient-to-br from-accent-500/30 to-dark border border-accent-500/20 overflow-hidden relative" id="img-gen-2">
-                                            <div class="absolute inset-0 flex items-center justify-center">
-                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
-                                            </div>
-                                            <div class="shimmer-bar" style="animation-delay:.4s"></div>
+                                        <div class="gen-card rounded-xl overflow-hidden relative" id="gc-1">
+                                            <div class="gen-loading absolute inset-0" style="transition:opacity .6s ease;opacity:1"><div style="background:linear-gradient(135deg,#0c4a6e,#0f172a);width:100%;height:100%;position:relative"><div class="shimmer-bar" style="animation-delay:.5s"></div><div class="absolute inset-0 flex items-center justify-center"><i class="fa-regular fa-image text-white/10 text-lg"></i></div></div></div>
+                                            <div class="gen-result absolute inset-0" style="transition:opacity .6s ease;opacity:0" id="gr-1"></div>
                                         </div>
-                                        <div class="rounded-xl bg-gradient-to-br from-purple-900/60 to-dark border border-purple-500/20 overflow-hidden relative" id="img-gen-3">
-                                            <div class="absolute inset-0 flex items-center justify-center">
-                                                <i class="fa-solid fa-image text-white/10 text-xl"></i>
-                                            </div>
-                                            <div class="shimmer-bar" style="animation-delay:.8s"></div>
+                                        <div class="gen-card rounded-xl overflow-hidden relative" id="gc-2">
+                                            <div class="gen-loading absolute inset-0" style="transition:opacity .6s ease;opacity:1"><div style="background:linear-gradient(135deg,#1c1917,#292524);width:100%;height:100%;position:relative"><div class="shimmer-bar" style="animation-delay:1s"></div><div class="absolute inset-0 flex items-center justify-center"><i class="fa-regular fa-image text-white/10 text-lg"></i></div></div></div>
+                                            <div class="gen-result absolute inset-0" style="transition:opacity .6s ease;opacity:0" id="gr-2"></div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <!-- PANEL 2: Carrossel -->
-                                <div id="panel-2" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
-                                    <div class="flex items-center gap-2 mb-1">
+                                <div id="panel-2" class="preview-panel absolute inset-0 p-4 flex flex-col gap-2.5 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <!-- Header -->
+                                    <div class="flex items-center gap-2">
                                         <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center flex-shrink-0">
                                             <i class="fa-solid fa-layer-group text-white text-[8px]"></i>
                                         </div>
-                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
-                                        <div class="ml-auto h-5 w-16 rounded-lg bg-brand-500/20 border border-brand-500/20 text-brand-400 text-[9px] flex items-center justify-center">+ Novo</div>
+                                        <span class="text-[11px] font-semibold text-white/80">Criar Carrossel</span>
+                                        <div class="ml-auto h-6 px-3 rounded-lg bg-brand-500/20 border border-brand-500/30 text-brand-400 text-[9px] flex items-center gap-1">
+                                            <i class="fa-solid fa-wand-magic-sparkles text-[8px]"></i> Gerar com IA
+                                        </div>
                                     </div>
-                                    <!-- Carousel slides preview -->
-                                    <div class="flex gap-2 overflow-hidden">
-                                        <!-- Cover slide -->
-                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 p-3 flex flex-col justify-end border-2 border-brand-400/50 relative overflow-hidden">
-                                            <div class="absolute top-2 left-2 text-[8px] text-white/50 font-mono">01</div>
-                                            <div class="h-2 w-16 bg-white/80 rounded mb-1"></div>
-                                            <div class="h-1.5 w-12 bg-white/40 rounded"></div>
-                                        </div>
-                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-[#1e293b] border border-white/10 p-3 flex flex-col gap-1.5 relative overflow-hidden">
-                                            <div class="absolute top-2 left-2 text-[8px] text-white/30 font-mono">02</div>
-                                            <div class="mt-4 h-1.5 w-full bg-white/20 rounded"></div>
-                                            <div class="h-1.5 w-4/5 bg-white/15 rounded"></div>
-                                            <div class="h-1.5 w-3/5 bg-white/10 rounded"></div>
-                                            <div class="mt-auto h-5 w-12 rounded bg-brand-500/30 border border-brand-500/20"></div>
-                                        </div>
-                                        <div class="flex-shrink-0 w-28 aspect-[4/5] rounded-xl bg-[#1e293b] border border-white/10 p-3 flex flex-col gap-1.5 relative overflow-hidden opacity-70">
-                                            <div class="absolute top-2 left-2 text-[8px] text-white/30 font-mono">03</div>
-                                            <div class="mt-4 h-1.5 w-full bg-white/20 rounded"></div>
-                                            <div class="h-1.5 w-3/5 bg-white/15 rounded"></div>
-                                            <div class="mt-auto flex gap-1">
-                                                <div class="h-5 w-5 rounded bg-brand-500/20 border border-brand-500/10"></div>
-                                                <div class="h-5 w-5 rounded bg-white/5 border border-white/10"></div>
+                                    <!-- Slide cards row -->
+                                    <div class="flex gap-2 flex-shrink-0">
+                                        <!-- Slide 01: Cover — selected -->
+                                        <div class="flex-shrink-0 w-[88px] rounded-xl overflow-hidden border-2 border-brand-400/60 relative" style="aspect-ratio:4/5;background:linear-gradient(145deg,#7c3aed,#4f46e5,#2563eb)">
+                                            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0,rgba(255,255,255,.03) 1px,transparent 1px,transparent 10px)"></div>
+                                            <div style="position:absolute;top:6px;left:7px;font-size:6px;color:rgba(255,255,255,.5);font-family:monospace">01</div>
+                                            <div style="position:absolute;top:6px;right:7px;background:rgba(255,255,255,.15);border-radius:3px;padding:1px 4px;font-size:5px;color:rgba(255,255,255,.8)">🔖 Salve</div>
+                                            <div style="position:absolute;bottom:10px;left:7px;right:7px">
+                                                <div style="font-size:7.5px;font-weight:800;color:white;line-height:1.2;text-shadow:0 1px 4px rgba(0,0,0,.4)">5 ERROS QUE TRAVAM SEU NEGÓCIO</div>
+                                                <div style="margin-top:4px;font-size:5.5px;color:rgba(255,255,255,.65)">Arraste e descubra →</div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <!-- Controls -->
-                                    <div class="flex gap-2">
-                                        <div class="flex-1 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center px-3 gap-2">
-                                            <i class="fa-solid fa-palette text-gray-600 text-[10px]"></i>
-                                            <div class="h-2 w-20 bg-white/10 rounded"></div>
+                                        <!-- Slide 02: Dica #1 -->
+                                        <div class="flex-shrink-0 w-[88px] rounded-xl overflow-hidden border border-white/10 relative" style="aspect-ratio:4/5;background:#0f1b30">
+                                            <div style="position:absolute;top:6px;left:7px;font-size:6px;color:rgba(255,255,255,.3);font-family:monospace">02</div>
+                                            <div style="position:absolute;top:6px;right:7px;font-size:5.5px;color:rgba(139,92,246,.7)">2 / 5</div>
+                                            <div style="position:absolute;top:20px;left:7px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);border-radius:3px;padding:1.5px 5px;font-size:5px;color:#a78bfa;font-weight:700">ERRO Nº 1</div>
+                                            <div style="position:absolute;top:38px;left:7px;right:7px">
+                                                <div style="font-size:7px;font-weight:700;color:white;line-height:1.3">Não ter meta clara de faturamento</div>
+                                                <div style="margin-top:4px;font-size:5.5px;color:rgba(255,255,255,.45);line-height:1.4">Sem número definido, qualquer resultado parece suficiente.</div>
+                                            </div>
+                                            <div style="position:absolute;bottom:8px;left:7px;right:7px;height:1px;background:rgba(139,92,246,.25)"></div>
                                         </div>
-                                        <div class="h-8 w-8 rounded-xl bg-brand-500/20 border border-brand-500/20 flex items-center justify-center">
-                                            <i class="fa-solid fa-download text-brand-400 text-[10px]"></i>
+                                        <!-- Slide 03: CTA -->
+                                        <div class="flex-shrink-0 w-[88px] rounded-xl overflow-hidden border border-white/10 relative opacity-80" style="aspect-ratio:4/5;background:linear-gradient(160deg,#1a1040,#2e1065)">
+                                            <div style="position:absolute;top:6px;left:7px;font-size:6px;color:rgba(255,255,255,.3);font-family:monospace">05</div>
+                                            <div style="position:absolute;top:50%;left:7px;right:7px;transform:translateY(-50%);text-align:center">
+                                                <div style="font-size:14px;margin-bottom:4px">🚀</div>
+                                                <div style="font-size:6.5px;font-weight:800;color:white;line-height:1.3">PRONTO PRA CRESCER?</div>
+                                                <div style="margin-top:3px;font-size:5px;color:rgba(255,255,255,.5)">Siga para mais conteúdo</div>
+                                            </div>
+                                            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(139,92,246,.9);padding:2px 8px;border-radius:8px;font-size:5px;color:white;font-weight:700;white-space:nowrap">@seuarrobado</div>
                                         </div>
                                     </div>
-                                    <!-- Text editor area -->
-                                    <div class="flex-1 bg-white/5 border border-white/5 rounded-xl p-3">
-                                        <div class="h-2 w-16 bg-white/10 rounded mb-2"></div>
-                                        <div class="space-y-1.5">
-                                            <div class="h-1.5 w-full bg-white/10 rounded"></div>
-                                            <div class="h-1.5 w-4/5 bg-white/8 rounded"></div>
-                                            <div class="h-1.5 w-3/5 bg-white/6 rounded"></div>
+                                    <!-- Prompt / topic bar -->
+                                    <div class="flex gap-2 flex-shrink-0">
+                                        <div class="flex-1 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center px-3 gap-2">
+                                            <i class="fa-solid fa-lightbulb text-yellow-500/60 text-[9px]"></i>
+                                            <span class="text-[9px] text-gray-400">Erros no planejamento de negócios</span>
+                                        </div>
+                                        <div class="h-7 w-7 rounded-xl bg-brand-500/20 border border-brand-500/30 flex items-center justify-center">
+                                            <i class="fa-solid fa-download text-brand-400 text-[9px]"></i>
+                                        </div>
+                                    </div>
+                                    <!-- Selected slide text editor -->
+                                    <div class="flex-1 bg-white/5 border border-white/8 rounded-xl p-3 min-h-0 overflow-hidden">
+                                        <div class="flex items-center gap-1.5 mb-2">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-brand-400"></div>
+                                            <span class="text-[8px] text-brand-400 font-semibold">Slide 01 — Capa</span>
+                                            <div class="ml-auto text-[7px] text-gray-600">87 palavras</div>
+                                        </div>
+                                        <div style="font-size:7.5px;font-weight:700;color:rgba(255,255,255,.85);line-height:1.3;margin-bottom:4px">5 Erros que Travam seu Negócio</div>
+                                        <div style="font-size:6.5px;color:rgba(255,255,255,.4);line-height:1.5">Você trabalha muito mas o resultado não aparece? Neste carrossel você vai descobrir os principais erros que impedem o crescimento.</div>
+                                        <div style="margin-top:4px;display:flex;gap:1">
+                                            <span style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);border-radius:4px;padding:1px 4px;font-size:5.5px;color:#a78bfa">#negócios</span>
+                                            <span style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);border-radius:4px;padding:1px 4px;font-size:5.5px;color:#a78bfa">#empreender</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <!-- PANEL 3: Artigos -->
-                                <div id="panel-3" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
-                                    <div class="flex items-center gap-2 mb-1">
+                                <div id="panel-3" class="preview-panel absolute inset-0 p-4 flex flex-col gap-2.5 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <!-- Header -->
+                                    <div class="flex items-center gap-2">
                                         <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0">
                                             <i class="fa-solid fa-file-lines text-white text-[8px]"></i>
                                         </div>
-                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
+                                        <span class="text-[11px] font-semibold text-white/80">Gerar Artigo</span>
+                                        <div class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                            <div class="w-1 h-1 rounded-full bg-emerald-400 animate-pulse"></div>
+                                            <span class="text-[8px] text-emerald-400">IA escrevendo...</span>
+                                        </div>
                                     </div>
-                                    <!-- Article card being generated -->
-                                    <div class="flex-1 bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-2.5 relative overflow-hidden">
-                                        <!-- Animated writing effect -->
-                                        <div class="h-5 w-3/4 bg-white/20 rounded"></div>
-                                        <div class="space-y-1.5 mt-1">
-                                            <div class="h-1.5 w-full bg-white/10 rounded article-line" style="animation-delay:0s"></div>
-                                            <div class="h-1.5 w-full bg-white/10 rounded article-line" style="animation-delay:.15s"></div>
-                                            <div class="h-1.5 w-4/5 bg-white/10 rounded article-line" style="animation-delay:.3s"></div>
-                                        </div>
-                                        <div class="space-y-1.5 mt-2">
-                                            <div class="h-1.5 w-full bg-white/8 rounded article-line" style="animation-delay:.5s"></div>
-                                            <div class="h-1.5 w-full bg-white/8 rounded article-line" style="animation-delay:.65s"></div>
-                                            <div class="h-1.5 w-3/5 bg-white/8 rounded article-line" style="animation-delay:.8s"></div>
-                                        </div>
-                                        <div class="space-y-1.5 mt-2">
-                                            <div class="h-1.5 w-full bg-white/6 rounded article-line" style="animation-delay:1s"></div>
-                                            <div class="h-1.5 w-4/5 bg-white/6 rounded article-line" style="animation-delay:1.15s"></div>
-                                        </div>
-                                        <!-- Cursor blink at end -->
-                                        <div class="h-4 w-0.5 bg-brand-400 rounded animate-pulse mt-1 ml-0.5"></div>
-                                        <!-- AI generating badge -->
-                                        <div class="absolute bottom-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                            <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                                            <span class="text-emerald-400 text-[9px]">IA escrevendo...</span>
+                                    <!-- Topic chips -->
+                                    <div class="flex gap-1 flex-shrink-0">
+                                        <div class="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px]">Blog SEO</div>
+                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">LinkedIn</div>
+                                        <div class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-500 text-[9px]">E-mail</div>
+                                    </div>
+                                    <!-- Article being written -->
+                                    <div class="flex-1 bg-white/5 border border-white/8 rounded-xl p-3 flex flex-col gap-1.5 relative overflow-hidden min-h-0">
+                                        <!-- Title -->
+                                        <div style="font-size:8px;font-weight:800;color:rgba(255,255,255,.88);line-height:1.25;margin-bottom:2px">Como Aumentar as Vendas da sua Empresa em 2025</div>
+                                        <!-- Intro paragraph -->
+                                        <div class="article-line" style="font-size:6px;color:rgba(255,255,255,.45);line-height:1.5;animation-delay:0s">O mercado está mais competitivo do que nunca. Empresas que não adaptam suas estratégias de</div>
+                                        <div class="article-line" style="font-size:6px;color:rgba(255,255,255,.45);line-height:1.5;animation-delay:.12s">vendas ficam para trás rapidamente. Neste artigo, você vai aprender as principais táticas</div>
+                                        <div class="article-line" style="font-size:6px;color:rgba(255,255,255,.45);line-height:1.5;animation-delay:.24s">que empresas de sucesso estão usando para crescer.</div>
+                                        <!-- Heading 2 -->
+                                        <div class="article-line" style="font-size:7px;font-weight:700;color:rgba(255,255,255,.7);margin-top:4px;animation-delay:.4s">1. Conheça seu cliente ideal</div>
+                                        <div class="article-line" style="font-size:6px;color:rgba(255,255,255,.38);line-height:1.5;animation-delay:.52s">Antes de vender, é fundamental entender para quem você está vendendo. Crie personas</div>
+                                        <div class="article-line" style="font-size:6px;color:rgba(255,255,255,.38);line-height:1.5;animation-delay:.64s">detalhadas e direcione sua comunicação de forma personalizada.</div>
+                                        <!-- Cursor -->
+                                        <div class="h-3 w-px bg-emerald-400 rounded animate-pulse mt-0.5 ml-px"></div>
+                                        <!-- SEO badge -->
+                                        <div class="absolute bottom-2.5 right-2.5 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/15">
+                                            <i class="fa-solid fa-magnifying-glass text-emerald-500/60 text-[7px]"></i>
+                                            <span class="text-[7px] text-emerald-400/70">SEO otimizado</span>
                                         </div>
                                     </div>
                                     <!-- Bottom toolbar -->
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-center gap-2 flex-shrink-0">
                                         <div class="flex gap-1">
-                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-bold text-gray-600 text-[8px]"></i></div>
-                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-italic text-gray-600 text-[8px]"></i></div>
-                                            <div class="h-6 w-6 rounded bg-white/5 border border-white/5 flex items-center justify-center"><i class="fa-solid fa-link text-gray-600 text-[8px]"></i></div>
+                                            <div class="h-6 w-6 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center"><i class="fa-solid fa-bold text-gray-500 text-[8px]"></i></div>
+                                            <div class="h-6 w-6 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center"><i class="fa-solid fa-italic text-gray-500 text-[8px]"></i></div>
+                                            <div class="h-6 w-6 rounded-lg bg-white/5 border border-white/8 flex items-center justify-center"><i class="fa-solid fa-link text-gray-500 text-[8px]"></i></div>
                                         </div>
                                         <div class="ml-auto flex gap-1.5">
-                                            <div class="h-6 w-16 rounded-lg bg-white/5 border border-white/10 text-[9px] text-gray-500 flex items-center justify-center">Rascunho</div>
-                                            <div class="h-6 w-16 rounded-lg bg-brand-500/20 border border-brand-500/30 text-[9px] text-brand-400 flex items-center justify-center">Publicar</div>
+                                            <div class="h-6 px-3 rounded-lg bg-white/5 border border-white/10 text-[9px] text-gray-500 flex items-center">Rascunho</div>
+                                            <div class="h-6 px-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[9px] text-emerald-400 flex items-center">Publicar</div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <!-- PANEL 4: Vídeos IA -->
-                                <div id="panel-4" class="preview-panel absolute inset-0 p-5 flex flex-col gap-3 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
-                                    <div class="flex items-center gap-2 mb-1">
+                                <div id="panel-4" class="preview-panel absolute inset-0 p-4 flex flex-col gap-2.5 transition-all duration-500 opacity-0 translate-x-4 pointer-events-none">
+                                    <!-- Header -->
+                                    <div class="flex items-center gap-2">
                                         <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center flex-shrink-0">
                                             <i class="fa-solid fa-clapperboard text-white text-[8px]"></i>
                                         </div>
-                                        <div class="h-4 w-28 bg-white/20 rounded"></div>
-                                    </div>
-                                    <!-- Video avatar preview -->
-                                    <div class="flex gap-3 flex-1">
-                                        <div class="w-24 flex-shrink-0 aspect-[9/16] rounded-xl bg-gradient-to-b from-[#1e293b] to-[#0f172a] border border-white/10 relative overflow-hidden">
-                                            <!-- Avatar silhouette -->
-                                            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-14 h-20 bg-gradient-to-t from-brand-500/20 to-transparent rounded-t-full"></div>
-                                            <div class="absolute top-6 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-gradient-to-br from-brand-400/40 to-brand-600/40 border border-brand-400/20"></div>
-                                            <!-- Sound waves -->
-                                            <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-0.5">
-                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:4px;animation-delay:0s"></div>
-                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:8px;animation-delay:.1s"></div>
-                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:12px;animation-delay:.2s"></div>
-                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:8px;animation-delay:.3s"></div>
-                                                <div class="w-0.5 bg-brand-400/60 rounded-full sound-wave" style="height:4px;animation-delay:.4s"></div>
-                                            </div>
-                                            <!-- Processing overlay -->
-                                            <div class="absolute inset-0 flex items-center justify-center">
-                                                <div class="w-8 h-8 rounded-full border-2 border-brand-500/50 border-t-brand-400 animate-spin"></div>
-                                            </div>
+                                        <span class="text-[11px] font-semibold text-white/80">Vídeos com Avatar IA</span>
+                                        <div class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20">
+                                            <div class="w-1 h-1 rounded-full bg-orange-400 animate-pulse"></div>
+                                            <span class="text-[8px] text-orange-400">Renderizando</span>
                                         </div>
-                                        <div class="flex-1 flex flex-col gap-2">
-                                            <div class="h-2 w-20 bg-white/10 rounded"></div>
-                                            <div class="bg-white/5 border border-white/5 rounded-xl p-2 flex-1">
-                                                <div class="h-1.5 w-full bg-white/10 rounded mb-1.5"></div>
-                                                <div class="h-1.5 w-4/5 bg-white/8 rounded mb-1.5"></div>
-                                                <div class="h-1.5 w-3/5 bg-white/6 rounded"></div>
+                                    </div>
+                                    <!-- Main content: video preview + script -->
+                                    <div class="flex gap-2.5 flex-1 min-h-0">
+                                        <!-- Video phone preview -->
+                                        <div class="w-[72px] flex-shrink-0 rounded-xl border border-white/10 relative overflow-hidden" style="aspect-ratio:9/16;background:linear-gradient(180deg,#111827,#0f172a)">
+                                            <!-- Background scene -->
+                                            <div style="position:absolute;inset:0;background:linear-gradient(180deg,#1e3a5f 0%,#0f2040 60%,#091428 100%)"></div>
+                                            <!-- Subtle gradient light from top -->
+                                            <div style="position:absolute;top:0;left:0;right:0;height:40%;background:radial-gradient(ellipse at 50% 0%,rgba(99,102,241,.15),transparent 70%)"></div>
+                                            <!-- Avatar body/torso -->
+                                            <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:54px;height:62px;background:linear-gradient(180deg,#2563eb 0%,#1e40af 100%);border-radius:40% 40% 0 0;opacity:.85"></div>
+                                            <!-- Avatar neck -->
+                                            <div style="position:absolute;bottom:56px;left:50%;transform:translateX(-50%);width:10px;height:8px;background:#c4956a;border-radius:2px"></div>
+                                            <!-- Avatar head -->
+                                            <div style="position:absolute;bottom:62px;left:50%;transform:translateX(-50%);width:22px;height:26px;border-radius:50% 50% 45% 45%;background:linear-gradient(160deg,#d4a574,#c4956a)">
+                                                <!-- Eyes -->
+                                                <div style="position:absolute;top:38%;left:22%;width:4px;height:2px;border-radius:50%;background:#3d2008;opacity:.7"></div>
+                                                <div style="position:absolute;top:38%;right:22%;width:4px;height:2px;border-radius:50%;background:#3d2008;opacity:.7"></div>
+                                                <!-- Smile -->
+                                                <div style="position:absolute;bottom:22%;left:50%;transform:translateX(-50%);width:8px;height:3px;border-radius:0 0 50% 50%;border:1px solid rgba(61,32,8,.45);border-top:none"></div>
+                                                <!-- Hair -->
+                                                <div style="position:absolute;top:-2px;left:0;right:0;height:10px;background:#2d1810;border-radius:50% 50% 0 0;opacity:.9"></div>
                                             </div>
-                                            <div class="flex gap-1.5">
-                                                <div class="flex-1 h-7 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center gap-1">
-                                                    <i class="fa-solid fa-microphone text-gray-600 text-[9px]"></i>
-                                                    <span class="text-[9px] text-gray-500">Voz PT-BR</span>
+                                            <!-- Subtitle bar at bottom -->
+                                            <div style="position:absolute;bottom:6px;left:4px;right:4px;background:rgba(0,0,0,.7);border-radius:3px;padding:2px 4px">
+                                                <div style="font-size:5px;color:white;text-align:center;line-height:1.4">Saiba como aumentar suas vendas em 2025</div>
+                                            </div>
+                                            <!-- Play indicator / sound wave -->
+                                            <div style="position:absolute;top:8px;right:6px;display:flex;align-items:flex-end;gap:1px">
+                                                <div class="sound-wave" style="width:2px;height:4px;background:rgba(251,146,60,.7);border-radius:1px;animation-delay:0s"></div>
+                                                <div class="sound-wave" style="width:2px;height:7px;background:rgba(251,146,60,.7);border-radius:1px;animation-delay:.1s"></div>
+                                                <div class="sound-wave" style="width:2px;height:10px;background:rgba(251,146,60,.7);border-radius:1px;animation-delay:.2s"></div>
+                                                <div class="sound-wave" style="width:2px;height:7px;background:rgba(251,146,60,.7);border-radius:1px;animation-delay:.3s"></div>
+                                                <div class="sound-wave" style="width:2px;height:4px;background:rgba(251,146,60,.7);border-radius:1px;animation-delay:.4s"></div>
+                                            </div>
+                                            <!-- Recording dot -->
+                                            <div style="position:absolute;top:8px;left:6px;width:5px;height:5px;border-radius:50%;background:#ef4444;box-shadow:0 0 4px rgba(239,68,68,.6)"></div>
+                                        </div>
+                                        <!-- Script panel -->
+                                        <div class="flex-1 flex flex-col gap-2 min-h-0">
+                                            <div class="flex gap-1 flex-shrink-0">
+                                                <div class="flex-1 h-6 rounded-lg bg-white/5 border border-white/8 flex items-center px-2 gap-1">
+                                                    <i class="fa-solid fa-microphone text-orange-400/70 text-[8px]"></i>
+                                                    <span class="text-[8px] text-gray-400">Feminina PT-BR</span>
                                                 </div>
-                                                <div class="flex-1 h-7 rounded-lg bg-orange-500/20 border border-orange-500/20 flex items-center justify-center gap-1">
-                                                    <i class="fa-solid fa-video text-orange-400 text-[9px]"></i>
-                                                    <span class="text-[9px] text-orange-400">Gerar Avatar</span>
+                                                <div class="h-6 px-2 rounded-lg bg-white/5 border border-white/8 flex items-center gap-1">
+                                                    <i class="fa-solid fa-sliders text-gray-500 text-[8px]"></i>
                                                 </div>
+                                            </div>
+                                            <!-- Script text area -->
+                                            <div class="flex-1 bg-white/5 border border-white/8 rounded-xl p-2.5 overflow-hidden">
+                                                <div style="font-size:6px;color:rgba(255,255,255,.35);margin-bottom:3px;letter-spacing:.5px">ROTEIRO</div>
+                                                <div style="font-size:6.5px;color:rgba(255,255,255,.7);line-height:1.6">Você sabia que <span style="color:#fb923c;font-weight:700">87% das empresas</span> perdem clientes por falta de follow-up?</div>
+                                                <div style="font-size:6.5px;color:rgba(255,255,255,.5);line-height:1.6;margin-top:2px">Hoje eu vou te mostrar 3 estratégias simples para nunca mais perder uma venda...</div>
+                                                <div style="margin-top:4px;font-size:6.5px;color:rgba(255,255,255,.35);line-height:1.6">Estratégia número 1: o primeiro contato deve acontecer em até 5 minutos após o lead entrar em contato.</div>
+                                                <div class="h-2.5 w-px bg-orange-400 rounded animate-pulse mt-1 ml-px"></div>
+                                            </div>
+                                            <!-- Generate button -->
+                                            <div class="h-7 rounded-xl flex items-center justify-center gap-1.5 flex-shrink-0" style="background:linear-gradient(90deg,#ea580c,#dc2626)">
+                                                <i class="fa-solid fa-video text-white text-[8px]"></i>
+                                                <span class="text-white text-[9px] font-semibold">Gerar Vídeo</span>
                                             </div>
                                         </div>
                                     </div>
@@ -800,9 +906,9 @@
                             <i class="fa-solid fa-check text-brand-400 mt-1"></i> Treinamento de Voz de Marca (IA)
                         </li>
                     </ul>
-                    <button class="w-full py-3 rounded-lg bg-brand-600 hover:bg-brand-500 transition-colors font-medium text-white shadow-lg glow-btn">
+                    <a href="demo.html" class="w-full py-3 rounded-lg bg-brand-600 hover:bg-brand-500 transition-colors font-medium text-white shadow-lg glow-btn text-center block">
                         Começar Teste Grátis
-                    </button>
+                    </a>
                 </div>
 
                 <!-- Enterprise Plan -->
@@ -941,41 +1047,221 @@
             { id: 3, label: 'Artigos',       sbIcon: 'file-lines' },
             { id: 4, label: 'Vídeos IA',     sbIcon: 'clapperboard' },
         ];
-        const DWELL = 3800; // ms per tab
+        const DWELL = 5000;
         let currentTab = 0;
         let cycleTimer = null;
-
-        // Typing animation state for panel-1
-        const TYPING_PHRASES = [
-            'Promoção de perfume: frasco em fundo preto, texto "50% OFF" em dourado',
-            'Anúncio de academia: atleta em ação, cores neon, energia máxima',
-            'Post de lançamento: produto cosmético premium, estilo minimalista',
-        ];
-        let typingPhrase = 0;
-        let typingIndex = 0;
         let typingTimer = null;
+        let imgTimers = [];
+        let currentImgSet = 0;
 
-        function startTyping() {
-            const el = document.getElementById('typing-text');
-            if (!el) return;
-            const text = TYPING_PHRASES[typingPhrase % TYPING_PHRASES.length];
-            el.textContent = '';
-            typingIndex = 0;
-            clearInterval(typingTimer);
-            typingTimer = setInterval(() => {
-                if (typingIndex < text.length) {
-                    el.textContent += text[typingIndex++];
-                } else {
-                    clearInterval(typingTimer);
-                }
-            }, 35);
+        // ── Image generation sets: chip + prompt + 3 business card designs ──
+
+        // IMOBILIÁRIA — navy skyline with lit windows and gold accents
+        const _imob = `<div style="background:linear-gradient(180deg,#071426 0%,#0b1e3a 55%,#050d18 100%);width:100%;height:100%;position:relative;overflow:hidden">
+            <div style="position:absolute;top:5%;left:24%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(255,255,255,.65)"></div>
+            <div style="position:absolute;top:9%;right:30%;width:1px;height:1px;border-radius:50%;background:rgba(255,255,255,.55)"></div>
+            <div style="position:absolute;top:7%;left:56%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(255,255,255,.45)"></div>
+            <div style="position:absolute;top:4%;left:5%;background:#c9a84c;padding:1.5px 5px;border-radius:2px;font-size:5px;font-weight:800;color:#071426;white-space:nowrap">LANÇAMENTO</div>
+            <div style="position:absolute;bottom:21%;left:6%;width:19%;height:36%;background:#0b1c2e;border-top:1px solid rgba(201,168,76,.3)">
+                <div style="padding:3px 2px;display:flex;flex-direction:column;gap:2px;margin-top:2px">
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.45);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.2);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.3);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.55);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.15);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.4);border-radius:.5px"></div></div>
+                </div>
+            </div>
+            <div style="position:absolute;bottom:21%;left:28%;width:44%;height:60%;background:#0d2340;border-left:1px solid rgba(201,168,76,.45);border-right:1px solid rgba(201,168,76,.45);border-top:2px solid #c9a84c">
+                <div style="padding:4px 3px;display:flex;flex-direction:column;gap:2px;margin-top:1px">
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.6);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.28);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.5);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.35);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.7);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.3);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.55);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.22);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.65);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:2px"><div style="flex:1;height:3px;background:rgba(255,220,100,.25);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.5);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.38);border-radius:.5px"></div></div>
+                </div>
+                <div style="position:absolute;bottom:6px;left:0;right:0;text-align:center"><div style="height:1px;width:68%;background:rgba(201,168,76,.35);margin:0 auto;border-radius:.5px"></div></div>
+            </div>
+            <div style="position:absolute;bottom:21%;right:6%;width:17%;height:44%;background:#0b1c2e;border-top:1px solid rgba(201,168,76,.28)">
+                <div style="padding:2px;display:flex;flex-direction:column;gap:2px;margin-top:2px">
+                    <div style="display:flex;gap:1.5px"><div style="flex:1;height:3px;background:rgba(255,220,100,.5);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.18);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:1.5px"><div style="flex:1;height:3px;background:rgba(255,220,100,.32);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.6);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:1.5px"><div style="flex:1;height:3px;background:rgba(255,220,100,.44);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.28);border-radius:.5px"></div></div>
+                    <div style="display:flex;gap:1.5px"><div style="flex:1;height:3px;background:rgba(255,220,100,.18);border-radius:.5px"></div><div style="flex:1;height:3px;background:rgba(255,220,100,.4);border-radius:.5px"></div></div>
+                </div>
+            </div>
+            <div style="position:absolute;bottom:0;left:0;right:0;height:21%;background:linear-gradient(180deg,#050d18,#030912)"></div>
+            <div style="position:absolute;bottom:3%;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:1.5px">
+                <div style="font-size:4.5px;color:rgba(201,168,76,.9);white-space:nowrap;font-weight:600">A partir de R$ 450.000</div>
+                <div style="background:#c9a84c;padding:2px 8px;border-radius:8px;font-size:5.5px;color:#071426;font-weight:700;white-space:nowrap;margin-top:1px">Agende uma Visita</div>
+            </div>
+        </div>`;
+
+        // CONCESSIONÁRIA — dark dramatic with side-view car silhouette
+        const _auto = `<div style="background:linear-gradient(160deg,#090909 0%,#111 50%,#0d0d0d 100%);width:100%;height:100%;position:relative;overflow:hidden">
+            <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(220,38,38,.03) 0,rgba(220,38,38,.03) 1px,transparent 1px,transparent 18px),repeating-linear-gradient(90deg,rgba(220,38,38,.03) 0,rgba(220,38,38,.03) 1px,transparent 1px,transparent 18px)"></div>
+            <div style="position:absolute;top:5%;right:5%;background:#dc2626;padding:1.5px 5px;border-radius:2px;font-size:5px;font-weight:800;color:white;white-space:nowrap">NOVO 2025</div>
+            <div style="position:absolute;top:5%;left:5%;display:flex;flex-direction:column;gap:1.5px">
+                <div style="height:2px;width:28px;background:rgba(255,255,255,.6);border-radius:1px"></div>
+                <div style="height:1.5px;width:20px;background:rgba(255,255,255,.3);border-radius:1px"></div>
+            </div>
+            <div style="position:absolute;top:28%;left:5%;right:5%;height:38%">
+                <div style="position:absolute;top:0;left:18%;width:56%;height:48%;background:linear-gradient(180deg,#222,#1a1a1a);clip-path:polygon(8% 100%,16% 2%,84% 2%,94% 100%)"></div>
+                <div style="position:absolute;top:0;left:18%;width:56%;height:48%;background:rgba(100,140,220,.06);clip-path:polygon(32% 100%,38% 4%,65% 4%,70% 100%)"></div>
+                <div style="position:absolute;bottom:0;left:0;right:0;height:55%;background:linear-gradient(180deg,#2a2a2a,#1c1c1c);border-radius:3px 3px 2px 2px">
+                    <div style="position:absolute;top:0;left:20%;width:26%;height:88%;background:rgba(100,140,220,.07);border-radius:1px"></div>
+                    <div style="position:absolute;top:0;left:48%;width:22%;height:82%;background:rgba(100,140,220,.05);border-radius:1px"></div>
+                    <div style="position:absolute;top:18%;left:46%;width:.5px;height:72%;background:rgba(255,255,255,.08)"></div>
+                    <div style="position:absolute;bottom:0;left:0;right:0;height:1.5px;background:linear-gradient(90deg,transparent 5%,#dc2626 50%,transparent 95%)"></div>
+                </div>
+                <div style="position:absolute;bottom:-22%;left:10%;width:17%;aspect-ratio:1;border-radius:50%;background:#0f0f0f;border:2.5px solid #2a2a2a"><div style="position:absolute;inset:22%;border-radius:50%;background:#1a1a1a;border:1px solid #2a2a2a"></div></div>
+                <div style="position:absolute;bottom:-22%;right:10%;width:17%;aspect-ratio:1;border-radius:50%;background:#0f0f0f;border:2.5px solid #2a2a2a"><div style="position:absolute;inset:22%;border-radius:50%;background:#1a1a1a;border:1px solid #2a2a2a"></div></div>
+                <div style="position:absolute;bottom:26%;right:2%;width:4px;height:4px;border-radius:50%;background:#ffe8a0;box-shadow:0 0 6px 2px rgba(255,220,80,.35)"></div>
+                <div style="position:absolute;bottom:26%;left:1.5%;width:5px;height:3px;border-radius:1px;background:#dc2626;box-shadow:0 0 5px rgba(220,38,38,.7)"></div>
+            </div>
+            <div style="position:absolute;bottom:12%;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(220,38,38,.4),transparent)"></div>
+            <div style="position:absolute;bottom:0;left:0;right:0;height:12%;background:linear-gradient(180deg,rgba(220,38,38,.06),transparent)"></div>
+            <div style="position:absolute;bottom:3%;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:1px">
+                <div style="font-size:4.5px;color:rgba(255,255,255,.45);white-space:nowrap">SUV Automático — R$ 89.900</div>
+                <div style="background:#dc2626;padding:2px 8px;border-radius:8px;font-size:5.5px;color:white;font-weight:700;white-space:nowrap;margin-top:1px">Faça um Test Drive</div>
+            </div>
+        </div>`;
+
+        // ESTÉTICA DE SAÚDE — rose gradient with face silhouette and service tags
+        const _est = `<div style="background:linear-gradient(145deg,#3d0c2b 0%,#6b1945 45%,#9b2561 100%);width:100%;height:100%;position:relative;overflow:hidden">
+            <div style="position:absolute;top:-18%;right:-18%;width:65%;height:65%;border-radius:50%;background:rgba(255,255,255,.04)"></div>
+            <div style="position:absolute;bottom:-18%;left:-10%;width:60%;height:60%;border-radius:50%;background:rgba(0,0,0,.15)"></div>
+            <div style="position:absolute;top:4%;left:50%;transform:translateX(-50%);font-size:6px;color:rgba(255,255,255,.5);letter-spacing:1.5px;white-space:nowrap">✦ CLÍNICA ✦</div>
+            <div style="position:absolute;top:14%;left:50%;transform:translateX(-50%);width:32px;height:40px;border-radius:50% 50% 45% 45%;border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.05)">
+                <div style="position:absolute;top:32%;left:18%;width:8px;height:1.5px;border-radius:2px;background:rgba(255,255,255,.7)"></div>
+                <div style="position:absolute;top:32%;right:18%;width:8px;height:1.5px;border-radius:2px;background:rgba(255,255,255,.7)"></div>
+                <div style="position:absolute;bottom:22%;left:50%;transform:translateX(-50%);width:10px;height:5px;border-radius:0 0 50% 50%;border:1px solid rgba(255,255,255,.45);border-top:none"></div>
+                <div style="position:absolute;top:-5px;right:-4px;font-size:6px;color:rgba(255,210,160,.85)">✦</div>
+                <div style="position:absolute;top:-3px;left:-5px;font-size:4px;color:rgba(255,210,160,.6)">✦</div>
+            </div>
+            <div style="position:absolute;top:58%;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 10px">
+                <div style="height:2.5px;width:78%;background:rgba(255,255,255,.9);border-radius:1px"></div>
+                <div style="height:1.5px;width:58%;background:rgba(255,255,255,.5);border-radius:1px"></div>
+            </div>
+            <div style="position:absolute;top:70%;left:0;right:0;display:flex;justify-content:center;gap:3px;padding:0 6px">
+                <div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);padding:1.5px 4px;border-radius:8px;font-size:4.5px;color:rgba(255,255,255,.85);white-space:nowrap">Botox</div>
+                <div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);padding:1.5px 4px;border-radius:8px;font-size:4.5px;color:rgba(255,255,255,.85);white-space:nowrap">Filler</div>
+                <div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);padding:1.5px 4px;border-radius:8px;font-size:4.5px;color:rgba(255,255,255,.85);white-space:nowrap">Skin</div>
+            </div>
+            <div style="position:absolute;bottom:4%;left:0;right:0;display:flex;justify-content:center">
+                <div style="background:rgba(255,255,255,.95);padding:2.5px 8px;border-radius:10px;font-size:5.5px;color:#6b1945;font-weight:700;white-space:nowrap">Agende sua Consulta</div>
+            </div>
+        </div>`;
+
+        const IMG_SETS = [
+            {
+                chip: 0,
+                prompt: 'Imobiliária premium: apartamentos de luxo, fundo noturno dourado',
+                cards: [ _imob, _auto, _est ]
+            },
+            {
+                chip: 1,
+                prompt: 'Concessionária: lançamento SUV 2025, fundo escuro, impacto visual',
+                cards: [ _auto, _est, _imob ]
+            },
+            {
+                chip: 2,
+                prompt: 'Clínica estética: botox e filler, elegante, tons rose gold',
+                cards: [ _est, _imob, _auto ]
+            },
+            {
+                chip: 3,
+                prompt: 'Mix comercial: imóvel, carro, clínica — estilos variados',
+                cards: [ _imob, _est, _auto ]
+            }
+        ];
+
+        // ── Image sequence runner ──────────────────────────────────────
+        function clearImgTimers() {
+            imgTimers.forEach(t => clearTimeout(t));
+            imgTimers = [];
         }
 
+        function resetCards() {
+            for (let i = 0; i < 3; i++) {
+                const loading = document.querySelector('#gc-' + i + ' .gen-loading');
+                const result  = document.getElementById('gr-' + i);
+                if (loading) loading.style.opacity = '1';
+                if (result)  result.style.opacity  = '0';
+            }
+        }
+
+        function revealCard(idx, html) {
+            const loading = document.querySelector('#gc-' + idx + ' .gen-loading');
+            const result  = document.getElementById('gr-' + idx);
+            if (result) result.innerHTML = html;
+            if (loading) loading.style.opacity = '0';
+            if (result)  result.style.opacity  = '1';
+        }
+
+        function setChip(chipIdx) {
+            document.querySelectorAll('.style-chip').forEach((el, i) => {
+                if (i === chipIdx) {
+                    el.style.background = 'rgba(139,92,246,0.18)';
+                    el.style.borderColor = 'rgba(139,92,246,0.4)';
+                    el.style.color = '#a78bfa';
+                } else {
+                    el.style.background = 'rgba(255,255,255,0.04)';
+                    el.style.borderColor = 'rgba(255,255,255,0.1)';
+                    el.style.color = 'rgba(107,114,128,1)';
+                }
+            });
+        }
+
+        function runImgSet(setIdx) {
+            clearImgTimers();
+            const set = IMG_SETS[setIdx % IMG_SETS.length];
+
+            // Select chip
+            setChip(set.chip);
+
+            // Reset button to "generating"
+            const btn     = document.getElementById('gen-btn');
+            const btnText = document.getElementById('gen-btn-text');
+            const btnIcon = document.getElementById('gen-btn-icon');
+            if (btn)     btn.style.background = 'linear-gradient(90deg,#7c3aed,#3b82f6)';
+            if (btnText) btnText.textContent = 'Gerando imagem com IA...';
+            if (btnIcon) { btnIcon.className = 'fa-solid fa-wand-magic-sparkles text-white text-[9px]'; btnIcon.style.animation = 'spin 2s linear infinite'; }
+
+            // Reset cards to loading
+            resetCards();
+
+            // Type prompt
+            const el = document.getElementById('typing-text');
+            if (!el) return;
+            el.textContent = '';
+            let i = 0;
+            const text = set.prompt;
+            clearInterval(typingTimer);
+            typingTimer = setInterval(() => {
+                if (i < text.length) {
+                    el.textContent += text[i++];
+                } else {
+                    clearInterval(typingTimer);
+                    // Reveal cards staggered after typing ends
+                    imgTimers.push(setTimeout(() => revealCard(0, set.cards[0]), 700));
+                    imgTimers.push(setTimeout(() => revealCard(1, set.cards[1]), 1400));
+                    imgTimers.push(setTimeout(() => {
+                        revealCard(2, set.cards[2]);
+                        if (btn)     btn.style.background = 'linear-gradient(90deg,#059669,#0d9488)';
+                        if (btnText) btnText.textContent = '✓  3 imagens geradas';
+                        if (btnIcon) { btnIcon.className = 'fa-solid fa-check text-white text-[9px]'; btnIcon.style.animation = 'none'; }
+                    }, 2100));
+                    // Cycle to next set after a pause
+                    imgTimers.push(setTimeout(() => {
+                        currentImgSet = (setIdx + 1) % IMG_SETS.length;
+                        runImgSet(currentImgSet);
+                    }, 5200));
+                }
+            }, 26);
+        }
+
+        // ── Tab transition logic ───────────────────────────────────────
         function showTab(idx) {
             const prev = currentTab;
             currentTab = idx;
 
-            // Update panels
             TABS.forEach(t => {
                 const panel = document.getElementById('panel-' + t.id);
                 if (!panel) return;
@@ -983,67 +1269,725 @@
                 panel.classList.add('opacity-0', 'translate-x-4', 'pointer-events-none');
             });
 
-            // Exit previous
             const prevPanel = document.getElementById('panel-' + prev);
             if (prevPanel && prev !== idx) {
                 prevPanel.classList.add('exit-left');
                 setTimeout(() => prevPanel && prevPanel.classList.remove('exit-left'), 450);
             }
 
-            // Enter current
             const curPanel = document.getElementById('panel-' + idx);
             if (curPanel) {
                 curPanel.classList.remove('opacity-0', 'translate-x-4', 'pointer-events-none');
                 curPanel.classList.add('active');
             }
 
-            // Update sidebar buttons
             document.querySelectorAll('.sidebar-btn').forEach((el, i) => {
                 el.classList.toggle('active', i === idx);
                 el.style.color = i === idx ? '#a78bfa' : '';
             });
 
-            // Update tab dots
             document.querySelectorAll('.tab-dot').forEach((dot, i) => {
                 dot.style.width = i === idx ? '20px' : '8px';
                 dot.style.background = i === idx ? '#a78bfa' : 'rgba(255,255,255,0.2)';
             });
 
-            // Update label
             const label = document.getElementById('tab-label');
             if (label) label.textContent = TABS[idx].label;
 
-            // Start typing if image gen tab
+            // When entering panel-1, start image sequence
             if (idx === 1) {
+                clearImgTimers();
                 clearInterval(typingTimer);
-                setTimeout(() => { typingPhrase++; startTyping(); }, 200);
+                setTimeout(() => runImgSet(currentImgSet), 200);
+            } else {
+                // Leaving panel-1: stop image animation
+                clearImgTimers();
+                clearInterval(typingTimer);
             }
         }
 
-        function nextTab() {
-            showTab((currentTab + 1) % TABS.length);
-        }
+        function nextTab() { showTab((currentTab + 1) % TABS.length); }
 
         function startCycle() {
             clearInterval(cycleTimer);
             cycleTimer = setInterval(nextTab, DWELL);
         }
 
-        // Sidebar click handlers (manual override)
         TABS.forEach(t => {
             const btn = document.getElementById('sb-' + t.id);
             if (!btn) return;
             btn.addEventListener('click', () => {
                 clearInterval(cycleTimer);
                 showTab(t.id);
-                startCycle(); // restart cycle from this tab
+                startCycle();
             });
         });
 
         // Boot
         showTab(0);
-        startTyping();
         startCycle();
     </script>
+
+    <!-- ═══════════════════════════════════════════════════════
+         DEMO MODAL
+    ═══════════════════════════════════════════════════════════ -->
+    <div id="demo-modal" role="dialog" aria-modal="true" aria-label="Demonstração KrythosLab">
+
+        <!-- Top bar -->
+        <div style="display:flex;align-items:center;height:54px;flex-shrink:0;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.06);background:#0a1020;gap:10px">
+            <img src="logo.png" alt="" style="width:30px;height:30px;border-radius:9px;flex-shrink:0">
+            <span style="font-size:15px;font-weight:700;color:white;flex-shrink:0">krythos<span style="color:#a78bfa">Lab</span></span>
+            <span style="padding:3px 10px;border-radius:20px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.28);font-size:10px;color:#a78bfa;font-weight:700;letter-spacing:.4px;flex-shrink:0">DEMO</span>
+            <div style="flex:1"></div>
+            <a href="#pricing" onclick="closeDemo()" style="padding:8px 18px;border-radius:20px;background:linear-gradient(90deg,#7c3aed,#3b82f6);color:white;font-size:12px;font-weight:600;text-decoration:none;flex-shrink:0;white-space:nowrap">Criar conta grátis →</a>
+            <button onclick="closeDemo()" title="Fechar (ESC)" style="width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;font-family:sans-serif">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div style="display:flex;flex:1;overflow:hidden;min-height:0">
+
+            <!-- Sidebar -->
+            <nav style="width:210px;flex-shrink:0;background:#080f1e;border-right:1px solid rgba(255,255,255,.05);padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto">
+                <div style="font-size:10px;color:rgba(255,255,255,.22);font-weight:700;letter-spacing:.6px;padding:4px 12px 10px">FERRAMENTAS</div>
+                <div class="dni active" id="dni-0" onclick="showDP(0)"><i class="fa-solid fa-house" style="width:14px;font-size:12px"></i>Dashboard</div>
+                <div class="dni" id="dni-1" onclick="showDP(1)"><i class="fa-solid fa-wand-magic-sparkles" style="width:14px;font-size:12px"></i>Gerar Imagens</div>
+                <div class="dni" id="dni-2" onclick="showDP(2)"><i class="fa-solid fa-layer-group" style="width:14px;font-size:12px"></i>Criar Carrossel</div>
+                <div class="dni" id="dni-3" onclick="showDP(3)"><i class="fa-solid fa-file-lines" style="width:14px;font-size:12px"></i>Gerar Artigo</div>
+                <div class="dni" id="dni-4" onclick="showDP(4)"><i class="fa-solid fa-clapperboard" style="width:14px;font-size:12px"></i>Vídeos com IA</div>
+                <div style="height:1px;background:rgba(255,255,255,.06);margin:10px 0"></div>
+                <div style="font-size:10px;color:rgba(255,255,255,.22);font-weight:700;letter-spacing:.6px;padding:4px 12px 8px">GESTÃO</div>
+                <div class="dni" id="dni-5" onclick="showDP(5)"><i class="fa-solid fa-calendar-days" style="width:14px;font-size:12px"></i>Agendamento</div>
+                <div class="dni" id="dni-6" onclick="showDP(6)"><i class="fa-brands fa-instagram" style="width:14px;font-size:12px"></i>Instagram</div>
+                <div class="dni" id="dni-7" onclick="showDP(7)"><i class="fa-solid fa-chart-line" style="width:14px;font-size:12px"></i>Métricas</div>
+            </nav>
+
+            <!-- Panels -->
+            <main style="flex:1;position:relative;background:linear-gradient(140deg,#0c1526 0%,#020617 100%);overflow:hidden;min-width:0">
+
+                <!-- ─── PANEL 0: Dashboard ─── -->
+                <div class="dp d-active" id="dp-0">
+                    <div style="max-width:820px">
+                        <div style="margin-bottom:24px">
+                            <div style="font-size:11px;color:rgba(255,255,255,.3);margin-bottom:4px">Terça-feira, 15 de Julho de 2026</div>
+                            <h2 style="font-size:22px;font-weight:700;color:white">Bom dia! ☀️</h2>
+                            <p style="font-size:13px;color:rgba(156,163,175,1);margin-top:4px">Você tem <strong style="color:white">3 posts</strong> agendados para hoje e <strong style="color:#a78bfa">2 conteúdos</strong> prontos para publicar.</p>
+                        </div>
+                        <!-- Stats -->
+                        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+                            <div class="d-stat">
+                                <div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Seguidores</div>
+                                <div style="font-size:26px;font-weight:700;color:white">12.4k</div>
+                                <div style="font-size:11px;color:#10b981;margin-top:4px;display:flex;align-items:center;gap:3px"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i>+342 esta semana</div>
+                            </div>
+                            <div class="d-stat">
+                                <div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Alcance</div>
+                                <div style="font-size:26px;font-weight:700;color:white">38.7k</div>
+                                <div style="font-size:11px;color:#10b981;margin-top:4px;display:flex;align-items:center;gap:3px"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i>+18% vs. mês passado</div>
+                            </div>
+                            <div class="d-stat">
+                                <div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Posts este mês</div>
+                                <div style="font-size:26px;font-weight:700;color:white">24</div>
+                                <div style="font-size:11px;color:#a78bfa;margin-top:4px">3 gerados com IA hoje</div>
+                            </div>
+                            <div class="d-stat">
+                                <div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Engajamento</div>
+                                <div style="font-size:26px;font-weight:700;color:#a78bfa">5.8%</div>
+                                <div style="font-size:11px;color:#10b981;margin-top:4px;display:flex;align-items:center;gap:3px"><i class="fa-solid fa-arrow-up" style="font-size:9px"></i>Acima da média</div>
+                            </div>
+                        </div>
+                        <!-- Quick access -->
+                        <div style="margin-bottom:24px">
+                            <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.65);margin-bottom:12px">Criar agora</div>
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                                <div onclick="showDP(1)" style="background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2);border-radius:12px;padding:14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(139,92,246,.2)'" onmouseout="this.style.background='rgba(139,92,246,.1)'">
+                                    <div style="font-size:22px;margin-bottom:6px">🎨</div>
+                                    <div style="font-size:12px;font-weight:600;color:#a78bfa">Gerar Imagem</div>
+                                    <div style="font-size:11px;color:rgba(156,163,175,.6);margin-top:2px">Com IA generativa</div>
+                                </div>
+                                <div onclick="showDP(2)" style="background:rgba(236,72,153,.08);border:1px solid rgba(236,72,153,.18);border-radius:12px;padding:14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(236,72,153,.18)'" onmouseout="this.style.background='rgba(236,72,153,.08)'">
+                                    <div style="font-size:22px;margin-bottom:6px">📱</div>
+                                    <div style="font-size:12px;font-weight:600;color:#f472b6">Criar Carrossel</div>
+                                    <div style="font-size:11px;color:rgba(156,163,175,.6);margin-top:2px">Slides automáticos</div>
+                                </div>
+                                <div onclick="showDP(3)" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:12px;padding:14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(16,185,129,.18)'" onmouseout="this.style.background='rgba(16,185,129,.08)'">
+                                    <div style="font-size:22px;margin-bottom:6px">📝</div>
+                                    <div style="font-size:12px;font-weight:600;color:#34d399">Escrever Artigo</div>
+                                    <div style="font-size:11px;color:rgba(156,163,175,.6);margin-top:2px">SEO otimizado</div>
+                                </div>
+                                <div onclick="showDP(4)" style="background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.18);border-radius:12px;padding:14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(249,115,22,.18)'" onmouseout="this.style.background='rgba(249,115,22,.08)'">
+                                    <div style="font-size:22px;margin-bottom:6px">🎬</div>
+                                    <div style="font-size:12px;font-weight:600;color:#fb923c">Fazer Vídeo IA</div>
+                                    <div style="font-size:11px;color:rgba(156,163,175,.6);margin-top:2px">Avatar realista</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Activity -->
+                        <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.65);margin-bottom:12px">Atividade recente</div>
+                        <div style="display:flex;flex-direction:column;gap:8px">
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:10px">
+                                <div style="width:34px;height:34px;border-radius:9px;background:rgba(139,92,246,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">🎨</div>
+                                <div style="flex:1"><div style="font-size:12px;color:rgba(255,255,255,.82)">3 imagens geradas — "Lançamento verão 2025"</div><div style="font-size:10px;color:rgba(156,163,175,.5);margin-top:2px">Há 12 minutos</div></div>
+                                <div style="font-size:10px;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.2);flex-shrink:0">Concluído</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:10px">
+                                <div style="width:34px;height:34px;border-radius:9px;background:rgba(236,72,153,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">📱</div>
+                                <div style="flex:1"><div style="font-size:12px;color:rgba(255,255,255,.82)">Carrossel publicado — "5 erros de marketing digital"</div><div style="font-size:10px;color:rgba(156,163,175,.5);margin-top:2px">Há 1 hora</div></div>
+                                <div style="font-size:10px;padding:3px 9px;border-radius:8px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.2);flex-shrink:0">Publicado</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:10px">
+                                <div style="width:34px;height:34px;border-radius:9px;background:rgba(249,115,22,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">🎬</div>
+                                <div style="flex:1"><div style="font-size:12px;color:rgba(255,255,255,.82)">Vídeo agendado — "Dica de vendas #12" para 18h</div><div style="font-size:10px;color:rgba(156,163,175,.5);margin-top:2px">Agendado para hoje</div></div>
+                                <div style="font-size:10px;padding:3px 9px;border-radius:8px;background:rgba(249,115,22,.1);color:#fb923c;border:1px solid rgba(249,115,22,.2);flex-shrink:0">Agendado</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 1: Gerar Imagens ─── -->
+                <div class="dp" id="dp-1">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#7c3aed,#3b82f6);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-wand-magic-sparkles" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Gerar Imagens com IA</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Escolha um estilo ou descreva sua ideia</p></div>
+                            <div style="margin-left:auto;padding:5px 12px;border-radius:20px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.22);font-size:11px;color:#34d399;display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:#34d399;animation:pulse 1.5s infinite"></div>47 geradas</div>
+                        </div>
+                        <!-- Chips -->
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+                            <div class="d-chip dc-on" id="dc-0" onclick="selDChip(0)">🏠 Imobiliária</div>
+                            <div class="d-chip" id="dc-1" onclick="selDChip(1)">🚗 Concessionária</div>
+                            <div class="d-chip" id="dc-2" onclick="selDChip(2)">💆 Clínica Estética</div>
+                            <div class="d-chip" id="dc-3" onclick="selDChip(3)">🍽️ Restaurante</div>
+                        </div>
+                        <!-- Prompt textarea -->
+                        <textarea id="d-prompt" rows="2" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:13px 15px;color:white;font-size:13px;font-family:inherit;resize:none;outline:none;line-height:1.5;margin-bottom:12px;box-sizing:border-box">Imobiliária premium: apartamentos de luxo, fundo noturno dourado</textarea>
+                        <!-- Actions row -->
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:24px">
+                            <button id="d-gen-btn" onclick="demoGenerate()" style="display:flex;align-items:center;gap:8px;padding:11px 22px;border-radius:12px;background:linear-gradient(90deg,#7c3aed,#3b82f6);border:none;color:white;font-size:13px;font-weight:600;cursor:pointer">
+                                <i class="fa-solid fa-wand-magic-sparkles" id="d-gen-icon"></i>
+                                <span id="d-gen-txt">Gerar 3 Imagens</span>
+                            </button>
+                            <span style="font-size:12px;color:rgba(156,163,175,.6)">Proporção: <b style="color:rgba(255,255,255,.5)">1:1</b></span>
+                            <span style="font-size:12px;color:rgba(156,163,175,.6)">Estilo: <b style="color:rgba(255,255,255,.5)">Foto Realista</b></span>
+                        </div>
+                        <!-- Cards grid -->
+                        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+                            <div class="d-card" id="d-card-0">
+                                <div class="d-card-loading" id="d-ld-0"><div style="background:linear-gradient(135deg,#3b0764,#1e1b4b);width:100%;height:100%;position:relative"><div class="shimmer-bar"></div><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><i class="fa-regular fa-image" style="font-size:36px;color:rgba(255,255,255,.08)"></i><div style="font-size:11px;color:rgba(255,255,255,.18)">Clique em Gerar</div></div></div></div>
+                                <div class="d-card-result" id="d-res-0"></div>
+                                <div class="d-card-actions"><button style="flex:1;padding:6px;border-radius:8px;background:rgba(255,255,255,.15);border:none;color:white;font-size:11px;cursor:pointer">⬇ Baixar</button><button style="flex:1;padding:6px;border-radius:8px;background:rgba(139,92,246,.65);border:none;color:white;font-size:11px;cursor:pointer">+ Usar</button></div>
+                            </div>
+                            <div class="d-card" id="d-card-1">
+                                <div class="d-card-loading" id="d-ld-1"><div style="background:linear-gradient(135deg,#0c4a6e,#0f172a);width:100%;height:100%;position:relative"><div class="shimmer-bar" style="animation-delay:.5s"></div><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><i class="fa-regular fa-image" style="font-size:36px;color:rgba(255,255,255,.08)"></i><div style="font-size:11px;color:rgba(255,255,255,.18)">Clique em Gerar</div></div></div></div>
+                                <div class="d-card-result" id="d-res-1"></div>
+                                <div class="d-card-actions"><button style="flex:1;padding:6px;border-radius:8px;background:rgba(255,255,255,.15);border:none;color:white;font-size:11px;cursor:pointer">⬇ Baixar</button><button style="flex:1;padding:6px;border-radius:8px;background:rgba(139,92,246,.65);border:none;color:white;font-size:11px;cursor:pointer">+ Usar</button></div>
+                            </div>
+                            <div class="d-card" id="d-card-2">
+                                <div class="d-card-loading" id="d-ld-2"><div style="background:linear-gradient(135deg,#1c1917,#292524);width:100%;height:100%;position:relative"><div class="shimmer-bar" style="animation-delay:1s"></div><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><i class="fa-regular fa-image" style="font-size:36px;color:rgba(255,255,255,.08)"></i><div style="font-size:11px;color:rgba(255,255,255,.18)">Clique em Gerar</div></div></div></div>
+                                <div class="d-card-result" id="d-res-2"></div>
+                                <div class="d-card-actions"><button style="flex:1;padding:6px;border-radius:8px;background:rgba(255,255,255,.15);border:none;color:white;font-size:11px;cursor:pointer">⬇ Baixar</button><button style="flex:1;padding:6px;border-radius:8px;background:rgba(139,92,246,.65);border:none;color:white;font-size:11px;cursor:pointer">+ Usar</button></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 2: Carrossel ─── -->
+                <div class="dp" id="dp-2">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#ec4899,#e11d48);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-layer-group" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Criar Carrossel</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Gere um carrossel completo com tema, slides e legenda</p></div>
+                        </div>
+                        <!-- Topic input -->
+                        <div style="display:flex;gap:10px;margin-bottom:20px">
+                            <div style="flex:1;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:0 14px">
+                                <i class="fa-solid fa-lightbulb" style="color:rgba(253,224,71,.6);font-size:14px;flex-shrink:0"></i>
+                                <input value="5 erros que travam o crescimento do seu negócio" style="background:none;border:none;color:white;font-size:13px;font-family:inherit;width:100%;outline:none;padding:12px 0" placeholder="Tema do carrossel...">
+                            </div>
+                            <button style="padding:0 20px;border-radius:12px;background:linear-gradient(90deg,#ec4899,#7c3aed);border:none;color:white;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="fa-solid fa-wand-magic-sparkles" style="margin-right:6px"></i>Gerar Slides</button>
+                        </div>
+                        <!-- Slides row -->
+                        <div style="display:flex;gap:12px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px">
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;overflow:hidden;border:2px solid rgba(139,92,246,.7);cursor:pointer;aspect-ratio:4/5;background:linear-gradient(145deg,#7c3aed,#4f46e5,#2563eb);position:relative">
+                                <div style="position:absolute;top:8px;left:9px;font-size:8px;color:rgba(255,255,255,.45);font-family:monospace">01</div>
+                                <div style="position:absolute;top:8px;right:9px;background:rgba(255,255,255,.18);border-radius:4px;padding:2px 5px;font-size:7px;color:rgba(255,255,255,.9)">🔖 Salve</div>
+                                <div style="position:absolute;bottom:12px;left:9px;right:9px"><div style="font-size:10px;font-weight:800;color:white;line-height:1.2">5 ERROS QUE TRAVAM SEU NEGÓCIO</div><div style="margin-top:5px;font-size:7px;color:rgba(255,255,255,.6)">Arraste e descubra →</div></div>
+                            </div>
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.1);cursor:pointer;aspect-ratio:4/5;background:#0f1b30;position:relative" onclick="this.parentElement.querySelectorAll('div').forEach(d=>d.style.borderWidth='1px');this.style.borderWidth='2px';this.style.borderColor='rgba(139,92,246,.7)'">
+                                <div style="position:absolute;top:8px;left:9px;font-size:8px;color:rgba(255,255,255,.3);font-family:monospace">02</div>
+                                <div style="position:absolute;top:8px;right:9px;font-size:7px;color:rgba(139,92,246,.7)">2 / 5</div>
+                                <div style="position:absolute;top:24px;left:9px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);border-radius:4px;padding:2px 6px;font-size:6px;color:#a78bfa;font-weight:700">ERRO Nº 1</div>
+                                <div style="position:absolute;top:46px;left:9px;right:9px"><div style="font-size:9px;font-weight:700;color:white;line-height:1.3">Não ter meta clara de faturamento</div><div style="margin-top:5px;font-size:7px;color:rgba(255,255,255,.4);line-height:1.4">Sem número definido, qualquer resultado parece suficiente.</div></div>
+                            </div>
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.1);cursor:pointer;aspect-ratio:4/5;background:#0f1b30;position:relative">
+                                <div style="position:absolute;top:8px;left:9px;font-size:8px;color:rgba(255,255,255,.3);font-family:monospace">03</div>
+                                <div style="position:absolute;top:8px;right:9px;font-size:7px;color:rgba(139,92,246,.7)">3 / 5</div>
+                                <div style="position:absolute;top:24px;left:9px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);border-radius:4px;padding:2px 6px;font-size:6px;color:#a78bfa;font-weight:700">ERRO Nº 2</div>
+                                <div style="position:absolute;top:46px;left:9px;right:9px"><div style="font-size:9px;font-weight:700;color:white;line-height:1.3">Ignorar o poder das redes sociais</div><div style="margin-top:5px;font-size:7px;color:rgba(255,255,255,.4);line-height:1.4">Presença digital é obrigação, não diferencial.</div></div>
+                            </div>
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.1);cursor:pointer;aspect-ratio:4/5;background:#0f1b30;position:relative">
+                                <div style="position:absolute;top:8px;left:9px;font-size:8px;color:rgba(255,255,255,.3);font-family:monospace">04</div>
+                                <div style="position:absolute;top:8px;right:9px;font-size:7px;color:rgba(139,92,246,.7)">4 / 5</div>
+                                <div style="position:absolute;top:24px;left:9px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);border-radius:4px;padding:2px 6px;font-size:6px;color:#a78bfa;font-weight:700">ERRO Nº 3</div>
+                                <div style="position:absolute;top:46px;left:9px;right:9px"><div style="font-size:9px;font-weight:700;color:white;line-height:1.3">Não investir em conteúdo de valor</div><div style="margin-top:5px;font-size:7px;color:rgba(255,255,255,.4);line-height:1.4">Quem educa vende mais. Sempre.</div></div>
+                            </div>
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.1);cursor:pointer;aspect-ratio:4/5;background:linear-gradient(160deg,#1a1040,#2e1065);position:relative">
+                                <div style="position:absolute;top:8px;left:9px;font-size:8px;color:rgba(255,255,255,.3);font-family:monospace">05</div>
+                                <div style="position:absolute;top:50%;left:9px;right:9px;transform:translateY(-50%);text-align:center"><div style="font-size:20px;margin-bottom:5px">🚀</div><div style="font-size:9px;font-weight:800;color:white;line-height:1.3">PRONTO PRA CRESCER?</div><div style="margin-top:4px;font-size:7px;color:rgba(255,255,255,.5)">Siga para mais conteúdo</div></div>
+                                <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(139,92,246,.9);padding:3px 10px;border-radius:10px;font-size:7px;color:white;font-weight:700;white-space:nowrap">@seuperfil</div>
+                            </div>
+                            <!-- Add slide -->
+                            <div style="flex-shrink:0;width:110px;border-radius:12px;border:1px dashed rgba(255,255,255,.15);cursor:pointer;aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:rgba(255,255,255,.3);font-size:12px">
+                                <i class="fa-solid fa-plus" style="font-size:18px"></i>
+                                Novo slide
+                            </div>
+                        </div>
+                        <!-- Slide editor -->
+                        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+                                <div style="width:8px;height:8px;border-radius:50%;background:#a78bfa"></div>
+                                <span style="font-size:12px;color:#a78bfa;font-weight:600">Slide 01 — Capa</span>
+                                <div style="margin-left:auto;display:flex;gap:8px">
+                                    <div style="height:28px;padding:0 12px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;font-size:11px;color:rgba(156,163,175,.8);cursor:pointer">Rascunho</div>
+                                    <div style="height:28px;padding:0 12px;border-radius:8px;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.3);display:flex;align-items:center;font-size:11px;color:#f472b6;cursor:pointer">Publicar</div>
+                                </div>
+                            </div>
+                            <div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:8px">5 Erros que Travam seu Negócio</div>
+                            <div style="font-size:12px;color:rgba(255,255,255,.4);line-height:1.6;margin-bottom:12px">Você trabalha muito mas o resultado não aparece? Descubra os principais erros que impedem o crescimento e como corrigi-los de uma vez por todas.</div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <span style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:6px;padding:3px 8px;font-size:11px;color:#a78bfa">#negócios</span>
+                                <span style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:6px;padding:3px 8px;font-size:11px;color:#a78bfa">#empreender</span>
+                                <span style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:6px;padding:3px 8px;font-size:11px;color:#a78bfa">#marketing</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 3: Artigos ─── -->
+                <div class="dp" id="dp-3">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#10b981,#0d9488);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-file-lines" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Gerar Artigo com IA</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Blog, LinkedIn ou E-mail — com SEO automático</p></div>
+                        </div>
+                        <!-- Options row -->
+                        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                            <div style="display:flex;gap:6px">
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.35);font-size:12px;color:#34d399;cursor:pointer">Blog SEO</div>
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);font-size:12px;color:rgba(156,163,175,.8);cursor:pointer">LinkedIn</div>
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);font-size:12px;color:rgba(156,163,175,.8);cursor:pointer">E-mail</div>
+                            </div>
+                            <div style="display:flex;gap:6px">
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);font-size:12px;color:rgba(156,163,175,.8);cursor:pointer">Profissional</div>
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(16,185,129,.3);font-size:12px;color:#34d399;cursor:pointer">Persuasivo ✓</div>
+                                <div style="padding:7px 14px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);font-size:12px;color:rgba(156,163,175,.8);cursor:pointer">Casual</div>
+                            </div>
+                        </div>
+                        <!-- Keyword input -->
+                        <div style="display:flex;gap:10px;margin-bottom:20px">
+                            <input value="Como aumentar vendas em 2025" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 15px;color:white;font-size:13px;font-family:inherit;outline:none" placeholder="Palavra-chave ou tema do artigo...">
+                            <button style="padding:0 20px;border-radius:12px;background:linear-gradient(90deg,#10b981,#0d9488);border:none;color:white;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="fa-solid fa-wand-magic-sparkles" style="margin-right:6px"></i>Gerar Artigo</button>
+                        </div>
+                        <!-- Article preview -->
+                        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:24px;position:relative">
+                            <!-- Toolbar -->
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.07)">
+                                <div style="display:flex;gap:4px">
+                                    <button style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:12px;cursor:pointer;font-weight:700">B</button>
+                                    <button style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:12px;cursor:pointer;font-style:italic">I</button>
+                                    <button style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:12px;cursor:pointer"><i class="fa-solid fa-link" style="font-size:10px"></i></button>
+                                </div>
+                                <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+                                    <span style="font-size:11px;color:rgba(156,163,175,.5)">847 palavras</span>
+                                    <div style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)"><i class="fa-solid fa-magnifying-glass" style="font-size:9px;color:#34d399"></i><span style="font-size:11px;color:#34d399">SEO 92%</span></div>
+                                </div>
+                            </div>
+                            <!-- Article content -->
+                            <h3 style="font-size:18px;font-weight:800;color:rgba(255,255,255,.9);margin-bottom:12px;line-height:1.3">Como Aumentar as Vendas da sua Empresa em 2025: Guia Completo</h3>
+                            <p style="font-size:13px;color:rgba(255,255,255,.45);line-height:1.7;margin-bottom:14px">O mercado está mais competitivo do que nunca. Empresas que não adaptam suas estratégias de vendas ficam para trás rapidamente. Neste artigo, você vai aprender as principais táticas que empresas de sucesso estão usando para crescer consistentemente.</p>
+                            <h4 style="font-size:14px;font-weight:700;color:rgba(255,255,255,.72);margin-bottom:8px">1. Conheça seu cliente ideal (ICP)</h4>
+                            <p style="font-size:13px;color:rgba(255,255,255,.38);line-height:1.7;margin-bottom:14px">Antes de vender, é fundamental entender para quem você está vendendo. Crie personas detalhadas com dados demográficos, dores, objetivos e comportamentos de compra. Esse exercício vai transformar toda a sua comunicação.</p>
+                            <h4 style="font-size:14px;font-weight:700;color:rgba(255,255,255,.72);margin-bottom:8px">2. Otimize seu funil de vendas</h4>
+                            <p style="font-size:13px;color:rgba(255,255,255,.35);line-height:1.7">Mapeie cada etapa da jornada do cliente: atração, consideração, decisão e fidelização. Identifique onde os prospects estão saindo e aplique melhorias cirúrgicas em cada <span style="display:inline-block;width:2px;height:14px;background:#34d399;border-radius:1px;vertical-align:middle;animation:blink .7s infinite;margin-left:1px"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 4: Vídeos IA ─── -->
+                <div class="dp" id="dp-4">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#f97316,#dc2626);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-clapperboard" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Vídeos com Avatar IA</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Escreva o roteiro e gere um vídeo com apresentador virtual</p></div>
+                            <div style="margin-left:auto;padding:5px 12px;border-radius:20px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.22);font-size:11px;color:#fb923c;display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:#fb923c;animation:pulse 1.5s infinite"></div>Renderizando...</div>
+                        </div>
+                        <div style="display:flex;gap:20px">
+                            <!-- Phone preview -->
+                            <div style="flex-shrink:0;width:160px;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.1);aspect-ratio:9/16;position:relative;background:#111827">
+                                <div style="position:absolute;inset:0;background:linear-gradient(180deg,#1e3a5f 0%,#0f2040 60%,#091428 100%)"></div>
+                                <div style="position:absolute;top:0;left:0;right:0;height:40%;background:radial-gradient(ellipse at 50% 0%,rgba(99,102,241,.15),transparent 70%)"></div>
+                                <!-- Body -->
+                                <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:110px;height:130px;background:linear-gradient(180deg,#2563eb,#1e40af);border-radius:40% 40% 0 0;opacity:.85"></div>
+                                <!-- Neck -->
+                                <div style="position:absolute;bottom:120px;left:50%;transform:translateX(-50%);width:22px;height:18px;background:#c4956a;border-radius:3px"></div>
+                                <!-- Head -->
+                                <div style="position:absolute;bottom:135px;left:50%;transform:translateX(-50%);width:50px;height:60px;border-radius:50% 50% 45% 45%;background:linear-gradient(160deg,#d4a574,#c4956a);position:relative">
+                                    <div style="position:absolute;bottom:135px;left:50%;transform:translateX(-50%);width:50px;height:60px;border-radius:50% 50% 45% 45%;background:linear-gradient(160deg,#d4a574,#c4956a)">
+                                        <div style="position:absolute;top:38%;left:22%;width:9px;height:4px;border-radius:50%;background:#3d2008;opacity:.75"></div>
+                                        <div style="position:absolute;top:38%;right:22%;width:9px;height:4px;border-radius:50%;background:#3d2008;opacity:.75"></div>
+                                        <div style="position:absolute;bottom:22%;left:50%;transform:translateX(-50%);width:18px;height:7px;border-radius:0 0 50% 50%;border:1.5px solid rgba(61,32,8,.45);border-top:none"></div>
+                                        <div style="position:absolute;top:-5px;left:0;right:0;height:22px;background:#2d1810;border-radius:50% 50% 0 0;opacity:.9"></div>
+                                    </div>
+                                </div>
+                                <!-- Subtitle -->
+                                <div style="position:absolute;bottom:12px;left:8px;right:8px;background:rgba(0,0,0,.75);border-radius:5px;padding:5px 8px">
+                                    <div style="font-size:9px;color:white;text-align:center;line-height:1.4">Saiba como aumentar suas vendas em 2025</div>
+                                </div>
+                                <!-- Sound waves -->
+                                <div style="position:absolute;top:14px;right:10px;display:flex;align-items:flex-end;gap:2px">
+                                    <div class="sound-wave" style="width:3px;height:8px;background:rgba(251,146,60,.7);border-radius:2px"></div>
+                                    <div class="sound-wave" style="width:3px;height:14px;background:rgba(251,146,60,.7);border-radius:2px;animation-delay:.1s"></div>
+                                    <div class="sound-wave" style="width:3px;height:20px;background:rgba(251,146,60,.7);border-radius:2px;animation-delay:.2s"></div>
+                                    <div class="sound-wave" style="width:3px;height:14px;background:rgba(251,146,60,.7);border-radius:2px;animation-delay:.3s"></div>
+                                    <div class="sound-wave" style="width:3px;height:8px;background:rgba(251,146,60,.7);border-radius:2px;animation-delay:.4s"></div>
+                                </div>
+                                <!-- Rec dot -->
+                                <div style="position:absolute;top:14px;left:10px;width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.7)"></div>
+                            </div>
+                            <!-- Script panel -->
+                            <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+                                <!-- Voice selector -->
+                                <div style="display:flex;gap:8px">
+                                    <div style="flex:1;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px"><i class="fa-solid fa-microphone" style="color:rgba(251,146,60,.7);font-size:14px"></i><span style="font-size:13px;color:rgba(156,163,175,.9)">Feminina PT-BR</span></div>
+                                    <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;cursor:pointer"><i class="fa-solid fa-sliders" style="color:rgba(156,163,175,.6);font-size:13px"></i></div>
+                                    <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;font-size:13px;color:rgba(156,163,175,.7)">9:16</div>
+                                </div>
+                                <!-- Script textarea -->
+                                <textarea rows="7" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;color:rgba(255,255,255,.75);font-size:13px;font-family:inherit;resize:none;outline:none;line-height:1.7;flex:1">Olá! Eu sou a Sara, e hoje vou te mostrar as 3 estratégias que fizeram meus clientes triplicarem as vendas em apenas 90 dias.
+
+A primeira estratégia é conhecer profundamente o seu cliente ideal. Quando você sabe exatamente com quem está falando, sua mensagem fica irresistível.
+
+A segunda é criar conteúdo que educa antes de vender. Quem ensina, cria autoridade. E autoridade vende.</textarea>
+                                <!-- Stat + button -->
+                                <div style="display:flex;gap:10px;align-items:center">
+                                    <div style="background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);border-radius:8px;padding:6px 12px;font-size:12px;color:#fb923c">⏱ ~1min 20seg</div>
+                                    <button style="flex:1;padding:12px;border-radius:12px;background:linear-gradient(90deg,#f97316,#dc2626);border:none;color:white;font-size:13px;font-weight:600;cursor:pointer"><i class="fa-solid fa-clapperboard" style="margin-right:7px"></i>Gerar Vídeo</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 5: Agendamento ─── -->
+                <div class="dp" id="dp-5">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-calendar-days" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Agendamento de Posts</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Programe seus conteúdos no melhor horário com IA</p></div>
+                            <button style="margin-left:auto;padding:9px 18px;border-radius:10px;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.35);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer"><i class="fa-solid fa-plus" style="margin-right:5px"></i>Agendar Post</button>
+                        </div>
+                        <!-- Month header -->
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                            <button style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);cursor:pointer"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i></button>
+                            <span style="font-size:15px;font-weight:600;color:white;flex:1;text-align:center">Julho 2026</span>
+                            <button style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);cursor:pointer"><i class="fa-solid fa-chevron-right" style="font-size:10px"></i></button>
+                        </div>
+                        <!-- Calendar grid -->
+                        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;margin-bottom:20px">
+                            <!-- Day headers -->
+                            <div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid rgba(255,255,255,.07)">
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Dom</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Seg</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Ter</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Qua</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Qui</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Sex</div>
+                                <div style="padding:10px;text-align:center;font-size:11px;font-weight:600;color:rgba(156,163,175,.6)">Sáb</div>
+                            </div>
+                            <!-- Week rows -->
+                            <div style="display:grid;grid-template-columns:repeat(7,1fr)">
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.2);margin-bottom:4px">29</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.2);margin-bottom:4px">30</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">1</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">2</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">3</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">4</div></div>
+                                <div style="padding:10px;min-height:72px;border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">5</div><div style="background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.35);border-radius:5px;padding:2px 5px;font-size:9px;color:#f472b6;margin-top:3px">📱 08h</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">6</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">7</div><div style="background:rgba(139,92,246,.18);border:1px solid rgba(139,92,246,.35);border-radius:5px;padding:2px 5px;font-size:9px;color:#a78bfa;margin-top:3px">🎨 09h</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">8</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">9</div><div style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.35);border-radius:5px;padding:2px 5px;font-size:9px;color:#fb923c;margin-top:3px">🎬 18h</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">10</div></div>
+                                <div style="padding:10px;min-height:72px;border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">12</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">13</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">14</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);background:rgba(139,92,246,.06)"><div style="font-size:12px;font-weight:700;color:#a78bfa">15</div><div style="font-size:8px;color:rgba(139,92,246,.7);margin-top:1px">HOJE</div><div style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);border-radius:5px;padding:2px 5px;font-size:9px;color:#a78bfa;margin-top:3px">🎨 10h</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">16</div></div>
+                                <div style="padding:10px;min-height:72px;border-right:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">17</div></div>
+                                <div style="padding:10px;min-height:72px;border-bottom:1px solid rgba(255,255,255,.05)"><div style="font-size:12px;color:rgba(255,255,255,.25)">19</div><div style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);border-radius:5px;padding:2px 5px;font-size:9px;color:#34d399;margin-top:3px">📝 11h</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 6: Instagram ─── -->
+                <div class="dp" id="dp-6">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#e1306c,#833ab4,#fd1d1d);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-brands fa-instagram" style="color:white;font-size:16px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Contas Conectadas</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Gerencie e publique diretamente pelo KrythosLab</p></div>
+                        </div>
+                        <!-- Account card -->
+                        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
+                            <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#e1306c,#833ab4);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">⚡</div>
+                            <div style="flex:1">
+                                <div style="font-size:14px;font-weight:700;color:white;margin-bottom:2px">@alleenergia</div>
+                                <div style="font-size:12px;color:rgba(156,163,175,.7)">Alle Energia • Empresa de Energia</div>
+                                <div style="display:flex;gap:16px;margin-top:8px">
+                                    <div style="text-align:center"><div style="font-size:14px;font-weight:700;color:white">12.4k</div><div style="font-size:10px;color:rgba(156,163,175,.6)">Seguidores</div></div>
+                                    <div style="text-align:center"><div style="font-size:14px;font-weight:700;color:white">287</div><div style="font-size:10px;color:rgba(156,163,175,.6)">Posts</div></div>
+                                    <div style="text-align:center"><div style="font-size:14px;font-weight:700;color:#10b981">5.8%</div><div style="font-size:10px;color:rgba(156,163,175,.6)">Engajamento</div></div>
+                                </div>
+                            </div>
+                            <div style="padding:8px 16px;border-radius:10px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);font-size:12px;color:#34d399;font-weight:600;flex-shrink:0;display:flex;align-items:center;gap:5px"><div style="width:7px;height:7px;border-radius:50%;background:#34d399"></div>Conectada</div>
+                        </div>
+                        <!-- Recent posts grid -->
+                        <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.6);margin-bottom:12px">Publicações recentes</div>
+                        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#78350f,#b45309);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">⛪</div>
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#14532d,#16a34a);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">🌱</div>
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#7f1d1d,#dc2626);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">❤️</div>
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#1e3a5f,#1e40af);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">⚡</div>
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#3b0764,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">🏆</div>
+                            <div style="aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#0c4a6e,#0284c7);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer">💡</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── PANEL 7: Métricas ─── -->
+                <div class="dp" id="dp-7">
+                    <div style="max-width:820px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                            <div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#a78bfa,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fa-solid fa-chart-line" style="color:white;font-size:15px"></i></div>
+                            <div><h2 style="font-size:18px;font-weight:700;color:white">Métricas e Relatórios</h2><p style="font-size:12px;color:rgba(156,163,175,1);margin-top:2px">Acompanhe o crescimento em tempo real</p></div>
+                            <div style="margin-left:auto;display:flex;gap:6px">
+                                <div style="padding:7px 12px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);font-size:11px;color:rgba(156,163,175,.8);cursor:pointer">7 dias</div>
+                                <div style="padding:7px 12px;border-radius:9px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);font-size:11px;color:#a78bfa;cursor:pointer">30 dias ✓</div>
+                                <div style="padding:7px 12px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);font-size:11px;color:rgba(156,163,175,.8);cursor:pointer">90 dias</div>
+                            </div>
+                        </div>
+                        <!-- Stat row -->
+                        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+                            <div class="d-stat"><div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Alcance total</div><div style="font-size:24px;font-weight:700;color:white">38.7k</div><div style="font-size:11px;color:#10b981;margin-top:4px">+18% vs. anterior</div></div>
+                            <div class="d-stat"><div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Impressões</div><div style="font-size:24px;font-weight:700;color:white">112k</div><div style="font-size:11px;color:#10b981;margin-top:4px">+24%</div></div>
+                            <div class="d-stat"><div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Novos seguidores</div><div style="font-size:24px;font-weight:700;color:white">+1.2k</div><div style="font-size:11px;color:#10b981;margin-top:4px">Este mês</div></div>
+                            <div class="d-stat"><div style="font-size:10px;color:rgba(156,163,175,.7);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Taxa de cliques</div><div style="font-size:24px;font-weight:700;color:#a78bfa">3.4%</div><div style="font-size:11px;color:#10b981;margin-top:4px">+0.8pp</div></div>
+                        </div>
+                        <!-- Bar chart -->
+                        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px">
+                            <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.6);margin-bottom:16px">Alcance semanal</div>
+                            <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding-bottom:4px">
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="flex:1;width:100%;background:rgba(139,92,246,.3);border-radius:5px 5px 0 0;min-height:4px" style="height:42%"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S1</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:rgba(139,92,246,.4);border-radius:5px 5px 0 0;height:58px"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S2</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:rgba(139,92,246,.5);border-radius:5px 5px 0 0;height:44px"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S3</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:rgba(139,92,246,.65);border-radius:5px 5px 0 0;height:78px"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S4</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:rgba(139,92,246,.8);border-radius:5px 5px 0 0;height:66px"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S5</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:rgba(139,92,246,.9);border-radius:5px 5px 0 0;height:94px"></div><div style="font-size:9px;color:rgba(156,163,175,.5)">S6</div></div>
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;background:#a78bfa;border-radius:5px 5px 0 0;height:110px;box-shadow:0 0 10px rgba(167,139,250,.4)"></div><div style="font-size:9px;color:#a78bfa;font-weight:600">S7</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // ── Demo image data (reuses hero card designs) ──────────────
+        const D_SETS = [
+            { prompt: 'Imobiliária premium: apartamentos de luxo, fundo noturno dourado', cards: [0,1,2] },
+            { prompt: 'Concessionária: lançamento SUV 2025, fundo escuro, impacto visual', cards: [1,2,0] },
+            { prompt: 'Clínica estética: botox e filler, elegante, tons rose gold',        cards: [2,0,1] },
+            { prompt: 'Restaurante premium: prato gourmet, iluminação cálida e rústica',   cards: [0,2,1] },
+        ];
+        const D_DESIGNS = () => [_imob, _auto, _est]; // lazy ref after hero script runs
+        let dGT = [], dCS = 0;
+
+        function selDChip(idx) {
+            dCS = idx;
+            document.querySelectorAll('.d-chip').forEach((el, i) => {
+                el.classList.toggle('dc-on', i === idx);
+            });
+            const ta = document.getElementById('d-prompt');
+            if (ta) ta.value = D_SETS[idx].prompt;
+            // Reset cards to initial state
+            for (let i = 0; i < 3; i++) {
+                const ld = document.getElementById('d-ld-' + i);
+                const rs = document.getElementById('d-res-' + i);
+                if (ld) ld.style.opacity = '1';
+                if (rs) { rs.style.opacity = '0'; rs.innerHTML = ''; }
+            }
+            const btn = document.getElementById('d-gen-btn');
+            const txt = document.getElementById('d-gen-txt');
+            if (btn) btn.style.background = 'linear-gradient(90deg,#7c3aed,#3b82f6)';
+            if (txt) txt.textContent = 'Gerar 3 Imagens';
+        }
+
+        function demoGenerate() {
+            dGT.forEach(clearTimeout); dGT = [];
+            const set = D_SETS[dCS];
+            const designs = D_DESIGNS();
+            const btn = document.getElementById('d-gen-btn');
+            const txt = document.getElementById('d-gen-txt');
+            const ico = document.getElementById('d-gen-icon');
+
+            if (btn) btn.style.background = 'linear-gradient(90deg,#7c3aed,#3b82f6)';
+            if (txt) txt.textContent = 'Gerando com IA...';
+            if (ico) { ico.className = 'fa-solid fa-wand-magic-sparkles'; ico.style.animation = 'spin 1.5s linear infinite'; }
+
+            for (let i = 0; i < 3; i++) {
+                const ld = document.getElementById('d-ld-' + i);
+                const rs = document.getElementById('d-res-' + i);
+                if (ld) ld.style.opacity = '1';
+                if (rs) rs.style.opacity = '0';
+            }
+
+            function revD(idx) {
+                const ld = document.getElementById('d-ld-' + idx);
+                const rs = document.getElementById('d-res-' + idx);
+                if (rs) rs.innerHTML = designs[set.cards[idx]];
+                if (ld) ld.style.opacity = '0';
+                if (rs) rs.style.opacity = '1';
+            }
+
+            dGT.push(setTimeout(() => revD(0), 900));
+            dGT.push(setTimeout(() => revD(1), 1700));
+            dGT.push(setTimeout(() => {
+                revD(2);
+                if (btn) btn.style.background = 'linear-gradient(90deg,#059669,#0d9488)';
+                if (txt) txt.textContent = '✓  3 imagens geradas';
+                if (ico) { ico.className = 'fa-solid fa-check'; ico.style.animation = 'none'; }
+            }, 2500));
+        }
+
+        // ── Demo panel switching ─────────────────────────────────────
+        let dCP = 0;
+
+        function showDP(idx) {
+            document.querySelectorAll('.dp').forEach(p => p.classList.remove('d-active'));
+            document.querySelectorAll('.dni').forEach((el, i) => el.classList.toggle('active', i === idx));
+            const panel = document.getElementById('dp-' + idx);
+            if (panel) panel.classList.add('d-active');
+            dCP = idx;
+        }
+
+        // ── Open / close demo ────────────────────────────────────────
+        function openDemo() {
+            const m = document.getElementById('demo-modal');
+            if (!m) return;
+            m.classList.add('open');
+            document.body.style.overflow = 'hidden';
+            showDP(0);
+        }
+
+        function closeDemo() {
+            const m = document.getElementById('demo-modal');
+            if (!m) return;
+            m.classList.remove('open');
+            document.body.style.overflow = '';
+            dGT.forEach(clearTimeout); dGT = [];
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { closeDemo(); closeRegister(); }
+        });
+
+        // ── Register modal ────────────────────────────────────────────
+        function openRegister() {
+            document.getElementById('reg-modal').classList.add('open');
+            document.body.style.overflow = 'hidden';
+            document.getElementById('reg-error').textContent = '';
+        }
+
+        function closeRegister() {
+            document.getElementById('reg-modal').classList.remove('open');
+            document.body.style.overflow = '';
+        }
+
+        async function submitRegister(e) {
+            e.preventDefault();
+            const btn = document.getElementById('reg-btn');
+            const errEl = document.getElementById('reg-error');
+            errEl.textContent = '';
+            btn.disabled = true;
+            btn.textContent = 'Aguarde...';
+
+            const name     = document.getElementById('reg-name').value.trim();
+            const email    = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-pass').value;
+
+            try {
+                const res = await fetch('/trpc/auth.register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ json: { name, email, password } }),
+                });
+                const data = await res.json();
+                if (!res.ok || data.error) {
+                    throw new Error(data.error?.message || data.error?.json?.message || 'Erro ao criar conta.');
+                }
+                window.location.href = '/dashboard';
+            } catch (err) {
+                errEl.textContent = err.message;
+                btn.disabled = false;
+                btn.textContent = 'Criar conta e começar teste';
+            }
+        }
+    </script>
+
+    <!-- Register modal -->
+    <div id="reg-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:16px">
+        <div style="background:#0f0f1a;border:1px solid rgba(255,255,255,.1);border-radius:20px;width:100%;max-width:420px;padding:36px;position:relative">
+            <button onclick="closeRegister()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;line-height:1">&times;</button>
+            <div style="text-align:center;margin-bottom:24px">
+                <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:22px">✦</div>
+                <h2 style="color:#fff;font-size:22px;font-weight:700;margin:0 0 6px">Teste grátis por 7 dias</h2>
+                <p style="color:rgba(156,163,175,.8);font-size:13px;margin:0">Sem cartão de crédito. Cancele quando quiser.</p>
+            </div>
+            <form onsubmit="submitRegister(event)">
+                <div style="margin-bottom:14px">
+                    <label style="display:block;color:rgba(255,255,255,.7);font-size:12px;font-weight:500;margin-bottom:6px">Nome</label>
+                    <input id="reg-name" type="text" required minlength="2" placeholder="Seu nome"
+                        style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;font-size:14px;outline:none;box-sizing:border-box"
+                        onfocus="this.style.borderColor='rgba(124,58,237,.7)'" onblur="this.style.borderColor='rgba(255,255,255,.12)'" />
+                </div>
+                <div style="margin-bottom:14px">
+                    <label style="display:block;color:rgba(255,255,255,.7);font-size:12px;font-weight:500;margin-bottom:6px">Email</label>
+                    <input id="reg-email" type="email" required placeholder="seu@email.com"
+                        style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;font-size:14px;outline:none;box-sizing:border-box"
+                        onfocus="this.style.borderColor='rgba(124,58,237,.7)'" onblur="this.style.borderColor='rgba(255,255,255,.12)'" />
+                </div>
+                <div style="margin-bottom:20px">
+                    <label style="display:block;color:rgba(255,255,255,.7);font-size:12px;font-weight:500;margin-bottom:6px">Senha</label>
+                    <input id="reg-pass" type="password" required minlength="6" placeholder="Mínimo 6 caracteres"
+                        style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;font-size:14px;outline:none;box-sizing:border-box"
+                        onfocus="this.style.borderColor='rgba(124,58,237,.7)'" onblur="this.style.borderColor='rgba(255,255,255,.12)'" />
+                </div>
+                <p id="reg-error" style="color:#f87171;font-size:12px;margin-bottom:12px;min-height:16px"></p>
+                <button id="reg-btn" type="submit"
+                    style="width:100%;padding:13px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s">
+                    Criar conta e começar teste
+                </button>
+            </form>
+            <p style="text-align:center;margin-top:16px;color:rgba(156,163,175,.6);font-size:12px">
+                Já tem conta? <a href="/login" style="color:#a78bfa;text-decoration:none">Entrar</a>
+            </p>
+        </div>
+    </div>
+    <style>
+        #reg-modal { display: none; }
+        #reg-modal.open { display: flex; }
+    </style>
 </body>
 </html>

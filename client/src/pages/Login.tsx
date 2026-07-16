@@ -14,8 +14,8 @@ function InstagramIcon({ className }: { className?: string }) {
 
 export default function Login() {
   const { isAuthenticated, loading, refresh } = useAuth();
-  const [, navigate] = useLocation();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [location, navigate] = useLocation();
+  const [mode, setMode] = useState<"login" | "register">(location === "/register" ? "register" : "login");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "" });

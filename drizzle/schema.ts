@@ -24,10 +24,26 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  trialExpiresAt: timestamp("trialExpiresAt"),
 });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+// ─── Daily Usage (trial limits) ───────────────────────────────────────────────
+export const dailyUsage = mysqlTable(
+  "daily_usage",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    feature: varchar("feature", { length: 32 }).notNull(),
+    date: varchar("date", { length: 10 }).notNull(),
+    count: int("count").notNull().default(0),
+  },
+  (t) => [index("idx_daily_usage_uid_feat_date").on(t.userId, t.feature, t.date)]
+);
+
+export type DailyUsage = typeof dailyUsage.$inferSelect;
 
 // ─── Chat Conversations ───────────────────────────────────────────────────────
 export const chatConversations = mysqlTable(

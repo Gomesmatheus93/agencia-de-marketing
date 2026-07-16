@@ -8,6 +8,7 @@ function insertId(result: unknown): number {
 import {
   InsertUser,
   users,
+  dailyUsage,
   chatConversations,
   chatMessages,
   generatedImages,
@@ -39,6 +40,7 @@ import {
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _dailyUsageTableReady: Promise<void> | null = null;
 let _carouselTableReady: Promise<void> | null = null;
 let _carouselTemplateTableReady: Promise<void> | null = null;
 let _avatarVideoTableReady: Promise<void> | null = null;
@@ -435,7 +437,7 @@ async function ensureUserExtraColumns() {
         SELECT column_name, column_type FROM information_schema.columns
         WHERE table_schema = DATABASE()
           AND table_name = 'users'
-          AND column_name IN ('isActive', 'plan')
+          AND column_name IN ('isActive', 'plan', 'trialExpiresAt')
       `)) as unknown as [Array<{ column_name: string; column_type: string }>, unknown];
 
       const existing = new Map(
@@ -451,6 +453,12 @@ async function ensureUserExtraColumns() {
       if (!existing.has("plan")) {
         try {
           await db.execute(sql`ALTER TABLE users ADD COLUMN plan enum('free','pro','agency') NOT NULL DEFAULT 'free'`);
+        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
+      }
+
+      if (!existing.has("trialExpiresAt")) {
+        try {
+          await db.execute(sql`ALTER TABLE users ADD COLUMN trialExpiresAt datetime NULL`);
         } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
       }
     })().catch((e) => { _userExtraColumnsReady = null; throw e; });
@@ -482,6 +490,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
     if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
     if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
+    if ((user as { trialExpiresAt?: Date | null }).trialExpiresAt !== undefined) {
+      const t = (user as { trialExpiresAt?: Date | null }).trialExpiresAt ?? null;
+      (values as Record<string, unknown>).trialExpiresAt = t;
+      updateSet.trialExpiresAt = t;
+    }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
 
@@ -2470,4 +2483,61 @@ async function ensureBrandKitNicheColumns() {
     })().catch((e) => { _brandKitNicheColumnsReady = null; throw e; });
   }
   await _brandKitNicheColumnsReady;
+}
+
+// ─── Daily Usage (trial limits) ───────────────────────────────────────────────
+
+async function ensureDailyUsageTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_dailyUsageTableReady) {
+    _dailyUsageTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS daily_usage (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          feature VARCHAR(32) NOT NULL,
+          date VARCHAR(10) NOT NULL,
+          count INT NOT NULL DEFAULT 0,
+          UNIQUE KEY uq_daily_usage (userId, feature, date),
+          INDEX idx_daily_usage_uid_feat_date (userId, feature, date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+    })().catch((e) => { _dailyUsageTableReady = null; throw e; });
+  }
+  await _dailyUsageTableReady;
+}
+
+export async function getDailyUsageCount(userId: number, feature: string, date: string): Promise<number> {
+  await ensureDailyUsageTable();
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ count: dailyUsage.count })
+    .from(dailyUsage)
+    .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.feature, feature), eq(dailyUsage.date, date)))
+    .limit(1);
+  return rows[0]?.count ?? 0;
+}
+
+export async function incrementDailyUsage(userId: number, feature: string, date: string): Promise<void> {
+  await ensureDailyUsageTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    INSERT INTO daily_usage (userId, feature, date, count)
+    VALUES (${userId}, ${feature}, ${date}, 1)
+    ON DUPLICATE KEY UPDATE count = count + 1
+  `);
+}
+
+export async function getDailyUsageAll(userId: number, date: string): Promise<Record<string, number>> {
+  await ensureDailyUsageTable();
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db
+    .select({ feature: dailyUsage.feature, count: dailyUsage.count })
+    .from(dailyUsage)
+    .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.date, date)));
+  return Object.fromEntries(rows.map((r) => [r.feature, r.count]));
 }

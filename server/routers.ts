@@ -81,6 +81,41 @@ function parseScheduledAtInput(value: Date | string) {
   return scheduledAt;
 }
 
+// ─── Trial Limits ─────────────────────────────────────────────────────────────
+export const TRIAL_DAILY_LIMITS = {
+  images:   5,
+  carousel: 3,
+  articles: 3,
+  videos:   2,
+} as const;
+
+type TrialFeature = keyof typeof TRIAL_DAILY_LIMITS;
+
+async function checkAndIncrTrialUsage(
+  userId: number,
+  trialExpiresAt: Date | null | undefined,
+  feature: TrialFeature,
+): Promise<void> {
+  const expires = trialExpiresAt instanceof Date ? trialExpiresAt : null;
+  if (!expires || expires < new Date()) return; // not on active trial → no limit
+
+  const today = new Date().toISOString().slice(0, 10);
+  const used  = await db.getDailyUsageCount(userId, feature, today);
+  const limit = TRIAL_DAILY_LIMITS[feature];
+
+  if (used >= limit) {
+    const labels: Record<TrialFeature, string> = {
+      images: 'imagens', carousel: 'carrosséis', articles: 'artigos', videos: 'vídeos',
+    };
+    throw new TRPCError({
+      code: 'TOO_MANY_REQUESTS',
+      message: `Você atingiu o limite diário de ${limit} ${labels[feature]} no trial gratuito. Faça upgrade para continuar sem restrições.`,
+    });
+  }
+
+  await db.incrementDailyUsage(userId, feature, today);
+}
+
 // ─── Chat Router ──────────────────────────────────────────────────────────────
 const chatRouter = router({
   getConversations: protectedProcedure.query(async ({ ctx }) => {
@@ -193,6 +228,7 @@ const imagesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'images');
       const [brand, nicheData] = await Promise.all([
         db.getBrandKit(ctx.user.id),
         input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
@@ -237,6 +273,7 @@ const imagesRouter = router({
       count: z.number().min(1).max(4).default(3),
     }))
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'images');
       const [brand, nicheData] = await Promise.all([
         db.getBrandKit(ctx.user.id),
         input.nicheId ? db.getNicheProfile(input.nicheId) : Promise.resolve(null),
@@ -376,6 +413,7 @@ const videosRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'videos');
       const normalizedScript = input.script.replace(/\s+/g, " ").trim();
 
       const preparedSourceImage = await prepareDidSourceImage({
@@ -1130,6 +1168,7 @@ const articlesRouter = router({
       news: selectedNewsSchema,
     }))
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'articles');
       const articleContext = await fetchArticleContext(input.news);
       const contextBlocks = [
         `Titulo original: ${articleContext.title}`,
@@ -1263,6 +1302,7 @@ Regras:
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'articles');
       let title = "";
       let content = "";
       let summary = "";
@@ -1913,6 +1953,7 @@ const carouselRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await checkAndIncrTrialUsage(ctx.user.id, (ctx.user as { trialExpiresAt?: Date | null }).trialExpiresAt, 'carousel');
       try {
         const selectedTemplate = input.templateId
           ? await db.getCarouselTemplate(input.templateId, ctx.user.id)
@@ -3865,7 +3906,8 @@ export const appRouter = router({
         }
         const passwordHash = await hashPassword(input.password);
         const openId = `local_${nanoid()}`;
-        await db.upsertUser({ openId, name: input.name, email: input.email, loginMethod: "email", passwordHash });
+        const trialExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+        await db.upsertUser({ openId, name: input.name, email: input.email, loginMethod: "email", passwordHash, ...(trialExpiresAt && { trialExpiresAt }) } as Parameters<typeof db.upsertUser>[0]);
         const user = await db.getUserByOpenId(openId);
         if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar usuário" });
         const sessionToken = await sdk.createSessionToken(openId, { name: input.name, expiresInMs: ONE_YEAR_MS });
@@ -3906,6 +3948,30 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+
+    trialStatus: protectedProcedure.query(async ({ ctx }) => {
+      const user = ctx.user as typeof ctx.user & { trialExpiresAt?: Date | null };
+      const expires = user.trialExpiresAt instanceof Date ? user.trialExpiresAt : null;
+      const now = new Date();
+      const isActive = !!expires && expires > now;
+      const daysLeft = isActive
+        ? Math.ceil((expires.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+        : 0;
+      const today = now.toISOString().slice(0, 10);
+      const usage = isActive ? await db.getDailyUsageAll(ctx.user.id, today) : {};
+      return {
+        isActive,
+        daysLeft,
+        expiresAt: expires?.toISOString() ?? null,
+        limits: TRIAL_DAILY_LIMITS,
+        usage: {
+          images:   usage['images']   ?? 0,
+          carousel: usage['carousel'] ?? 0,
+          articles: usage['articles'] ?? 0,
+          videos:   usage['videos']   ?? 0,
+        },
+      };
     }),
   }),
   chat: chatRouter,

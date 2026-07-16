@@ -14,6 +14,7 @@ import {
   Zap,
   GalleryHorizontal,
   Clapperboard,
+  Clock,
 } from "lucide-react";
 
 type ModuleConfig = {
@@ -37,6 +38,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
+
+  const { data: trialStatus } = trpc.auth.trialStatus.useQuery();
 
   const { data: chatStats }     = trpc.chat.getStats.useQuery();
   const { data: imageStats }    = trpc.images.getStats.useQuery();
@@ -103,6 +106,21 @@ export default function Dashboard() {
           </h1>
           <p className="text-muted-foreground mt-1">{t("dashboardSubtitle")}</p>
         </div>
+
+        {/* Trial banner */}
+        {trialStatus?.isActive && (
+          <div className="animate-fade-in-up flex items-start gap-4 p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+            <Clock className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                Teste gratuito — {trialStatus.daysLeft} {trialStatus.daysLeft === 1 ? "dia restante" : "dias restantes"}
+              </p>
+              <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
+                Uso hoje: {trialStatus.usage.images ?? 0}/{trialStatus.limits.images} imagens &bull; {trialStatus.usage.carousel ?? 0}/{trialStatus.limits.carousel} carrosséis &bull; {trialStatus.usage.articles ?? 0}/{trialStatus.limits.articles} artigos &bull; {trialStatus.usage.videos ?? 0}/{trialStatus.limits.videos} vídeos
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Quick stats */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>

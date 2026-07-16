@@ -539,7 +539,10 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
         }),
       };
 
-  const response = await fetch(url, requestInit);
+  const response = await fetch(url, {
+    ...requestInit,
+    signal: AbortSignal.timeout(120_000), // 2 min hard cap for image generation
+  });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
