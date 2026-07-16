@@ -300,14 +300,24 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 
 // ── Usage Bar ─────────────────────────────────────────────────────────────────
 
-function UsageBar({ label, value, max, icon: Icon, color }: { label: string; value: number; max: number; icon: React.ComponentType<{ className?: string }>; color: string }) {
+const BAR_COLOR: Record<string, string> = {
+  "text-blue-500":    "bg-blue-500",
+  "text-emerald-500": "bg-emerald-500",
+  "text-amber-500":   "bg-amber-500",
+  "text-fuchsia-500": "bg-fuchsia-500",
+  "text-orange-500":  "bg-orange-500",
+  "text-violet-500":  "bg-violet-500",
+};
+
+function UsageBar({ value, max, icon: Icon, color }: { label: string; value: number; max: number; icon: React.ComponentType<{ className?: string }>; color: string }) {
   const pct = Math.min(100, max > 0 ? (value / max) * 100 : 0);
+  const barClass = BAR_COLOR[color] ?? "bg-primary";
   return (
     <div className="flex items-center gap-1.5 min-w-0">
       <Icon className={cn("w-3 h-3 shrink-0", color)} />
       <span className="text-[10px] text-muted-foreground w-4 text-right font-mono tabular-nums shrink-0">{value}</span>
       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-0">
-        <div className={cn("h-full rounded-full transition-all", color.replace("text-", "bg-"))} style={{ width: `${pct}%` }} />
+        <div className={cn("h-full rounded-full transition-all", barClass)} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -315,11 +325,23 @@ function UsageBar({ label, value, max, icon: Icon, color }: { label: string; val
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
 
+const STAT_ICON_BG: Record<string, string> = {
+  "text-blue-500":       "bg-blue-100 dark:bg-blue-950/30",
+  "text-emerald-500":    "bg-emerald-100 dark:bg-emerald-950/30",
+  "text-amber-500":      "bg-amber-100 dark:bg-amber-950/30",
+  "text-destructive":    "bg-red-100 dark:bg-red-950/30",
+  "text-violet-500":     "bg-violet-100 dark:bg-violet-950/30",
+  "text-cyan-500":       "bg-cyan-100 dark:bg-cyan-950/30",
+  "text-fuchsia-500":    "bg-fuchsia-100 dark:bg-fuchsia-950/30",
+  "text-orange-500":     "bg-orange-100 dark:bg-orange-950/30",
+};
+
 function StatCard({ label, value, sub, color, icon: Icon }: { label: string; value: number | string; sub?: string; color: string; icon: React.ComponentType<{ className?: string }> }) {
+  const bgClass = STAT_ICON_BG[color] ?? "bg-muted";
   return (
     <div className="glass-card rounded-xl p-5">
-      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3", color.replace("text-", "bg-").replace("-500", "-100").replace("-600", "-100") + " dark:" + color.replace("text-", "bg-").replace("-500", "-950/30").replace("-600", "-950/30"))}>
-        <Icon className={cn("w-4.5 h-4.5", color)} />
+      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3", bgClass)}>
+        <Icon className={cn("w-5 h-5", color)} />
       </div>
       <div className="text-2xl font-bold tabular-nums">{value}</div>
       <div className="text-xs font-medium text-foreground mt-0.5">{label}</div>
@@ -353,7 +375,29 @@ export default function SettingsPage() {
   const deleteFlag = trpc.admin.deleteFeatureFlag.useMutation({ onSuccess: () => { toast.success("Flag removida"); flagsQuery.refetch(); }, onError: (e) => toast.error(e.message) });
   const upsertFlag = trpc.admin.upsertFeatureFlag.useMutation({ onSuccess: () => flagsQuery.refetch(), onError: (e) => toast.error(e.message) });
 
-  if (loading || !user || !isAdmin) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen gradient-bg flex items-center justify-center">
+        <div className="glass-card p-8 flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen gradient-bg flex items-center justify-center">
+        <div className="glass-card p-8 flex flex-col items-center gap-4 text-center max-w-sm">
+          <Shield className="w-10 h-10 text-muted-foreground" />
+          <p className="font-semibold">Acesso restrito</p>
+          <p className="text-sm text-muted-foreground">Esta página é exclusiva para administradores.</p>
+          <Button size="sm" onClick={() => navigate("/dashboard")}>Voltar ao painel</Button>
+        </div>
+      </div>
+    );
+  }
 
   const stats    = statsQuery.data;
   const flags    = flagsQuery.data ?? [];

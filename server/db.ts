@@ -576,27 +576,33 @@ export async function listUsersWithStats() {
   const db = await getDb();
   if (!db) return [];
   await ensureUserExtraColumns();
+  // Ensure all lazily-created tables exist before querying them
+  await ensureAvatarVideoTable();
+  await ensureSocialPostsMetadataColumn();
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
 
-  // Aggregate content counts per userId in parallel
+  type CountRow = { userId: number; n: number };
+  const countStar = sql<number>`count(*)`;
+
+  // Aggregate content counts per userId in parallel using raw sql count (safe across all Drizzle versions)
   const [imgCounts, artCounts, carCounts, vidCounts, postCounts, chatCounts] = await Promise.all([
-    db.select({ userId: generatedImages.userId, n: count() }).from(generatedImages).groupBy(generatedImages.userId),
-    db.select({ userId: articles.userId, n: count() }).from(articles).groupBy(articles.userId),
-    db.select({ userId: carousels.userId, n: count() }).from(carousels).groupBy(carousels.userId),
-    db.select({ userId: avatarVideos.userId, n: count() }).from(avatarVideos).groupBy(avatarVideos.userId),
-    db.select({ userId: socialPosts.userId, n: count() }).from(socialPosts).groupBy(socialPosts.userId),
-    db.select({ userId: chatConversations.userId, n: count() }).from(chatConversations).groupBy(chatConversations.userId),
+    db.select({ userId: generatedImages.userId,     n: countStar }).from(generatedImages).groupBy(generatedImages.userId),
+    db.select({ userId: articles.userId,            n: countStar }).from(articles).groupBy(articles.userId),
+    db.select({ userId: carousels.userId,           n: countStar }).from(carousels).groupBy(carousels.userId),
+    db.select({ userId: avatarVideos.userId,        n: countStar }).from(avatarVideos).groupBy(avatarVideos.userId),
+    db.select({ userId: socialPosts.userId,         n: countStar }).from(socialPosts).groupBy(socialPosts.userId),
+    db.select({ userId: chatConversations.userId,   n: countStar }).from(chatConversations).groupBy(chatConversations.userId),
   ]);
 
-  const toMap = (arr: { userId: number; n: number }[]) =>
-    Object.fromEntries(arr.map((r) => [r.userId, r.n]));
+  const toMap = (arr: CountRow[]) =>
+    Object.fromEntries((arr as CountRow[]).map((r) => [r.userId, Number(r.n)]));
 
-  const imgs  = toMap(imgCounts  as { userId: number; n: number }[]);
-  const arts  = toMap(artCounts  as { userId: number; n: number }[]);
-  const cars  = toMap(carCounts  as { userId: number; n: number }[]);
-  const vids  = toMap(vidCounts  as { userId: number; n: number }[]);
-  const posts = toMap(postCounts as { userId: number; n: number }[]);
-  const chats = toMap(chatCounts as { userId: number; n: number }[]);
+  const imgs  = toMap(imgCounts  as unknown as CountRow[]);
+  const arts  = toMap(artCounts  as unknown as CountRow[]);
+  const cars  = toMap(carCounts  as unknown as CountRow[]);
+  const vids  = toMap(vidCounts  as unknown as CountRow[]);
+  const posts = toMap(postCounts as unknown as CountRow[]);
+  const chats = toMap(chatCounts as unknown as CountRow[]);
 
   return rows.map((u) => ({
     ...u,
