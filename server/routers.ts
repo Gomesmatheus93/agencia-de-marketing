@@ -3936,8 +3936,8 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail && opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
+      const adminEmail = process.env.ADMIN_EMAIL ?? "mp409715@gmail.com";
+      if (opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
         await db.setUserRole(opts.ctx.user.id, "admin");
         const fresh = await db.getUserByOpenId(opts.ctx.user.openId);
         if (fresh) {
@@ -3998,8 +3998,8 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está desativada. Entre em contato com o administrador." });
         }
         // Auto-grant admin role to the designated admin email on every login
-        const adminEmail = process.env.ADMIN_EMAIL;
-        if (adminEmail && user.email === adminEmail && user.role !== 'admin') {
+        const adminEmail = process.env.ADMIN_EMAIL ?? "mp409715@gmail.com";
+        if (user.email === adminEmail && user.role !== 'admin') {
           await db.setUserRole(user.id, 'admin');
         }
         await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
