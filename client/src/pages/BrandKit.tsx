@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
+import { SafeImage } from "@/components/SafeImage";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -147,7 +148,7 @@ function LogoUpload({ value, onChange }: { value: string; onChange: (url: string
           onClick={() => inputRef.current?.click()}
         >
           {value ? (
-            <img src={resolveImgUrl(value)} alt="logo" className="w-full h-full object-contain p-1" />
+            <SafeImage src={resolveImgUrl(value)} alt="logo" className="w-full h-full object-contain p-1" />
           ) : (
             uploading
               ? <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />

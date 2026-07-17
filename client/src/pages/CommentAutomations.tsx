@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AppLayout from "@/components/AppLayout";
+import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -213,7 +214,7 @@ function PostSelector({
             }`}
           >
             {thumb ? (
-              <img src={thumb} alt="" className="w-full h-full object-cover" />
+              <SafeImage src={thumb} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-muted flex items-center justify-center">
                 <Instagram className="w-6 h-6 text-muted-foreground opacity-40" />
@@ -379,7 +380,7 @@ function NewCampaignDialog({
               ) : connStatus?.connected ? (
                 <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-muted/30">
                   {connStatus.profilePictureUrl ? (
-                    <img src={connStatus.profilePictureUrl} className="w-12 h-12 rounded-full border-2 border-primary/30" alt="" />
+                    <SafeImage src={connStatus.profilePictureUrl} className="w-12 h-12 rounded-full border-2 border-primary/30" alt="" fallbackClassName="rounded-full" />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
                       <Instagram className="w-6 h-6 text-white" />
@@ -629,7 +630,7 @@ function CampaignCard({
         {/* Thumbnail */}
         <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-muted border border-border/40">
           {campaign.postThumbnailUrl ? (
-            <img src={campaign.postThumbnailUrl} alt="" className="w-full h-full object-cover" />
+            <SafeImage src={campaign.postThumbnailUrl} alt="" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Instagram className="w-6 h-6 text-muted-foreground opacity-40" />

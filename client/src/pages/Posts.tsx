@@ -56,6 +56,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SafeImage } from "@/components/SafeImage";
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm|avi)(\?|$)/i;
 
@@ -462,7 +463,7 @@ export default function Posts() {
                               preload="metadata"
                             />
                           ) : (
-                            <img
+                            <SafeImage
                               src={resolveImgUrl(post.imageUrl)}
                               alt=""
                               className="w-full h-full object-cover"
@@ -653,7 +654,7 @@ export default function Posts() {
                             {mediaType === "video" ? (
                               <video src={resolveImgUrl(url)} className="w-full h-full object-cover" muted playsInline autoPlay loop />
                             ) : (
-                              <img src={resolveImgUrl(url)} alt="" className="w-full h-full object-cover" />
+                              <SafeImage src={resolveImgUrl(url)} alt="" className="w-full h-full object-cover" />
                             )}
                             {mediaType === "video" && (
                               <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-black/60 text-white text-[9px] font-medium px-1.5 py-0.5 rounded-full">
@@ -848,7 +849,7 @@ export default function Posts() {
                   <div className={cn("overflow-hidden", channelConfig[previewPost.channel].bg)}>
                     {previewPost.imageUrl && (
                       <div className="w-full aspect-[4/5] overflow-hidden">
-                        <img
+                        <SafeImage
                           src={resolveImgUrl(previewPost.imageUrl)}
                           alt="Imagem do post"
                           className="w-full h-full object-cover"

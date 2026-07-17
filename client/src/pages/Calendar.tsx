@@ -49,6 +49,15 @@ import {
 } from "@/lib/holidays";
 import type { SocialPost } from "@shared/types";
 import { toSchedulerDatetimeLocalValue } from "@/lib/scheduling";
+import { SafeImage } from "@/components/SafeImage";
+
+function resolveImgUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
+  return url;
+}
 
 // ── Channel config ────────────────────────────────────────────────────────────
 
@@ -753,13 +762,14 @@ function CreatePostDialog({
               </div>
             ) : imageUrl ? (
               <div className="relative rounded-xl overflow-hidden border border-border">
-                <img
-                  src={displayImageUrl || imageUrl}
+                <SafeImage
+                  src={resolveImgUrl(displayImageUrl || imageUrl)}
                   alt="Imagem gerada para o post"
                   className={cn(
                     "w-full object-cover",
                     channel === "instagram" ? "aspect-[4/5]" : "aspect-video"
                   )}
+                  fallbackClassName={channel === "instagram" ? "aspect-[4/5]" : "aspect-video"}
                 />
               </div>
             ) : (
@@ -1402,7 +1412,7 @@ function QuoteCardDialog({
               <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border border-border/40">
                 <label className="relative w-12 h-12 rounded-full shrink-0 cursor-pointer group">
                   {profilePhotoUrl
-                    ? <img src={profilePhotoUrl} className="w-12 h-12 rounded-full object-cover border-[3px] border-orange-400" />
+                    ? <SafeImage src={profilePhotoUrl} className="w-12 h-12 rounded-full object-cover border-[3px] border-orange-400" alt="" fallbackClassName="rounded-full" />
                     : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white font-bold text-lg">
                         {profileName.charAt(0).toUpperCase()}
                       </div>}
@@ -1490,9 +1500,11 @@ function QuoteCardDialog({
                 {/* Profile */}
                 <div className="flex items-center justify-center gap-2.5">
                   {profilePhotoUrl ? (
-                    <img
+                    <SafeImage
                       src={profilePhotoUrl}
+                      alt=""
                       className="rounded-full object-cover shrink-0"
+                      fallbackClassName="rounded-full"
                       style={{ width: '44px', height: '44px', border: '3px solid #f97316' }}
                     />
                   ) : (

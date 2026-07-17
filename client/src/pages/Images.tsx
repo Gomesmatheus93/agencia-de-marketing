@@ -29,6 +29,15 @@ import {
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
+
+function resolveImgUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
+  return url;
+}
 
 type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
 
@@ -457,7 +466,7 @@ export default function Images() {
                 <div className="grid grid-cols-3 gap-3">
                   {variations.map((v, i) => (
                     <div key={i} className="group relative aspect-square rounded-xl overflow-hidden border border-border/40 cursor-pointer hover:border-primary/50 hover:scale-[1.02] transition-all">
-                      <img src={v.url} alt={`V${i + 1}`} className="w-full h-full object-cover" />
+                      <SafeImage src={resolveImgUrl(v.url)} alt={`V${i + 1}`} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-end p-2 opacity-0 group-hover:opacity-100">
                         <button
                           onClick={() => handleDownload(v.url)}
@@ -532,7 +541,7 @@ export default function Images() {
                     ) : (
                       <>
                         <img
-                          src={img.imageUrl}
+                          src={resolveImgUrl(img.imageUrl)}
                           alt={img.prompt}
                           className="w-full h-full object-cover"
                           loading="lazy"
@@ -569,10 +578,11 @@ export default function Images() {
           {selectedImage && (
             <>
               <div className="relative bg-black/5">
-                <img
-                  src={selectedImage.imageUrl}
+                <SafeImage
+                  src={resolveImgUrl(selectedImage.imageUrl)}
                   alt={selectedImage.prompt}
                   className="w-full max-h-[55vh] object-contain"
+                  fallbackClassName="min-h-[200px]"
                 />
                 <button
                   onClick={() => setSelectedImage(null)}

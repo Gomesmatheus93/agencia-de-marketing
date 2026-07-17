@@ -49,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { SafeImage } from "@/components/SafeImage";
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
@@ -193,7 +194,7 @@ function PostCard({
     <div className="group overflow-hidden rounded-2xl border border-border/40 bg-background/80 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-border/70">
       <div className="relative aspect-square overflow-hidden bg-muted">
         {thumb ? (
-          <img src={thumb} alt="post" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+          <SafeImage src={thumb} alt="post" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
         ) : (
           <div className="flex h-full items-center justify-center">
             <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
@@ -641,7 +642,7 @@ function InstagramTab() {
                 {isLoading ? (
                   <Skeleton className="h-[72px] w-[72px] rounded-full" />
                 ) : profile?.profile_picture_url ? (
-                  <img src={profile.profile_picture_url} alt="avatar" className="h-[72px] w-[72px] rounded-full border-[3px] border-background object-cover shadow-lg" />
+                  <SafeImage src={profile.profile_picture_url} alt="avatar" className="h-[72px] w-[72px] rounded-full border-[3px] border-background object-cover shadow-lg" fallbackClassName="rounded-full" />
                 ) : (
                   <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[3px] border-background bg-gradient-to-br from-[#7b00ae] to-[#fe6e00] text-xl font-bold text-white shadow-lg">
                     {profile?.username?.[0]?.toUpperCase() ?? "K"}
@@ -749,10 +750,11 @@ function InstagramTab() {
               {topPost && !mediaQuery.isLoading ? (
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   {(topPost.thumbnail_url || topPost.media_url) ? (
-                    <img
+                    <SafeImage
                       src={topPost.thumbnail_url ?? topPost.media_url}
                       alt=""
                       className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                      fallbackClassName="rounded-lg"
                     />
                   ) : (
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -1181,7 +1183,7 @@ function LinkedInTab() {
               {isLoading ? (
                 <Skeleton className="h-20 w-20 rounded-full" />
               ) : profile?.picture ? (
-                <img src={profile.picture} alt="avatar" className="h-20 w-20 rounded-full border-4 border-background object-cover shadow-xl" />
+                <SafeImage src={profile.picture} alt="avatar" className="h-20 w-20 rounded-full border-4 border-background object-cover shadow-xl" fallbackClassName="rounded-full" />
               ) : (
                 <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-background bg-[#0A66C2] text-2xl font-bold text-white shadow-xl">
                   {profile?.name?.[0]?.toUpperCase() ?? "L"}
@@ -1291,7 +1293,7 @@ function LinkedInTab() {
               return (
                 <div key={post.id} className="flex gap-3 rounded-xl border border-border/30 bg-muted/20 p-3 transition-colors hover:bg-muted/40">
                   {post.imageUrl ? (
-                    <img src={post.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                    <SafeImage src={post.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" fallbackClassName="rounded-lg" />
                   ) : (
                     <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[#0A66C2]/10">
                       <Linkedin className="h-6 w-6 text-[#0A66C2]" />

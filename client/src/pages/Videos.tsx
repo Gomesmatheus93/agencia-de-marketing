@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 import { type ComponentType, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -595,7 +596,7 @@ export default function Videos() {
                         {video.videoUrl ? (
                           <video src={video.videoUrl} className="h-full w-full object-cover" muted playsInline />
                         ) : (
-                          <img src={video.sourceImageUrl} alt={video.title} className="h-full w-full object-cover" />
+                          <SafeImage src={video.sourceImageUrl} alt={video.title ?? ""} className="h-full w-full object-cover" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
@@ -655,7 +656,7 @@ export default function Videos() {
                   {selectedVideo.videoUrl ? (
                     <video src={selectedVideo.videoUrl} controls className="max-h-[60vh] w-full bg-black" />
                   ) : (
-                    <img src={selectedVideo.sourceImageUrl} alt={selectedVideo.title} className="max-h-[60vh] w-full object-contain" />
+                    <SafeImage src={selectedVideo.sourceImageUrl} alt={selectedVideo.title ?? ""} className="max-h-[60vh] w-full object-contain" fallbackClassName="min-h-[200px]" />
                   )}
                 </div>
                 <div className="space-y-3">
