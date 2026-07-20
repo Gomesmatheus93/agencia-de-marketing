@@ -711,10 +711,14 @@ async function startServer() {
   // Landing page — served at root; platform is under /app
   app.use("/landing-assets", express.static(path.join(process.cwd(), "landing")));
   app.get("/", (_req, res) => {
-    res.sendFile(path.join(process.cwd(), "landing", "index.html"));
+    res.sendFile(path.join(process.cwd(), "landing", "index.html"), (err) => {
+      if (err) res.redirect("/app");
+    });
   });
   app.get("/demo", (_req, res) => {
-    res.sendFile(path.join(process.cwd(), "landing", "demo.html"));
+    res.sendFile(path.join(process.cwd(), "landing", "demo.html"), (err) => {
+      if (err) res.redirect("/app");
+    });
   });
   // tRPC API
   app.use(
