@@ -56,7 +56,7 @@ function approvalHtmlPage(ok: boolean, action: string, reason?: string): string 
     <div class="icon">${icon}</div>
     <h1>${title}</h1>
     <p>${msg}</p>
-    <a href="/">Abrir plataforma</a>
+    <a href="/app">Abrir plataforma</a>
   </div>
 </body>
 </html>`;
@@ -708,7 +708,11 @@ async function startServer() {
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
-  // Landing pages
+  // Landing page — served at root; platform is under /app
+  app.use("/landing-assets", express.static(path.join(process.cwd(), "landing")));
+  app.get("/", (_req, res) => {
+    res.sendFile(path.join(process.cwd(), "landing", "index.html"));
+  });
   app.get("/demo", (_req, res) => {
     res.sendFile(path.join(process.cwd(), "landing", "demo.html"));
   });

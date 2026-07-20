@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Router, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -22,7 +22,7 @@ import CommentAutomations from "./pages/CommentAutomations";
 import StyleAnalyzer from "./pages/StyleAnalyzer";
 import AdminPanel from "./pages/AdminPanel";
 
-function Router() {
+function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={Login} />
@@ -57,7 +57,9 @@ function App() {
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
           <Toaster position="top-right" richColors />
-          <Router />
+          <Router base="/app">
+            <AppRoutes />
+          </Router>
         </TooltipProvider>
       </ThemeProvider>
       </LanguageProvider>

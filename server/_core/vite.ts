@@ -26,7 +26,7 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
+  app.use("/app", async (req, res, next) => {
     const url = req.originalUrl;
 
     try {
@@ -61,9 +61,9 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
-
-  app.use("*", (_req, res) => {
+  // Platform served under /app — mirrors Vite base: "/app"
+  app.use("/app", express.static(distPath));
+  app.use("/app", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

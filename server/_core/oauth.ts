@@ -180,7 +180,7 @@ export function registerOAuthRoutes(app: Express) {
 
     // Determine where to redirect on error — if user had a session, send to analytics; otherwise to login
     const pending = state ? pendingIgLoginStates.get(state) : undefined;
-    const errorRedirect = pending?.userId ? "/dashboard/analytics" : "/";
+    const errorRedirect = pending?.userId ? "/app/dashboard/analytics" : "/app";
 
     if (oauthError) {
       console.warn("[OAuth/IGLogin] User denied:", oauthError);
@@ -288,7 +288,7 @@ export function registerOAuthRoutes(app: Express) {
       }
 
       console.log(`[OAuth/IGLogin] @${userData.username} conectado ao userId=${targetUserId}`);
-      res.redirect("/dashboard/analytics?ig_connect=success");
+      res.redirect("/app/dashboard/analytics?ig_connect=success");
     } catch (err) {
       console.error("[OAuth/IGLogin] Erro:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
@@ -327,18 +327,18 @@ export function registerOAuthRoutes(app: Express) {
 
     if (oauthError) {
       console.warn("[OAuth/Instagram] User denied authorization:", oauthError);
-      res.redirect("/?error=oauth_denied");
+      res.redirect("/app?error=oauth_denied");
       return;
     }
 
     if (!state || !pendingStates.has(state)) {
-      res.redirect("/?error=oauth_invalid_state");
+      res.redirect("/app?error=oauth_invalid_state");
       return;
     }
     pendingStates.delete(state);
 
     if (!code) {
-      res.redirect("/?error=oauth_no_code");
+      res.redirect("/app?error=oauth_no_code");
       return;
     }
 
@@ -500,9 +500,9 @@ export function registerOAuthRoutes(app: Express) {
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
       if (igConnectStatus === "success") {
-        res.redirect("/dashboard/analytics?ig_connect=success");
+        res.redirect("/app/dashboard/analytics?ig_connect=success");
       } else {
-        res.redirect(`/dashboard/analytics?ig_connect=no_account`);
+        res.redirect(`/app/dashboard/analytics?ig_connect=no_account`);
       }
     } catch (err) {
       console.error("[OAuth/Instagram] Erro no callback:", err);
@@ -510,10 +510,10 @@ export function registerOAuthRoutes(app: Express) {
       // If the failure is DB-related to instagram_connections, don't block login
       if (errMsg.includes("instagram_connections") || errMsg.includes("Failed query")) {
         console.warn("[OAuth/Instagram] DB error during connection save — redirecting to analytics anyway");
-        res.redirect("/dashboard/analytics?ig_connect=no_account");
+        res.redirect("/app/dashboard/analytics?ig_connect=no_account");
       } else {
         const message = encodeURIComponent(errMsg);
-        res.redirect(`/?error=oauth_failed&detail=${message}`);
+        res.redirect(`/app?error=oauth_failed&detail=${message}`);
       }
     }
   });
@@ -555,7 +555,7 @@ export function registerOAuthRoutes(app: Express) {
     } catch { /* ignore */ }
 
     if (!userId) {
-      res.redirect("/dashboard/settings?ig_connect=requires_login");
+      res.redirect("/app/dashboard/settings?ig_connect=requires_login");
       return;
     }
 
@@ -585,19 +585,19 @@ export function registerOAuthRoutes(app: Express) {
 
     if (oauthError) {
       console.warn("[OAuth/Instagram/Connect] User denied authorization:", oauthError);
-      res.redirect("/dashboard/analytics?ig_connect=denied");
+      res.redirect("/app/dashboard/analytics?ig_connect=denied");
       return;
     }
 
     const pending = state ? pendingConnectStates.get(state) : undefined;
     if (!pending) {
-      res.redirect("/dashboard/analytics?ig_connect=invalid_state");
+      res.redirect("/app/dashboard/analytics?ig_connect=invalid_state");
       return;
     }
     pendingConnectStates.delete(state);
 
     if (!code) {
-      res.redirect("/dashboard/analytics?ig_connect=no_code");
+      res.redirect("/app/dashboard/analytics?ig_connect=no_code");
       return;
     }
 
@@ -639,7 +639,7 @@ export function registerOAuthRoutes(app: Express) {
 
       if (!resolvedIg?.id) {
         console.warn(`[OAuth/Instagram/Connect] Nenhuma conta IG encontrada para userId=${pending.userId}`);
-        res.redirect("/dashboard/analytics?ig_connect=no_account");
+        res.redirect("/app/dashboard/analytics?ig_connect=no_account");
         return;
       }
 
@@ -671,11 +671,11 @@ export function registerOAuthRoutes(app: Express) {
       } catch (e) {
         console.warn(`[OAuth/Instagram/Connect] Erro ao subscrever webhook de comments:`, e);
       }
-      res.redirect("/dashboard/analytics?ig_connect=success");
+      res.redirect("/app/dashboard/analytics?ig_connect=success");
     } catch (err) {
       console.error("[OAuth/Instagram/Connect] Erro:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
-      res.redirect(`/dashboard/analytics?ig_connect=error&detail=${msg}`);
+      res.redirect(`/app/dashboard/analytics?ig_connect=error&detail=${msg}`);
     }
   });
 
@@ -708,7 +708,7 @@ export function registerOAuthRoutes(app: Express) {
     }
 
     if (!userId) {
-      res.redirect("/?error=canva_auth_requires_login");
+      res.redirect("/app?error=canva_auth_requires_login");
       return;
     }
 
@@ -731,19 +731,19 @@ export function registerOAuthRoutes(app: Express) {
 
     if (oauthError) {
       console.warn("[OAuth/Canva] Usuário negou autorização:", oauthError);
-      res.redirect("/dashboard/carousel?canva_connect=denied");
+      res.redirect("/app/dashboard/carousel?canva_connect=denied");
       return;
     }
 
     const pending = state ? pendingCanvaStates.get(state) : undefined;
     if (!pending) {
-      res.redirect("/dashboard/carousel?canva_connect=invalid_state");
+      res.redirect("/app/dashboard/carousel?canva_connect=invalid_state");
       return;
     }
     pendingCanvaStates.delete(state);
 
     if (!code) {
-      res.redirect("/dashboard/carousel?canva_connect=no_code");
+      res.redirect("/app/dashboard/carousel?canva_connect=no_code");
       return;
     }
 
@@ -771,11 +771,11 @@ export function registerOAuthRoutes(app: Express) {
       });
 
       console.log(`[OAuth/Canva] Conectado: userId=${pending.userId} canvaUserId=${profile?.user_id}`);
-      res.redirect("/dashboard/carousel?canva_connect=success");
+      res.redirect("/app/dashboard/carousel?canva_connect=success");
     } catch (err) {
       console.error("[OAuth/Canva] Erro no callback:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
-      res.redirect(`/dashboard/carousel?canva_connect=error&detail=${msg}`);
+      res.redirect(`/app/dashboard/carousel?canva_connect=error&detail=${msg}`);
     }
   });
 }
