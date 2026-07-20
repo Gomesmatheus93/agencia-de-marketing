@@ -3,7 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import path from "path";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -264,8 +264,23 @@ async function startServer() {
   });
 
   // POST: incoming WhatsApp messages — match digit reply to digest session
-  app.post("/api/whatsapp/webhook", express.json(), async (req, res) => {
-    res.sendStatus(200); // always ACK Meta first to avoid retries
+  app.post("/api/whatsapp/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    // Verify HMAC-SHA256 signature sent by Meta in X-Hub-Signature-256
+    const appSecret = ENV.whatsappAppSecret;
+    if (appSecret) {
+      const sigHeader = req.headers["x-hub-signature-256"];
+      const sigHex = typeof sigHeader === "string" ? sigHeader.replace("sha256=", "") : "";
+      const expected = createHmac("sha256", appSecret).update(req.body as Buffer).digest("hex");
+      const sigBuf = Buffer.from(sigHex, "hex");
+      const expBuf = Buffer.from(expected, "hex");
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[MetaWebhook] Assinatura HMAC inválida — payload rejeitado");
+        res.sendStatus(403);
+        return;
+      }
+    }
+
+    res.sendStatus(200); // ACK Meta after signature check
 
     try {
       type WaEntry = {
@@ -279,7 +294,7 @@ async function startServer() {
           };
         }>;
       };
-      const body = req.body as { entry?: WaEntry[] };
+      const body = JSON.parse((req.body as Buffer).toString("utf8")) as { entry?: WaEntry[] };
 
       // Log everything received so we can see if replies are arriving here
       console.log("[MetaWebhook] Payload recebido:", JSON.stringify(body).slice(0, 800));
@@ -423,122 +438,6 @@ async function startServer() {
   // POST: recebe mensagem do usuário vinda do agregador de números.
   // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
   app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
-
-  // ── Diagnóstico: usuário autenticado + seus carrosseis ───────────────────
-  app.get("/api/debug/me", async (req, res) => {
-    try {
-      const user = await sdk.authenticateRequest(req).catch(() => null);
-      if (!user) { res.json({ error: "Não autenticado — faça login primeiro" }); return; }
-      const userCarousels = await db.getCarousels(user.id);
-      res.json({
-        userId: user.id,
-        email: (user as Record<string, unknown>).email,
-        name: (user as Record<string, unknown>).name,
-        carouselCount: userCarousels.length,
-        carousels: userCarousels.map(c => ({ id: c.id, topic: c.topic, slides: c.slides?.length })),
-      });
-    } catch (err) {
-      res.json({ error: String(err) });
-    }
-  });
-
-  // ── Diagnóstico de carrosseis por userId ─────────────────────────────────
-  app.get("/api/debug/carousels/:userId", async (req, res) => {
-    try {
-      const userId = parseInt(req.params.userId, 10);
-      if (isNaN(userId)) { res.json({ error: "userId inválido" }); return; }
-      const { getDb } = await import("../db");
-      const { sql } = await import("drizzle-orm");
-      const database = await getDb();
-      if (!database) { res.json({ error: "DB não disponível" }); return; }
-
-      // Raw SQL para confirmar que o dado está no banco
-      const rawRows = await database.execute(sql`
-        SELECT id, userId, topic, style, createdAt,
-               CHAR_LENGTH(slides) as slidesLen
-        FROM carousels WHERE userId = ${userId}
-        ORDER BY createdAt DESC LIMIT 5
-      `);
-
-      // Via função db.getCarousels (mesma path da rota tRPC)
-      const viaDbLayer = await db.getCarousels(userId);
-
-      // Usuários cadastrados (para confirmar userId × email)
-      const users = await database.execute(sql`
-        SELECT id, email, name FROM users ORDER BY id DESC LIMIT 20
-      `);
-
-      res.json({
-        userId,
-        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
-        env: process.env.NODE_ENV,
-        rawCarousels: rawRows[0],
-        dbLayerCount: viaDbLayer.length,
-        dbLayerSlides: viaDbLayer.map(c => ({ id: c.id, topic: c.topic, slidesCount: c.slides?.length })),
-        users: users[0],
-      });
-    } catch (err) {
-      res.json({ error: String(err) });
-    }
-  });
-
-  // ── Diagnóstico completo do fluxo digest → artigo/carrossel ─────────────
-  app.get("/api/debug/digest-sessions", async (_req, res) => {
-    try {
-      const { getDb } = await import("../db");
-      const database = await getDb();
-      if (!database) { res.json({ error: "DB não disponível" }); return; }
-      const { sql } = await import("drizzle-orm");
-
-      const sessions = await database.execute(sql`
-        SELECT id, campaign_id, user_id, phone_number, sent_at, expires_at, user_response, chosen_index, responded_at
-        FROM whatsapp_digest_sessions ORDER BY sent_at DESC LIMIT 10
-      `);
-
-      // Últimos artigos gerados (colunas em camelCase conforme schema Drizzle)
-      const articles = await database.execute(sql`
-        SELECT id, userId, title, status, createdAt
-        FROM articles ORDER BY createdAt DESC LIMIT 10
-      `);
-
-      // Últimos carrosséis gerados
-      const carousels = await database.execute(sql`
-        SELECT id, userId, topic, style, createdAt
-        FROM carousels ORDER BY createdAt DESC LIMIT 10
-      `);
-
-      res.json({
-        sessions: sessions[0],
-        articles: articles[0],
-        carousels: carousels[0],
-        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
-        env: process.env.NODE_ENV,
-      });
-    } catch (err) {
-      res.json({ error: String(err) });
-    }
-  });
-
-  // ── Diagnóstico: contexto tRPC (simula createContext + getCarousels) ────
-  app.get("/api/debug/carousel-context", async (req, res) => {
-    try {
-      // Simula exatamente o que createContext faz (com try-catch interno)
-      const userFromContext = await sdk.authenticateRequest(req).catch(() => null);
-      if (!userFromContext) {
-        res.json({ error: "Não autenticado" });
-        return;
-      }
-      const carousels = await db.getCarousels(userFromContext.id);
-      res.json({
-        userId: userFromContext.id,
-        carouselCount: carousels.length,
-        firstSlideField: carousels[0]?.slides?.[0] ? Object.keys(carousels[0].slides[0]).join(",") : "n/a",
-        db: process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"),
-      });
-    } catch (err) {
-      res.json({ error: String(err) });
-    }
-  });
 
   // ── n8n: match comment against active automations ────────────────────────
   // Called by n8n when Instagram sends a comment webhook.

@@ -73,6 +73,8 @@ const aiRateLimit = withRateLimit(10, 60_000);
 
 export const protectedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
 export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
+// 5 attempts per 15 minutes — for login/register
+export const publicRateLimitedProcedure = t.procedure.use(withRateLimit(5, 15 * 60_000));
 
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {

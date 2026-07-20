@@ -3,7 +3,7 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter } from "./_core/adminRouter";
-import { aiProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { buildNewsletterHtml } from "./_core/newsletterTemplate";
@@ -3936,8 +3936,8 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const adminEmail = process.env.ADMIN_EMAIL ?? "mp409715@gmail.com";
-      if (opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail && opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
         await db.setUserRole(opts.ctx.user.id, "admin");
         const fresh = await db.getUserByOpenId(opts.ctx.user.openId);
         if (fresh) {
@@ -3949,7 +3949,7 @@ export const appRouter = router({
       return safeUser;
     }),
 
-    register: publicProcedure
+    register: publicRateLimitedProcedure
       .input(z.object({
         name: z.string().min(2).max(100),
         email: z.string().email(),
@@ -3978,7 +3978,7 @@ export const appRouter = router({
         return safeRegUser;
       }),
 
-    login: publicProcedure
+    login: publicRateLimitedProcedure
       .input(z.object({
         email: z.string().email(),
         password: z.string(),
@@ -3998,8 +3998,8 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está desativada. Entre em contato com o administrador." });
         }
         // Auto-grant admin role to the designated admin email on every login
-        const adminEmail = process.env.ADMIN_EMAIL ?? "mp409715@gmail.com";
-        if (user.email === adminEmail && user.role !== 'admin') {
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (adminEmail && user.email === adminEmail && user.role !== 'admin') {
           await db.setUserRole(user.id, 'admin');
         }
         await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });

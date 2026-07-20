@@ -59,6 +59,7 @@ export const ENV = {
   whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
   whatsappRecipientNumber: process.env.WHATSAPP_RECIPIENT_NUMBER ?? "",
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "krythos-webhook-verify",
+  whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? "",
   // Shared secret for n8n → KrythosLab server-to-server calls
   n8nSecret: process.env.N8N_SECRET ?? "",
   // ScraperAPI — usado para buscar posts de perfis externos do Instagram via proxy residencial
