@@ -607,13 +607,11 @@ async function startServer() {
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
-  // Landing page — served at root; platform is under /app
-  app.use("/landing-assets", express.static(path.join(process.cwd(), "landing")));
-  app.get("/", (_req, res) => {
-    res.sendFile(path.join(process.cwd(), "landing", "index.html"), (err) => {
-      if (err) res.redirect("/app");
-    });
-  });
+  // Landing page — served at root; all files in landing/ (logo.png, favicon.ico, etc.)
+  // are served at root-level URLs so relative paths in the HTML resolve correctly.
+  const landingDir = path.join(process.cwd(), "landing");
+  app.use(express.static(landingDir));
+  app.use("/landing-assets", express.static(landingDir));
   app.get("/demo", (_req, res) => {
     res.sendFile(path.join(process.cwd(), "landing", "demo.html"), (err) => {
       if (err) res.redirect("/app");
