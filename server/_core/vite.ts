@@ -26,7 +26,9 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
-  app.use("/app", async (req, res, next) => {
+  // Serve React SPA for /app and all sub-routes (client-side routing)
+  app.use("*", async (req, res, next) => {
+    if (!req.originalUrl.startsWith("/app")) return next();
     const url = req.originalUrl;
 
     try {
@@ -63,7 +65,9 @@ export function serveStatic(app: Express) {
 
   // Platform served under /app — mirrors Vite base: "/app"
   app.use("/app", express.static(distPath));
-  app.use("/app", (_req, res) => {
+  // Catch-all: serve React index.html for any /app route (client-side routing)
+  app.use("*", (req, res, next) => {
+    if (!req.originalUrl.startsWith("/app")) return next();
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
