@@ -1,56 +1,77 @@
 import { ENV } from "./env";
 
-const FAL_BASE = "https://fal.run";
-const FAL_MODEL = "fal-ai/flux-pro/v1.1-ultra";
-
 // Type-specific visual direction appended to the LLM visual_prompt
 const TYPE_STYLE: Record<string, string> = {
-  poll:              "bold graphic, high contrast, vivid background, engaging atmosphere",
-  quiz:              "playful colorful geometry, bright palette, energetic",
-  countdown:         "dramatic cinematic lighting, epic atmosphere, sense of anticipation",
-  question_box:      "warm conversational, pastel tones, inviting and approachable",
-  behind_scenes:     "candid authentic mood, warm golden tones, lifestyle photography feel",
-  post_reinforcement: "modern professional, clean minimal, strong visual hierarchy",
+  poll:               "bold graphic design, vivid contrasting colors, dynamic composition",
+  quiz:               "playful colorful geometry, bright energetic palette, fun atmosphere",
+  countdown:          "dramatic cinematic lighting, epic atmosphere, strong sense of anticipation",
+  question_box:       "warm inviting tones, soft pastel background, approachable lifestyle",
+  behind_scenes:      "candid authentic mood, warm golden hour lighting, lifestyle photography",
+  post_reinforcement: "modern professional, clean bold design, strong visual impact",
 };
 
-interface FalResponse {
-  images?: Array<{ url: string; width: number; height: number }>;
+interface DalleResponse {
+  data?: Array<{ url?: string; b64_json?: string }>;
 }
 
 export async function generateStoryImage(
   visualPrompt: string,
   slideType: string,
 ): Promise<string | null> {
-  if (!ENV.falApiKey) return null;
+  if (!ENV.openaiApiKey) return null;
 
   const typeHint = TYPE_STYLE[slideType] ?? "vibrant Instagram Story background";
-  const prompt = `Instagram Story vertical background image, no text, no words, no letters, photorealistic, high quality. ${visualPrompt}. Style: ${typeHint}.`;
+  const prompt = [
+    "Instagram Story background image, vertical format, NO text, NO words, NO letters, NO numbers anywhere in the image.",
+    visualPrompt,
+    `Visual style: ${typeHint}.`,
+    "High quality, professional photography or digital art.",
+  ].join(" ");
+
+  const model = ENV.openaiImageModel; // defaults to "gpt-image-1"
+  const isDalle3 = model === "dall-e-3";
+
+  const body: Record<string, unknown> = {
+    model,
+    prompt,
+    n: 1,
+  };
+
+  if (isDalle3) {
+    body.size = "1024x1792"; // perfect 9:16
+    body.quality = "hd";
+    body.response_format = "url";
+  } else {
+    // gpt-image-1
+    body.size = "1024x1536";
+    body.quality = "high";
+    body.response_format = "b64_json";
+  }
 
   try {
-    const resp = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
+    const resp = await fetch(`${ENV.openaiApiBaseUrl}/images/generations`, {
       method: "POST",
       headers: {
-        Authorization: `Key ${ENV.falApiKey}`,
+        Authorization: `Bearer ${ENV.openaiApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt,
-        aspect_ratio: "9:16",
-        output_format: "jpeg",
-        safety_tolerance: "2",
-        raw: false,
-      }),
-      signal: AbortSignal.timeout(60_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
-      console.warn(`[ImageGen] fal.ai ${resp.status}: ${text.slice(0, 200)}`);
+      console.warn(`[ImageGen] OpenAI ${resp.status}: ${text.slice(0, 300)}`);
       return null;
     }
 
-    const data = (await resp.json()) as FalResponse;
-    return data.images?.[0]?.url ?? null;
+    const data = (await resp.json()) as DalleResponse;
+    const item = data.data?.[0];
+    if (!item) return null;
+
+    if (item.url) return item.url;
+    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+    return null;
   } catch (err) {
     console.error("[ImageGen] Error generating story image:", err);
     return null;
