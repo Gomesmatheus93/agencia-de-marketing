@@ -26,8 +26,10 @@ import {
   Globe,
   MessageCircle,
   ScanSearch,
+  TrendingUp,
   Lock,
   Crown,
+  Layers,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -57,6 +59,8 @@ const NAV_ITEMS_CONFIG = [
   { id: "brand",    icon: Palette,     path: "/dashboard/brand",    color: "from-rose-500 to-pink-600",    labelKey: "brand" as const,    descKey: "brandDesc" as const },
   { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-pink-500 to-rose-600", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const },
   { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const },
+  { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const },
+  { id: "stories", icon: Layers, path: "/dashboard/stories", color: "from-pink-500 to-rose-500", labelKey: "stories" as const, descKey: "storiesDesc" as const },
 ];
 
 const SETTINGS_CONFIG = {

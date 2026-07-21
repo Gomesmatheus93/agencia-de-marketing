@@ -61,6 +61,7 @@ import {
   persistSingleCarouselImage,
 } from "./_core/carouselPersistence";
 import * as db from "./db";
+import { getCalibrationBlock } from "./_core/calibration";
 import { sdk } from "./_core/sdk";
 import { hashPassword, verifyPassword } from "./_core/password";
 import { nanoid } from "nanoid";
@@ -138,6 +139,18 @@ async function checkAndIncrTrialUsage(
   }
 
   await db.incrementDailyUsage(userId, feature, today);
+}
+
+// Block access entirely unless account has agency plan (or admin).
+function requireAgencyPlan(user: PlanUser): void {
+  if ((user as { role?: string }).role === 'admin') return;
+  const plan = (user as { plan?: string }).plan ?? 'free';
+  if (plan !== 'agency') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Este recurso está disponível apenas no plano Agency. Faça upgrade para desbloquear.',
+    });
+  }
 }
 
 // Block access entirely unless account has a paid plan.
@@ -1340,6 +1353,8 @@ Regras:
       z.object({
         topic: z.string().min(3).max(500),
         sourceUrl: z.string().url().optional(),
+        sourceTopicAngleId: z.number().int().positive().optional(),
+        hookType: z.string().max(32).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1449,6 +1464,9 @@ Formato de resposta JSON:
         sourceUrl: input.sourceUrl,
         content,
         summary,
+        sourceTopicAngleId: input.sourceTopicAngleId,
+        hookType: input.hookType,
+        contentFormat: "article",
       });
       return saved;
     }),
@@ -1991,6 +2009,8 @@ const carouselRouter = router({
         coverImageDataUrl: z.string().optional(),
         useAiImages: z.boolean().optional(),
         articleContext: z.string().max(5000).optional(),
+        sourceTopicAngleId: z.number().int().positive().optional(),
+        hookType: z.string().max(32).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -2012,6 +2032,7 @@ const carouselRouter = router({
           : undefined;
         const selectedStyle = selectedTemplate?.name || input.style;
 
+        const calibrationBlock = await getCalibrationBlock(ctx.user.id, "carousel");
         const generatedCarousel = await generateCarouselWithAgent({
           topic: input.topic,
           slideCount: input.slideCount,
@@ -2026,6 +2047,7 @@ const carouselRouter = router({
           templateImageDataUrl,
           useAiImages: input.useAiImages ?? false,
           articleContext: input.articleContext,
+          calibrationBlock: calibrationBlock || undefined,
         });
 
         const persistedAssets = await persistCarouselAssets({
@@ -2050,6 +2072,10 @@ const carouselRouter = router({
           finalCta: generatedCarousel.finalCta,
           coverImageUrl: persistedAssets.coverImageUrl,
           slides,
+          sourceTopicAngleId: input.sourceTopicAngleId,
+          hookType: input.hookType,
+          contentFormat: "carousel",
+          templateId: input.templateId,
         });
       } catch (err) {
         if (err instanceof TRPCError) throw err;
@@ -2237,6 +2263,8 @@ const carouselRouter = router({
           await db.updateSocialPost(savedPost.id, ctx.user.id, {
             status: "published",
             publishedAt: new Date(),
+            igMediaId: result.mediaId ?? null,
+            contentType: "carousel",
           });
         } catch (err) {
           console.warn("[Carousel] Instagram post was published but history save failed:", err);
@@ -2998,6 +3026,9 @@ Responda em JSON:
           status: "published",
           publishedAt: new Date(),
           imageUrl: publicImageUrl,
+          igMediaId: result.mediaId ?? null,
+          contentType: (post as unknown as { contentType?: string }).contentType ?? null,
+          contentId: (post as unknown as { contentId?: number }).contentId ?? null,
         });
 
         return {
@@ -3731,6 +3762,8 @@ const reelsRouter = router({
       tone: z.enum(["educational", "entertaining", "inspiring", "informative"]).optional(),
       duration: z.enum(["short", "medium", "long"]).optional(),
       extraContext: z.string().max(1000).optional(),
+      sourceTopicAngleId: z.number().int().positive().optional(),
+      hookType: z.string().max(32).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       requirePaidPlan(ctx.user as PlanUser);
@@ -3752,6 +3785,9 @@ const reelsRouter = router({
         caption: generated.caption,
         hashtags: generated.hashtags,
         scenes: generated.scenes,
+        sourceTopicAngleId: input.sourceTopicAngleId,
+        hookType: input.hookType,
+        contentFormat: "reels",
       });
 
       return saved;
@@ -3875,6 +3911,34 @@ Nunca produza conteúdo genérico. Pense como um Diretor de Arte premiado e Copy
 
 
 // ─── Style Analyzer Router ────────────────────────────────────────────────────
+// ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
+
+const radarRouter = router({
+  getTopics: protectedProcedure.query(async ({ ctx }) => {
+    const topics = await db.getRadarTopicsForUser(ctx.user.id);
+    return topics;
+  }),
+
+  updateStatus: protectedProcedure
+    .input(z.object({
+      trendingTopicId: z.number().int(),
+      status: z.enum(["sugerido", "usado", "descartado"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await db.updateUserTopicAngleStatus(ctx.user.id, input.trendingTopicId, input.status);
+      return { success: true };
+    }),
+
+  adminRefresh: protectedProcedure.mutation(async ({ ctx }) => {
+    if (ctx.user.role !== "admin") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem executar esta ação." });
+    }
+    const { runRadarPipeline } = await import("./_core/radarScheduler");
+    void runRadarPipeline();
+    return { started: true };
+  }),
+});
+
 const styleAnalyzerRouter = router({
   analyze: protectedProcedure
     .input(z.object({
@@ -3928,6 +3992,555 @@ const styleAnalyzerRouter = router({
     .mutation(async ({ ctx, input }) => {
       await db.deleteStyleProfile(ctx.user.id, input.id);
       return { success: true };
+    }),
+});
+
+// ─── Performance Router (Module 1.3) ─────────────────────────────────────────
+
+const performanceRouter = router({
+  getTopTemplates: protectedProcedure
+    .input(z.object({ contentFormat: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      return db.getTopPerformanceForUser(ctx.user.id, input.contentFormat);
+    }),
+
+  getStats: protectedProcedure.query(async ({ ctx }) => {
+    const perf = await db.getTopPerformanceForUser(ctx.user.id);
+    if (perf.length === 0) return null;
+    const best = perf[0];
+    const bestByFormat = new Map<string, typeof perf[0]>();
+    for (const p of perf) {
+      if (!bestByFormat.has(p.contentFormat) || p.avgScore > bestByFormat.get(p.contentFormat)!.avgScore) {
+        bestByFormat.set(p.contentFormat, p);
+      }
+    }
+    return {
+      bestHook: best.hookType,
+      bestStyle: best.templateStyle,
+      bestSource: best.sourceKind,
+      bestScore: best.avgScore,
+      totalPostsAnalyzed: perf.reduce((acc, p) => acc + p.postCount, 0),
+      byFormat: Object.fromEntries(bestByFormat),
+    };
+  }),
+
+  adminTrigger: protectedProcedure.mutation(async ({ ctx }) => {
+    if ((ctx.user as { role?: string }).role !== "admin") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas admins" });
+    }
+    const { runMetricsPipeline } = await import("./_core/metricsScheduler");
+    runMetricsPipeline().catch((e: unknown) => console.error("[Performance] Admin trigger error:", e));
+    return { ok: true };
+  }),
+});
+
+// ─── Editorial Plan Router (Module 2.1) ──────────────────────────────────────
+
+const editorialPlanRouter = router({
+  generatePlan: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2024).max(2030),
+      month: z.number().int().min(1).max(12),
+      postsPerWeek: z.number().int().min(1).max(14),
+      formats: z.array(z.object({
+        format: z.enum(["carousel", "instagram", "linkedin", "newsletter"]),
+        weight: z.number().int().min(0).max(100),
+      })).min(1),
+      categories: z.array(z.string().min(1).max(100)).min(1).max(20),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+
+      const brand = await db.getBrandKit(ctx.user.id);
+
+      const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      const monthName = monthNames[input.month - 1];
+
+      const totalPosts = Math.round(input.postsPerWeek * 4.3);
+
+      const formatDistribution = input.formats
+        .filter(f => f.weight > 0)
+        .map(f => {
+          const count = Math.max(0, Math.round((f.weight / 100) * totalPosts));
+          const labels: Record<string, string> = {
+            carousel: "Carrossel",
+            instagram: "Post Instagram (estático)",
+            linkedin: "LinkedIn",
+            newsletter: "Newsletter",
+          };
+          return `${labels[f.format] ?? f.format}: ~${count} posts (${f.weight}%)`;
+        })
+        .join("\n");
+
+      const brandContext = brand?.companyName
+        ? [
+            `Empresa: ${brand.companyName}${brand.industry ? ` (${brand.industry})` : ""}`,
+            brand.targetAudience ? `Público-alvo: ${brand.targetAudience}` : null,
+            brand.toneOfVoice ? `Tom de voz: ${brand.toneOfVoice}` : null,
+          ].filter(Boolean).join("\n")
+        : null;
+
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: "Você é um planejador editorial especialista em marketing digital para o Brasil. Crie planos de conteúdo estratégicos e variados que maximizem engajamento.",
+          },
+          {
+            role: "user",
+            content: [
+              `Crie um planejamento editorial para ${monthName} de ${input.year}.`,
+              `Total de posts: ~${totalPosts} (${input.postsPerWeek} por semana)`,
+              ``,
+              `DISTRIBUIÇÃO DE FORMATOS:`,
+              formatDistribution,
+              ``,
+              `CATEGORIAS EDITORIAIS (use todas de forma balanceada):`,
+              input.categories.join(", "),
+              brandContext ? `\nINFO DA MARCA:\n${brandContext}` : "",
+              ``,
+              `REGRAS:`,
+              `- Distribua os posts ao longo do mês (prefira dias úteis: seg-sex)`,
+              `- Varie as categorias de forma equilibrada`,
+              `- Cada post deve ter um ângulo único e específico`,
+              `- suggestedTitle deve ser um gancho impactante de até 80 caracteres`,
+              `- pauta deve ter 2-3 frases: o que cobrir, ângulo, por que vai performar`,
+              `- scheduledDate no formato YYYY-MM-DD, dentro de ${input.year}-${String(input.month).padStart(2,"0")}-01 a ${input.year}-${String(input.month).padStart(2,"0")}-${new Date(input.year, input.month, 0).getDate()}`,
+              ``,
+              `Retorne APENAS JSON válido:`,
+              `{`,
+              `  "items": [`,
+              `    {`,
+              `      "scheduledDate": "YYYY-MM-DD",`,
+              `      "format": "carousel|instagram|linkedin|newsletter",`,
+              `      "category": "categoria da lista acima",`,
+              `      "suggestedTitle": "gancho ou título do post",`,
+              `      "pauta": "briefing em 2-3 frases"`,
+              `    }`,
+              `  ]`,
+              `}`,
+            ].filter(Boolean).join("\n"),
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "editorial_plan",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                items: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      scheduledDate: { type: "string" },
+                      format: { type: "string" },
+                      category: { type: "string" },
+                      suggestedTitle: { type: "string" },
+                      pauta: { type: "string" },
+                    },
+                    required: ["scheduledDate", "format", "category", "suggestedTitle", "pauta"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["items"],
+              additionalProperties: false,
+            },
+          },
+        },
+        max_tokens: 4000,
+      });
+
+      const raw = response.choices[0]?.message?.content;
+      const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw ?? "{}")) as {
+        items: Array<{ scheduledDate: string; format: string; category: string; suggestedTitle: string; pauta: string }>;
+      };
+
+      return { items: parsed.items ?? [] };
+    }),
+
+  savePlan: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2024).max(2030),
+      month: z.number().int().min(1).max(12),
+      items: z.array(z.object({
+        scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        format: z.enum(["carousel", "instagram", "linkedin", "newsletter"]),
+        category: z.string().min(1).max(255),
+        suggestedTitle: z.string().min(1).max(512),
+        pauta: z.string().min(1),
+        status: z.enum(["pending", "approved", "rejected"]).default("pending"),
+      })).min(1).max(100),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+      const generatedCount = await db.countGeneratedPlanItems(ctx.user.id, input.year, input.month);
+      if (generatedCount > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `Este mês já tem ${generatedCount} item(ns) com conteúdo gerado. Remova-os manualmente antes de substituir o plano.`,
+        });
+      }
+      const saved = await db.saveEditorialPlanItems(
+        ctx.user.id,
+        input.year,
+        input.month,
+        input.items,
+      );
+      return { saved: saved.length };
+    }),
+
+  getByMonth: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2024).max(2030),
+      month: z.number().int().min(1).max(12),
+    }))
+    .query(async ({ ctx, input }) => {
+      return db.getEditorialPlanItems(ctx.user.id, input.year, input.month);
+    }),
+
+  updateItem: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      status: z.enum(["pending", "approved", "rejected", "generating", "done"]).optional(),
+      scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      const updated = await db.updateEditorialPlanItem(id, ctx.user.id, data);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Item do plano não encontrado." });
+      return updated;
+    }),
+
+  deletePlan: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2024).max(2030),
+      month: z.number().int().min(1).max(12),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+      await db.deleteEditorialPlanItems(ctx.user.id, input.year, input.month);
+      return { ok: true };
+    }),
+
+  generateContent: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+
+      const found = await db.getEditorialPlanItemById(input.id, ctx.user.id);
+      if (!found) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Item do plano não encontrado." });
+      }
+
+      await db.updateEditorialPlanItem(input.id, ctx.user.id, { status: "generating" });
+
+      try {
+        const brand = await db.getBrandKit(ctx.user.id);
+        const calibrationBlock = await getCalibrationBlock(ctx.user.id, found.format);
+
+        let socialPostId: number;
+        let contentType: string;
+        let contentId: number | null = null;
+
+        if (found.format === "carousel") {
+          const carousel = await generateCarouselWithAgent({
+            topic: `${found.suggestedTitle}. Pauta: ${found.pauta}`,
+            style: "educational",
+            slideCount: 6,
+            calibrationBlock: calibrationBlock || undefined,
+          });
+          const savedCarousel = await db.saveCarousel(ctx.user.id, {
+            topic: found.suggestedTitle,
+            style: "educational",
+            hook: carousel.hook,
+            caption: carousel.caption,
+            finalCta: carousel.finalCta,
+            coverImageUrl: carousel.coverImageUrl,
+            slides: carousel.slides as import("../drizzle/schema").CarouselSlideData[],
+          });
+          const scheduledAt = new Date(`${found.scheduledDate}T12:00:00`);
+          const post = await db.saveSocialPost(ctx.user.id, {
+            channel: "instagram",
+            title: found.suggestedTitle,
+            content: carousel.caption || found.pauta,
+            scheduledAt,
+          });
+          await db.updateSocialPost(post.id, ctx.user.id, {
+            contentType: "carousel",
+            contentId: savedCarousel.id,
+          });
+          socialPostId = post.id;
+          contentType = "carousel";
+          contentId = savedCarousel.id;
+        } else {
+          const channelMap: Record<string, "instagram" | "linkedin" | "newsletter"> = {
+            instagram: "instagram",
+            linkedin: "linkedin",
+            newsletter: "newsletter",
+          };
+          const channel = channelMap[found.format] ?? "instagram";
+
+          const toneGuide: Record<string, string> = {
+            professional: "profissional e direto",
+            casual: "casual e próximo",
+            inspiring: "inspirador e motivacional",
+            educational: "educativo e informativo",
+          };
+          const effectiveTone = brand?.toneOfVoice ?? "professional";
+
+          const llmResponse = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: [
+                  `Você é um especialista em copywriting para ${channel} no Brasil.`,
+                  brand?.companyName ? `Marca: ${brand.companyName}${brand.industry ? ` (${brand.industry})` : ""}` : null,
+                  `Tom de voz: ${toneGuide[effectiveTone] ?? effectiveTone}`,
+                  calibrationBlock || null,
+                ].filter(Boolean).join("\n\n"),
+              },
+              {
+                role: "user",
+                content: `Crie um post completo para ${channel} sobre: "${found.suggestedTitle}".\n\nPauta: ${found.pauta}\n\nCategoria editorial: ${found.category}\n\nResponda em JSON: { "title": "...", "content": "..." }`,
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "post_content",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    content: { type: "string" },
+                  },
+                  required: ["title", "content"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          });
+
+          const rawPost = llmResponse.choices[0]?.message?.content;
+          const parsed = JSON.parse(typeof rawPost === "string" ? rawPost : "{}") as { title?: string; content?: string };
+
+          const scheduledAt = new Date(`${found.scheduledDate}T12:00:00`);
+          const post = await db.saveSocialPost(ctx.user.id, {
+            channel,
+            title: parsed.title || found.suggestedTitle,
+            content: parsed.content || found.pauta,
+            scheduledAt,
+          });
+          socialPostId = post.id;
+          contentType = "post";
+        }
+
+        await db.updateEditorialPlanItem(input.id, ctx.user.id, {
+          status: "done",
+          socialPostId,
+          contentType,
+          contentId: contentId ?? undefined,
+        });
+
+        return { socialPostId, contentType };
+      } catch (err) {
+        await db.updateEditorialPlanItem(input.id, ctx.user.id, { status: "approved" });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao gerar conteúdo: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        });
+      }
+    }),
+});
+
+// ─── Stories Router (Module 2.2) ──────────────────────────────────────────────
+
+import {
+  StorySetSchema,
+  STORY_TYPES,
+  type StorySetPayload,
+} from "./_core/storyContentSchema";
+
+const storiesRouter = router({
+  generate: protectedProcedure
+    .input(z.object({
+      topic: z.string().min(3).max(512),
+      storyTypes: z.array(z.enum(STORY_TYPES)).min(1).max(5).optional(),
+      sourcePostId: z.number().int().optional(),
+      nSlides: z.number().int().min(1).max(5).default(3),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+      const brand = await db.getBrandKit(ctx.user.id);
+      const calibrationBlock = await getCalibrationBlock(ctx.user.id, "story");
+
+      const brandContext = brand?.companyName
+        ? [
+            `IDENTIDADE DA MARCA:`,
+            `- Empresa: ${brand.companyName}${brand.industry ? ` (${brand.industry})` : ""}`,
+            brand.tagline ? `- Tagline: "${brand.tagline}"` : null,
+            brand.targetAudience ? `- Público-alvo: ${brand.targetAudience}` : null,
+            brand.toneOfVoice ? `- Tom de voz: ${brand.toneOfVoice}` : null,
+          ].filter(Boolean).join("\n")
+        : null;
+
+      const allowedTypes = input.storyTypes ?? [...STORY_TYPES];
+      const typeDescriptions: Record<string, string> = {
+        poll: "enquete com pergunta e 2 opções (option_a, option_b)",
+        quiz: "quiz com pergunta, array de options (2-4) e correct_index",
+        countdown: "contagem regressiva com body, target_label e cta",
+        question_box: "caixinha de perguntas com prompt_text de abertura",
+        behind_scenes: "bastidores com caption e tone: personal|educational|funny",
+        post_reinforcement: "reforço de post do feed com angle e cta",
+      };
+
+      const allowedDesc = allowedTypes
+        .map((t) => `  - "${t}": ${typeDescriptions[t]}`)
+        .join("\n");
+
+      const prompt = [
+        `Crie um conjunto de ${input.nSlides} story(s) para Instagram sobre o tema: "${input.topic}".`,
+        `Tipos permitidos neste conjunto (use apenas estes):\n${allowedDesc}`,
+        `Cada slide deve ter: type, headline (≤60 chars), visual_prompt (inglês, cena descritiva para imagem de fundo), e os campos específicos do tipo.`,
+        `O conjunto deve ter: setTitle (título interno), theme (contexto narrativo), caption (legenda do post agendado, otimizada para Instagram com 2-3 hashtags), hashtags (array, max 5).`,
+        calibrationBlock || null,
+        brandContext,
+      ].filter(Boolean).join("\n\n");
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: "Você é um especialista em estratégia de Instagram Stories. Crie sequências de stories que maximizem engajamento e interações." },
+          { role: "user", content: prompt },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "story_set",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                setTitle: { type: "string" },
+                theme: { type: "string" },
+                caption: { type: "string" },
+                hashtags: { type: "array", items: { type: "string" } },
+                slides: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: { type: "string", enum: allowedTypes },
+                      headline: { type: "string" },
+                      question: { type: "string" },
+                      option_a: { type: "string" },
+                      option_b: { type: "string" },
+                      options: { type: "array", items: { type: "string" } },
+                      correct_index: { type: "number" },
+                      explanation: { type: "string" },
+                      body: { type: "string" },
+                      target_label: { type: "string" },
+                      cta: { type: "string" },
+                      prompt_text: { type: "string" },
+                      caption: { type: "string" },
+                      tone: { type: "string", enum: ["personal", "educational", "funny"] },
+                      angle: { type: "string" },
+                      visual_prompt: { type: "string" },
+                    },
+                    required: ["type", "headline", "visual_prompt"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["setTitle", "theme", "caption", "hashtags", "slides"],
+              additionalProperties: false,
+            },
+          },
+        },
+        max_tokens: 3000,
+      });
+
+      const raw = response.choices[0]?.message?.content;
+      const payload = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw ?? "{}")) as StorySetPayload;
+
+      // Validate with Zod — surface friendly error if LLM output is malformed
+      const parsed = StorySetSchema.safeParse(payload);
+      if (!parsed.success) {
+        console.warn("[Stories] Zod validation failed:", parsed.error.flatten());
+        // Return raw payload so UI can still display something
+        return { storySet: payload as unknown as typeof parsed.data, warning: "Estrutura parcial — revise os slides antes de salvar." };
+      }
+
+      return { storySet: parsed.data };
+    }),
+
+  save: protectedProcedure
+    .input(z.object({
+      storySet: z.object({
+        setTitle: z.string(),
+        theme: z.string(),
+        caption: z.string(),
+        hashtags: z.array(z.string()),
+        slides: z.array(z.record(z.string(), z.unknown())).min(1).max(5),
+      }),
+      scheduledAt: scheduledAtInputSchema.optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+      const scheduledAt = input.scheduledAt ? parseScheduledAtInput(input.scheduledAt) : undefined;
+      const saved = await db.saveSocialPost(ctx.user.id, {
+        channel: "instagram",
+        title: input.storySet.setTitle,
+        content: input.storySet.caption,
+        scheduledAt,
+        contentType: "story",
+        storyData: JSON.stringify(input.storySet),
+      });
+      return saved;
+    }),
+
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    requirePaidPlan(ctx.user as PlanUser);
+    return db.getStoryPosts(ctx.user.id);
+  }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+      await db.deleteSocialPost(input.id, ctx.user.id);
+      return { success: true };
+    }),
+
+  publish: protectedProcedure
+    .input(z.object({
+      id: z.number().int(),
+      imageDataUrl: z.string().startsWith("data:image/"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+
+      const post = await db.getSocialPostById(input.id, ctx.user.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Story não encontrado." });
+
+      const { publishInstagramStory } = await import("./_core/instagramPostingAgent");
+      const result = await publishInstagramStory({
+        userId: ctx.user.id,
+        imageDataUrl: input.imageDataUrl,
+        caption: post.content,
+      });
+
+      await db.updateSocialPost(input.id, ctx.user.id, {
+        status: "published",
+        igMediaId: result.mediaId,
+        publishedAt: new Date(),
+      });
+
+      return { success: true, mediaId: result.mediaId };
     }),
 });
 
@@ -4086,6 +4699,10 @@ export const appRouter = router({
   commentAlerts: commentAlertsRouter,
   commentAutomations: commentAutomationsRouter,
   styleAnalyzer: styleAnalyzerRouter,
+  radar: radarRouter,
+  performance: performanceRouter,
+  editorialPlan: editorialPlanRouter,
+  stories: storiesRouter,
 });
 
 export type AppRouter = typeof appRouter;

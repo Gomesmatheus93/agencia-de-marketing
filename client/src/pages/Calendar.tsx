@@ -32,7 +32,15 @@ import {
   Copy,
   CheckCheck,
   Camera,
+  BookOpen,
+  CheckCircle2,
+  XCircle,
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
+  Zap,
 } from "lucide-react";
+import { usePlan } from "@/_core/hooks/usePlan";
 import {
   Select,
   SelectContent,
@@ -231,11 +239,30 @@ const CHANNEL_EVENT_COLORS: Record<Channel, string> = {
   newsletter: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300",
 };
 
+type PlanItem = {
+  id: number;
+  scheduledDate: string;
+  format: string;
+  category: string;
+  suggestedTitle: string;
+  pauta: string;
+  status: string;
+  socialPostId: number | null;
+};
+
+const PLAN_FORMAT_COLORS: Record<string, string> = {
+  carousel: "border-l-violet-500 bg-violet-50 dark:bg-violet-950/20 text-violet-800 dark:text-violet-300",
+  instagram: "border-l-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-950/20 text-fuchsia-800 dark:text-fuchsia-300",
+  linkedin: "border-l-sky-500 bg-sky-50 dark:bg-sky-950/20 text-sky-800 dark:text-sky-300",
+  newsletter: "border-l-teal-500 bg-teal-50 dark:bg-teal-950/20 text-teal-800 dark:text-teal-300",
+};
+
 function DayCell({
   date,
   isCurrentMonth,
   holidays,
   posts,
+  planItems,
   isSelected,
   onClick,
 }: {
@@ -243,13 +270,15 @@ function DayCell({
   isCurrentMonth: boolean;
   holidays: Holiday[];
   posts: SocialPost[];
+  planItems?: PlanItem[];
   isSelected: boolean;
   onClick: () => void;
 }) {
   const today = isToday(date);
-  const maxHolidays = 2;
-  const maxPosts = 2;
-  const extra = Math.max(0, holidays.length - maxHolidays) + Math.max(0, posts.length - maxPosts);
+  const maxHolidays = 1;
+  const maxPosts = 1;
+  const maxPlanItems = 1;
+  const extra = Math.max(0, holidays.length - maxHolidays) + Math.max(0, posts.length - maxPosts) + Math.max(0, (planItems?.length ?? 0) - maxPlanItems);
 
   return (
     <button
@@ -300,6 +329,20 @@ function DayCell({
           )}
         >
           {p.title || p.content.slice(0, 24)}
+        </div>
+      ))}
+
+      {/* Plan item events */}
+      {planItems?.slice(0, maxPlanItems).map((item) => (
+        <div
+          key={`plan-${item.id}`}
+          className={cn(
+            "border-l-[3px] border-dashed pl-1.5 pr-1 py-0.5 rounded-r-sm text-[10px] leading-tight truncate w-full opacity-80",
+            PLAN_FORMAT_COLORS[item.format] ?? "border-l-violet-500 bg-violet-50 dark:bg-violet-950/20 text-violet-800 dark:text-violet-300"
+          )}
+          title={item.suggestedTitle}
+        >
+          {item.suggestedTitle.slice(0, 28)}
         </div>
       ))}
 
@@ -1539,8 +1582,399 @@ function QuoteCardDialog({
 // ── Main Page
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// ── Plan Status helpers ───────────────────────────────────────────────────────
+
+const PLAN_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  pending:    { label: "Pendente",  className: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
+  approved:   { label: "Aprovado", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+  rejected:   { label: "Rejeitado",className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  generating: { label: "Gerando",  className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  done:       { label: "Pronto",   className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+};
+
+const FORMAT_LABELS: Record<string, string> = {
+  carousel: "Carrossel",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+  newsletter: "Newsletter",
+};
+
+// ── Plan Wizard Dialog ────────────────────────────────────────────────────────
+
+function PlanWizardDialog({
+  open,
+  viewDate,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  viewDate: Date;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLanguage();
+  const [step, setStep] = React.useState<1 | 2>(1);
+  const [postsPerWeek, setPostsPerWeek] = React.useState(4);
+  const [categoriesText, setCategoriesText] = React.useState("Educativo, Vendas, Bastidores, Tendências");
+  const [formatWeights, setFormatWeights] = React.useState({
+    carousel: 50,
+    instagram: 30,
+    linkedin: 10,
+    newsletter: 10,
+  });
+
+  type GeneratedItem = {
+    scheduledDate: string;
+    format: string;
+    category: string;
+    suggestedTitle: string;
+    pauta: string;
+    status: "pending" | "approved" | "rejected";
+  };
+  const [generatedItems, setGeneratedItems] = React.useState<GeneratedItem[]>([]);
+  const [expandedItem, setExpandedItem] = React.useState<number | null>(null);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth() + 1;
+
+  const generateMutation = trpc.editorialPlan.generatePlan.useMutation({
+    onSuccess: (data) => {
+      setGeneratedItems(
+        (data.items as GeneratedItem[]).map((item) => ({ ...item, status: "pending" as const }))
+      );
+      setStep(2);
+    },
+    onError: (e) => toast.error(e.message || "Erro ao gerar plano"),
+  });
+
+  const saveMutation = trpc.editorialPlan.savePlan.useMutation({
+    onSuccess: () => {
+      toast.success("Plano salvo no calendário!");
+      onSaved();
+      handleClose();
+    },
+    onError: (e) => toast.error(e.message || "Erro ao salvar plano"),
+  });
+
+  function handleClose() {
+    setStep(1);
+    setGeneratedItems([]);
+    setExpandedItem(null);
+    onClose();
+  }
+
+  function handleGenerate() {
+    const categories = categoriesText.split(",").map((c) => c.trim()).filter(Boolean);
+    if (categories.length === 0) { toast.error("Adicione pelo menos uma categoria editorial."); return; }
+    const formats = Object.entries(formatWeights)
+      .filter(([, w]) => w > 0)
+      .map(([format, weight]) => ({ format: format as "carousel" | "instagram" | "linkedin" | "newsletter", weight }));
+    generateMutation.mutate({ year, month, postsPerWeek, formats, categories });
+  }
+
+  function handleSave() {
+    const itemsToSave = generatedItems
+      .filter((i) => i.status !== "rejected")
+      .map((i) => ({
+        scheduledDate: i.scheduledDate,
+        format: i.format as "carousel" | "instagram" | "linkedin" | "newsletter",
+        category: i.category,
+        suggestedTitle: i.suggestedTitle,
+        pauta: i.pauta,
+        status: i.status,
+      }));
+    if (itemsToSave.length === 0) { toast.error("Aprove pelo menos um item antes de salvar."); return; }
+    saveMutation.mutate({ year, month, items: itemsToSave });
+  }
+
+  function toggleItemStatus(idx: number, status: "approved" | "rejected") {
+    setGeneratedItems((prev) =>
+      prev.map((item, i) => i === idx ? { ...item, status: item.status === status ? "pending" : status } : item)
+    );
+  }
+
+  function approveAll() {
+    setGeneratedItems((prev) => prev.map((item) => ({ ...item, status: "approved" as const })));
+  }
+
+  const approvedCount = generatedItems.filter((i) => i.status === "approved").length;
+  const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-[780px] max-h-[92vh] flex flex-col overflow-hidden">
+        <DialogTitle className="flex items-center gap-2 text-base font-semibold shrink-0">
+          <BookOpen className="h-4 w-4 text-primary" />
+          {t("planWizardTitle")}
+        </DialogTitle>
+        <DialogDescription className="text-xs text-muted-foreground shrink-0">
+          {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()} — {t("planWizardSubtitle")}
+        </DialogDescription>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-2 text-xs shrink-0">
+          <span className={cn("px-2 py-0.5 rounded-full font-medium", step === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+            1 {t("planStep1")}
+          </span>
+          <div className="h-px flex-1 bg-border" />
+          <span className={cn("px-2 py-0.5 rounded-full font-medium", step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+            2 {t("planStep2")}
+          </span>
+        </div>
+
+        {step === 1 && (
+          <div className="space-y-5 pt-1 overflow-y-auto flex-1 pr-1">
+            {/* Posts per week */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground flex items-center justify-between">
+                {t("planPostsPerWeek")}
+                <span className="text-primary font-bold text-sm">{postsPerWeek}x / semana</span>
+              </label>
+              <input
+                type="range"
+                min={2} max={7} step={1}
+                value={postsPerWeek}
+                onChange={(e) => setPostsPerWeek(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>2</span><span>7</span>
+              </div>
+            </div>
+
+            {/* Format mix */}
+            <div className="space-y-3">
+              <label className="text-xs font-medium text-muted-foreground">{t("planFormatMix")}</label>
+              {(["carousel", "instagram", "linkedin", "newsletter"] as const).map((fmt) => (
+                <div key={fmt} className="flex items-center gap-3">
+                  <span className="text-xs w-28 text-foreground">{FORMAT_LABELS[fmt]}</span>
+                  <input
+                    type="range"
+                    min={0} max={100} step={5}
+                    value={formatWeights[fmt]}
+                    onChange={(e) => setFormatWeights((prev) => ({ ...prev, [fmt]: Number(e.target.value) }))}
+                    className="flex-1 accent-primary"
+                  />
+                  <span className="text-xs w-8 text-right text-primary font-medium">{formatWeights[fmt]}%</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Editorial categories */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">{t("planCategories")}</label>
+              <Textarea
+                placeholder={t("planCategoriesPlaceholder")}
+                value={categoriesText}
+                onChange={(e) => setCategoriesText(e.target.value)}
+                rows={2}
+                className="resize-none text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">{t("planCategoriesHint")}</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={handleClose}>{t("cancel")}</Button>
+              <Button size="sm" onClick={handleGenerate} disabled={generateMutation.isPending} className="gap-2">
+                {generateMutation.isPending ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("planGenerating")}</>
+                ) : (
+                  <><Sparkles className="h-3.5 w-3.5" />{t("planGenerateBtn")}</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="flex flex-col gap-4 pt-1 flex-1 min-h-0">
+            {/* Summary */}
+            <div className="flex items-center justify-between shrink-0">
+              <p className="text-xs text-muted-foreground">
+                {generatedItems.length} pautas · <span className="text-green-600 font-medium">{approvedCount} {t("planItemsApproved")}</span>
+              </p>
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-primary" onClick={approveAll}>
+                <CheckCircle2 className="h-3 w-3" />
+                {t("planApproveAll")}
+              </Button>
+            </div>
+
+            {/* Item list */}
+            <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-0">
+              {generatedItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "border rounded-lg transition-all",
+                    item.status === "approved" && "border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-950/10",
+                    item.status === "rejected" && "border-red-200 dark:border-red-800 opacity-50",
+                    item.status === "pending" && "border-border",
+                  )}
+                >
+                  <div className="flex items-start gap-2 p-3">
+                    {/* Format badge */}
+                    <span className={cn(
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded-sm shrink-0 mt-0.5",
+                      PLAN_FORMAT_COLORS[item.format] ?? "bg-violet-100 text-violet-700"
+                    )}>
+                      {FORMAT_LABELS[item.format] ?? item.format}
+                    </span>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-foreground leading-snug truncate">{item.suggestedTitle}</p>
+                        <button
+                          onClick={() => setExpandedItem(expandedItem === idx ? null : idx)}
+                          className="shrink-0 text-muted-foreground hover:text-foreground"
+                        >
+                          {expandedItem === idx ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-muted-foreground">{item.scheduledDate}</span>
+                        <span className="text-[10px] text-muted-foreground">·</span>
+                        <span className="text-[10px] text-muted-foreground">{item.category}</span>
+                      </div>
+                      {expandedItem === idx && (
+                        <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">{item.pauta}</p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => toggleItemStatus(idx, "approved")}
+                        title={t("planApprove")}
+                        className={cn(
+                          "p-1 rounded transition-colors",
+                          item.status === "approved"
+                            ? "text-green-600 bg-green-100 dark:bg-green-900/30"
+                            : "text-muted-foreground hover:text-green-600"
+                        )}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => toggleItemStatus(idx, "rejected")}
+                        title={t("planReject")}
+                        className={cn(
+                          "p-1 rounded transition-colors",
+                          item.status === "rejected"
+                            ? "text-red-600 bg-red-100 dark:bg-red-900/30"
+                            : "text-muted-foreground hover:text-red-500"
+                        )}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer — always visible */}
+            <div className="flex items-center justify-between gap-2 pt-3 border-t border-border/50 shrink-0">
+              <Button variant="ghost" size="sm" className="gap-1" onClick={() => setStep(1)}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+                {t("back")}
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending || approvedCount === 0} className="gap-2">
+                {saveMutation.isPending ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("planSaving")}</>
+                ) : (
+                  <><CheckCircle2 className="h-3.5 w-3.5" />{t("planSaveBtn")}</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Plan Item Section (in DetailPanel) ───────────────────────────────────────
+
+function PlanItemSection({ planItems, onGenerate, generatingId }: {
+  planItems: PlanItem[];
+  onGenerate: (id: number) => void;
+  generatingId: number | null;
+}) {
+  const [expandedItem, setExpandedItem] = React.useState<number | null>(null);
+
+  if (planItems.length === 0) return null;
+
+  return (
+    <div className="px-5 py-4 border-b border-border/30 space-y-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+        <BookOpen className="w-3 h-3" />
+        Pautas Planejadas
+      </p>
+      {planItems.map((item) => (
+        <div key={item.id} className="border border-border/50 rounded-lg overflow-hidden">
+          <div className="flex items-start gap-2 p-2.5">
+            <span className={cn(
+              "text-[9px] font-bold px-1.5 py-0.5 rounded-sm shrink-0 mt-0.5 border-l-2",
+              PLAN_FORMAT_COLORS[item.format] ?? "border-l-violet-500 bg-violet-50 text-violet-700"
+            )}>
+              {FORMAT_LABELS[item.format] ?? item.format}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-1">
+                <p className="text-xs font-medium text-foreground leading-snug">{item.suggestedTitle}</p>
+                <button
+                  onClick={() => setExpandedItem(expandedItem === item.id ? null : item.id)}
+                  className="shrink-0 mt-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  {expandedItem === item.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={cn(
+                  "text-[9px] px-1.5 py-0.5 rounded-full font-medium",
+                  PLAN_STATUS_CONFIG[item.status]?.className ?? "bg-zinc-100 text-zinc-600"
+                )}>
+                  {PLAN_STATUS_CONFIG[item.status]?.label ?? item.status}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{item.category}</span>
+              </div>
+              {expandedItem === item.id && (
+                <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">{item.pauta}</p>
+              )}
+            </div>
+          </div>
+          {item.status === "approved" && !item.socialPostId && (
+            <div className="border-t border-border/30 px-2.5 py-1.5 bg-muted/20">
+              <button
+                onClick={() => onGenerate(item.id)}
+                disabled={generatingId === item.id}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+              >
+                {generatingId === item.id ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" />Gerando conteúdo...</>
+                ) : (
+                  <><Zap className="h-3 w-3" />Gerar conteúdo</>
+                )}
+              </button>
+            </div>
+          )}
+          {item.socialPostId && (
+            <div className="border-t border-border/30 px-2.5 py-1.5 bg-emerald-50/50 dark:bg-emerald-950/10">
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />Conteúdo gerado — ver em Postagens
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Calendar() {
   const { t } = useLanguage();
+  const { plan } = usePlan();
   const today = new Date();
   const [viewDate, setViewDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1)
@@ -1554,8 +1988,27 @@ export default function Calendar() {
   const [showQuoteCardDialog, setShowQuoteCardDialog] = useState(false);
   const [quoteCardDate, setQuoteCardDate] = useState<Date>(today);
   const [quoteCardPresetImage, setQuoteCardPresetImage] = useState('');
+  const [showPlanWizard, setShowPlanWizard] = useState(false);
+  const [generatingPlanItemId, setGeneratingPlanItemId] = useState<number | null>(null);
 
   const { data: allPosts = [] } = trpc.posts.getAll.useQuery({});
+
+  const { data: planItems = [], refetch: refetchPlan } = trpc.editorialPlan.getByMonth.useQuery(
+    { year: viewDate.getFullYear(), month: viewDate.getMonth() + 1 },
+    { enabled: plan === "agency" }
+  );
+
+  const generateContentMutation = trpc.editorialPlan.generateContent.useMutation({
+    onSuccess: () => {
+      toast.success("Conteúdo gerado! Ver em Postagens.");
+      void refetchPlan();
+      setGeneratingPlanItemId(null);
+    },
+    onError: (e) => {
+      toast.error(e.message || "Erro ao gerar conteúdo");
+      setGeneratingPlanItemId(null);
+    },
+  });
 
   const holidayMap = useMemo(() => getHolidaysForYear(viewDate.getFullYear()), [viewDate]);
   const prevYearMap = useMemo(() => getHolidaysForYear(viewDate.getFullYear() - 1), [viewDate]);
@@ -1578,6 +2031,16 @@ export default function Calendar() {
       const d = p.scheduledAt ? new Date(p.scheduledAt) : null;
       return d ? isSameDay(d, date) : false;
     });
+  }
+
+  function getPlanItemsForDate(date: Date): PlanItem[] {
+    const key = fmt(date);
+    return (planItems as PlanItem[]).filter((item) => item.scheduledDate === key);
+  }
+
+  function handleGeneratePlanContent(itemId: number) {
+    setGeneratingPlanItemId(itemId);
+    generateContentMutation.mutate({ id: itemId });
   }
 
   const calendarDays = useMemo(() => buildCalendarGrid(viewDate), [viewDate]);
@@ -1609,6 +2072,7 @@ export default function Calendar() {
 
   const selectedHolidays = selectedDate ? getHolidaysForDate(selectedDate) : [];
   const selectedPosts = selectedDate ? getPostsForDate(selectedDate) : [];
+  const selectedPlanItems = selectedDate ? getPlanItemsForDate(selectedDate) : [];
 
   const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
   const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
@@ -1641,7 +2105,18 @@ export default function Calendar() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            {plan === "agency" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 font-medium border-violet-500/40 text-violet-700 dark:text-violet-300 hover:bg-violet-500/10"
+                onClick={() => setShowPlanWizard(true)}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                {t("planMonthBtn")}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -1735,6 +2210,7 @@ export default function Calendar() {
                 const inMonth = date.getMonth() === currentMonth;
                 const holidays = getHolidaysForDate(date);
                 const posts = getPostsForDate(date);
+                const datePlanItems = getPlanItemsForDate(date);
                 const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
 
                 return (
@@ -1744,6 +2220,7 @@ export default function Calendar() {
                     isCurrentMonth={inMonth}
                     holidays={holidays}
                     posts={posts}
+                    planItems={datePlanItems}
                     isSelected={isSelected}
                     onClick={() =>
                       setSelectedDate((prev) =>
@@ -1766,6 +2243,13 @@ export default function Calendar() {
                 onClose={() => setSelectedDate(null)}
                 onCreatePost={(h) => openCreatePost(h, selectedDate)}
               />
+              {selectedPlanItems.length > 0 && (
+                <PlanItemSection
+                  planItems={selectedPlanItems}
+                  onGenerate={handleGeneratePlanContent}
+                  generatingId={generatingPlanItemId}
+                />
+              )}
             </div>
           )}
         </div>
@@ -1796,6 +2280,13 @@ export default function Calendar() {
         open={showCampaignDialog}
         date={campaignDate}
         onClose={() => setShowCampaignDialog(false)}
+      />
+
+      <PlanWizardDialog
+        open={showPlanWizard}
+        viewDate={viewDate}
+        onClose={() => setShowPlanWizard(false)}
+        onSaved={() => { void refetchPlan(); }}
       />
     </AppLayout>
   );

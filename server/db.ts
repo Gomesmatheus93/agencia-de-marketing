@@ -20,6 +20,9 @@ import {
   instagramConnections,
   canvaConnections,
   featureFlags,
+  postMetrics,
+  templatePerformance,
+  editorialPlanItems,
   type ChatConversation,
   type ChatMessage,
   type GeneratedImage,
@@ -34,9 +37,17 @@ import {
   type CanvaConnection,
   type InsertCanvaConnection,
   type FeatureFlag,
+  type PostMetric,
+  type TemplatePerformance,
+  type EditorialPlanItem,
+  type InsertEditorialPlanItem,
   brandKits,
   type BrandKit,
   type CommentAutomation,
+  trendingTopics,
+  userTopicAngles,
+  type TrendingTopic,
+  type UserTopicAngle,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -51,6 +62,9 @@ let _reelsScriptsTableReady: Promise<void> | null = null;
 let _commentPollStateReady: Promise<void> | null = null;
 let _commentAlertsReady: Promise<void> | null = null;
 let _commentAutomationsTableReady: Promise<void> | null = null;
+let _postMetricsTableReady: Promise<void> | null = null;
+let _templatePerformanceTableReady: Promise<void> | null = null;
+let _editorialPlanItemsTableReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -246,15 +260,23 @@ async function ensureCarouselTable() {
           coverImageUrl text,
           slides text NOT NULL,
           designSettings text,
+          sourceTopicAngleId int,
+          hookType varchar(32),
+          contentFormat varchar(32) DEFAULT 'carousel',
+          templateId int,
           createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
       `);
-      // Add column to pre-existing tables that don't have it yet
-      try {
-        await db.execute(sql`ALTER TABLE carousels ADD COLUMN designSettings text`);
-      } catch (e) {
-        if (!isMysqlDuplicateColumnError(e)) throw e;
+      // Backfill columns for existing installs
+      for (const stmt of [
+        sql`ALTER TABLE carousels ADD COLUMN designSettings text`,
+        sql`ALTER TABLE carousels ADD COLUMN sourceTopicAngleId int`,
+        sql`ALTER TABLE carousels ADD COLUMN hookType varchar(32)`,
+        sql`ALTER TABLE carousels ADD COLUMN contentFormat varchar(32) DEFAULT 'carousel'`,
+        sql`ALTER TABLE carousels ADD COLUMN templateId int`,
+      ]) {
+        try { await db.execute(stmt); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
       }
     })().catch((error) => {
       _carouselTableReady = null;
@@ -394,24 +416,25 @@ async function ensureSocialPostsMetadataColumn() {
         FROM information_schema.columns
         WHERE table_schema = DATABASE()
           AND table_name = 'social_posts'
-          AND column_name IN ('metadata', 'errorMessage')
+          AND column_name IN ('metadata', 'errorMessage', 'igMediaId', 'contentType', 'contentId', 'storyData')
       `)) as unknown as [Array<{ column_name: string }>, unknown];
 
       const existing = new Set((columnRows as Array<{ column_name: string }>).map((r) => r.column_name));
 
-      if (!existing.has("metadata")) {
-        try {
-          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN metadata text`);
-        } catch (error) {
-          if (!isMysqlDuplicateColumnError(error)) throw error;
-        }
-      }
-
-      if (!existing.has("errorMessage")) {
-        try {
-          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN errorMessage text`);
-        } catch (error) {
-          if (!isMysqlDuplicateColumnError(error)) throw error;
+      for (const [col, ddl] of [
+        ["metadata", sql`ALTER TABLE social_posts ADD COLUMN metadata text`],
+        ["errorMessage", sql`ALTER TABLE social_posts ADD COLUMN errorMessage text`],
+        ["igMediaId", sql`ALTER TABLE social_posts ADD COLUMN igMediaId varchar(100)`],
+        ["contentType", sql`ALTER TABLE social_posts ADD COLUMN contentType varchar(20)`],
+        ["contentId", sql`ALTER TABLE social_posts ADD COLUMN contentId int`],
+        ["storyData", sql`ALTER TABLE social_posts ADD COLUMN storyData text`],
+      ] as const) {
+        if (!existing.has(col)) {
+          try {
+            await db.execute(ddl);
+          } catch (error) {
+            if (!isMysqlDuplicateColumnError(error)) throw error;
+          }
         }
       }
     })().catch((error) => {
@@ -769,6 +792,9 @@ export async function saveArticle(
     coverImageUrl?: string;
     content: string;
     summary?: string;
+    sourceTopicAngleId?: number;
+    hookType?: string;
+    contentFormat?: string;
   }
 ): Promise<Article> {
   const db = await getDb();
@@ -829,6 +855,10 @@ export async function saveCarousel(
     finalCta: string;
     coverImageUrl?: string;
     slides: CarouselSlideData[];
+    sourceTopicAngleId?: number;
+    hookType?: string;
+    contentFormat?: string;
+    templateId?: number;
   }
 ): Promise<Carousel> {
   const db = await getDb();
@@ -1106,6 +1136,9 @@ export async function saveSocialPost(
     imageUrl?: string;
     metadata?: string;
     scheduledAt?: Date;
+    contentType?: string;
+    contentId?: number;
+    storyData?: string;
   }
 ): Promise<SocialPost> {
   const db = await getDb();
@@ -1116,6 +1149,25 @@ export async function saveSocialPost(
   const created = await db.select().from(socialPosts)
     .where(eq(socialPosts.id, insertId(result))).limit(1);
   return created[0];
+}
+
+export async function getStoryPosts(userId: number): Promise<SocialPost[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureSocialPostsMetadataColumn();
+  return db.select().from(socialPosts).where(
+    and(eq(socialPosts.userId, userId), eq(socialPosts.contentType, "story"))
+  ).orderBy(desc(socialPosts.createdAt));
+}
+
+export async function getSocialPostById(id: number, userId: number): Promise<SocialPost | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureSocialPostsMetadataColumn();
+  const rows = await db.select().from(socialPosts).where(
+    and(eq(socialPosts.id, id), eq(socialPosts.userId, userId))
+  ).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function updateSocialPost(
@@ -1130,6 +1182,10 @@ export async function updateSocialPost(
     scheduledAt: Date | null;
     publishedAt: Date | null;
     errorMessage: string | null;
+    igMediaId: string | null;
+    contentType: string | null;
+    contentId: number | null;
+    storyData: string | null;
   }>
 ) {
   const db = await getDb();
@@ -1914,11 +1970,21 @@ async function ensureReelsScriptsTable() {
           caption text NOT NULL,
           hashtags text NOT NULL,
           scenes text NOT NULL,
+          sourceTopicAngleId int,
+          hookType varchar(32),
+          contentFormat varchar(32) DEFAULT 'reels',
           status enum('draft','published') NOT NULL DEFAULT 'draft',
           createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
       `);
+      for (const stmt of [
+        sql`ALTER TABLE reels_scripts ADD COLUMN sourceTopicAngleId int`,
+        sql`ALTER TABLE reels_scripts ADD COLUMN hookType varchar(32)`,
+        sql`ALTER TABLE reels_scripts ADD COLUMN contentFormat varchar(32) DEFAULT 'reels'`,
+      ]) {
+        try { await db.execute(stmt); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
+      }
     })().catch((error) => {
       _reelsScriptsTableReady = null;
       throw error;
@@ -1971,13 +2037,16 @@ export async function saveReelsScript(
     caption: string;
     hashtags: string[];
     scenes: import('./_core/reelsScriptAgent').ReelsScene[];
+    sourceTopicAngleId?: number;
+    hookType?: string;
+    contentFormat?: string;
   }
 ): Promise<ReelsScript> {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
   await ensureReelsScriptsTable();
   const insertResult = await db.execute(sql`
-    INSERT INTO reels_scripts (userId, title, topic, tone, duration, hook, reward, loopClose, caption, hashtags, scenes)
+    INSERT INTO reels_scripts (userId, title, topic, tone, duration, hook, reward, loopClose, caption, hashtags, scenes, sourceTopicAngleId, hookType, contentFormat)
     VALUES (
       ${userId},
       ${data.title},
@@ -1989,7 +2058,10 @@ export async function saveReelsScript(
       ${data.loopClose},
       ${data.caption},
       ${JSON.stringify(data.hashtags)},
-      ${JSON.stringify(data.scenes)}
+      ${JSON.stringify(data.scenes)},
+      ${data.sourceTopicAngleId ?? null},
+      ${data.hookType ?? null},
+      ${data.contentFormat ?? 'reels'}
     )
   `);
   const id = insertId(insertResult[0]);
@@ -2601,4 +2673,488 @@ export async function getDailyUsageAll(userId: number, date: string): Promise<Re
     .from(dailyUsage)
     .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.date, date)));
   return Object.fromEntries(rows.map((r) => [r.feature, r.count]));
+}
+
+// ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
+
+let _radarTablesReady: Promise<void> | null = null;
+
+async function ensureRadarTables() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_radarTablesReady) {
+    _radarTablesReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS trending_topics (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          externalId VARCHAR(128) NOT NULL,
+          title VARCHAR(512) NOT NULL,
+          description TEXT,
+          source VARCHAR(16) NOT NULL DEFAULT 'serper',
+          viralScore INT NOT NULL DEFAULT 50,
+          emotionalAngle VARCHAR(16),
+          relevanceWindow VARCHAR(16),
+          niches JSON,
+          collectedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expiresAt TIMESTAMP NOT NULL,
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_trending_topics_externalId (externalId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS user_topic_angles (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          trendingTopicId INT NOT NULL,
+          suggestedTitle VARCHAR(512) NOT NULL,
+          suggestedHook TEXT NOT NULL,
+          status VARCHAR(16) NOT NULL DEFAULT 'sugerido',
+          contentRef VARCHAR(255),
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_user_topic_angles_user_topic (userId, trendingTopicId),
+          INDEX idx_user_topic_angles_userId (userId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+    })().catch((e) => { _radarTablesReady = null; throw e; });
+  }
+
+  await _radarTablesReady;
+}
+
+export type RadarTopic = TrendingTopic & { angle: UserTopicAngle | null };
+
+export async function upsertTrendingTopic(data: {
+  externalId: string;
+  title: string;
+  description?: string;
+  source?: string;
+  expiresAt: Date;
+}): Promise<number> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return 0;
+  await db.execute(sql`
+    INSERT INTO trending_topics (externalId, title, description, source, expiresAt)
+    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.expiresAt})
+    ON DUPLICATE KEY UPDATE
+      title = VALUES(title),
+      description = VALUES(description),
+      expiresAt = VALUES(expiresAt)
+  `);
+  const rows = await db
+    .select({ id: trendingTopics.id })
+    .from(trendingTopics)
+    .where(eq(trendingTopics.externalId, data.externalId))
+    .limit(1);
+  return rows[0]?.id ?? 0;
+}
+
+export async function updateTopicClassification(id: number, data: {
+  viralScore: number;
+  emotionalAngle: string;
+  relevanceWindow: string;
+  niches: string[];
+}): Promise<void> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(trendingTopics)
+    .set({
+      viralScore: data.viralScore,
+      emotionalAngle: data.emotionalAngle,
+      relevanceWindow: data.relevanceWindow,
+      niches: data.niches,
+    })
+    .where(eq(trendingTopics.id, id));
+}
+
+export async function getPendingTopicsForClassification(): Promise<TrendingTopic[]> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(trendingTopics)
+    .where(sql`niches IS NULL AND expiresAt > NOW()`)
+    .limit(20);
+}
+
+export async function getActiveTopics(): Promise<TrendingTopic[]> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(trendingTopics)
+    .where(sql`expiresAt > NOW() AND niches IS NOT NULL`)
+    .orderBy(desc(trendingTopics.viralScore))
+    .limit(50);
+}
+
+export async function getUsersWithNiches(): Promise<Array<{ id: number; nicheId: string | null; subNicheId: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
+    .from(users)
+    .leftJoin(brandKits, eq(users.id, brandKits.userId))
+    .where(sql`users.isActive = 1`);
+  return rows;
+}
+
+export async function upsertUserTopicAngle(data: {
+  userId: number;
+  trendingTopicId: number;
+  suggestedTitle: string;
+  suggestedHook: string;
+}): Promise<void> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    INSERT INTO user_topic_angles (userId, trendingTopicId, suggestedTitle, suggestedHook)
+    VALUES (${data.userId}, ${data.trendingTopicId}, ${data.suggestedTitle}, ${data.suggestedHook})
+    ON DUPLICATE KEY UPDATE
+      suggestedTitle = VALUES(suggestedTitle),
+      suggestedHook = VALUES(suggestedHook),
+      updatedAt = CURRENT_TIMESTAMP
+  `);
+}
+
+export async function getRadarTopicsForUser(userId: number): Promise<RadarTopic[]> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      topic: trendingTopics,
+      angle: userTopicAngles,
+    })
+    .from(trendingTopics)
+    .leftJoin(
+      userTopicAngles,
+      and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
+    )
+    .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
+    .orderBy(desc(trendingTopics.viralScore))
+    .limit(30);
+  return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null }));
+}
+
+export async function updateUserTopicAngleStatus(userId: number, trendingTopicId: number, status: string): Promise<void> {
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(userTopicAngles)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(userTopicAngles.userId, userId), eq(userTopicAngles.trendingTopicId, trendingTopicId)));
+}
+
+// ─── Post Metrics (Module 1.3) ────────────────────────────────────────────────
+
+async function ensurePostMetricsTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_postMetricsTableReady) {
+    _postMetricsTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS post_metrics (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          socialPostId int NOT NULL,
+          collectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reach int NOT NULL DEFAULT 0,
+          saves int NOT NULL DEFAULT 0,
+          shares int NOT NULL DEFAULT 0,
+          comments int NOT NULL DEFAULT 0,
+          likes int NOT NULL DEFAULT 0,
+          followsDelta int NOT NULL DEFAULT 0,
+          rawScore int NOT NULL DEFAULT 0,
+          normalizedScore int NOT NULL DEFAULT 0,
+          INDEX idx_post_metrics_socialPostId (socialPostId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+    })().catch((e) => { _postMetricsTableReady = null; throw e; });
+  }
+  await _postMetricsTableReady;
+}
+
+async function ensureTemplatePerformanceTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_templatePerformanceTableReady) {
+    _templatePerformanceTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS template_performance (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          niche varchar(64) NOT NULL,
+          templateStyle varchar(100) NOT NULL,
+          hookType varchar(32) NOT NULL,
+          contentFormat varchar(32) NOT NULL,
+          sourceKind varchar(16) NOT NULL,
+          avgScore int NOT NULL DEFAULT 0,
+          postCount int NOT NULL DEFAULT 0,
+          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_template_perf_userId_niche (userId, niche),
+          UNIQUE KEY uq_template_perf_combo (userId, niche, templateStyle, hookType, contentFormat, sourceKind)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+    })().catch((e) => { _templatePerformanceTableReady = null; throw e; });
+  }
+  await _templatePerformanceTableReady;
+}
+
+export async function savePostMetric(data: {
+  socialPostId: number;
+  reach: number;
+  saves: number;
+  shares: number;
+  comments: number;
+  likes: number;
+  followsDelta: number;
+  rawScore: number;
+  normalizedScore: number;
+}): Promise<void> {
+  await ensurePostMetricsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(postMetrics).values({
+    socialPostId: data.socialPostId,
+    reach: data.reach,
+    saves: data.saves,
+    shares: data.shares,
+    comments: data.comments,
+    likes: data.likes,
+    followsDelta: data.followsDelta,
+    rawScore: data.rawScore,
+    normalizedScore: data.normalizedScore,
+  });
+}
+
+export async function getLatestMetricForPost(socialPostId: number): Promise<PostMetric | null> {
+  await ensurePostMetricsTable();
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(postMetrics)
+    .where(eq(postMetrics.socialPostId, socialPostId))
+    .orderBy(desc(postMetrics.collectedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getPublishedPostsWithIgMedia(): Promise<Array<{
+  id: number;
+  userId: number;
+  igMediaId: string;
+  contentType: string | null;
+  style: string | null;
+  hookType: string | null;
+  contentFormat: string | null;
+  sourceTopicAngleId: number | null;
+  contentId: number | null;
+  publishedAt: Date | null;
+}>> {
+  await ensurePostMetricsTable();
+  await ensureSocialPostsMetadataColumn();
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.execute(sql`
+    SELECT sp.id, sp.userId, sp.igMediaId, sp.contentType, sp.contentId, sp.publishedAt,
+           COALESCE(c.style, r.contentFormat, 'unknown') AS style,
+           COALESCE(c.hookType, r.hookType, sp.contentType) AS hookType,
+           COALESCE(c.contentFormat, r.contentFormat, sp.contentType) AS contentFormat,
+           COALESCE(c.sourceTopicAngleId, r.sourceTopicAngleId) AS sourceTopicAngleId
+    FROM social_posts sp
+    LEFT JOIN carousels c ON sp.contentType = 'carousel' AND c.id = sp.contentId
+    LEFT JOIN reels_scripts r ON sp.contentType = 'reels' AND r.id = sp.contentId
+    WHERE sp.status = 'published'
+      AND sp.igMediaId IS NOT NULL
+      AND sp.channel = 'instagram'
+    ORDER BY sp.publishedAt DESC
+    LIMIT 200
+  `);
+  return (rows[0] as unknown as Array<Record<string, unknown>>).map((r) => ({
+    id: Number(r.id),
+    userId: Number(r.userId),
+    igMediaId: String(r.igMediaId),
+    contentType: r.contentType ? String(r.contentType) : null,
+    style: r.style ? String(r.style) : null,
+    hookType: r.hookType ? String(r.hookType) : null,
+    contentFormat: r.contentFormat ? String(r.contentFormat) : null,
+    sourceTopicAngleId: r.sourceTopicAngleId != null ? Number(r.sourceTopicAngleId) : null,
+    contentId: r.contentId != null ? Number(r.contentId) : null,
+    publishedAt: r.publishedAt ? (r.publishedAt instanceof Date ? r.publishedAt : new Date(String(r.publishedAt))) : null,
+  }));
+}
+
+export async function upsertTemplatePerformance(data: {
+  userId: number;
+  niche: string;
+  templateStyle: string;
+  hookType: string;
+  contentFormat: string;
+  sourceKind: string;
+  avgScore: number;
+  postCount: number;
+}): Promise<void> {
+  await ensureTemplatePerformanceTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    INSERT INTO template_performance (userId, niche, templateStyle, hookType, contentFormat, sourceKind, avgScore, postCount)
+    VALUES (${data.userId}, ${data.niche}, ${data.templateStyle}, ${data.hookType}, ${data.contentFormat}, ${data.sourceKind}, ${data.avgScore}, ${data.postCount})
+    ON DUPLICATE KEY UPDATE
+      avgScore = VALUES(avgScore),
+      postCount = VALUES(postCount),
+      updatedAt = CURRENT_TIMESTAMP
+  `);
+}
+
+export async function getTopPerformanceForUser(userId: number, contentFormat?: string): Promise<TemplatePerformance[]> {
+  await ensureTemplatePerformanceTable();
+  const db = await getDb();
+  if (!db) return [];
+  const rows = contentFormat
+    ? await db.select().from(templatePerformance)
+        .where(and(eq(templatePerformance.userId, userId), eq(templatePerformance.contentFormat, contentFormat), sql`postCount >= 3`))
+        .orderBy(desc(templatePerformance.avgScore))
+        .limit(10)
+    : await db.select().from(templatePerformance)
+        .where(and(eq(templatePerformance.userId, userId), sql`postCount >= 3`))
+        .orderBy(desc(templatePerformance.avgScore))
+        .limit(20);
+  return rows;
+}
+
+export async function getUserNicheForPerformance(userId: number): Promise<string> {
+  const kit = await getBrandKit(userId);
+  return kit?.nicheId ?? "generic";
+}
+
+// ─── Editorial Plan Items (Module 2.1) ───────────────────────────────────────
+
+async function ensureEditorialPlanItemsTable() {
+  if (!_editorialPlanItemsTableReady) {
+    _editorialPlanItemsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`editorial_plan_items\` (
+          \`id\` int NOT NULL AUTO_INCREMENT,
+          \`userId\` int NOT NULL,
+          \`year\` int NOT NULL,
+          \`month\` int NOT NULL,
+          \`scheduledDate\` varchar(10) NOT NULL,
+          \`format\` varchar(32) NOT NULL,
+          \`category\` varchar(255) NOT NULL,
+          \`suggestedTitle\` varchar(512) NOT NULL,
+          \`pauta\` text NOT NULL,
+          \`status\` varchar(16) NOT NULL DEFAULT 'pending',
+          \`socialPostId\` int DEFAULT NULL,
+          \`contentType\` varchar(20) DEFAULT NULL,
+          \`contentId\` int DEFAULT NULL,
+          \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`editorial_plan_items_pk\` PRIMARY KEY(\`id\`),
+          INDEX \`idx_editorial_plan_userId_month\` (\`userId\`, \`year\`, \`month\`)
+        )
+      `);
+    })().catch((error) => {
+      _editorialPlanItemsTableReady = null;
+      throw error;
+    });
+  }
+  return _editorialPlanItemsTableReady;
+}
+
+export async function getEditorialPlanItems(userId: number, year: number, month: number): Promise<EditorialPlanItem[]> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(editorialPlanItems)
+    .where(and(
+      eq(editorialPlanItems.userId, userId),
+      eq(editorialPlanItems.year, year),
+      eq(editorialPlanItems.month, month),
+    ))
+    .orderBy(asc(editorialPlanItems.scheduledDate));
+}
+
+export async function countGeneratedPlanItems(userId: number, year: number, month: number): Promise<number> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return 0;
+  const [rows] = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM editorial_plan_items
+    WHERE userId = ${userId} AND year = ${year} AND month = ${month}
+    AND (status = 'done' OR socialPostId IS NOT NULL OR contentId IS NOT NULL)
+  `);
+  return Number((rows as unknown as Array<{ cnt: number }>)[0]?.cnt ?? 0);
+}
+
+export async function saveEditorialPlanItems(
+  userId: number,
+  year: number,
+  month: number,
+  items: Array<Omit<InsertEditorialPlanItem, "userId" | "year" | "month" | "id" | "createdAt" | "updatedAt">>
+): Promise<EditorialPlanItem[]> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return [];
+  await db.delete(editorialPlanItems).where(
+    and(
+      eq(editorialPlanItems.userId, userId),
+      eq(editorialPlanItems.year, year),
+      eq(editorialPlanItems.month, month),
+    )
+  );
+  if (items.length === 0) return [];
+  await db.insert(editorialPlanItems).values(
+    items.map((item) => ({ ...item, userId, year, month }))
+  );
+  return getEditorialPlanItems(userId, year, month);
+}
+
+export async function updateEditorialPlanItem(
+  id: number,
+  userId: number,
+  data: Partial<Pick<EditorialPlanItem, "status" | "socialPostId" | "contentType" | "contentId" | "scheduledDate">>
+): Promise<EditorialPlanItem | null> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return null;
+  await db.update(editorialPlanItems)
+    .set(data)
+    .where(and(eq(editorialPlanItems.id, id), eq(editorialPlanItems.userId, userId)));
+  const [row] = await db.select().from(editorialPlanItems)
+    .where(and(eq(editorialPlanItems.id, id), eq(editorialPlanItems.userId, userId)));
+  return row ?? null;
+}
+
+export async function getEditorialPlanItemById(id: number, userId: number): Promise<EditorialPlanItem | null> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(editorialPlanItems)
+    .where(and(eq(editorialPlanItems.id, id), eq(editorialPlanItems.userId, userId)));
+  return row ?? null;
+}
+
+export async function deleteEditorialPlanItems(userId: number, year: number, month: number): Promise<void> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(editorialPlanItems).where(
+    and(
+      eq(editorialPlanItems.userId, userId),
+      eq(editorialPlanItems.year, year),
+      eq(editorialPlanItems.month, month),
+    )
+  );
 }

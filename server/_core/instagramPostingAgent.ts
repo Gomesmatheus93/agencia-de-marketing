@@ -624,3 +624,31 @@ export async function publishInstagramCarouselWithAgent(
     caption,
   };
 }
+
+export async function publishInstagramStory(input: {
+  userId: number;
+  imageDataUrl: string;
+  caption?: string;
+}): Promise<{ success: true; mediaId: string; containerId: string }> {
+  const config = await getRequiredMetaConfig(input.userId);
+  const batchId = randomUUID();
+
+  const parsed = parseDataUrl(input.imageDataUrl);
+  ensureInstagramImageAsset(parsed);
+
+  const key = `instagram/stories/${input.userId}/${batchId}/story.${parsed.extension}`;
+  const uploaded = await putPublicAsset(key, parsed.buffer, parsed.mimeType);
+  const publicUrl = await getMetaFetchableStorageUrl(uploaded.url);
+
+  // STORIES media type — caption is not shown in stories but we send it as metadata
+  const containerId = await postToGraph(
+    "media",
+    { image_url: publicUrl, media_type: "STORIES" },
+    config
+  );
+
+  await waitForContainerReady(containerId, config);
+  const mediaId = await postToGraph("media_publish", { creation_id: containerId }, config);
+
+  return { success: true, mediaId, containerId };
+}

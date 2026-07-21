@@ -78,6 +78,41 @@
       "when": 1776211200000,
       "tag": "0010_instagram_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1776297600000,
+      "tag": "0011_admin_feature_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1753056000000,
+      "tag": "0012_radar_and_content_traceability",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1753142400000,
+      "tag": "0013_performance_feedback_loop",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1753228800000,
+      "tag": "0014_editorial_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1753315200000,
+      "tag": "0015_stories",
+      "breakpoints": true
     }
   ]
 }

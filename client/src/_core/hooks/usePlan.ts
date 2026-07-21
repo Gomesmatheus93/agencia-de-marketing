@@ -11,6 +11,9 @@ const TRIAL_LOCKED_FEATURES = new Set([
   "brand",
   "commentAutomations",
   "styleAnalyzer",
+  "radar",
+  "editorialPlan",
+  "stories",
 ]);
 
 export function usePlan() {

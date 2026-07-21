@@ -7,6 +7,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -112,6 +113,9 @@ export const articles = mysqlTable(
     content: text("content").notNull(),
     summary: text("summary"),
     status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+    sourceTopicAngleId: int("sourceTopicAngleId"),
+    hookType: varchar("hookType", { length: 32 }),
+    contentFormat: varchar("contentFormat", { length: 32 }).default("article"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -186,6 +190,10 @@ export const carousels = mysqlTable(
     coverImageUrl: text("coverImageUrl"),
     slides: text("slides").notNull(),
     designSettings: text("designSettings"),
+    sourceTopicAngleId: int("sourceTopicAngleId"),
+    hookType: varchar("hookType", { length: 32 }),
+    contentFormat: varchar("contentFormat", { length: 32 }).default("carousel"),
+    templateId: int("templateId"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -262,6 +270,10 @@ export const socialPosts = mysqlTable(
     publishedAt: timestamp("publishedAt"),
     status: mysqlEnum("status", ["draft", "pending_approval", "scheduled", "published", "failed", "rejected"]).default("draft").notNull(),
     errorMessage: text("errorMessage"),
+    igMediaId: varchar("igMediaId", { length: 100 }),
+    contentType: varchar("contentType", { length: 20 }),
+    contentId: int("contentId"),
+    storyData: text("storyData"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -406,3 +418,124 @@ export const commentAutomations = mysqlTable(
 
 export type CommentAutomation = typeof commentAutomations.$inferSelect;
 export type InsertCommentAutomation = typeof commentAutomations.$inferInsert;
+
+// ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
+export const trendingTopics = mysqlTable(
+  "trending_topics",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    externalId: varchar("externalId", { length: 128 }).notNull(),
+    title: varchar("title", { length: 512 }).notNull(),
+    description: text("description"),
+    source: varchar("source", { length: 16 }).default("serper").notNull(),
+    viralScore: int("viralScore").default(50).notNull(),
+    emotionalAngle: varchar("emotionalAngle", { length: 16 }),
+    relevanceWindow: varchar("relevanceWindow", { length: 16 }),
+    niches: json("niches").$type<string[]>(),
+    collectedAt: timestamp("collectedAt").defaultNow().notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("uq_trending_topics_externalId").on(t.externalId)]
+);
+
+export type TrendingTopic = typeof trendingTopics.$inferSelect;
+export type InsertTrendingTopic = typeof trendingTopics.$inferInsert;
+
+export const userTopicAngles = mysqlTable(
+  "user_topic_angles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    trendingTopicId: int("trendingTopicId").notNull(),
+    suggestedTitle: varchar("suggestedTitle", { length: 512 }).notNull(),
+    suggestedHook: text("suggestedHook").notNull(),
+    status: varchar("status", { length: 16 }).default("sugerido").notNull(),
+    contentRef: varchar("contentRef", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("uq_user_topic_angles_user_topic").on(t.userId, t.trendingTopicId),
+    index("idx_user_topic_angles_userId").on(t.userId),
+  ]
+);
+
+export type UserTopicAngle = typeof userTopicAngles.$inferSelect;
+export type InsertUserTopicAngle = typeof userTopicAngles.$inferInsert;
+
+// ─── Post Metrics (Module 1.3) ────────────────────────────────────────────────
+export const postMetrics = mysqlTable(
+  "post_metrics",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    socialPostId: int("socialPostId").notNull(),
+    collectedAt: timestamp("collectedAt").defaultNow().notNull(),
+    reach: int("reach").default(0).notNull(),
+    saves: int("saves").default(0).notNull(),
+    shares: int("shares").default(0).notNull(),
+    comments: int("comments").default(0).notNull(),
+    likes: int("likes").default(0).notNull(),
+    followsDelta: int("followsDelta").default(0).notNull(),
+    rawScore: int("rawScore").default(0).notNull(),
+    normalizedScore: int("normalizedScore").default(0).notNull(),
+  },
+  (t) => [index("idx_post_metrics_socialPostId").on(t.socialPostId)]
+);
+
+export type PostMetric = typeof postMetrics.$inferSelect;
+export type InsertPostMetric = typeof postMetrics.$inferInsert;
+
+// ─── Template Performance (Module 1.3) ───────────────────────────────────────
+export const templatePerformance = mysqlTable(
+  "template_performance",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    niche: varchar("niche", { length: 64 }).notNull(),
+    templateStyle: varchar("templateStyle", { length: 100 }).notNull(),
+    hookType: varchar("hookType", { length: 32 }).notNull(),
+    contentFormat: varchar("contentFormat", { length: 32 }).notNull(),
+    sourceKind: varchar("sourceKind", { length: 16 }).notNull(),
+    avgScore: int("avgScore").default(0).notNull(),
+    postCount: int("postCount").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("idx_template_perf_userId_niche").on(t.userId, t.niche),
+    uniqueIndex("uq_template_perf_combo").on(
+      t.userId, t.niche, t.templateStyle, t.hookType, t.contentFormat, t.sourceKind
+    ),
+  ]
+);
+
+export type TemplatePerformance = typeof templatePerformance.$inferSelect;
+export type InsertTemplatePerformance = typeof templatePerformance.$inferInsert;
+
+// ─── Editorial Plan Items (Module 2.1) ───────────────────────────────────────
+export const editorialPlanItems = mysqlTable(
+  "editorial_plan_items",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    year: int("year").notNull(),
+    month: int("month").notNull(),
+    scheduledDate: varchar("scheduledDate", { length: 10 }).notNull(),
+    format: varchar("format", { length: 32 }).notNull(),
+    category: varchar("category", { length: 255 }).notNull(),
+    suggestedTitle: varchar("suggestedTitle", { length: 512 }).notNull(),
+    pauta: text("pauta").notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    socialPostId: int("socialPostId"),
+    contentType: varchar("contentType", { length: 20 }),
+    contentId: int("contentId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("idx_editorial_plan_userId_month").on(t.userId, t.year, t.month),
+  ]
+);
+
+export type EditorialPlanItem = typeof editorialPlanItems.$inferSelect;
+export type InsertEditorialPlanItem = typeof editorialPlanItems.$inferInsert;
