@@ -77,6 +77,7 @@ async function collectViaSerper(): Promise<boolean> {
           title: item.title,
           description: item.snippet,
           source: "serper",
+          sourceUrl: item.link,
           expiresAt,
         });
         inserted++;

@@ -14,6 +14,8 @@ import {
   GalleryHorizontal,
   Film,
   FileText,
+  ExternalLink,
+  Layers,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -72,6 +74,7 @@ function TopicCard({
     id: number;
     title: string;
     description?: string | null;
+    sourceUrl?: string | null;
     viralScore: number;
     emotionalAngle?: string | null;
     relevanceWindow?: string | null;
@@ -83,7 +86,7 @@ function TopicCard({
     } | null;
   };
   onStatusChange: (topicId: number, status: TopicStatus) => void;
-  onGenerate: (type: "carousel" | "reels" | "article", prefill: RadarPrefill) => void;
+  onGenerate: (type: "carousel" | "reels" | "article" | "stories", prefill: RadarPrefill) => void;
 }) {
   const angle = topic.angle;
   const status = (angle?.status ?? "sugerido") as TopicStatus;
@@ -93,14 +96,13 @@ function TopicCard({
   const isUsed = status === "usado";
   const isDiscarded = status === "descartado";
 
-  const prefill: RadarPrefill | null = angle
-    ? {
-        topicAngleId: angle.id,
-        topic: angle.suggestedTitle || topic.title,
-        hook: angle.suggestedHook || "",
-        hookType: topic.emotionalAngle ?? "curiosidade",
-      }
-    : null;
+  // Always build a prefill — use personalized angle if available, otherwise the topic itself
+  const prefill: RadarPrefill = {
+    topicAngleId: angle?.id ?? 0,
+    topic: angle?.suggestedTitle || topic.title,
+    hook: angle?.suggestedHook || topic.description || "",
+    hookType: topic.emotionalAngle ?? "curiosidade",
+  };
 
   return (
     <div
@@ -152,9 +154,22 @@ function TopicCard({
         </div>
       )}
 
-      {/* Generation CTAs */}
-      {!isDiscarded && prefill && (
-        <div className="grid grid-cols-3 gap-1.5 pt-1">
+      {/* Source link */}
+      {topic.sourceUrl && (
+        <a
+          href={topic.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Abrir fonte original
+        </a>
+      )}
+
+      {/* Generation CTAs — always visible */}
+      {!isDiscarded && (
+        <div className="grid grid-cols-2 gap-1.5 pt-1">
           <Button
             size="sm"
             variant="outline"
@@ -184,6 +199,16 @@ function TopicCard({
           >
             <FileText className="w-3.5 h-3.5 shrink-0" />
             Artigo
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 text-xs h-8 px-2"
+            onClick={() => onGenerate("stories", prefill)}
+            title="Gerar stories com este tema"
+          >
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            Stories
           </Button>
         </div>
       )}
@@ -232,9 +257,14 @@ export default function Radar() {
   const [filter, setFilter] = useState<FilterType>("todos");
   const [, navigate] = useLocation();
 
-  function handleGenerate(type: "carousel" | "reels" | "article", prefill: RadarPrefill) {
+  function handleGenerate(type: "carousel" | "reels" | "article" | "stories", prefill: RadarPrefill) {
     sessionStorage.setItem(RADAR_PREFILL_KEY, JSON.stringify(prefill));
-    const paths = { carousel: "/dashboard/carousel", reels: "/dashboard/reels", article: "/dashboard/articles" };
+    const paths = {
+      carousel: "/dashboard/carousel",
+      reels: "/dashboard/reels",
+      article: "/dashboard/articles",
+      stories: "/dashboard/stories",
+    };
     navigate(paths[type]);
   }
 
@@ -382,6 +412,7 @@ export default function Radar() {
                   id: topic.id,
                   title: topic.title,
                   description: topic.description,
+                  sourceUrl: (topic as typeof topic & { sourceUrl?: string | null }).sourceUrl,
                   viralScore: topic.viralScore,
                   emotionalAngle: topic.emotionalAngle,
                   relevanceWindow: topic.relevanceWindow,

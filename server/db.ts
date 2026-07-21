@@ -2696,12 +2696,15 @@ async function ensureRadarTables() {
           emotionalAngle VARCHAR(16),
           relevanceWindow VARCHAR(16),
           niches JSON,
+          sourceUrl VARCHAR(1000),
           collectedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           expiresAt TIMESTAMP NOT NULL,
           createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uq_trending_topics_externalId (externalId)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       `);
+      // Add sourceUrl to existing tables that were created before this column existed
+      await db.execute(sql`ALTER TABLE trending_topics ADD COLUMN IF NOT EXISTS sourceUrl VARCHAR(1000)`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS user_topic_angles (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2730,17 +2733,19 @@ export async function upsertTrendingTopic(data: {
   title: string;
   description?: string;
   source?: string;
+  sourceUrl?: string;
   expiresAt: Date;
 }): Promise<number> {
   await ensureRadarTables();
   const db = await getDb();
   if (!db) return 0;
   await db.execute(sql`
-    INSERT INTO trending_topics (externalId, title, description, source, expiresAt)
-    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.expiresAt})
+    INSERT INTO trending_topics (externalId, title, description, source, sourceUrl, expiresAt)
+    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.sourceUrl ?? null}, ${data.expiresAt})
     ON DUPLICATE KEY UPDATE
       title = VALUES(title),
       description = VALUES(description),
+      sourceUrl = VALUES(sourceUrl),
       expiresAt = VALUES(expiresAt)
   `);
   const rows = await db
