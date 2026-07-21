@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { RadarPrefill } from "@/pages/Radar";
+const RADAR_PREFILL_KEY = "radar_prefill";
 import { trpc } from "@/lib/trpc";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,19 @@ export default function Reels() {
   const [duration, setDuration] = useState<"short" | "medium" | "long">("medium");
   const [extraContext, setExtraContext] = useState("");
   const [selected, setSelected] = useState<ReelsScript | null>(null);
+  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as RadarPrefill;
+      sessionStorage.removeItem(RADAR_PREFILL_KEY);
+      radarPrefillRef.current = prefill;
+      setTopic(prefill.topic);
+      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+    } catch { /* ignore */ }
+  }, []);
 
   const { data: scripts = [], refetch } = trpc.reels.getAll.useQuery();
 
@@ -83,7 +98,16 @@ export default function Reels() {
 
   function handleGenerate() {
     if (!topic.trim()) { toast.error("Digite o tema do Reel"); return; }
-    generateMut.mutate({ topic: topic.trim(), tone, duration, extraContext: extraContext.trim() || undefined });
+    const prefill = radarPrefillRef.current;
+    generateMut.mutate({
+      topic: topic.trim(),
+      tone,
+      duration,
+      extraContext: extraContext.trim() || undefined,
+      sourceTopicAngleId: prefill?.topicAngleId,
+      hookType: prefill?.hookType,
+    });
+    radarPrefillRef.current = null;
   }
 
   const displayScript = selected ?? (scripts.length > 0 ? scripts[0] as unknown as ReelsScript : null);

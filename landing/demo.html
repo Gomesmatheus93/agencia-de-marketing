@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KrythosLab — Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:linear-gradient(135deg,#ede9ff 0%,#eef2ff 50%,#f3e8ff 100%);
+  --glass:rgba(255,255,255,.68);
+  --glass-b:rgba(255,255,255,.42);
+  --glass-shadow:0 8px 32px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.04);
+  --glass-blur:blur(20px);
+  --sb-glass:rgba(255,255,255,.62);
+  --border:rgba(0,0,0,.06);
+  --border2:rgba(0,0,0,.1);
+  --p:#5b21b6;
+  --p2:#7c3aed;
+  --pl:#8b5cf6;
+  --muted:#f4f3ff;
+  --muted-fg:#6b7280;
+  --fg:#111827;
+  --r:.75rem;
+}
+
+body{
+  background:var(--bg);
+  background-attachment:fixed;
+  color:var(--fg);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  display:flex;
+  height:100dvh;
+  overflow:hidden;
+}
+
+/* Orbs */
+.orb{position:fixed;border-radius:50%;pointer-events:none;z-index:0}
+.orb1{top:-15%;left:-5%;width:400px;height:400px;background:rgba(139,92,246,.12);filter:blur(100px)}
+.orb2{bottom:-15%;right:-5%;width:350px;height:350px;background:rgba(96,165,250,.1);filter:blur(80px)}
+
+/* ── SIDEBAR ─────────────────────────────────────────────────────── */
+.sidebar{
+  width:256px;min-width:256px;
+  background:var(--sb-glass);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  border-right:1px solid rgba(0,0,0,.06);
+  display:flex;flex-direction:column;
+  z-index:30;position:relative;
+}
+
+.sb-head{padding:20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.sb-logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#9333ea);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;box-shadow:0 4px 12px rgba(124,58,237,.3)}
+.sb-brand{font-weight:700;font-size:14px;letter-spacing:-.3px;color:var(--fg)}
+.sb-sub{font-size:11px;color:var(--muted-fg)}
+.sb-demo{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(139,92,246,.1);color:var(--pl);border:1px solid rgba(139,92,246,.28);border-radius:5px;padding:2px 7px}
+
+.nav{flex:1;padding:12px;overflow-y:auto}
+.nav::-webkit-scrollbar{width:3px}
+.nav::-webkit-scrollbar-thumb{background:rgba(0,0,0,.08);border-radius:3px}
+
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(107,114,128,.5);padding:8px 12px 4px;display:block}
+
+.ni{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border-radius:var(--r);
+  cursor:pointer;color:var(--muted-fg);
+  transition:all .15s;margin-bottom:1px;
+  user-select:none;
+}
+.ni:hover{background:rgba(139,92,246,.06);color:var(--fg)}
+.ni.active{background:rgba(139,92,246,.1);color:var(--p2)}
+.ni.locked{opacity:.5;cursor:default}
+
+.ni-ico{
+  width:32px;height:32px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;flex-shrink:0;
+  background:rgba(0,0,0,.05);color:var(--muted-fg);
+  transition:all .15s;
+}
+.ni:hover .ni-ico{background:rgba(0,0,0,.07);color:var(--fg)}
+.ni.active .ni-ico{
+  background:linear-gradient(135deg,var(--c1,#7c3aed),var(--c2,#9333ea));
+  color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);
+}
+
+.ni-txt{flex:1;min-width:0}
+.ni-name{font-size:13px;font-weight:500;line-height:1.2;color:inherit}
+.ni-desc{font-size:11px;color:rgba(107,114,128,.7);margin-top:1px;line-height:1}
+.ni.active .ni-desc{color:rgba(124,58,237,.55)}
+.ni-dot{width:6px;height:6px;border-radius:50%;background:var(--p2);flex-shrink:0;display:none}
+.ni.active .ni-dot{display:block}
+.ni-lock{font-size:11px;color:rgba(107,114,128,.4);flex-shrink:0}
+
+/* Sidebar bottom */
+.sb-btm{padding:12px;border-top:1px solid var(--border)}
+
+.trial-w{background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.18);border-radius:var(--r);padding:12px}
+.tw-hd{font-size:11px;font-weight:600;color:var(--p2);margin-bottom:3px;display:flex;align-items:center;gap:5px}
+.tw-sub{font-size:11px;color:var(--muted-fg);margin-bottom:5px}
+.tw-bar{height:4px;background:rgba(0,0,0,.07);border-radius:99px;overflow:hidden;margin:4px 0}
+.tw-fill{height:100%;background:linear-gradient(90deg,var(--p),var(--pl));border-radius:99px;transition:width .5s}
+.tw-use{font-size:10px;color:rgba(107,114,128,.55);margin-bottom:8px}
+.tw-up{width:100%;padding:7px;border-radius:8px;background:linear-gradient(135deg,var(--p2),#9333ea);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(124,58,237,.25);transition:all .2s}
+.tw-up:hover{opacity:.9;transform:translateY(-1px)}
+
+.user-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);cursor:pointer;transition:background .15s;margin-top:8px}
+.user-row:hover{background:rgba(0,0,0,.04)}
+.user-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--p2),#9333ea);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
+.user-n{font-size:13px;font-weight:500;color:var(--fg)}
+.user-e{font-size:11px;color:var(--muted-fg)}
+
+/* ── MAIN ─────────────────────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;z-index:5}
+
+/* Trial banner */
+.tbanner{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 20px;
+  background:rgba(245,158,11,.08);
+  border-bottom:1px solid rgba(245,158,11,.18);
+  font-size:12px;
+}
+.tbanner-dot{width:7px;height:7px;border-radius:50%;background:#f59e0b;animation:pd 1.6s infinite;flex-shrink:0}
+@keyframes pd{0%,100%{opacity:1}50%{opacity:.25}}
+.tbanner-txt{color:#92400e;font-weight:500}
+.tbanner-txt b{color:#b45309}
+.tbanner-r{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tbanner-use{color:var(--muted-fg);font-size:11px}
+.tbanner-cta{padding:5px 14px;border-radius:7px;background:linear-gradient(135deg,var(--p2),#9333ea);border:none;color:#fff;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(124,58,237,.22);transition:all .2s}
+.tbanner-cta:hover{transform:translateY(-1px)}
+
+.content{flex:1;overflow-y:auto;padding:28px}
+.content::-webkit-scrollbar{width:5px}
+.content::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:3px}
+
+/* ── PANELS ──────────────────────────────────────────────────────── */
+.panel{display:none}
+.panel.active{display:block;animation:fup .25s ease}
+@keyframes fup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Glass card */
+.gc{background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-b);box-shadow:var(--glass-shadow);border-radius:var(--r)}
+.gc+.gc{margin-top:16px}
+.gc-hd{padding:20px 24px 16px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:between}
+.gc-bd{padding:24px}
+
+/* Page header */
+.ph{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.ph-ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.ph-title{font-size:19px;font-weight:700;letter-spacing:-.3px;color:var(--fg)}
+.ph-sub{font-size:12px;color:var(--muted-fg)}
+
+/* Gradient text */
+.gt{background:linear-gradient(135deg,var(--p2),#9333ea);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* Form fields */
+.lbl{display:block;font-size:12px;font-weight:500;color:var(--muted-fg);margin-bottom:8px}
+.ta{
+  width:100%;min-height:110px;resize:none;
+  background:rgba(255,255,255,.7);
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:12px;
+  color:var(--fg);font-size:14px;font-family:inherit;
+  padding:12px 14px;outline:none;
+  transition:all .15s;line-height:1.65;
+}
+.ta:focus{border-color:rgba(124,58,237,.5);box-shadow:0 0 0 3px rgba(124,58,237,.08)}
+.sel{
+  width:100%;background:rgba(255,255,255,.8);
+  border:1px solid rgba(0,0,0,.12);border-radius:10px;
+  color:var(--fg);font-size:13px;font-family:inherit;
+  padding:9px 13px;outline:none;cursor:pointer;
+  transition:border-color .15s;
+}
+.sel:focus{border-color:rgba(124,58,237,.4)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+
+/* Mode toggle (in card header) */
+.mode-t{display:flex;gap:2px;padding:2px;background:rgba(0,0,0,.06);border-radius:8px}
+.mode-b{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;border:none;cursor:pointer;transition:all .15s;background:transparent;color:var(--muted-fg)}
+.mode-b.act{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);color:var(--fg)}
+
+/* Style chips (6 col) */
+.style-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px}
+.sc{
+  position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:8px;padding:12px 6px;border-radius:12px;border:1.5px solid rgba(0,0,0,.1);
+  font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;
+  background:rgba(255,255,255,.4);color:var(--muted-fg);
+}
+.sc:hover{border-color:rgba(0,0,0,.16);color:var(--fg);background:rgba(255,255,255,.6)}
+.sc.act{border-color:rgba(91,33,182,.35);background:rgba(139,92,246,.08);color:var(--p2)}
+.sc-ico{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;background:rgba(0,0,0,.06);color:var(--muted-fg);transition:all .15s}
+.sc.act .sc-ico{color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.15)}
+.sc-chk{position:absolute;top:6px;right:6px;width:14px;height:14px;border-radius:50%;background:var(--p2);display:none;align-items:center;justify-content:center;font-size:9px;color:#fff}
+.sc.act .sc-chk{display:flex}
+
+/* Suggestion chips */
+.sugs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sug{font-size:11px;padding:5px 12px;border-radius:99px;border:1.5px solid rgba(0,0,0,.09);background:rgba(0,0,0,.025);color:var(--muted-fg);cursor:pointer;transition:all .15s}
+.sug:hover{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.14);color:var(--fg)}
+
+/* Generate button */
+.gen-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;height:48px;border-radius:12px;
+  background:linear-gradient(135deg,var(--p2),#9333ea);
+  border:none;color:#fff;font-size:14px;font-weight:600;
+  cursor:pointer;transition:all .2s;
+  box-shadow:0 4px 16px rgba(124,58,237,.3);
+  margin-top:16px;
+}
+.gen-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 22px rgba(124,58,237,.4)}
+.gen-btn:disabled{opacity:.65;cursor:not-allowed;transform:none}
+.gen-hint{font-size:10px;color:rgba(107,114,128,.4);text-align:center;margin-top:6px}
+
+/* Spinner */
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* Skeleton */
+.ske{background:linear-gradient(90deg,rgba(0,0,0,.05) 25%,rgba(0,0,0,.09) 50%,rgba(0,0,0,.05) 75%);background-size:200% 100%;animation:sh 1.5s infinite;border-radius:8px}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* Placeholder */
+.empty-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 20px;color:var(--muted-fg);gap:10px}
+.empty-ph i{font-size:32px;opacity:.25}
+.empty-ph p{font-size:13px;opacity:.6}
+
+/* ── DASHBOARD ──────────────────────────────────────────────────── */
+.stats6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+.stat-c{background:var(--glass);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-b);box-shadow:var(--glass-shadow);border-radius:var(--r);padding:16px}
+.stat-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;margin-bottom:10px}
+.stat-val{font-size:24px;font-weight:700;letter-spacing:-.4px;color:var(--fg)}
+.stat-lbl{font-size:11px;color:var(--muted-fg);margin-top:2px}
+.stat-sub{font-size:10px;color:rgba(107,114,128,.5)}
+
+.qa2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.qa-b{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 16px;border-radius:12px;
+  background:rgba(255,255,255,.5);border:1px solid rgba(0,0,0,.07);
+  cursor:pointer;transition:all .2s;text-align:left;
+  box-shadow:0 1px 4px rgba(0,0,0,.04);
+}
+.qa-b:hover{background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.22);transform:scale(1.01)}
+.qa-ico{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0}
+.qa-name{font-size:13px;font-weight:500;color:var(--fg)}
+.qa-desc{font-size:11px;color:var(--muted-fg)}
+
+.urow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ulbl{width:80px;font-size:12px;color:var(--muted-fg);flex-shrink:0}
+.ubw{flex:1;background:rgba(0,0,0,.06);border-radius:99px;height:5px;overflow:hidden}
+.ubf{height:100%;border-radius:99px;transition:width .5s}
+.ucnt{font-size:11px;color:var(--muted-fg);width:34px;text-align:right;flex-shrink:0}
+
+/* ── CHAT ─────────────────────────────────────────────────────────── */
+.chat-wrap{display:flex;height:calc(100dvh - 52px - 32px);gap:0;border-radius:var(--r);overflow:hidden;box-shadow:var(--glass-shadow)}
+
+.conv-sb{
+  width:280px;min-width:280px;
+  background:rgba(255,255,255,.4);
+  backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-b);
+  border-right:1px solid rgba(0,0,0,.06);
+  display:flex;flex-direction:column;
+  border-radius:var(--r) 0 0 var(--r);
+}
+.conv-head{padding:16px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between}
+.conv-title{font-weight:600;font-size:14px;color:var(--fg)}
+.conv-sub{font-size:11px;color:var(--muted-fg)}
+.new-btn{padding:5px 12px;border-radius:7px;background:#16a34a;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:background .15s}
+.new-btn:hover{background:#15803d}
+
+.conv-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:2px}
+.conv-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--muted-fg);font-size:12px}
+.conv-item:hover{background:rgba(0,0,0,.04);color:var(--fg)}
+.conv-item.act{background:rgba(124,58,237,.1);color:var(--p2)}
+.conv-item i{flex-shrink:0;font-size:13px}
+.conv-item span{flex:1;truncate:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.chat-area{flex:1;display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-b);border-left:none;border-radius:0 var(--r) var(--r) 0}
+.chat-hd{padding:12px 16px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.4)}
+.chat-bot-ico{width:28px;height:28px;border-radius:7px;background:#475569;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;flex-shrink:0}
+.chat-name{font-size:13px;font-weight:600;color:var(--fg)}
+.chat-status{font-size:11px;color:var(--muted-fg);display:flex;align-items:center;gap:5px}
+.chat-online{width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0}
+.agent-badge{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);font-size:11px;color:#16a34a;font-weight:500;margin-left:auto}
+
+.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+.msgs::-webkit-scrollbar{width:4px}
+.msgs::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:3px}
+
+.msg{display:flex;gap:10px;align-items:flex-start;animation:fup .2s ease}
+.msg.u{flex-direction:row-reverse}
+.msg-av{width:32px;height:32px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.msg.ai .msg-av{background:#475569}
+.msg.u .msg-av{background:#16a34a}
+.msg-wrap{max-width:75%;display:flex;flex-direction:column;gap:4px}
+.msg.u .msg-wrap{align-items:flex-end}
+.bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.65}
+.msg.ai .bubble{background:var(--glass);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-b);color:var(--fg);border-radius:4px 12px 12px 12px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.msg.u .bubble{background:#16a34a;color:#fff;border-radius:12px 4px 12px 12px}
+.msg-ts{font-size:10px;color:rgba(107,114,128,.5);padding:0 2px}
+.msg.u .msg-ts{text-align:right}
+
+.typing-bub{display:flex;gap:4px;align-items:center;padding:12px 14px}
+.typing-bub span{width:7px;height:7px;border-radius:50%;background:var(--muted-fg);animation:td 1.2s ease-in-out infinite}
+.typing-bub span:nth-child(2){animation-delay:.2s}
+.typing-bub span:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+
+.chat-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;text-align:center;padding:24px}
+.chat-empty-ico{width:64px;height:64px;border-radius:14px;background:#16a34a;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;box-shadow:0 8px 24px rgba(22,163,74,.25)}
+.chat-empty h2{font-size:19px;font-weight:700;color:var(--fg);letter-spacing:-.3px}
+.chat-empty p{font-size:13px;color:var(--muted-fg);max-width:340px;line-height:1.65}
+.sug-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:420px}
+.sug-card{padding:12px;border-radius:10px;border:1.5px solid rgba(0,0,0,.09);background:rgba(255,255,255,.6);text-align:left;font-size:12px;color:var(--muted-fg);cursor:pointer;transition:all .15s;line-height:1.4}
+.sug-card:hover{border-color:rgba(34,197,94,.3);color:var(--fg);background:rgba(255,255,255,.85)}
+
+.chat-inp-area{padding:12px 16px;border-top:1px solid rgba(0,0,0,.06);background:rgba(255,255,255,.5);display:flex;gap:10px;align-items:flex-end}
+.chat-inp{flex:1;min-height:44px;max-height:160px;resize:none;background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.12);border-radius:10px;color:var(--fg);font-size:13px;font-family:inherit;padding:10px 14px;outline:none;transition:all .15s;line-height:1.5}
+.chat-inp:focus{border-color:rgba(34,197,94,.4);box-shadow:0 0 0 3px rgba(34,197,94,.07)}
+.chat-send{width:44px;height:44px;border-radius:10px;background:#16a34a;border:none;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(22,163,74,.25);transition:all .2s}
+.chat-send:hover:not(:disabled){transform:translateY(-1px);background:#15803d}
+.chat-send:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── IMAGE RESULTS ────────────────────────────────────────────────── */
+.img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.img-c{border-radius:12px;overflow:hidden;aspect-ratio:1;position:relative;cursor:pointer;box-shadow:var(--glass-shadow);transition:transform .2s,box-shadow .2s}
+.img-c:hover{transform:scale(1.02);box-shadow:0 12px 40px rgba(0,0,0,.14)}
+.img-bg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+.img-ov{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.55),transparent 55%);opacity:0;transition:opacity .2s;display:flex;align-items:flex-end;justify-content:space-between;padding:10px}
+.img-c:hover .img-ov{opacity:1}
+.img-act{background:rgba(255,255,255,.18);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.28);border-radius:7px;color:#fff;font-size:11px;font-weight:500;padding:5px 10px;cursor:pointer}
+
+/* ── CAROUSEL RESULTS ─────────────────────────────────────────────── */
+.slides-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px}
+.slides-row::-webkit-scrollbar{height:4px}
+.slides-row::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:4px}
+.slide{min-width:168px;max-width:168px;aspect-ratio:4/5;border-radius:14px;padding:14px;display:flex;flex-direction:column;flex-shrink:0;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.14)}
+.sl-n{font-size:10px;font-weight:700;opacity:.45;margin-bottom:7px}
+.sl-ti{font-size:12px;font-weight:700;line-height:1.3;margin-bottom:6px}
+.sl-bo{font-size:10px;line-height:1.55;opacity:.72;flex:1}
+.sl-tg{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;opacity:.4;margin-top:6px}
+
+/* ── ARTICLE RESULT ───────────────────────────────────────────────── */
+.art-doc{background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:12px;padding:28px;box-shadow:var(--glass-shadow)}
+.art-doc h1{font-size:20px;font-weight:700;margin-bottom:14px;line-height:1.3;letter-spacing:-.3px;color:var(--fg)}
+.art-doc h2{font-size:14px;font-weight:600;margin:18px 0 7px;color:var(--p2)}
+.art-doc p{color:#374151;line-height:1.8;font-size:14px}
+.art-doc p+p{margin-top:10px}
+
+/* Act row */
+.act-row{display:flex;gap:8px;margin-top:14px}
+.act-pri{flex:1;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--p2),#9333ea);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(124,58,237,.2);transition:all .2s}
+.act-pri:hover{transform:translateY(-1px)}
+.act-sec{padding:9px 16px;border-radius:9px;background:rgba(255,255,255,.65);border:1px solid rgba(0,0,0,.09);color:var(--fg);font-size:13px;cursor:pointer;transition:background .15s}
+.act-sec:hover{background:rgba(255,255,255,.9)}
+.demo-note{font-size:11px;color:rgba(107,114,128,.55);margin-top:10px;text-align:center}
+.demo-note a{color:var(--p2);text-decoration:none;font-weight:500}
+
+/* ── LIMIT MODAL ──────────────────────────────────────────────────── */
+#lm{display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:16px}
+#lm.open{display:flex}
+.lm-b{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:20px;padding:36px;max-width:400px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.14);animation:fup .25s ease}
+.lm-ico{font-size:44px;margin-bottom:16px}
+.lm-t{font-size:20px;font-weight:700;margin-bottom:8px;color:var(--fg)}
+.lm-s{color:var(--muted-fg);font-size:14px;margin-bottom:24px;line-height:1.65}
+.lm-cta{width:100%;padding:13px;border-radius:11px;background:linear-gradient(135deg,var(--p2),#9333ea);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(124,58,237,.28);transition:all .2s}
+.lm-cta:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(124,58,237,.38)}
+.lm-skip{background:none;border:none;color:var(--muted-fg);font-size:12px;cursor:pointer;margin-top:12px;display:block;width:100%;transition:color .15s}
+.lm-skip:hover{color:var(--fg)}
+
+@media(max-width:860px){
+  .sidebar{display:none}
+  .stats6{grid-template-columns:repeat(3,1fr)}
+  .img-grid{grid-template-columns:1fr 1fr}
+  .style-grid{grid-template-columns:repeat(3,1fr)}
+  .conv-sb{width:220px;min-width:220px}
+}
+</style>
+</head>
+<body>
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sb-head">
+    <div class="sb-logo"><i class="fa-solid fa-bolt"></i></div>
+    <div><div class="sb-brand">KrythosLab</div><div class="sb-sub">Marketing com IA</div></div>
+    <span class="sb-demo">demo</span>
+  </div>
+
+  <nav class="nav">
+    <span class="nav-label">Módulos</span>
+
+    <div class="ni active" style="--c1:#7c3aed;--c2:#9333ea" onclick="go('dash')">
+      <div class="ni-ico"><i class="fa-solid fa-gauge"></i></div>
+      <div class="ni-txt"><div class="ni-name">Dashboard</div><div class="ni-desc">Visão geral</div></div>
+      <div class="ni-dot"></div>
+    </div>
+
+    <div class="ni" style="--c1:#7c3aed;--c2:#9333ea" onclick="go('chat')">
+      <div class="ni-ico"><i class="fa-solid fa-message"></i></div>
+      <div class="ni-txt"><div class="ni-name">Chat com IA</div><div class="ni-desc">Assistente de marketing</div></div>
+      <div class="ni-dot"></div>
+    </div>
+
+    <div class="ni" style="--c1:#3b82f6;--c2:#06b6d4" onclick="go('images')">
+      <div class="ni-ico"><i class="fa-solid fa-image"></i></div>
+      <div class="ni-txt"><div class="ni-name">Imagens IA</div><div class="ni-desc">Geração com DALL-E 3</div></div>
+      <div class="ni-dot"></div>
+    </div>
+
+    <div class="ni locked" style="--c1:#d946ef;--c2:#f43f5e" onclick="openUpgrade('videos')">
+      <div class="ni-ico"><i class="fa-solid fa-clapperboard"></i></div>
+      <div class="ni-txt"><div class="ni-name">Vídeos IA</div><div class="ni-desc">Avatar com IA</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+
+    <div class="ni" style="--c1:#10b981;--c2:#14b8a6" onclick="go('articles')">
+      <div class="ni-ico"><i class="fa-solid fa-file-lines"></i></div>
+      <div class="ni-txt"><div class="ni-name">Artigos</div><div class="ni-desc">Blog e copywriting</div></div>
+      <div class="ni-dot"></div>
+    </div>
+
+    <div class="ni" style="--c1:#f59e0b;--c2:#f97316" onclick="go('carousel')">
+      <div class="ni-ico"><i class="fa-solid fa-images"></i></div>
+      <div class="ni-txt"><div class="ni-name">Carrossel</div><div class="ni-desc">Slides para Instagram</div></div>
+      <div class="ni-dot"></div>
+    </div>
+
+    <div class="ni locked" style="--c1:#ef4444;--c2:#ec4899" onclick="openUpgrade('reels')">
+      <div class="ni-ico"><i class="fa-solid fa-film"></i></div>
+      <div class="ni-txt"><div class="ni-name">Reels</div><div class="ni-desc">Roteiro e edição</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+
+    <div class="ni locked" onclick="openUpgrade('posts')">
+      <div class="ni-ico"><i class="fa-solid fa-share-nodes"></i></div>
+      <div class="ni-txt"><div class="ni-name">Posts</div><div class="ni-desc">Agendamento automático</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+
+    <div class="ni locked" onclick="openUpgrade('analytics')">
+      <div class="ni-ico"><i class="fa-solid fa-chart-bar"></i></div>
+      <div class="ni-txt"><div class="ni-name">Analytics</div><div class="ni-desc">Métricas e relatórios</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+
+    <div class="ni locked" onclick="openUpgrade('calendar')">
+      <div class="ni-ico"><i class="fa-solid fa-calendar-days"></i></div>
+      <div class="ni-txt"><div class="ni-name">Calendário</div><div class="ni-desc">Planejamento editorial</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+
+    <div class="ni locked" onclick="openUpgrade('brand')">
+      <div class="ni-ico"><i class="fa-solid fa-palette"></i></div>
+      <div class="ni-txt"><div class="ni-name">Brand Kit</div><div class="ni-desc">Identidade visual</div></div>
+      <i class="fa-solid fa-lock ni-lock"></i>
+    </div>
+  </nav>
+
+  <div class="sb-btm">
+    <div class="trial-w">
+      <div class="tw-hd"><i class="fa-regular fa-clock"></i> Teste gratuito</div>
+      <div class="tw-sub" id="sb-days">7 dias restantes</div>
+      <div class="tw-bar"><div class="tw-fill" id="sb-fill" style="width:0%"></div></div>
+      <div class="tw-use" id="sb-use">Hoje: 0 gerações</div>
+      <button class="tw-up" onclick="openUpgrade('sidebar')">Fazer upgrade →</button>
+    </div>
+    <div class="user-row" onclick="openUpgrade('topbar')">
+      <div class="user-av">DM</div>
+      <div><div class="user-n">Usuário Demo</div><div class="user-e">demo@krythos.lab</div></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────── -->
+<div class="main">
+  <div class="tbanner">
+    <div class="tbanner-dot"></div>
+    <span class="tbanner-txt">Teste gratuito ativo — <b id="chip-days">7 dias restantes</b></span>
+    <div class="tbanner-r">
+      <span class="tbanner-use" id="chip-use">0 gerações hoje</span>
+      <button class="tbanner-cta" onclick="openUpgrade('topbar')">✦ Criar conta grátis</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div id="p-dash" class="panel active">
+      <div class="ph">
+        <div class="ph-ico" style="background:linear-gradient(135deg,#7c3aed,#9333ea);box-shadow:0 4px 12px rgba(124,58,237,.3)"><i class="fa-solid fa-bolt"></i></div>
+        <div><div class="ph-title">Bom dia, <span class="gt">Usuário Demo</span></div><div class="ph-sub">Explore os módulos da sua plataforma de marketing com IA</div></div>
+      </div>
+
+      <div class="stats6">
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#7c3aed,#9333ea)"><i class="fa-solid fa-message"></i></div><div class="stat-val" id="st-chat">0</div><div class="stat-lbl">Conversas</div><div class="stat-sub">criadas</div></div>
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#3b82f6,#06b6d4)"><i class="fa-solid fa-image"></i></div><div class="stat-val" id="st-img">0</div><div class="stat-lbl">Imagens</div><div class="stat-sub">criadas</div></div>
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#d946ef,#f43f5e)"><i class="fa-solid fa-clapperboard"></i></div><div class="stat-val">0</div><div class="stat-lbl">Vídeos</div><div class="stat-sub">criados</div></div>
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#10b981,#14b8a6)"><i class="fa-solid fa-file-lines"></i></div><div class="stat-val" id="st-art">0</div><div class="stat-lbl">Artigos</div><div class="stat-sub">escritos</div></div>
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#f59e0b,#f97316)"><i class="fa-solid fa-images"></i></div><div class="stat-val" id="st-car">0</div><div class="stat-lbl">Carrosséis</div><div class="stat-sub">criados</div></div>
+        <div class="stat-c"><div class="stat-ico" style="background:linear-gradient(135deg,#f97316,#f43f5e)"><i class="fa-solid fa-share-nodes"></i></div><div class="stat-val">0</div><div class="stat-lbl">Posts</div><div class="stat-sub">agendados</div></div>
+      </div>
+
+      <div class="gc" style="margin-bottom:16px">
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:7px">
+          <i class="fa-solid fa-bolt" style="color:var(--p2);font-size:13px"></i>
+          <span style="font-size:13px;font-weight:600;color:var(--fg)">Uso de hoje</span>
+        </div>
+        <div style="padding:16px 20px" id="usage-bars"></div>
+      </div>
+
+      <div class="gc">
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:7px">
+          <i class="fa-solid fa-bolt" style="color:var(--p2);font-size:13px"></i>
+          <span style="font-size:13px;font-weight:600;color:var(--fg)">Acesso rápido</span>
+        </div>
+        <div style="padding:16px 20px">
+          <div class="qa2">
+            <button class="qa-b" onclick="go('chat')"><div class="qa-ico" style="background:linear-gradient(135deg,#7c3aed,#9333ea)"><i class="fa-solid fa-message"></i></div><div><div class="qa-name">Chat com IA</div><div class="qa-desc">Assistente de marketing</div></div></button>
+            <button class="qa-b" onclick="go('images')"><div class="qa-ico" style="background:linear-gradient(135deg,#3b82f6,#06b6d4)"><i class="fa-solid fa-image"></i></div><div><div class="qa-name">Gerar imagem</div><div class="qa-desc">Com DALL-E 3</div></div></button>
+            <button class="qa-b" onclick="go('articles')"><div class="qa-ico" style="background:linear-gradient(135deg,#10b981,#14b8a6)"><i class="fa-solid fa-file-lines"></i></div><div><div class="qa-name">Escrever artigo</div><div class="qa-desc">Blog e legendas</div></div></button>
+            <button class="qa-b" onclick="go('carousel')"><div class="qa-ico" style="background:linear-gradient(135deg,#f59e0b,#f97316)"><i class="fa-solid fa-images"></i></div><div><div class="qa-name">Criar carrossel</div><div class="qa-desc">Slides para Instagram</div></div></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div id="p-chat" class="panel">
+      <div class="ph">
+        <div class="ph-ico" style="background:linear-gradient(135deg,#7c3aed,#9333ea)"><i class="fa-solid fa-message"></i></div>
+        <div><div class="ph-title">Chat com <span class="gt">IA</span></div><div class="ph-sub">Assistente de marketing e pesquisa em tempo real</div></div>
+      </div>
+      <div class="chat-wrap">
+        <!-- Conv sidebar -->
+        <div class="conv-sb">
+          <div class="conv-head">
+            <div><div class="conv-title">Histórico</div><div class="conv-sub">Conversas salvas</div></div>
+            <button class="new-btn" onclick="newConv()"><i class="fa-solid fa-plus"></i> Nova</button>
+          </div>
+          <div class="conv-list" id="conv-list">
+            <div class="conv-item act" id="conv-0" onclick="selConv(0)">
+              <i class="fa-regular fa-message"></i>
+              <span>Nova conversa</span>
+            </div>
+          </div>
+        </div>
+        <!-- Chat area -->
+        <div class="chat-area">
+          <div class="chat-hd">
+            <div class="chat-bot-ico"><i class="fa-solid fa-robot"></i></div>
+            <div><div class="chat-name" id="chat-title">Agente de conversa</div><div class="chat-status"><div class="chat-online"></div>Pesquisa em tempo real · histórico salvo</div></div>
+            <div class="agent-badge"><i class="fa-solid fa-bolt" style="font-size:10px"></i> Agente ativo</div>
+          </div>
+          <div class="msgs" id="msgs"></div>
+          <div class="chat-inp-area">
+            <textarea class="chat-inp" id="ci" rows="1" placeholder="Pergunte algo ou peça uma pesquisa… (Enter envia, Shift+Enter quebra linha)" onkeydown="ckd(event)"></textarea>
+            <button class="chat-send" id="cs" onclick="sendChat()"><i class="fa-solid fa-paper-plane"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Images -->
+    <div id="p-images" class="panel">
+      <div class="ph">
+        <div class="ph-ico" style="background:linear-gradient(135deg,#3b82f6,#06b6d4)"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+        <div><div class="ph-title">Geração de <span class="gt">Imagens</span></div><div class="ph-sub">Crie imagens profissionais com IA em segundos</div></div>
+      </div>
+
+      <div class="gc" style="overflow:hidden">
+        <div class="gc-hd" style="justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:7px">
+            <i class="fa-solid fa-sparkles" style="color:var(--p2);font-size:13px"></i>
+            <span style="font-size:13px;font-weight:600;color:var(--fg)">Nova imagem</span>
+          </div>
+          <div class="mode-t">
+            <button class="mode-b act" id="m-single" onclick="setMode('single')"><i class="fa-regular fa-image"></i> 1 imagem</button>
+            <button class="mode-b" id="m-var" onclick="setMode('variations')"><i class="fa-solid fa-layer-group"></i> 3 variações</button>
+          </div>
+        </div>
+        <div class="gc-bd" style="display:flex;flex-direction:column;gap:18px">
+          <!-- Style chips -->
+          <div>
+            <p class="lbl">Tipo de imagem</p>
+            <div class="style-grid">
+              <div class="sc act" onclick="selSC(this,'commercial')" data-v="commercial">
+                <div class="sc-ico" style="background:linear-gradient(135deg,#7c3aed,#9333ea)"><i class="fa-solid fa-sparkles"></i></div>
+                <span>Geral</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+              <div class="sc" onclick="selSC(this,'produto')" data-v="produto">
+                <div class="sc-ico" style="background:rgba(0,0,0,.06);color:var(--muted-fg)"><i class="fa-solid fa-box"></i></div>
+                <span>Produto</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+              <div class="sc" onclick="selSC(this,'banner')" data-v="banner">
+                <div class="sc-ico" style="background:rgba(0,0,0,.06);color:var(--muted-fg)"><i class="fa-solid fa-bullhorn"></i></div>
+                <span>Banner</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+              <div class="sc" onclick="selSC(this,'social')" data-v="social">
+                <div class="sc-ico" style="background:rgba(0,0,0,.06);color:var(--muted-fg)"><i class="fa-solid fa-hashtag"></i></div>
+                <span>Social</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+              <div class="sc" onclick="selSC(this,'logo')" data-v="logo">
+                <div class="sc-ico" style="background:rgba(0,0,0,.06);color:var(--muted-fg)"><i class="fa-solid fa-paintbrush"></i></div>
+                <span>Logo</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+              <div class="sc" onclick="selSC(this,'lifestyle')" data-v="lifestyle">
+                <div class="sc-ico" style="background:rgba(0,0,0,.06);color:var(--muted-fg)"><i class="fa-solid fa-camera"></i></div>
+                <span>Lifestyle</span><div class="sc-chk"><i class="fa-solid fa-check"></i></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt -->
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <p class="lbl" style="margin:0">Descreva o que você quer criar</p>
+              <span id="char-cnt" style="font-size:10px;color:rgba(107,114,128,.4)"></span>
+            </div>
+            <div style="position:relative">
+              <textarea class="ta" id="img-prompt" placeholder="Ex: produto de skincare em fundo branco com flores, iluminação suave, estilo editorial…" oninput="onPromptInput()"></textarea>
+            </div>
+            <div class="sugs" id="img-sugs"></div>
+          </div>
+
+          <!-- Options -->
+          <div class="row2" style="margin-top:0">
+            <div><label class="lbl">Formato</label>
+              <select class="sel" id="img-fmt"><option value="1:1">Quadrado 1:1</option><option value="4:5">Retrato 4:5</option><option value="16:9">Landscape 16:9</option></select>
+            </div>
+            <div id="ref-wrap">
+              <label class="lbl">Imagem de referência</label>
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:10px;border:2px dashed rgba(0,0,0,.1);cursor:pointer;font-size:12px;color:var(--muted-fg)" onclick="openUpgrade('sidebar')">
+                <i class="fa-solid fa-upload" style="font-size:13px"></i> Opcional · clique ou arraste · PNG, JPG
+              </div>
+            </div>
+          </div>
+
+          <button class="gen-btn" onclick="genImages()" id="img-btn">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Imagem
+          </button>
+          <p class="gen-hint">Ctrl + Enter para gerar · leva ~15 segundos</p>
+        </div>
+      </div>
+
+      <div id="img-result" style="margin-top:18px">
+        <div class="empty-ph"><i class="fa-regular fa-image"></i><p>Suas imagens aparecerão aqui</p></div>
+      </div>
+    </div>
+
+    <!-- Articles -->
+    <div id="p-articles" class="panel">
+      <div class="ph">
+        <div class="ph-ico" style="background:linear-gradient(135deg,#10b981,#14b8a6)"><i class="fa-solid fa-file-lines"></i></div>
+        <div><div class="ph-title">Gerador de <span class="gt">Artigos</span></div><div class="ph-sub">Crie conteúdo para blog, legendas e e-mail marketing</div></div>
+      </div>
+
+      <div class="gc" style="overflow:hidden">
+        <div class="gc-hd">
+          <div style="display:flex;align-items:center;gap:7px">
+            <i class="fa-solid fa-sparkles" style="color:var(--p2);font-size:13px"></i>
+            <span style="font-size:13px;font-weight:600;color:var(--fg)">Novo artigo</span>
+          </div>
+        </div>
+        <div class="gc-bd" style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <label class="lbl">Tópico do artigo</label>
+            <textarea class="ta" id="art-topic" placeholder="Ex: Como usar o Instagram para aumentar as vendas do meu negócio local…"></textarea>
+          </div>
+          <div class="row2" style="margin-top:0">
+            <div><label class="lbl">Tom de voz</label>
+              <select class="sel" id="art-tone"><option>Profissional</option><option>Casual e amigável</option><option>Educativo</option><option>Inspirador</option></select>
+            </div>
+            <div><label class="lbl">Tamanho</label>
+              <select class="sel" id="art-size"><option>Curto (~300 palavras)</option><option selected>Médio (~600 palavras)</option><option>Longo (~1000 palavras)</option></select>
+            </div>
+          </div>
+          <button class="gen-btn" onclick="genArticle()" id="art-btn">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Artigo
+          </button>
+          <p class="gen-hint">Gera em ~10 segundos</p>
+        </div>
+      </div>
+
+      <div id="art-result" style="margin-top:18px">
+        <div class="empty-ph"><i class="fa-regular fa-file-lines"></i><p>Seu artigo aparecerá aqui</p></div>
+      </div>
+    </div>
+
+    <!-- Carousel -->
+    <div id="p-carousel" class="panel">
+      <div class="ph">
+        <div class="ph-ico" style="background:linear-gradient(135deg,#f59e0b,#f97316)"><i class="fa-solid fa-images"></i></div>
+        <div><div class="ph-title">Criador de <span class="gt">Carrossel</span></div><div class="ph-sub">Gere slides prontos para postar no Instagram</div></div>
+      </div>
+
+      <div class="gc" style="overflow:hidden">
+        <div class="gc-hd">
+          <div style="display:flex;align-items:center;gap:7px">
+            <i class="fa-solid fa-sparkles" style="color:var(--p2);font-size:13px"></i>
+            <span style="font-size:13px;font-weight:600;color:var(--fg)">Novo carrossel</span>
+          </div>
+        </div>
+        <div class="gc-bd" style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <label class="lbl">Tema do carrossel</label>
+            <textarea class="ta" id="car-topic" placeholder="Ex: 5 estratégias para crescer no Instagram em 2025…"></textarea>
+          </div>
+          <div class="row2" style="margin-top:0">
+            <div><label class="lbl">Número de slides</label>
+              <select class="sel" id="car-n"><option value="4">4 slides</option><option value="6" selected>6 slides</option><option value="8">8 slides</option><option value="10">10 slides</option></select>
+            </div>
+            <div><label class="lbl">Estilo visual</label>
+              <select class="sel" id="car-style"><option>Moderno minimalista</option><option>Bold e colorido</option><option>Corporativo</option><option>Dark elegante</option></select>
+            </div>
+          </div>
+          <button class="gen-btn" onclick="genCarousel()" id="car-btn">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Carrossel
+          </button>
+          <p class="gen-hint">Gera slides em ~8 segundos</p>
+        </div>
+      </div>
+
+      <div id="car-result" style="margin-top:18px">
+        <div class="empty-ph"><i class="fa-regular fa-images"></i><p>Seu carrossel aparecerá aqui</p></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- Limit modal -->
+<div id="lm">
+  <div class="lm-b">
+    <div class="lm-ico" id="lm-ico">🚀</div>
+    <div class="lm-t" id="lm-t">Limite atingido</div>
+    <div class="lm-s" id="lm-s">Você atingiu o limite desta funcionalidade.</div>
+    <button class="lm-cta" onclick="goSignup()">✦ Criar conta e remover limites</button>
+    <button class="lm-skip" onclick="closeLM()">Continuar no plano demo</button>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const LIM = {images:5,carousel:3,articles:3,chat:15};
+const DAYS = 7;
+const KEY = 'kl_demo_v4';
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const today = () => new Date().toISOString().slice(0,10);
+const pr = s => { let h=0; for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;} return Math.abs(h); };
+
+function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r);}catch(_){}return{first:new Date().toISOString(),daily:{},tot:{images:0,carousel:0,articles:0,chat:0}};}
+function save(s){try{localStorage.setItem(KEY,JSON.stringify(s));}catch(_){}}
+
+let S=load();
+if(!S.tot)S.tot={images:0,carousel:0,articles:0,chat:0};
+
+function dLeft(){const ms=Date.now()-new Date(S.first).getTime();return Math.max(0,DAYS-Math.floor(ms/86400000));}
+function used(f){return(S.daily[today()]&&S.daily[today()][f])||0;}
+function incr(f){const t=today();if(!S.daily[t])S.daily[t]={};S.daily[t][f]=(S.daily[t][f]||0)+1;S.tot[f]=(S.tot[f]||0)+1;save(S);redraw();}
+function canUse(f){if(dLeft()===0){openUpgrade('expired');return false;}if(used(f)>=LIM[f]){openUpgrade(f);return false;}return true;}
+
+// ── Redraw ────────────────────────────────────────────────────────────────────
+function redraw(){
+  const dl=dLeft();
+  const dTxt=dl===1?'1 dia restante':`${dl} dias restantes`;
+  document.getElementById('chip-days').textContent=dTxt;
+  document.getElementById('sb-days').textContent=dTxt;
+  document.getElementById('sb-fill').style.width=((DAYS-dl)/DAYS*100)+'%';
+  const tot=Object.values(S.daily[today()]||{}).reduce((a,b)=>a+b,0);
+  document.getElementById('chip-use').textContent=`${tot} geraç${tot===1?'ão':'ões'} hoje`;
+  document.getElementById('sb-use').textContent=`Hoje: ${tot} geraç${tot===1?'ão':'ões'}`;
+  document.getElementById('st-chat').textContent=S.tot.chat;
+  document.getElementById('st-img').textContent=S.tot.images;
+  document.getElementById('st-art').textContent=S.tot.articles;
+  document.getElementById('st-car').textContent=S.tot.carousel;
+  const defs=[{k:'images',l:'Imagens',c:'#3b82f6'},{k:'carousel',l:'Carrossel',c:'#f59e0b'},{k:'articles',l:'Artigos',c:'#10b981'},{k:'chat',l:'Chat',c:'#7c3aed'}];
+  document.getElementById('usage-bars').innerHTML=defs.map(d=>{const u=used(d.k),p=Math.min(100,u/LIM[d.k]*100);return`<div class="urow"><div class="ulbl">${d.l}</div><div class="ubw"><div class="ubf" style="width:${p}%;background:${d.c}"></div></div><div class="ucnt">${u}/${LIM[d.k]}</div></div>`;}).join('');
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+const TITLES={dash:'Dashboard',chat:'Chat com IA',images:'Imagens IA',articles:'Artigos',carousel:'Carrossel'};
+function go(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  const panel=document.getElementById('p-'+name);
+  if(panel)panel.classList.add('active');
+  document.querySelectorAll('.ni:not(.locked)').forEach(n=>{if((n.getAttribute('onclick')||'')=== `go('${name}')`){n.classList.add('active');}});
+  if(name==='chat')initChat();
+}
+
+// ── Image style ───────────────────────────────────────────────────────────────
+let curStyle='commercial';
+const SC_GRADS={commercial:'linear-gradient(135deg,#7c3aed,#9333ea)',produto:'linear-gradient(135deg,#3b82f6,#06b6d4)',banner:'linear-gradient(135deg,#f97316,#ef4444)',social:'linear-gradient(135deg,#ec4899,#f43f5e)',logo:'linear-gradient(135deg,#10b981,#14b8a6)',lifestyle:'linear-gradient(135deg,#f59e0b,#f97316)'};
+const SC_SUGS={commercial:['Campanha publicitária para marca de luxo, elegante e sofisticado','Anúncio digital moderno para startup de tecnologia, cores azul e branco'],produto:['Frasco de perfume em fundo branco, reflexo no vidro, iluminação de produto','Tênis esportivo flutuando em fundo preto, splash de tinta colorida'],banner:['Banner de promoção Black Friday, vermelho e preto, tipografia bold','Header para site de agência criativa, gradiente roxo e azul'],social:['Post carrossel para lançamento de produto tech, estilo Apple','Stories motivacional para marca fitness, energia e movimento'],logo:['Logo minimalista para agência de marketing digital, letra K, dourado','Ícone de app para plataforma de educação online, roxo e branco'],lifestyle:['Empreendedor usando laptop em café moderno, luz natural, produtivo','Influencer segurando produto de beleza, estúdio clean, tom pastel']};
+
+function selSC(el,val){
+  curStyle=val;
+  document.querySelectorAll('.sc').forEach(c=>{
+    c.classList.remove('act');
+    const ico=c.querySelector('.sc-ico');
+    ico.style.background='rgba(0,0,0,.06)';
+    ico.style.color='var(--muted-fg)';
+  });
+  el.classList.add('act');
+  el.querySelector('.sc-ico').style.background=SC_GRADS[val];
+  el.querySelector('.sc-ico').style.color='#fff';
+  updateSugs();
+}
+
+function updateSugs(){
+  const p=document.getElementById('img-prompt');
+  const container=document.getElementById('img-sugs');
+  if(p.value){container.innerHTML='';return;}
+  const sugs=SC_SUGS[curStyle]||[];
+  container.innerHTML=sugs.map(s=>`<button class="sug" onclick="setSug(this)">${s.length>55?s.slice(0,55)+'…':s}</button>`).join('');
+}
+
+function setSug(el){document.getElementById('img-prompt').value=el.textContent.replace('…','');document.getElementById('img-sugs').innerHTML='';onPromptInput();}
+
+function onPromptInput(){
+  const v=document.getElementById('img-prompt').value;
+  const cc=document.getElementById('char-cnt');
+  if(cc)cc.textContent=v?v.length+' caracteres':'';
+  updateSugs();
+}
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+let curMode='single';
+function setMode(m){
+  curMode=m;
+  document.getElementById('m-single').classList.toggle('act',m==='single');
+  document.getElementById('m-var').classList.toggle('act',m==='variations');
+  document.getElementById('img-btn').innerHTML=m==='single'?'<i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Imagem':'<i class="fa-solid fa-layer-group"></i> Gerar 3 Variações';
+  document.getElementById('ref-wrap').style.display=m==='single'?'':'none';
+}
+
+// ── Limit modal ───────────────────────────────────────────────────────────────
+const MSGS={
+  images:{ico:'🖼️',t:'Limite de imagens atingido',s:`Você usou ${LIM.images} gerações de imagem hoje. Crie uma conta para continuar usando amanhã ou remover todos os limites.`},
+  carousel:{ico:'🗂️',t:'Limite de carrosséis atingido',s:`Você usou ${LIM.carousel} carrosséis hoje. Com a conta completa, gere sem limites.`},
+  articles:{ico:'📝',t:'Limite de artigos atingido',s:`Você usou ${LIM.articles} artigos hoje. Crie sua conta para continuar.`},
+  chat:{ico:'💬',t:'Limite de mensagens atingido',s:`Você enviou ${LIM.chat} mensagens hoje. Crie uma conta para continuar.`},
+  expired:{ico:'⏰',t:'Teste encerrado',s:'Seu teste de 7 dias chegou ao fim. Crie uma conta gratuita para continuar usando a plataforma.'},
+  videos:{ico:'🎬',t:'Disponível no plano Pro',s:'Geração de vídeos com avatar de IA está disponível nos planos pagos.'},
+  reels:{ico:'🎞️',t:'Disponível no plano Pro',s:'Criação de Reels com roteiro de IA está disponível nos planos pagos.'},
+  posts:{ico:'📱',t:'Disponível no plano Pro',s:'Agendamento automático de posts está disponível nos planos pagos.'},
+  analytics:{ico:'📊',t:'Disponível no plano Pro',s:'Analytics avançado com métricas e relatórios está nos planos pagos.'},
+  calendar:{ico:'📅',t:'Disponível no plano Pro',s:'Calendário editorial com planejamento automático está nos planos pagos.'},
+  brand:{ico:'🎨',t:'Disponível no plano Pro',s:'Brand Kit com gestão de identidade visual está nos planos pagos.'},
+  sidebar:{ico:'🚀',t:'Faça upgrade agora',s:'Remova todos os limites diários e acesse todos os módulos da plataforma completa.'},
+  topbar:{ico:'✦',t:'Criar conta grátis',s:'Crie sua conta para salvar seu trabalho e continuar usando a plataforma.'},
+};
+function openUpgrade(src){const m=MSGS[src]||MSGS.sidebar;document.getElementById('lm-ico').textContent=m.ico;document.getElementById('lm-t').textContent=m.t;document.getElementById('lm-s').textContent=m.s;document.getElementById('lm').classList.add('open');}
+function closeLM(){document.getElementById('lm').classList.remove('open');}
+function goSignup(){const o=window.location.port==='5500'?'http://127.0.0.1:3000':'';window.location.href=o+'/register';}
+
+// ── Images ────────────────────────────────────────────────────────────────────
+const GRADS=[['#667eea','#764ba2'],['#f093fb','#f5576c'],['#4facfe','#00f2fe'],['#43e97b','#38f9d7'],['#fa709a','#fee140'],['#a18cd1','#fbc2eb'],['#ffecd2','#fcb69f'],['#a1c4fd','#c2e9fb']];
+const EMOJIS=['🌸','🎯','💎','🔥','⚡','🌿','🎨','✨','🌊','🦋','🌺','🪴'];
+
+async function genImages(){
+  if(!canUse('images'))return;
+  const prompt=document.getElementById('img-prompt').value.trim();
+  if(!prompt){alert('Descreva a imagem que deseja gerar.');return;}
+  const qty=curMode==='variations'?3:1;
+  setLoad('img',true,'<div class="spin"></div> Criando imagem com IA…');
+  document.getElementById('img-result').innerHTML=`<div class="img-grid">${Array.from({length:qty}).map(()=>`<div class="img-c"><div class="ske" style="position:absolute;inset:0;border-radius:12px"></div></div>`).join('')}</div>`;
+  await sleep(2000+Math.random()*600);
+  incr('images');
+  const h=pr(prompt);
+  const imgs=Array.from({length:qty},(_,i)=>({g:GRADS[(h+i*3)%GRADS.length],e:EMOJIS[(h+i*7)%EMOJIS.length]}));
+  document.getElementById('img-result').innerHTML=`
+    <div class="gc" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px">
+        <i class="fa-solid fa-check-circle" style="color:#10b981"></i>
+        <span style="font-size:13px;font-weight:600;color:var(--fg)">${qty===1?'Imagem gerada':'3 imagens geradas'} com sucesso</span>
+        <span style="font-size:11px;color:var(--muted-fg);margin-left:auto">${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      <div class="img-grid">
+        ${imgs.map((img,i)=>`
+          <div class="img-c" style="animation:fup .35s ease ${i*.1}s both">
+            <div class="img-bg" style="background:linear-gradient(135deg,${img.g[0]},${img.g[1]})">
+              <div style="font-size:40px">${img.e}</div>
+              <div style="font-size:10px;color:rgba(255,255,255,.65);padding:0 12px;text-align:center;line-height:1.3">${prompt.slice(0,28)}${prompt.length>28?'…':''}</div>
+            </div>
+            <div class="img-ov">
+              <span class="img-act" onclick="openUpgrade('sidebar')"><i class="fa-solid fa-download"></i> Download HD</span>
+              <span class="img-act" onclick="openUpgrade('sidebar')"><i class="fa-regular fa-copy"></i></span>
+            </div>
+          </div>`).join('')}
+      </div>
+      <p class="demo-note" style="margin-top:12px">💡 A conta completa gera imagens reais com DALL-E 3. <a href="javascript:goSignup()">Criar conta →</a></p>
+    </div>`;
+  setLoad('img',false,'<i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Imagem');
+}
+
+// ── Article ────────────────────────────────────────────────────────────────────
+async function genArticle(){
+  if(!canUse('articles'))return;
+  const topic=document.getElementById('art-topic').value.trim();
+  if(!topic){alert('Digite o tópico do artigo.');return;}
+  setLoad('art',true,'<div class="spin"></div> Escrevendo artigo…');
+  document.getElementById('art-result').innerHTML=`<div class="gc" style="padding:24px"><div class="ske" style="height:26px;width:60%;margin-bottom:16px"></div>${[100,95,88,0,40,100,92,85,0,38,100,90].map(w=>w?`<div class="ske" style="height:13px;width:${w}%;margin-bottom:8px"></div>`:`<div style="height:10px"></div>`).join('')}</div>`;
+  await sleep(2400+Math.random()*500);
+  incr('articles');
+  const short=topic.length>42?topic.slice(0,42)+'…':topic;
+  document.getElementById('art-result').innerHTML=`
+    <div class="gc" style="padding:0;overflow:hidden;animation:fup .4s ease">
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:7px">
+          <i class="fa-solid fa-check-circle" style="color:#10b981"></i>
+          <span style="font-size:13px;font-weight:600;color:var(--fg)">Artigo gerado</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="act-pri" style="width:auto;padding:6px 14px;margin:0" onclick="copyArt()"><i class="fa-regular fa-copy"></i> Copiar</button>
+          <button class="act-sec" style="padding:6px 14px" onclick="openUpgrade('sidebar')"><i class="fa-solid fa-share-nodes"></i> Publicar</button>
+        </div>
+      </div>
+      <div style="padding:24px">
+        <div class="art-doc">
+          <h1>${topic}</h1>
+          <p>No cenário digital atual, dominar as estratégias de marketing é fundamental para qualquer negócio que deseja crescer de forma sustentável. <strong>${short}</strong> é um dos temas mais relevantes para empreendedores e criadores de conteúdo em 2025.</p>
+          <p>Segundo dados recentes, empresas que adotam estratégias consistentes de conteúdo crescem, em média, 3× mais rápido do que seus concorrentes. Isso reforça a importância de investir em qualidade e regularidade.</p>
+          <h2>Por que isso importa para o seu negócio?</h2>
+          <p>A transformação digital mudou o comportamento do consumidor. Hoje, mais de 80% das decisões de compra são influenciadas por pesquisas online e redes sociais. Estar presente com conteúdo relevante deixou de ser opcional.</p>
+          <p>Profissionais que se destacam combinam criatividade com dados. Criam conteúdo que ressoa emocionalmente, medem resultados e otimizam continuamente — um ciclo virtuoso que gera crescimento constante.</p>
+          <h2>3 estratégias para implementar agora</h2>
+          <p><strong>1. Conheça profundamente sua audiência.</strong> Use Instagram Insights e pesquisas para entender dores e desejos do seu público. Conteúdo relevante converte muito mais do que conteúdo genérico.</p>
+          <p><strong>2. Crie com propósito.</strong> Cada post deve ter um objetivo: educar, entreter ou converter. A proporção ideal é 60% educação, 25% entretenimento e 15% promocional.</p>
+          <p><strong>3. Seja consistente antes de ser perfeito.</strong> Um calendário editorial sustentável gera muito mais resultado do que posts esporádicos de altíssima produção.</p>
+          <h2>Conclusão</h2>
+          <p>Dominar <em>${short}</em> é uma jornada contínua. Com as ferramentas certas e estratégias sólidas, qualquer negócio pode conquistar resultados expressivos no digital.</p>
+        </div>
+        <p class="demo-note" style="margin-top:14px">A conta completa gera artigos otimizados para SEO e publica automaticamente. <a href="javascript:goSignup()">Criar conta →</a></p>
+      </div>
+    </div>`;
+  setLoad('art',false,'<i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Artigo');
+}
+function copyArt(){const t=document.querySelector('.art-doc')?.innerText||'';navigator.clipboard.writeText(t).then(()=>alert('Artigo copiado!')).catch(()=>alert('Selecione o texto manualmente.'));}
+
+// ── Carousel ──────────────────────────────────────────────────────────────────
+const TIPS=['Planeje com antecedência','Crie conteúdo autêntico','Engaje com comentários','Use trends a seu favor','Colabore com criadores','Invista em qualidade','Analise seus dados','Seja consistente','Use Stories diariamente'];
+const SLCOLS=[['#0f0c29','#302b63'],['#1a1a2e','#16213e'],['#000428','#004e92'],['#200122','#6f0000'],['#093028','#237a57']];
+
+async function genCarousel(){
+  if(!canUse('carousel'))return;
+  const topic=document.getElementById('car-topic').value.trim();
+  if(!topic){alert('Digite o tema do carrossel.');return;}
+  const n=parseInt(document.getElementById('car-n').value);
+  setLoad('car',true,'<div class="spin"></div> Gerando slides…');
+  document.getElementById('car-result').innerHTML=`<div class="gc" style="padding:16px"><div class="slides-row">${Array.from({length:n}).map(()=>`<div class="slide ske" style="background:rgba(0,0,0,.06)"></div>`).join('')}</div></div>`;
+  await sleep(1800+Math.random()*500);
+  incr('carousel');
+  const h=pr(topic);
+  const[c1,c2]=SLCOLS[h%SLCOLS.length];
+  const slides=Array.from({length:n},(_,i)=>({num:i+1,title:i===0?topic:i===n-1?'✅ Gostou? Compartilhe!':TIPS[i%TIPS.length],body:i===0?'Descubra como transformar seus resultados com estratégias simples e eficazes.':i===n-1?'Salve esse carrossel e aplique hoje mesmo. Siga para mais conteúdo!':'Quem aplica essa estratégia alcança até 3× mais engajamento.'}));
+  document.getElementById('car-result').innerHTML=`
+    <div class="gc" style="padding:0;overflow:hidden;animation:fup .35s ease">
+      <div style="padding:14px 20px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:7px">
+          <i class="fa-solid fa-check-circle" style="color:#10b981"></i>
+          <span style="font-size:13px;font-weight:600;color:var(--fg)">${n} slides gerados</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="act-pri" style="width:auto;padding:6px 14px;margin:0" onclick="openUpgrade('sidebar')"><i class="fa-solid fa-download"></i> Exportar</button>
+          <button class="act-sec" style="padding:6px 14px" onclick="openUpgrade('sidebar')"><i class="fa-solid fa-palette"></i> Editar</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div class="slides-row">
+          ${slides.map((s,i)=>`<div class="slide" style="background:linear-gradient(145deg,${c1},${c2});animation:fup .3s ease ${i*.06}s both"><div class="sl-n">${String(s.num).padStart(2,'0')} / ${String(n).padStart(2,'0')}</div><div class="sl-ti">${s.title}</div><div class="sl-bo">${s.body}</div><div class="sl-tg">KrythosLab ✦</div></div>`).join('')}
+        </div>
+        <p class="demo-note" style="margin-top:12px">Conta completa exporta em PNG/PDF com personalização total. <a href="javascript:goSignup()">Criar conta →</a></p>
+      </div>
+    </div>`;
+  setLoad('car',false,'<i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Carrossel');
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+let chatInited=false;
+let convCount=1;
+
+const SUGS_CHAT=['Qual a melhor estratégia para crescer no Instagram?','Crie uma resposta comercial para um lead','Como usar hashtags de forma eficaz?','Compare orgânico vs pago e recomende'];
+
+const CHAT_RS=[
+  q=>/instagram/i.test(q)&&'Para crescer no Instagram em 2025, os 3 pilares são: **Reels consistentes** (3-5×/semana), **Stories interativos** diários e **engajamento ativo** nos primeiros 30 minutos após postar. O algoritmo prioriza quem mantém as pessoas na plataforma mais tempo.',
+  q=>/conteúdo|post|publicar/i.test(q)&&'Para criar conteúdo que converte, use o framework 3E: **Educar** (tutoriais, dicas), **Entreter** (bastidores) e **Engajar** (perguntas, polls). Proporção ideal: 60% educação, 25% entretenimento, 15% promocional.',
+  q=>/vend|client|compra|lead/i.test(q)&&'Para converter leads pelas redes: 1) **Mostre o processo** — bastidores geram 3× mais confiança; 2) **Use prova social** — depoimentos em vídeo convertem 5× mais; 3) **Crie urgência real** — ofertas com prazo funcionam; 4) **Follow-up no DM** com quem interage mas não compra.',
+  q=>/hashtag/i.test(q)&&'Estratégia de hashtags em 2025: misture **nicho específico** (5-10K posts), **médio porte** (100K-500K) e **trending** (1M+). Use 15-20 por post. Evite hashtags genéricas como #love — a competição é enorme e a visibilidade é baixa.',
+  q=>/horário|quando postar/i.test(q)&&'Melhores horários: **7h-9h** (manhã), **12h-14h** (almoço) e **19h-21h** (noite). Para horários específicos do seu público, acesse Instagram → Insights → Audiência.',
+  q=>/carrossel|slides/i.test(q)&&'Carrosséis têm o **maior alcance orgânico** no Instagram atualmente. Estrutura que mais retém: capa com promessa clara, dicas numeradas (uma por slide), último slide com CTA forte. Use a ferramenta ao lado para gerar o seu!',
+  q=>/orgânico.*pago|pago.*orgânico|trafego/i.test(q)&&'**Orgânico**: constrói autoridade e comunidade a longo prazo, custo zero mas resultado lento. **Pago (tráfego)**: resultado imediato e escalável, mas depende de budget. Recomendação: comece com orgânico para validar o conteúdo, depois amplificá-lo com tráfego pago.',
+  q=>`Boa pergunta sobre "${q.slice(0,35)}${q.length>35?'…':''}". No marketing digital, a chave é combinar **consistência** com **valor real** para a audiência. Foque em 3-4 conteúdos semanais com qualidade. Quer que eu elabore mais sobre algum aspecto específico?`,
+];
+
+function getResp(q){for(const fn of CHAT_RS.slice(0,-1)){const r=fn(q);if(r)return r;}return CHAT_RS[CHAT_RS.length-1](q);}
+
+function formatTime(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+
+function renderMsg(role,txt){
+  const d=document.createElement('div');
+  d.className=`msg ${role==='user'?'u':'ai'}`;
+  const fm=txt.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  d.innerHTML=`<div class="msg-av">${role==='user'?'<i class="fa-solid fa-user"></i>':'<i class="fa-solid fa-robot"></i>'}</div><div class="msg-wrap"><div class="bubble">${fm}</div><span class="msg-ts">${formatTime()}</span></div>`;
+  return d;
+}
+
+function initChat(){
+  if(chatInited)return;
+  chatInited=true;
+  renderEmpty();
+}
+
+function renderEmpty(){
+  const msgs=document.getElementById('msgs');
+  msgs.innerHTML='';
+  const d=document.createElement('div');
+  d.className='chat-empty';
+  d.id='chat-empty-state';
+  d.innerHTML=`
+    <div class="chat-empty-ico"><i class="fa-solid fa-sparkles"></i></div>
+    <h2>Agente de conversa e pesquisa</h2>
+    <p>Pergunte sobre estratégia, conteúdo, vendas, cotação do dólar, notícias atuais ou envie links para eu analisar antes de responder.</p>
+    <div class="sug-grid">
+      ${SUGS_CHAT.map(s=>`<button class="sug-card" onclick="fillChat(this)">${s}</button>`).join('')}
+    </div>`;
+  msgs.appendChild(d);
+}
+
+function fillChat(el){
+  document.getElementById('ci').value=el.textContent;
+  document.getElementById('ci').focus();
+}
+
+function newConv(){
+  convCount++;
+  const list=document.getElementById('conv-list');
+  document.querySelectorAll('.conv-item').forEach(c=>c.classList.remove('act'));
+  const item=document.createElement('div');
+  item.className='conv-item act';
+  item.innerHTML=`<i class="fa-regular fa-message"></i><span>Nova conversa ${convCount}</span>`;
+  item.onclick=()=>{document.querySelectorAll('.conv-item').forEach(c=>c.classList.remove('act'));item.classList.add('act');};
+  list.prepend(item);
+  renderEmpty();
+  document.getElementById('chat-title').textContent='Nova conversa '+convCount;
+}
+
+function selConv(id){document.querySelectorAll('.conv-item').forEach(c=>c.classList.remove('act'));document.getElementById('conv-'+id)?.classList.add('act');}
+
+async function sendChat(){
+  if(!canUse('chat'))return;
+  const inp=document.getElementById('ci');
+  const msg=inp.value.trim();
+  if(!msg)return;
+  inp.value='';
+
+  // Remove empty state
+  document.getElementById('chat-empty-state')?.remove();
+  document.getElementById('chat-title').textContent=msg.slice(0,40)+(msg.length>40?'…':'');
+
+  const msgs=document.getElementById('msgs');
+  msgs.appendChild(renderMsg('user',msg));
+
+  // Typing
+  const typing=document.createElement('div');
+  typing.className='msg ai';typing.id='td';
+  typing.innerHTML=`<div class="msg-av"><i class="fa-solid fa-robot"></i></div><div class="msg-wrap"><div class="bubble"><div class="typing-bub"><span></span><span></span><span></span></div></div></div>`;
+  msgs.appendChild(typing);
+  msgs.scrollTop=msgs.scrollHeight;
+  document.getElementById('cs').disabled=true;
+
+  await sleep(900+Math.random()*700);
+  document.getElementById('td')?.remove();
+  incr('chat');
+  msgs.appendChild(renderMsg('ai',getResp(msg)));
+  msgs.scrollTop=msgs.scrollHeight;
+  document.getElementById('cs').disabled=false;
+}
+
+function ckd(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function setLoad(p,on,lbl){const b=document.getElementById(p+'-btn');if(!b)return;b.disabled=on;b.innerHTML=lbl;}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+redraw();
+updateSugs();
+document.getElementById('lm').addEventListener('click',e=>{if(e.target===document.getElementById('lm'))closeLM();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLM();});
+</script>
+</body>
+</html>

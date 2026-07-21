@@ -1,6 +1,8 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { RadarPrefill } from "@/pages/Radar";
+const RADAR_PREFILL_KEY = "radar_prefill";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,6 +107,21 @@ export default function Articles() {
   const utils = trpc.useUtils();
   const [topic, setTopic] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as RadarPrefill;
+      sessionStorage.removeItem(RADAR_PREFILL_KEY);
+      radarPrefillRef.current = prefill;
+      setTopic(prefill.topic);
+      setShowGenerator(true);
+      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
@@ -287,10 +304,14 @@ export default function Articles() {
 
   const handleGenerate = () => {
     if (!topic.trim()) { toast.error("Digite um tema para o artigo"); return; }
+    const prefill = radarPrefillRef.current;
     generateMutation.mutate({
       topic: topic.trim(),
       sourceUrl: sourceUrl.trim() || undefined,
+      sourceTopicAngleId: prefill?.topicAngleId,
+      hookType: prefill?.hookType,
     });
+    radarPrefillRef.current = null;
   };
 
   const handleSavePreferences = () => {

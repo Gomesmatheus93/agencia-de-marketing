@@ -447,6 +447,7 @@ export type CarouselAgentInput = {
   templateImageUrl?: string;
   useAiImages?: boolean;
   articleContext?: string;
+  calibrationBlock?: string;
 };
 
 export type SlideEditableFields = {
@@ -985,6 +986,7 @@ export async function generateCarouselWithAgent(
     topicResearch
       ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch}`
       : undefined,
+    input.calibrationBlock ? `\n${input.calibrationBlock}` : undefined,
   ]
     .filter(Boolean)
     .join("\n");

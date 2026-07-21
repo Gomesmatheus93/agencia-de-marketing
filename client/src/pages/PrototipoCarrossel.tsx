@@ -1,4 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import type { RadarPrefill } from "@/pages/Radar";
+const RADAR_PREFILL_KEY = "radar_prefill";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -1829,6 +1831,21 @@ export default function PrototipoCarrossel() {
   const [phase, setPhase] = useState<Phase>("list");
   const [inputMode, setInputMode] = useState<InputMode>("topic");
   const [topic, setTopic] = useState("");
+  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as RadarPrefill;
+      sessionStorage.removeItem(RADAR_PREFILL_KEY);
+      radarPrefillRef.current = prefill;
+      setTopic(prefill.topic);
+      setPhase("form");
+      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [articleUrl, setArticleUrl] = useState("");
   const [slideCount, setSlideCount] = useState(5);
   const format = "feed" as const;
@@ -2034,13 +2051,17 @@ export default function PrototipoCarrossel() {
       setPhase("generating");
       setGenStep(0);
       startStepTimers();
+      const prefill = radarPrefillRef.current;
       generateMutation.mutate({
         topic: topic.trim(),
         slideCount,
         style: "proto-moderno",
         carouselFormat: format,
         profileId: toneProfile[tone],
+        sourceTopicAngleId: prefill?.topicAngleId,
+        hookType: prefill?.hookType,
       });
+      radarPrefillRef.current = null;
     } else {
       if (!articleUrl.trim()) { toast.error("Cole o link da notícia"); return; }
       setPhase("fetching");

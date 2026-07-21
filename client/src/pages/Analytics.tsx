@@ -1369,8 +1369,106 @@ export default function Analytics() {
           {activeTab === "instagram" && <InstagramTab />}
           {activeTab === "linkedin" && <LinkedInTab />}
 
+          <PerformanceInsightsSection />
+
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+// ─── Performance Insights (Module 1.3) ────────────────────────────────────────
+
+function PerformanceInsightsSection() {
+  const { t } = useLanguage();
+  const { data: stats, isLoading } = trpc.performance.getStats.useQuery();
+
+  const HOOK_PT: Record<string, string> = {
+    curiosity: "Curiosidade",
+    controversy: "Polêmica",
+    pain: "Dor/Problema",
+    benefit: "Benefício",
+    story: "Storytelling",
+    data: "Dado/Estatística",
+    question: "Pergunta",
+    unknown: "—",
+  };
+
+  const SOURCE_PT: Record<string, string> = {
+    radar: "Radar de Temas",
+    insumo: "Insumo Universal",
+    manual: "Tema manual",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Award className="h-5 w-5 text-amber-400" />
+        <h2 className="text-base font-semibold text-foreground">{t("performanceTitle")}</h2>
+        {stats && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {stats.totalPostsAnalyzed} {t("performancePostsAnalyzed")}
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      ) : !stats ? (
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+          <Award className="mx-auto h-8 w-8 mb-2 opacity-30" />
+          {t("performanceEmpty")}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <PerfCard
+            label={t("performanceBestHook")}
+            value={HOOK_PT[stats.bestHook] ?? stats.bestHook}
+            score={stats.bestScore}
+            scoreLabel={t("performanceScore")}
+            accentClass="bg-rose-500"
+          />
+          <PerfCard
+            label={t("performanceBestStyle")}
+            value={stats.bestStyle}
+            score={stats.bestScore}
+            scoreLabel={t("performanceScore")}
+            accentClass="bg-violet-500"
+          />
+          <PerfCard
+            label={t("performanceBestSource")}
+            value={SOURCE_PT[stats.bestSource] ?? stats.bestSource}
+            score={stats.bestScore}
+            scoreLabel={t("performanceScore")}
+            accentClass="bg-emerald-500"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PerfCard({ label, value, score, scoreLabel, accentClass }: {
+  label: string;
+  value: string;
+  score: number;
+  scoreLabel: string;
+  accentClass: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border/50 bg-gradient-to-br from-background to-muted/20 p-4">
+      <div className={cn("absolute -right-4 -top-4 h-16 w-16 rounded-full opacity-10 blur-xl", accentClass)} />
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{label}</p>
+      <p className="mt-1.5 text-base font-semibold text-foreground truncate">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{score}/100 {scoreLabel}</p>
+      <div className="mt-2 h-1.5 w-full rounded-full bg-muted/50">
+        <div
+          className={cn("h-full rounded-full", accentClass)}
+          style={{ width: `${Math.min(score, 100)}%` }}
+        />
+      </div>
+    </div>
   );
 }

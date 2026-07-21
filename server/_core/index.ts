@@ -11,6 +11,8 @@ import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
 import { startNewsDigestScheduler } from "./newsDigestScheduler";
 import { startCommentAlertScheduler } from "./commentAlertScheduler";
+import { startRadarScheduler } from "./radarScheduler";
+import { startMetricsScheduler } from "./metricsScheduler";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
 import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWebhook";
 import { serveStatic, setupVite } from "./vite";
@@ -646,6 +648,8 @@ async function startServer() {
   startInstagramPostScheduler();
   startNewsDigestScheduler();
   startCommentAlertScheduler();
+  startRadarScheduler();
+  startMetricsScheduler();
   db.migrateNullTrialDates().then(() => {
     console.log("[migrate] trialExpiresAt backfill concluido");
   }).catch((e) => console.warn("[migrate] trialExpiresAt backfill falhou:", e));
