@@ -3937,8 +3937,8 @@ const radarRouter = router({
   adminRefresh: protectedProcedure.mutation(async ({ ctx }) => {
     requirePaidPlan(ctx.user as PlanUser);
     const { runRadarPipeline } = await import("./_core/radarScheduler");
-    void runRadarPipeline();
-    return { started: true };
+    const result = await runRadarPipeline();
+    return { inserted: result.inserted };
   }),
 });
 

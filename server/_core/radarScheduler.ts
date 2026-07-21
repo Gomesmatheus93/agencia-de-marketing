@@ -91,105 +91,88 @@ async function collectViaSerper(): Promise<boolean> {
 
 // ─── Step 1b: Fallback — generate topics via LLM when Serper is unavailable ───
 
-const llmTopicsSchema = {
-  type: "object",
-  properties: {
-    topics: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title:           { type: "string" },
-          description:     { type: "string" },
-          viralScore:      { type: "number" },
-          emotionalAngle:  { type: "string", enum: ["curiosidade", "medo", "aspiracao", "polemica"] },
-          relevanceWindow: { type: "string", enum: ["ephemeral", "weekly", "evergreen"] },
-          niches:          { type: "array", items: { type: "string" } },
-        },
-        required: ["title", "description", "viralScore", "emotionalAngle", "relevanceWindow", "niches"],
-      },
-    },
-  },
-  required: ["topics"],
-};
-
-async function collectViaLLM(): Promise<void> {
+async function collectViaLLM(): Promise<number> {
   const today = new Date().toLocaleDateString("pt-BR", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" });
+
+  const result = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content: "Você é um especialista em marketing digital no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+      },
+      {
+        role: "user",
+        content: `Hoje é ${today}. Gere exatamente 12 temas em alta para marketing digital, redes sociais e empreendedorismo no Brasil.
+
+Retorne um objeto JSON com a chave "topics" contendo um array de 12 objetos, cada um com:
+- title: string (título chamativo, máx 100 chars)
+- description: string (frase de contexto, máx 200 chars)
+- viralScore: number (0-100)
+- emotionalAngle: "curiosidade" | "medo" | "aspiracao" | "polemica"
+- relevanceWindow: "ephemeral" | "weekly" | "evergreen"
+- niches: string[] (2-5 nichos: "marketing", "ecommerce", "fitness", "educacao", "financas", "tecnologia", "moda", etc.)
+
+Exemplo de formato:
+{"topics":[{"title":"Como o algoritmo do Instagram mudou em 2025","description":"Nova atualização prioriza conteúdo original e reduz alcance de reposts","viralScore":85,"emotionalAngle":"curiosidade","relevanceWindow":"weekly","niches":["marketing","ecommerce"]}]}`,
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const rawContent = result.choices[0]?.message?.content ?? "{}";
+  console.log("[Radar] LLM raw response (first 200 chars):", String(rawContent).slice(0, 200));
+
+  let topics: Array<{
+    title: string; description: string; viralScore: number;
+    emotionalAngle: string; relevanceWindow: string; niches: string[];
+  }> = [];
+
   try {
-    const result = await invokeLLM({
-      messages: [
-        {
-          role: "user",
-          content: `Hoje é ${today}. Você é um especialista em marketing digital e tendências para criadores de conteúdo no Brasil.
-
-Gere 12 temas em alta para marketing digital, redes sociais e empreendedorismo no Brasil.
-Use tendências reais e atuais: algoritmos do Instagram/TikTok, IA no marketing, vendas online, gatilhos mentais, copywriting, branding pessoal, etc.
-
-Para cada tema retorne:
-- title: título chamativo e específico (máx 100 chars)
-- description: frase de contexto (máx 200 chars)
-- viralScore: 0-100 baseado no potencial viral estimado
-- emotionalAngle: "curiosidade", "medo", "aspiracao" ou "polemica"
-- relevanceWindow: "ephemeral" (<24h), "weekly" (<7 dias), "evergreen" (atemporal)
-- niches: lista de 2-5 nichos relevantes (ex: "marketing", "ecommerce", "fitness", "educacao", "financas")
-
-Varie os ângulos emocionais e janelas de relevância. Gere temas únicos e diversificados.`,
-        },
-      ],
-      outputSchema: { name: "radar_llm_topics", schema: llmTopicsSchema },
-    });
-
-    const rawContent = result.choices[0]?.message?.content;
-    const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as {
-      topics: Array<{
-        title: string;
-        description: string;
-        viralScore: number;
-        emotionalAngle: string;
-        relevanceWindow: string;
-        niches: string[];
-      }>;
-    };
-
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    let inserted = 0;
-    for (const t of parsed.topics ?? []) {
-      if (!t.title || t.title.length < 5) continue;
-      const externalId = Buffer.from(`llm-${Date.now()}-${t.title.slice(0, 48)}`).toString("base64url");
-      const id = await upsertTrendingTopic({
-        externalId,
-        title: t.title.slice(0, 512),
-        description: t.description?.slice(0, 500),
-        source: "llm",
-        expiresAt,
-      });
-      if (id) {
-        await updateTopicClassification(id, {
-          viralScore: Math.max(0, Math.min(100, t.viralScore ?? 50)),
-          emotionalAngle: t.emotionalAngle ?? "curiosidade",
-          relevanceWindow: t.relevanceWindow ?? "weekly",
-          niches: (t.niches ?? []).slice(0, 8),
-        });
-        inserted++;
-      }
-    }
-    console.log(`[Radar] LLM gerou e classificou ${inserted} temas.`);
-  } catch (err) {
-    console.error("[Radar] Erro ao gerar temas via LLM:", err);
+    const parsed = JSON.parse(rawContent) as { topics?: typeof topics };
+    topics = Array.isArray(parsed.topics) ? parsed.topics : [];
+  } catch (parseErr) {
+    console.error("[Radar] Falha ao fazer parse do JSON:", parseErr);
+    return 0;
   }
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  let inserted = 0;
+  for (const t of topics) {
+    if (!t.title || t.title.length < 5) continue;
+    // Use title hash so same topic doesn't get duplicated across runs
+    const externalId = `llm-${Buffer.from(t.title.slice(0, 60)).toString("base64url")}`;
+    const id = await upsertTrendingTopic({
+      externalId,
+      title: t.title.slice(0, 512),
+      description: t.description?.slice(0, 500),
+      source: "llm",
+      expiresAt,
+    });
+    if (id) {
+      await updateTopicClassification(id, {
+        viralScore: Math.max(0, Math.min(100, Number(t.viralScore) || 50)),
+        emotionalAngle: ["curiosidade","medo","aspiracao","polemica"].includes(t.emotionalAngle) ? t.emotionalAngle : "curiosidade",
+        relevanceWindow: ["ephemeral","weekly","evergreen"].includes(t.relevanceWindow) ? t.relevanceWindow : "weekly",
+        niches: (Array.isArray(t.niches) ? t.niches : []).slice(0, 8),
+      });
+      inserted++;
+    }
+  }
+  console.log(`[Radar] LLM gerou e classificou ${inserted} temas.`);
+  return inserted;
 }
 
 // ─── Step 1: Collect trending topics (Serper preferred, LLM as fallback) ──────
 
-async function collectTrendingTopics(): Promise<void> {
+async function collectTrendingTopics(): Promise<number> {
   if (ENV.serperApiKey) {
     const ok = await collectViaSerper();
-    if (ok) return;
+    if (ok) return 1;
     console.warn("[Radar] Serper não retornou temas — usando fallback LLM.");
   } else {
     console.log("[Radar] SERPER_API_KEY não configurado — gerando temas via LLM.");
   }
-  await collectViaLLM();
+  return collectViaLLM();
 }
 
 // ─── Step 2: Classify topics via LLM (batch) ─────────────────────────────────
@@ -365,16 +348,13 @@ Responda em JSON com array "angles": [{topicId, suggestedTitle, suggestedHook}]`
 
 // ─── Main pipeline ────────────────────────────────────────────────────────────
 
-async function runRadarPipeline(): Promise<void> {
+async function runRadarPipeline(): Promise<{ inserted: number }> {
   console.log("[Radar] Iniciando pipeline de temas em alta...");
-  try {
-    await collectTrendingTopics();
-    await classifyPendingTopics();
-    await personalizeForUsers();
-    console.log("[Radar] Pipeline concluído.");
-  } catch (err) {
-    console.error("[Radar] Erro no pipeline:", err);
-  }
+  const inserted = await collectTrendingTopics();
+  await classifyPendingTopics();
+  await personalizeForUsers();
+  console.log(`[Radar] Pipeline concluído. Temas inseridos: ${inserted}`);
+  return { inserted };
 }
 
 // ─── Scheduler ───────────────────────────────────────────────────────────────
