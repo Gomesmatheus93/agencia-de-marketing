@@ -4474,7 +4474,15 @@ const storiesRouter = router({
         return { storySet: payload as unknown as typeof parsed.data, warning: "Estrutura parcial — revise os slides antes de salvar." };
       }
 
-      return { storySet: parsed.data };
+      // Generate background images in parallel using fal.ai Flux Pro
+      const { generateSlideImages } = await import("./_core/imageGenerator");
+      const imageUrls = await generateSlideImages(parsed.data.slides);
+      const slidesWithImages = parsed.data.slides.map((slide, i) => ({
+        ...slide,
+        imageUrl: imageUrls[i] ?? undefined,
+      }));
+
+      return { storySet: { ...parsed.data, slides: slidesWithImages } };
     }),
 
   save: protectedProcedure

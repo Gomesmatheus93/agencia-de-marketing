@@ -20,12 +20,12 @@ import {
 } from "lucide-react";
 // Local type mirrors of StorySlide/StorySet (types only — no server-side code imported)
 type StorySlide =
-  | { type: "poll"; headline: string; question: string; option_a: string; option_b: string; visual_prompt: string }
-  | { type: "quiz"; headline: string; question: string; options: string[]; correct_index: number; explanation?: string; visual_prompt: string }
-  | { type: "countdown"; headline: string; body: string; target_label: string; cta: string; visual_prompt: string }
-  | { type: "question_box"; headline: string; prompt_text: string; visual_prompt: string }
-  | { type: "behind_scenes"; headline: string; caption: string; tone: "personal" | "educational" | "funny"; visual_prompt: string }
-  | { type: "post_reinforcement"; headline: string; angle: string; cta: string; visual_prompt: string };
+  | { type: "poll"; headline: string; question: string; option_a: string; option_b: string; visual_prompt: string; imageUrl?: string }
+  | { type: "quiz"; headline: string; question: string; options: string[]; correct_index: number; explanation?: string; visual_prompt: string; imageUrl?: string }
+  | { type: "countdown"; headline: string; body: string; target_label: string; cta: string; visual_prompt: string; imageUrl?: string }
+  | { type: "question_box"; headline: string; prompt_text: string; visual_prompt: string; imageUrl?: string }
+  | { type: "behind_scenes"; headline: string; caption: string; tone: "personal" | "educational" | "funny"; visual_prompt: string; imageUrl?: string }
+  | { type: "post_reinforcement"; headline: string; angle: string; cta: string; visual_prompt: string; imageUrl?: string };
 
 type StorySet = {
   setTitle: string;
@@ -150,34 +150,38 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
     }
   };
 
+  const bgStyle = slide.imageUrl
+    ? { backgroundImage: `url(${slide.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
+    : { background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" };
+
   return (
     <div className="flex flex-col items-center gap-2">
       {/* 9:16 aspect ratio preview */}
       <div
         className="relative w-full rounded-2xl overflow-hidden flex flex-col items-center justify-center p-5 gap-4"
-        style={{ aspectRatio: "9/16", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
+        style={{ aspectRatio: "9/16", ...bgStyle }}
       >
+        {/* Dark overlay for text legibility over generated images */}
+        {slide.imageUrl && (
+          <div className="absolute inset-0 bg-black/40" />
+        )}
+
         {/* Top label */}
-        <div className="absolute top-3 left-0 right-0 flex justify-between items-center px-4">
+        <div className="absolute top-3 left-0 right-0 flex justify-between items-center px-4 z-10">
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${color}`}>
             {label.emoji} {label.pt}
           </span>
-          <span className="text-white/60 text-xs">{index + 1}/{total}</span>
+          <span className="text-white/70 text-xs">{index + 1}/{total}</span>
         </div>
 
         {/* Headline */}
-        <p className="text-white font-bold text-2xl text-center leading-tight mt-8 drop-shadow">
+        <p className="relative z-10 text-white font-bold text-2xl text-center leading-tight mt-8 drop-shadow-lg">
           {slide.headline}
         </p>
 
         {/* Type-specific content */}
-        {renderContent()}
-
-        {/* Visual prompt hint */}
-        <div className="absolute bottom-3 left-3 right-3">
-          <p className="text-white/40 text-[10px] text-center line-clamp-1 italic">
-            🖼 {slide.visual_prompt}
-          </p>
+        <div className="relative z-10 w-full">
+          {renderContent()}
         </div>
       </div>
     </div>
