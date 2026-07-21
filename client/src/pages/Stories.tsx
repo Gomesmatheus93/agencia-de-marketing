@@ -18,7 +18,22 @@ import {
   Info,
   Lock,
 } from "lucide-react";
-import type { StorySet, StorySlide } from "../../../server/_core/storyContentSchema";
+// Local type mirrors of StorySlide/StorySet (types only — no server-side code imported)
+type StorySlide =
+  | { type: "poll"; headline: string; question: string; option_a: string; option_b: string; visual_prompt: string }
+  | { type: "quiz"; headline: string; question: string; options: string[]; correct_index: number; explanation?: string; visual_prompt: string }
+  | { type: "countdown"; headline: string; body: string; target_label: string; cta: string; visual_prompt: string }
+  | { type: "question_box"; headline: string; prompt_text: string; visual_prompt: string }
+  | { type: "behind_scenes"; headline: string; caption: string; tone: "personal" | "educational" | "funny"; visual_prompt: string }
+  | { type: "post_reinforcement"; headline: string; angle: string; cta: string; visual_prompt: string };
+
+type StorySet = {
+  setTitle: string;
+  theme: string;
+  caption: string;
+  hashtags: string[];
+  slides: StorySlide[];
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -68,6 +68,11 @@ import { nanoid } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import axios from "axios";
 import { TEMPLATE_REGISTRY, getTemplatesForNiche } from './_core/templateRegistry';
+import {
+  StorySetSchema,
+  STORY_TYPES,
+  type StorySetPayload,
+} from "./_core/storyContentSchema";
 
 const scheduledAtInputSchema = z.union([z.date(), z.string()]);
 
@@ -4359,12 +4364,6 @@ const editorialPlanRouter = router({
 });
 
 // ─── Stories Router (Module 2.2) ──────────────────────────────────────────────
-
-import {
-  StorySetSchema,
-  STORY_TYPES,
-  type StorySetPayload,
-} from "./_core/storyContentSchema";
 
 const storiesRouter = router({
   generate: protectedProcedure
