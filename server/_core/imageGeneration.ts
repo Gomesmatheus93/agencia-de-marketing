@@ -468,14 +468,13 @@ async function persistGeneratedImage(b64: string, ext = "webp"): Promise<{ url: 
   const filename = `${randomUUID()}.${ext}`;
   const contentType = ext === "webp" ? "image/webp" : ext === "jpg" ? "image/jpeg" : "image/png";
 
-  // Upload to S3 when AWS storage is configured — gives a permanent public URL
-  if (ENV.publicStorageProvider === "aws" || ENV.publicStorageProvider === "s3") {
-    try {
-      const result = await storagePut(`generated/${filename}`, buffer, contentType);
-      return { url: result.url };
-    } catch (err) {
-      console.warn("[imageGeneration] S3 upload failed, falling back to local:", err);
-    }
+  // Try any configured cloud storage (forge, catbox, or S3) for a permanent public URL.
+  // Falls through to local when credentials are not configured or upload fails.
+  try {
+    const result = await storagePut(`generated/${filename}`, buffer, contentType);
+    return { url: result.url };
+  } catch (err) {
+    console.warn("[imageGeneration] Cloud upload failed, falling back to local filesystem:", err);
   }
 
   // Local fallback: save to uploads/

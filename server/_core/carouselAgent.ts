@@ -683,38 +683,40 @@ async function searchPixabayImage(query: string): Promise<string | undefined> {
 }
 
 async function searchWikimediaImage(query: string) {
-  const params = new URLSearchParams({
-    action: "query",
-    generator: "search",
-    gsrsearch: normalizeImageSearchQuery(query),
-    gsrnamespace: "6",
-    gsrlimit: "8",
-    prop: "imageinfo",
-    iiprop: "url|mime",
-    iiurlwidth: "1600",
-    format: "json",
-    origin: "*",
-  });
-
-  const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
-    headers: {
-      "user-agent": "KrythosLab carousel image agent",
-    },
-  });
-
-  if (!response.ok) return undefined;
-
-  const data = (await response.json()) as WikimediaSearchResponse;
-  const pages = Object.values(data.query?.pages || {});
-  const imageInfo = pages
-    .flatMap((page) => page.imageinfo || [])
-    .find((info) => {
-      const imageUrl = info.thumburl || info.url;
-      return Boolean(imageUrl && info.mime?.startsWith("image/") && !info.mime.includes("svg"));
+  try {
+    const params = new URLSearchParams({
+      action: "query",
+      generator: "search",
+      gsrsearch: normalizeImageSearchQuery(query),
+      gsrnamespace: "6",
+      gsrlimit: "8",
+      prop: "imageinfo",
+      iiprop: "url|mime",
+      iiurlwidth: "1600",
+      format: "json",
+      origin: "*",
     });
 
-  const imageUrl = imageInfo?.thumburl || imageInfo?.url;
-  return imageUrl;
+    const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
+      headers: { "user-agent": "KrythosLab carousel image agent" },
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!response.ok) return undefined;
+
+    const data = (await response.json()) as WikimediaSearchResponse;
+    const pages = Object.values(data.query?.pages || {});
+    const imageInfo = pages
+      .flatMap((page) => page.imageinfo || [])
+      .find((info) => {
+        const imageUrl = info.thumburl || info.url;
+        return Boolean(imageUrl && info.mime?.startsWith("image/") && !info.mime.includes("svg"));
+      });
+
+    return imageInfo?.thumburl || imageInfo?.url;
+  } catch {
+    return undefined;
+  }
 }
 
 function buildCarouselImagePrompt(input: {
@@ -860,8 +862,12 @@ async function resolveCarouselCoverImage(input: {
     () => searchWikimediaImage(query),
   ];
   for (const fn of stockFallbacks) {
-    const url = await fn();
-    if (url) return url;
+    try {
+      const url = await fn();
+      if (url) return url;
+    } catch {
+      // continue to next source
+    }
   }
 
   // 4. AI-generated image as last resort — OpenAI is always configured,
