@@ -138,7 +138,8 @@ Varie os ângulos emocionais e janelas de relevância. Gere temas únicos e dive
       outputSchema: { name: "radar_llm_topics", schema: llmTopicsSchema },
     });
 
-    const parsed = result as unknown as {
+    const rawContent = result.choices[0]?.message?.content;
+    const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as {
       topics: Array<{
         title: string;
         description: string;
@@ -252,7 +253,8 @@ ${topicList}`,
       },
     });
 
-    const parsed = result as unknown as { topics: Array<{ id: number } & ClassificationResult> };
+    const rawContent = result.choices[0]?.message?.content;
+    const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { topics: Array<{ id: number } & ClassificationResult> };
     for (const item of parsed.topics ?? []) {
       if (!item.id || !item.niches?.length) continue;
       await updateTopicClassification(item.id, {
@@ -343,7 +345,8 @@ Responda em JSON com array "angles": [{topicId, suggestedTitle, suggestedHook}]`
         },
       });
 
-      const parsed = result as unknown as { angles: Array<{ topicId: number; suggestedTitle: string; suggestedHook: string }> };
+      const rawContent = result.choices[0]?.message?.content;
+      const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { angles: Array<{ topicId: number; suggestedTitle: string; suggestedHook: string }> };
       for (const angle of parsed.angles ?? []) {
         if (!angle.topicId || !angle.suggestedTitle) continue;
         await upsertUserTopicAngle({

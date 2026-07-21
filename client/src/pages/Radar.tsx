@@ -248,7 +248,22 @@ export default function Radar() {
   });
 
   const adminRefresh = trpc.radar.adminRefresh.useMutation({
-    onSuccess: () => toast.success("Pipeline de Radar iniciado em segundo plano."),
+    onSuccess: () => {
+      toast.success("Gerando temas… aguarde alguns segundos.");
+      // poll until topics appear (up to ~40s)
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        void refetch().then((result) => {
+          if ((result.data?.length ?? 0) > 0 || attempts >= 8) {
+            clearInterval(interval);
+            if ((result.data?.length ?? 0) > 0) {
+              toast.success("Temas carregados com sucesso!");
+            }
+          }
+        });
+      }, 5000);
+    },
     onError: () => toast.error("Erro ao disparar pipeline."),
   });
 
