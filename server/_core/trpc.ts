@@ -42,10 +42,11 @@ setInterval(() => {
   });
 }, 5 * 60 * 1000).unref();
 
-const withRateLimit = (limit: number, windowMs: number) =>
+// IP-based limiter — only for unauthenticated routes (login/register)
+const withIpRateLimit = (limit: number, windowMs: number) =>
   t.middleware(({ ctx, next }) => {
     const ip = ctx.req.ip ?? ctx.req.socket?.remoteAddress ?? "unknown";
-    checkRateLimit(ip, limit, windowMs);
+    checkRateLimit(`ip:${ip}`, limit, windowMs);
     return next();
   });
 
@@ -66,15 +67,28 @@ const requireUser = t.middleware(async opts => {
   });
 });
 
-// 120 requests per minute for standard authenticated routes
-const standardRateLimit = withRateLimit(120, 60_000);
-// 10 AI-generation requests per minute (expensive operations)
-const aiRateLimit = withRateLimit(10, 60_000);
+// Per-user rate limits — uses userId so users behind the same proxy/NAT
+// (Traefik, load balancers) each get their own independent bucket.
+// 200 requests per minute for standard authenticated routes
+const standardRateLimit = t.middleware(({ ctx, next }) => {
+  const key = `std:${ctx.user?.id ?? ctx.req.ip ?? "unknown"}`;
+  checkRateLimit(key, 200, 60_000);
+  return next();
+});
+
+// 40 AI-generation requests per minute per user
+// A single carousel (5 slides + images) triggers ~1 tRPC call, so 40/min
+// gives comfortable room for testing and iterating on individual slides.
+const aiRateLimit = t.middleware(({ ctx, next }) => {
+  const key = `ai:${ctx.user?.id ?? ctx.req.ip ?? "unknown"}`;
+  checkRateLimit(key, 40, 60_000);
+  return next();
+});
 
 export const protectedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
 export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
-// 5 attempts per 15 minutes — for login/register
-export const publicRateLimitedProcedure = t.procedure.use(withRateLimit(5, 15 * 60_000));
+// 5 attempts per 15 minutes per IP — for login/register (must stay IP-based)
+export const publicRateLimitedProcedure = t.procedure.use(withIpRateLimit(5, 15 * 60_000));
 
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
