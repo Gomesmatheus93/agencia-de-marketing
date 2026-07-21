@@ -563,6 +563,41 @@ function pickRandom<T>(arr: T[], max = 3): T | undefined {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+async function searchGoogleCSE(query: string): Promise<string | undefined> {
+  if (!ENV.googleCseKey || !ENV.googleCseCx) return undefined;
+  try {
+    const params = new URLSearchParams({
+      key: ENV.googleCseKey,
+      cx: ENV.googleCseCx,
+      q: normalizeImageSearchQuery(query),
+      searchType: "image",
+      num: "10",
+      imgType: "photo",
+      imgSize: "xlarge",
+      safe: "active",
+      gl: "br",
+      hl: "pt",
+    });
+    const res = await fetchWithTimeout(
+      `https://www.googleapis.com/customsearch/v1?${params}`,
+      {},
+      7000
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as {
+      items?: Array<{ link: string; image?: { height: number; width: number } }>;
+    };
+    const items = (data.items ?? []).filter((item) => {
+      if (!item.link) return false;
+      if (item.image?.width && item.image?.height && item.image.width > item.image.height * 1.5) return false;
+      return true;
+    });
+    return pickRandom(items, 5)?.link;
+  } catch {
+    return undefined;
+  }
+}
+
 async function searchUnsplashImage(query: string): Promise<string | undefined> {
   if (!ENV.unsplashAccessKey) return undefined;
   try {
@@ -808,21 +843,47 @@ async function resolveCarouselCoverImage(input: {
 }) {
   const query = buildCentralThemeImageQuery(input);
 
-  // Google Images (Serper) gets first priority — most relevant results.
-  // Only fall back to stock libraries if Google fails.
-  const googleResult = await searchSerperImages(query);
-  if (googleResult) return googleResult;
+  // 1. Serper — Google Images via Serper API (requires SERPER_API_KEY)
+  const serperResult = await searchSerperImages(query);
+  if (serperResult) return serperResult;
 
-  // Sequential fallback through stock photo libraries
-  const fallbacks = [
+  // 2. Google Custom Search JSON API — official Google Images, free 100/day
+  //    (requires GOOGLE_CSE_KEY + GOOGLE_CSE_CX in environment)
+  const cseResult = await searchGoogleCSE(query);
+  if (cseResult) return cseResult;
+
+  // 3. Stock photo libraries (require their own API keys)
+  const stockFallbacks = [
     () => searchUnsplashImage(query),
     () => searchPexelsImage(query),
     () => searchPixabayImage(query),
     () => searchWikimediaImage(query),
   ];
-  for (const fn of fallbacks) {
+  for (const fn of stockFallbacks) {
     const url = await fn();
     if (url) return url;
+  }
+
+  // 4. AI-generated image as last resort — OpenAI is always configured,
+  //    so slides never end up with just a gradient placeholder
+  try {
+    const generated = await generateImage({
+      prompt: buildCarouselImagePrompt({
+        topic: input.topic,
+        hook: input.hook,
+        slideTitle: input.slideTitle,
+        slideBody: input.slideBody,
+        imageSearchQuery: query,
+        slideIndex: input.slideIndex,
+        templateName: input.templateName,
+        templateStyleBrief: input.templateStyleBrief,
+        imagePrompt: input.imagePrompt,
+        profileId: input.profileId,
+      }),
+    });
+    if (generated.url) return generated.url;
+  } catch {
+    // If OpenAI is not configured or fails, fall back to gradient
   }
 
   return buildFallbackImageDataUrl(`${input.topic} ${input.slideTitle}`);

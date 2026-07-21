@@ -35,6 +35,11 @@ export const ENV = {
   pexelsApiKey: process.env.PEXELS_API_KEY ?? "",
   pixabayApiKey: process.env.PIXABAY_API_KEY ?? "",
   serperApiKey: process.env.SERPER_API_KEY ?? "",
+  // Google Custom Search JSON API — free tier: 100 image searches/day
+  // Setup: console.cloud.google.com → Enable "Custom Search JSON API" → Create key
+  //        programmablesearchengine.google.com → Create engine → Enable "Image Search"
+  googleCseKey: process.env.GOOGLE_CSE_KEY ?? "",
+  googleCseCx: process.env.GOOGLE_CSE_CX ?? "",
   falApiKey: process.env.FAL_KEY ?? "",
   metaGraphApiBaseUrl: process.env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com",
   metaGraphApiVersion: process.env.META_GRAPH_API_VERSION ?? "v25.0",
