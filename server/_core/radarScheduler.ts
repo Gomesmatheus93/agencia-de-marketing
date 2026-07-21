@@ -29,7 +29,7 @@ function getNow(): { mins: number; today: string } {
   return { mins: hour * 60 + minute, today };
 }
 
-// ─── Step 1: Collect trending news via Serper ─────────────────────────────────
+// ─── Step 1a: Collect trending news via Serper ────────────────────────────────
 
 interface SerperResult {
   title: string;
@@ -38,12 +38,7 @@ interface SerperResult {
   date?: string;
 }
 
-async function collectTrendingTopics(): Promise<void> {
-  if (!ENV.serperApiKey) {
-    console.warn("[Radar] SERPER_API_KEY não configurado — coleta pulada.");
-    return;
-  }
-
+async function collectViaSerper(): Promise<boolean> {
   const queries = [
     "tendências marketing digital 2025",
     "viral redes sociais brasil",
@@ -51,12 +46,13 @@ async function collectTrendingTopics(): Promise<void> {
     "empreendedorismo tendência semana",
   ];
 
+  let inserted = 0;
   for (const q of queries) {
     try {
       const resp = await fetch("https://google.serper.dev/news", {
         method: "POST",
         headers: {
-          "X-API-KEY": ENV.serperApiKey,
+          "X-API-KEY": ENV.serperApiKey!,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ q, gl: "br", hl: "pt-br", num: 10 }),
@@ -74,7 +70,7 @@ async function collectTrendingTopics(): Promise<void> {
         if (!item.title || item.title.length < 10) continue;
 
         const externalId = Buffer.from(item.title.slice(0, 64)).toString("base64url");
-        const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48h window
+        const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
         await upsertTrendingTopic({
           externalId,
@@ -83,11 +79,115 @@ async function collectTrendingTopics(): Promise<void> {
           source: "serper",
           expiresAt,
         });
+        inserted++;
       }
     } catch (err) {
       console.error(`[Radar] Erro ao coletar query "${q}":`, err);
     }
   }
+  return inserted > 0;
+}
+
+// ─── Step 1b: Fallback — generate topics via LLM when Serper is unavailable ───
+
+const llmTopicsSchema = {
+  type: "object",
+  properties: {
+    topics: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title:           { type: "string" },
+          description:     { type: "string" },
+          viralScore:      { type: "number" },
+          emotionalAngle:  { type: "string", enum: ["curiosidade", "medo", "aspiracao", "polemica"] },
+          relevanceWindow: { type: "string", enum: ["ephemeral", "weekly", "evergreen"] },
+          niches:          { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "description", "viralScore", "emotionalAngle", "relevanceWindow", "niches"],
+      },
+    },
+  },
+  required: ["topics"],
+};
+
+async function collectViaLLM(): Promise<void> {
+  const today = new Date().toLocaleDateString("pt-BR", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" });
+  try {
+    const result = await invokeLLM({
+      messages: [
+        {
+          role: "user",
+          content: `Hoje é ${today}. Você é um especialista em marketing digital e tendências para criadores de conteúdo no Brasil.
+
+Gere 12 temas em alta para marketing digital, redes sociais e empreendedorismo no Brasil.
+Use tendências reais e atuais: algoritmos do Instagram/TikTok, IA no marketing, vendas online, gatilhos mentais, copywriting, branding pessoal, etc.
+
+Para cada tema retorne:
+- title: título chamativo e específico (máx 100 chars)
+- description: frase de contexto (máx 200 chars)
+- viralScore: 0-100 baseado no potencial viral estimado
+- emotionalAngle: "curiosidade", "medo", "aspiracao" ou "polemica"
+- relevanceWindow: "ephemeral" (<24h), "weekly" (<7 dias), "evergreen" (atemporal)
+- niches: lista de 2-5 nichos relevantes (ex: "marketing", "ecommerce", "fitness", "educacao", "financas")
+
+Varie os ângulos emocionais e janelas de relevância. Gere temas únicos e diversificados.`,
+        },
+      ],
+      outputSchema: { name: "radar_llm_topics", schema: llmTopicsSchema },
+    });
+
+    const parsed = result as unknown as {
+      topics: Array<{
+        title: string;
+        description: string;
+        viralScore: number;
+        emotionalAngle: string;
+        relevanceWindow: string;
+        niches: string[];
+      }>;
+    };
+
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    let inserted = 0;
+    for (const t of parsed.topics ?? []) {
+      if (!t.title || t.title.length < 5) continue;
+      const externalId = Buffer.from(`llm-${Date.now()}-${t.title.slice(0, 48)}`).toString("base64url");
+      const id = await upsertTrendingTopic({
+        externalId,
+        title: t.title.slice(0, 512),
+        description: t.description?.slice(0, 500),
+        source: "llm",
+        expiresAt,
+      });
+      if (id) {
+        await updateTopicClassification(id, {
+          viralScore: Math.max(0, Math.min(100, t.viralScore ?? 50)),
+          emotionalAngle: t.emotionalAngle ?? "curiosidade",
+          relevanceWindow: t.relevanceWindow ?? "weekly",
+          niches: (t.niches ?? []).slice(0, 8),
+        });
+        inserted++;
+      }
+    }
+    console.log(`[Radar] LLM gerou e classificou ${inserted} temas.`);
+  } catch (err) {
+    console.error("[Radar] Erro ao gerar temas via LLM:", err);
+  }
+}
+
+// ─── Step 1: Collect trending topics (Serper preferred, LLM as fallback) ──────
+
+async function collectTrendingTopics(): Promise<void> {
+  if (ENV.serperApiKey) {
+    const ok = await collectViaSerper();
+    if (ok) return;
+    console.warn("[Radar] Serper não retornou temas — usando fallback LLM.");
+  } else {
+    console.log("[Radar] SERPER_API_KEY não configurado — gerando temas via LLM.");
+  }
+  await collectViaLLM();
 }
 
 // ─── Step 2: Classify topics via LLM (batch) ─────────────────────────────────

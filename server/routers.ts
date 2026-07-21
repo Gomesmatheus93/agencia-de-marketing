@@ -3935,9 +3935,7 @@ const radarRouter = router({
     }),
 
   adminRefresh: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem executar esta ação." });
-    }
+    requirePaidPlan(ctx.user as PlanUser);
     const { runRadarPipeline } = await import("./_core/radarScheduler");
     void runRadarPipeline();
     return { started: true };

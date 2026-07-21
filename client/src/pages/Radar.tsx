@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { usePlan } from "@/_core/hooks/usePlan";
 import { useLocation } from "wouter";
 
 const RADAR_PREFILL_KEY = "radar_prefill";
@@ -228,8 +228,7 @@ function TopicCard({
 type FilterType = "todos" | "sugerido" | "usado" | "descartado";
 
 export default function Radar() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const { isPaid } = usePlan();
   const [filter, setFilter] = useState<FilterType>("todos");
   const [, navigate] = useLocation();
 
@@ -301,7 +300,7 @@ export default function Radar() {
               <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
               Atualizar
             </Button>
-            {isAdmin && (
+            {isPaid && (
               <Button
                 size="sm"
                 variant="outline"
@@ -309,8 +308,8 @@ export default function Radar() {
                 onClick={() => adminRefresh.mutate()}
                 disabled={adminRefresh.isPending}
               >
-                <Flame className="w-4 h-4" />
-                Forçar pipeline
+                <Flame className={cn("w-4 h-4", adminRefresh.isPending && "animate-pulse")} />
+                {adminRefresh.isPending ? "Gerando…" : "Atualizar temas"}
               </Button>
             )}
           </div>
