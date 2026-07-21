@@ -412,7 +412,7 @@ export default function Radar() {
                   id: topic.id,
                   title: topic.title,
                   description: topic.description,
-                  sourceUrl: (topic as typeof topic & { sourceUrl?: string | null }).sourceUrl,
+                  sourceUrl: topic.sourceUrl,
                   viralScore: topic.viralScore,
                   emotionalAngle: topic.emotionalAngle,
                   relevanceWindow: topic.relevanceWindow,

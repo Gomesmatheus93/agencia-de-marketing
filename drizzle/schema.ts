@@ -432,7 +432,6 @@ export const trendingTopics = mysqlTable(
     emotionalAngle: varchar("emotionalAngle", { length: 16 }),
     relevanceWindow: varchar("relevanceWindow", { length: 16 }),
     niches: json("niches").$type<string[]>(),
-    sourceUrl: varchar("sourceUrl", { length: 1000 }),
     collectedAt: timestamp("collectedAt").defaultNow().notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

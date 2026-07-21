@@ -2829,7 +2829,7 @@ export async function upsertUserTopicAngle(data: {
   `);
 }
 
-export async function getRadarTopicsForUser(userId: number): Promise<RadarTopic[]> {
+export async function getRadarTopicsForUser(userId: number): Promise<(RadarTopic & { sourceUrl: string | null })[]> {
   await ensureRadarTables();
   const db = await getDb();
   if (!db) return [];
@@ -2837,6 +2837,7 @@ export async function getRadarTopicsForUser(userId: number): Promise<RadarTopic[
     .select({
       topic: trendingTopics,
       angle: userTopicAngles,
+      sourceUrl: sql<string | null>`trending_topics.sourceUrl`,
     })
     .from(trendingTopics)
     .leftJoin(
@@ -2846,7 +2847,7 @@ export async function getRadarTopicsForUser(userId: number): Promise<RadarTopic[
     .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
     .orderBy(desc(trendingTopics.viralScore))
     .limit(30);
-  return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null }));
+  return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: r.sourceUrl ?? null }));
 }
 
 export async function updateUserTopicAngleStatus(userId: number, trendingTopicId: number, status: string): Promise<void> {
