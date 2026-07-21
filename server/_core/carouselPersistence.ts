@@ -153,7 +153,13 @@ async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefin
     return undefined;
   }
 
-  const response = await fetch(assetUrl);
+  const response = await fetch(assetUrl, {
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; KrythosBot/1.0)",
+      "Accept": "image/*,*/*;q=0.8",
+    },
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch remote asset (${response.status} ${response.statusText})`);
   }
@@ -223,17 +229,32 @@ export async function persistCarouselAssets(
     let persistedUrl = assetUrl;
 
     try {
-      const dataUrlAsset = parseDataUrl(assetUrl);
-      if (dataUrlAsset) {
-        persistedUrl = await writeUploadsAsset({
-          asset: dataUrlAsset,
-          batchId,
-          filePrefix,
-          userId: input.userId,
-        });
+      // Resolve asset from any source: data: URLs, local /uploads/, or remote HTTPS
+      // This re-hosts external images (Wikimedia, Google CSE, DALL-E, etc.) so the
+      // browser can always load them from the app's own storage without hotlink/CORS issues
+      const asset = await resolveAnyAsset(assetUrl);
+      if (asset) {
+        const safePrefix = filePrefix.replace(/[^a-zA-Z0-9._-]/g, "-") || "asset";
+        // Try cloud storage (S3/Catbox/Forge) first for reliable public access
+        try {
+          const stored = await storagePut(
+            `carousels/${input.userId}/${batchId}/sources/${safePrefix}.${asset.extension}`,
+            asset.data,
+            asset.contentType
+          );
+          persistedUrl = stored.url;
+        } catch {
+          // Fall back to local /uploads/ (dev environment or if cloud fails)
+          persistedUrl = await writeUploadsAsset({
+            asset,
+            batchId,
+            filePrefix,
+            userId: input.userId,
+          });
+        }
       }
     } catch (error) {
-      console.warn("[Carousel] Failed to save local source asset, keeping original URL:", error);
+      console.warn("[Carousel] Failed to re-host asset, keeping original URL:", error);
     }
 
     cache.set(assetUrl, persistedUrl);
