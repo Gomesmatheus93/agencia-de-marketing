@@ -119,8 +119,10 @@ Exemplo de formato:
     response_format: { type: "json_object" },
   });
 
-  const rawContent = result.choices[0]?.message?.content ?? "{}";
-  console.log("[Radar] LLM raw response (first 200 chars):", String(rawContent).slice(0, 200));
+  const rawContent = typeof result.choices[0]?.message?.content === "string"
+    ? result.choices[0].message.content
+    : "{}";
+  console.log("[Radar] LLM raw response (first 200 chars):", rawContent.slice(0, 200));
 
   let topics: Array<{
     title: string; description: string; viralScore: number;
@@ -184,27 +186,6 @@ interface ClassificationResult {
   niches: string[];
 }
 
-const classificationSchema = {
-  type: "object",
-  properties: {
-    topics: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "number" },
-          viralScore: { type: "number", description: "0-100" },
-          emotionalAngle: { type: "string", enum: ["curiosidade", "medo", "aspiracao", "polemica"] },
-          relevanceWindow: { type: "string", enum: ["ephemeral", "weekly", "evergreen"] },
-          niches: { type: "array", items: { type: "string" } },
-        },
-        required: ["id", "viralScore", "emotionalAngle", "relevanceWindow", "niches"],
-      },
-    },
-  },
-  required: ["topics"],
-};
-
 async function classifyPendingTopics(): Promise<void> {
   const pending = await getPendingTopicsForClassification();
   if (pending.length === 0) return;
@@ -217,24 +198,28 @@ async function classifyPendingTopics(): Promise<void> {
     const result = await invokeLLM({
       messages: [
         {
+          role: "system",
+          content: "Você é especialista em marketing digital e análise de tendências no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+        },
+        {
           role: "user",
-          content: `Você é especialista em marketing digital e análise de tendências no Brasil.
-Classifique cada tema abaixo para uso em conteúdo de redes sociais.
+          content: `Classifique cada tema abaixo para uso em conteúdo de redes sociais.
 
 Para cada tema retorne:
+- id: o ID numérico do tema (exatamente como fornecido)
 - viralScore: potencial viral de 0 a 100
 - emotionalAngle: "curiosidade", "medo", "aspiracao" ou "polemica"
 - relevanceWindow: "ephemeral" (< 24h), "weekly" (< 7 dias), "evergreen" (atemporal)
-- niches: lista de nichos de mercado relevantes (ex: "marketing", "ecommerce", "saude", "fitness", "educacao", "financas", "tecnologia", "moda", "gastronomia", "imóveis")
+- niches: lista de nichos relevantes (ex: "marketing", "ecommerce", "saude", "fitness", "educacao", "financas", "tecnologia", "moda")
+
+Retorne um objeto JSON com a chave "topics" contendo um array com as classificações.
+Exemplo: {"topics":[{"id":1,"viralScore":75,"emotionalAngle":"curiosidade","relevanceWindow":"weekly","niches":["marketing","ecommerce"]}]}
 
 Temas:
 ${topicList}`,
         },
       ],
-      outputSchema: {
-        name: "radar_classification",
-        schema: classificationSchema,
-      },
+      response_format: { type: "json_object" },
     });
 
     const rawContent = result.choices[0]?.message?.content;
@@ -292,41 +277,26 @@ async function personalizeForUsers(): Promise<void> {
       const result = await invokeLLM({
         messages: [
           {
+            role: "system",
+            content: "Você é um estrategista de conteúdo para redes sociais no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+          },
+          {
             role: "user",
-            content: `Você é um estrategista de conteúdo para redes sociais no Brasil.
-${nicheContext}
+            content: `${nicheContext}
 
 Para cada tema abaixo, crie um ângulo de conteúdo personalizado para este usuário:
+- topicId: o ID numérico do tema (exatamente como fornecido)
 - suggestedTitle: título chamativo (máx 80 caracteres) para post no Instagram/LinkedIn
 - suggestedHook: gancho de abertura (máx 150 caracteres) que prende a atenção
 
-Temas:
-${topicList}
+Retorne um objeto JSON com a chave "angles" contendo um array.
+Exemplo: {"angles":[{"topicId":1,"suggestedTitle":"Título aqui","suggestedHook":"Gancho aqui"}]}
 
-Responda em JSON com array "angles": [{topicId, suggestedTitle, suggestedHook}]`,
+Temas:
+${topicList}`,
           },
         ],
-        outputSchema: {
-          name: "radar_angles",
-          schema: {
-            type: "object",
-            properties: {
-              angles: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    topicId: { type: "number" },
-                    suggestedTitle: { type: "string" },
-                    suggestedHook: { type: "string" },
-                  },
-                  required: ["topicId", "suggestedTitle", "suggestedHook"],
-                },
-              },
-            },
-            required: ["angles"],
-          },
-        },
+        response_format: { type: "json_object" },
       });
 
       const rawContent = result.choices[0]?.message?.content;

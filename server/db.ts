@@ -2703,8 +2703,9 @@ async function ensureRadarTables() {
           UNIQUE KEY uq_trending_topics_externalId (externalId)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       `);
-      // Add sourceUrl to existing tables that were created before this column existed
-      await db.execute(sql`ALTER TABLE trending_topics ADD COLUMN IF NOT EXISTS sourceUrl VARCHAR(1000)`).catch(() => {});
+      // Add sourceUrl to existing tables (no IF NOT EXISTS — not supported in MySQL 5.7)
+      // Fails silently if column already exists (Duplicate column name error) — that's fine
+      await db.execute(sql`ALTER TABLE trending_topics ADD COLUMN sourceUrl VARCHAR(1000)`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS user_topic_angles (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2837,21 +2838,39 @@ export async function getRadarTopicsForUser(userId: number): Promise<(RadarTopic
   await ensureRadarTables();
   const db = await getDb();
   if (!db) return [];
-  const rows = await db
-    .select({
-      topic: trendingTopics,
-      angle: userTopicAngles,
-      sourceUrl: sql<string | null>`trending_topics.sourceUrl`,
-    })
-    .from(trendingTopics)
-    .leftJoin(
-      userTopicAngles,
-      and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
-    )
-    .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
-    .orderBy(desc(trendingTopics.viralScore))
-    .limit(30);
-  return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: r.sourceUrl ?? null }));
+
+  // Try with sourceUrl (may not exist on old DBs before the column was added)
+  try {
+    const rows = await db
+      .select({
+        topic: trendingTopics,
+        angle: userTopicAngles,
+        sourceUrl: sql<string | null>`trending_topics.sourceUrl`,
+      })
+      .from(trendingTopics)
+      .leftJoin(
+        userTopicAngles,
+        and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
+      )
+      .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
+      .orderBy(desc(trendingTopics.viralScore))
+      .limit(30);
+    return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: r.sourceUrl ?? null }));
+  } catch (err) {
+    // sourceUrl column may not exist yet — fall back to query without it
+    console.warn("[Radar] getRadarTopicsForUser fallback (sourceUrl column missing?):", (err as Error).message);
+    const rows = await db
+      .select({ topic: trendingTopics, angle: userTopicAngles })
+      .from(trendingTopics)
+      .leftJoin(
+        userTopicAngles,
+        and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
+      )
+      .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
+      .orderBy(desc(trendingTopics.viralScore))
+      .limit(30);
+    return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: null }));
+  }
 }
 
 export async function updateUserTopicAngleStatus(userId: number, trendingTopicId: number, status: string): Promise<void> {
