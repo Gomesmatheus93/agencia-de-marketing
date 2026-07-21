@@ -2740,12 +2740,11 @@ export async function upsertTrendingTopic(data: {
   const db = await getDb();
   if (!db) return 0;
   await db.execute(sql`
-    INSERT INTO trending_topics (externalId, title, description, source, sourceUrl, expiresAt)
-    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.sourceUrl ?? null}, ${data.expiresAt})
+    INSERT INTO trending_topics (externalId, title, description, source, expiresAt)
+    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.expiresAt})
     ON DUPLICATE KEY UPDATE
       title = VALUES(title),
       description = VALUES(description),
-      sourceUrl = VALUES(sourceUrl),
       expiresAt = VALUES(expiresAt)
   `);
   const rows = await db
@@ -2753,7 +2752,12 @@ export async function upsertTrendingTopic(data: {
     .from(trendingTopics)
     .where(eq(trendingTopics.externalId, data.externalId))
     .limit(1);
-  return rows[0]?.id ?? 0;
+  const id = rows[0]?.id ?? 0;
+  // sourceUrl stored separately — column may not exist yet on first deploy
+  if (id && data.sourceUrl) {
+    await db.execute(sql`UPDATE trending_topics SET sourceUrl = ${data.sourceUrl} WHERE id = ${id}`).catch(() => {});
+  }
+  return id;
 }
 
 export async function updateTopicClassification(id: number, data: {
