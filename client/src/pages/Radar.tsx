@@ -16,6 +16,7 @@ import {
   FileText,
   ExternalLink,
   Layers,
+  ImageIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -86,7 +87,7 @@ function TopicCard({
     } | null;
   };
   onStatusChange: (topicId: number, status: TopicStatus) => void;
-  onGenerate: (type: "carousel" | "reels" | "article" | "stories", prefill: RadarPrefill) => void;
+  onGenerate: (type: "carousel" | "reels" | "article" | "stories" | "image", prefill: RadarPrefill) => void;
 }) {
   const angle = topic.angle;
   const status = (angle?.status ?? "sugerido") as TopicStatus;
@@ -210,6 +211,16 @@ function TopicCard({
             <Layers className="w-3.5 h-3.5 shrink-0" />
             Stories
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 text-xs h-8 px-2"
+            onClick={() => onGenerate("image", prefill)}
+            title="Gerar imagem estática com este tema"
+          >
+            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+            Imagem
+          </Button>
         </div>
       )}
 
@@ -257,13 +268,14 @@ export default function Radar() {
   const [filter, setFilter] = useState<FilterType>("todos");
   const [, navigate] = useLocation();
 
-  function handleGenerate(type: "carousel" | "reels" | "article" | "stories", prefill: RadarPrefill) {
+  function handleGenerate(type: "carousel" | "reels" | "article" | "stories" | "image", prefill: RadarPrefill) {
     sessionStorage.setItem(RADAR_PREFILL_KEY, JSON.stringify(prefill));
     const paths = {
       carousel: "/dashboard/carousel",
       reels: "/dashboard/reels",
       article: "/dashboard/articles",
       stories: "/dashboard/stories",
+      image: "/dashboard/images",
     };
     navigate(paths[type]);
   }

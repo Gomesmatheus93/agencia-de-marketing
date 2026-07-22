@@ -1,6 +1,8 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import type { RadarPrefill } from "@/pages/Radar";
+const RADAR_PREFILL_KEY = "radar_prefill";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -169,6 +171,18 @@ export default function Images() {
   const [selectedNiche, setSelectedNiche] = useState<string>("none");
   const [variations, setVariations] = useState<{ url: string }[]>([]);
   const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as RadarPrefill;
+      sessionStorage.removeItem(RADAR_PREFILL_KEY);
+      setPrompt(`${prefill.topic}${prefill.hook ? ` — ${prefill.hook}` : ""}`);
+      setStyle("social");
+      toast.info("Pauta do Radar carregada — ajuste o prompt e clique em Gerar.");
+    } catch { /* ignore */ }
+  }, []);
 
   const { data: images = [], isLoading } = trpc.images.getAll.useQuery();
   const { data: nichesData } = trpc.brandKit.listNiches.useQuery();
