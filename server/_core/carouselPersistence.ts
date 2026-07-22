@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { CarouselAgentSlide } from "./carouselAgent";
 import type { CarouselSlideData } from "../../drizzle/schema";
-import { storagePut } from "../storage";
+import { storagePut, isConfiguredPublicStorageUrl } from "../storage";
 
 type PersistCarouselAssetsInput = {
   userId: number;
@@ -226,6 +226,15 @@ export async function persistCarouselAssets(
     if (!assetUrl) return undefined;
     if (cache.has(assetUrl)) return cache.get(assetUrl);
 
+    // Already in the configured cloud storage — no re-hosting needed.
+    // This prevents downloading from S3 only to re-upload it, which could
+    // accidentally replace a permanent S3 URL with a local path if the
+    // re-upload step fails.
+    if (isConfiguredPublicStorageUrl(assetUrl)) {
+      cache.set(assetUrl, assetUrl);
+      return assetUrl;
+    }
+
     let persistedUrl = assetUrl;
 
     try {
@@ -243,8 +252,10 @@ export async function persistCarouselAssets(
             asset.contentType
           );
           persistedUrl = stored.url;
-        } catch {
+          console.log(`[Carousel] Asset re-hosted to cloud: ${filePrefix} → ${stored.url}`);
+        } catch (uploadErr) {
           // Fall back to local /uploads/ (dev environment or if cloud fails)
+          console.warn(`[Carousel] Cloud upload failed for ${filePrefix}, using local fallback:`, uploadErr);
           persistedUrl = await writeUploadsAsset({
             asset,
             batchId,
