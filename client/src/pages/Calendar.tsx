@@ -1,4 +1,7 @@
 import React, { useState, useMemo } from "react";
+import { useLocation } from "wouter";
+import type { RadarPrefill } from "@/pages/Radar";
+const RADAR_PREFILL_KEY = "radar_prefill";
 import AppLayout from "@/components/AppLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
@@ -39,6 +42,7 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  GalleryHorizontal,
 } from "lucide-react";
 import { usePlan } from "@/_core/hooks/usePlan";
 import {
@@ -1896,10 +1900,9 @@ function PlanWizardDialog({
 
 // ── Plan Item Section (in DetailPanel) ───────────────────────────────────────
 
-function PlanItemSection({ planItems, onGenerate, generatingId }: {
+function PlanItemSection({ planItems, onGenerate }: {
   planItems: PlanItem[];
-  onGenerate: (id: number) => void;
-  generatingId: number | null;
+  onGenerate: (type: "carousel" | "image", item: PlanItem) => void;
 }) {
   const [expandedItem, setExpandedItem] = React.useState<number | null>(null);
 
@@ -1945,17 +1948,22 @@ function PlanItemSection({ planItems, onGenerate, generatingId }: {
             </div>
           </div>
           {item.status === "approved" && !item.socialPostId && (
-            <div className="border-t border-border/30 px-2.5 py-1.5 bg-muted/20">
+            <div className="border-t border-border/30 px-2.5 py-1.5 bg-muted/20 flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                <Zap className="h-3 w-3" />Gerar:
+              </span>
               <button
-                onClick={() => onGenerate(item.id)}
-                disabled={generatingId === item.id}
-                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
+                onClick={() => onGenerate("carousel", item)}
+                className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 px-2 py-0.5 rounded-md hover:bg-primary/8 transition-colors"
               >
-                {generatingId === item.id ? (
-                  <><Loader2 className="h-3 w-3 animate-spin" />Gerando conteúdo...</>
-                ) : (
-                  <><Zap className="h-3 w-3" />Gerar conteúdo</>
-                )}
+                <GalleryHorizontal className="h-3 w-3" />Carrossel
+              </button>
+              <span className="text-muted-foreground/40 text-xs">|</span>
+              <button
+                onClick={() => onGenerate("image", item)}
+                className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 px-2 py-0.5 rounded-md hover:bg-primary/8 transition-colors"
+              >
+                <ImageIcon className="h-3 w-3" />Imagem
               </button>
             </div>
           )}
@@ -1989,7 +1997,7 @@ export default function Calendar() {
   const [quoteCardDate, setQuoteCardDate] = useState<Date>(today);
   const [quoteCardPresetImage, setQuoteCardPresetImage] = useState('');
   const [showPlanWizard, setShowPlanWizard] = useState(false);
-  const [generatingPlanItemId, setGeneratingPlanItemId] = useState<number | null>(null);
+  const [, navigate] = useLocation();
 
   const { data: allPosts = [] } = trpc.posts.getAll.useQuery({});
 
@@ -1998,17 +2006,6 @@ export default function Calendar() {
     { enabled: plan === "agency" }
   );
 
-  const generateContentMutation = trpc.editorialPlan.generateContent.useMutation({
-    onSuccess: () => {
-      toast.success("Conteúdo gerado! Ver em Postagens.");
-      void refetchPlan();
-      setGeneratingPlanItemId(null);
-    },
-    onError: (e) => {
-      toast.error(e.message || "Erro ao gerar conteúdo");
-      setGeneratingPlanItemId(null);
-    },
-  });
 
   const holidayMap = useMemo(() => getHolidaysForYear(viewDate.getFullYear()), [viewDate]);
   const prevYearMap = useMemo(() => getHolidaysForYear(viewDate.getFullYear() - 1), [viewDate]);
@@ -2038,9 +2035,15 @@ export default function Calendar() {
     return (planItems as PlanItem[]).filter((item) => item.scheduledDate === key);
   }
 
-  function handleGeneratePlanContent(itemId: number) {
-    setGeneratingPlanItemId(itemId);
-    generateContentMutation.mutate({ id: itemId });
+  function handleGeneratePlanContent(type: "carousel" | "image", item: PlanItem) {
+    const prefill: RadarPrefill = {
+      topicAngleId: 0,
+      topic: item.suggestedTitle,
+      hook: item.pauta,
+      hookType: "curiosidade",
+    };
+    sessionStorage.setItem(RADAR_PREFILL_KEY, JSON.stringify(prefill));
+    navigate(type === "carousel" ? "/dashboard/carousel" : "/dashboard/images");
   }
 
   const calendarDays = useMemo(() => buildCalendarGrid(viewDate), [viewDate]);
@@ -2247,7 +2250,6 @@ export default function Calendar() {
                 <PlanItemSection
                   planItems={selectedPlanItems}
                   onGenerate={handleGeneratePlanContent}
-                  generatingId={generatingPlanItemId}
                 />
               )}
             </div>
