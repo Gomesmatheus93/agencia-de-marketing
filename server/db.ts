@@ -3242,3 +3242,24 @@ export async function deleteEditorialPlanItems(userId: number, year: number, mon
     )
   );
 }
+
+export async function deleteEditorialPlanItemsByDate(userId: number, scheduledDate: string): Promise<void> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(editorialPlanItems).where(
+    and(
+      eq(editorialPlanItems.userId, userId),
+      eq(editorialPlanItems.scheduledDate, scheduledDate),
+    )
+  );
+}
+
+export async function deleteEditorialPlanItem(userId: number, id: number): Promise<void> {
+  await ensureEditorialPlanItemsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(editorialPlanItems).where(
+    and(eq(editorialPlanItems.id, id), eq(editorialPlanItems.userId, userId))
+  );
+}

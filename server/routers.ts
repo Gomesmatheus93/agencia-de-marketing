@@ -4229,6 +4229,22 @@ const editorialPlanRouter = router({
       return { ok: true };
     }),
 
+  deleteByDate: protectedProcedure
+    .input(z.object({ scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+      await db.deleteEditorialPlanItemsByDate(ctx.user.id, input.scheduledDate);
+      return { ok: true };
+    }),
+
+  deleteItem: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      requireAgencyPlan(ctx.user as PlanUser);
+      await db.deleteEditorialPlanItem(ctx.user.id, input.id);
+      return { ok: true };
+    }),
+
   generateContent: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
