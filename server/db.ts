@@ -773,12 +773,17 @@ async function ensureArticlesMediumtext() {
   if (!db) return;
   if (!_articlesMediumtextReady) {
     _articlesMediumtextReady = (async () => {
-      for (const stmt of [
-        sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`,
-        sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`,
-        sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`,
-      ]) {
-        try { await db.execute(stmt); } catch { /* column type already correct */ }
+      for (const [label, stmt] of [
+        ["content", sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`],
+        ["topic",   sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`],
+        ["summary", sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`],
+      ] as const) {
+        try {
+          await db.execute(stmt);
+          console.log(`[DB] articles.${label} migrated to MEDIUMTEXT`);
+        } catch (e) {
+          console.log(`[DB] articles.${label} MEDIUMTEXT migration skipped (already done or error):`, e);
+        }
       }
     })().catch((e) => { _articlesMediumtextReady = null; throw e; });
   }
