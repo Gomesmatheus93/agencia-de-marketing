@@ -767,6 +767,24 @@ export async function getImageCount(userId: number): Promise<number> {
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
 
+let _articlesMediumtextReady: Promise<void> | null = null;
+async function ensureArticlesMediumtext() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_articlesMediumtextReady) {
+    _articlesMediumtextReady = (async () => {
+      for (const stmt of [
+        sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`,
+        sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`,
+        sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`,
+      ]) {
+        try { await db.execute(stmt); } catch { /* column type already correct */ }
+      }
+    })().catch((e) => { _articlesMediumtextReady = null; throw e; });
+  }
+  await _articlesMediumtextReady;
+}
+
 export async function getArticles(userId: number): Promise<Article[]> {
   const db = await getDb();
   if (!db) return [];
@@ -797,6 +815,7 @@ export async function saveArticle(
     contentFormat?: string;
   }
 ): Promise<Article> {
+  await ensureArticlesMediumtext();
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const [result] = await db.insert(articles).values({ userId, ...data });
