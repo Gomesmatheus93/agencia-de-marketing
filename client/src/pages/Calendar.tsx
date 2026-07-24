@@ -1704,69 +1704,157 @@ function PlanWizardDialog({
   const approvedCount = generatedItems.filter((i) => i.status === "approved").length;
   const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
+  const formatConfig: Record<string, { icon: React.ReactNode; color: string; bar: string }> = {
+    carousel:   { icon: <GalleryHorizontal className="h-4 w-4" />, color: "text-violet-600 dark:text-violet-400", bar: "bg-violet-500" },
+    instagram:  { icon: <InstagramIcon className="h-4 w-4" />,     color: "text-pink-600 dark:text-pink-400",   bar: "bg-pink-500"   },
+    linkedin:   { icon: <LinkedinIcon className="h-4 w-4" />,      color: "text-blue-600 dark:text-blue-400",   bar: "bg-blue-500"   },
+    newsletter: { icon: <MailIcon className="h-4 w-4" />,          color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500"  },
+  };
+
+  const totalWeight = Object.values(formatWeights).reduce((a, b) => a + b, 0);
+
+  function adjustWeight(fmt: keyof typeof formatWeights, delta: number) {
+    setFormatWeights((prev) => ({
+      ...prev,
+      [fmt]: Math.max(0, Math.min(100, prev[fmt] + delta)),
+    }));
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="sm:max-w-[780px] max-h-[92vh] flex flex-col overflow-hidden">
-        <DialogTitle className="flex items-center gap-2 text-base font-semibold shrink-0">
-          <BookOpen className="h-4 w-4 text-primary" />
-          {t("planWizardTitle")}
-        </DialogTitle>
-        <DialogDescription className="text-xs text-muted-foreground shrink-0">
-          {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()} — {t("planWizardSubtitle")}
-        </DialogDescription>
+      <DialogContent className="sm:max-w-[620px] max-h-[92vh] flex flex-col overflow-hidden p-0">
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs shrink-0">
-          <span className={cn("px-2 py-0.5 rounded-full font-medium", step === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-            1 {t("planStep1")}
-          </span>
-          <div className="h-px flex-1 bg-border" />
-          <span className={cn("px-2 py-0.5 rounded-full font-medium", step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-            2 {t("planStep2")}
-          </span>
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-border/50 shrink-0">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <BookOpen className="h-4.5 w-4.5 text-primary" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  {t("planWizardTitle")}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()} — {t("planWizardSubtitle")}
+                </DialogDescription>
+              </div>
+            </div>
+          </div>
+
+          {/* Step indicator */}
+          <div className="flex items-center gap-0 mt-5">
+            {([{ n: 1, label: t("planStep1") }, { n: 2, label: t("planStep2") }] as const).map(({ n, label }, i) => (
+              <React.Fragment key={n}>
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors",
+                    step === n ? "bg-primary text-primary-foreground" :
+                    step > n   ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                  )}>
+                    {n}
+                  </div>
+                  <span className={cn("text-xs font-medium", step === n ? "text-foreground" : "text-muted-foreground")}>
+                    {label}
+                  </span>
+                </div>
+                {i === 0 && (
+                  <div className="flex-1 mx-3 h-px bg-border relative">
+                    <div className={cn("absolute inset-y-0 left-0 bg-primary transition-all duration-300", step === 2 ? "w-full" : "w-0")} />
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
         </div>
 
         {step === 1 && (
-          <div className="space-y-5 pt-1 overflow-y-auto flex-1 pr-1">
+          <div className="px-6 py-5 space-y-6 overflow-y-auto flex-1">
+
             {/* Posts per week */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground flex items-center justify-between">
-                {t("planPostsPerWeek")}
-                <span className="text-primary font-bold text-sm">{postsPerWeek}x / semana</span>
-              </label>
-              <input
-                type="range"
-                min={2} max={7} step={1}
-                value={postsPerWeek}
-                onChange={(e) => setPostsPerWeek(Number(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>2</span><span>7</span>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">{t("planPostsPerWeek")}</p>
+                <span className="text-xs text-muted-foreground">posts/semana</span>
               </div>
+              <div className="flex gap-2">
+                {[2, 3, 4, 5, 6, 7].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPostsPerWeek(n)}
+                    className={cn(
+                      "flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all",
+                      postsPerWeek === n
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-muted/50 text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {postsPerWeek <= 3 ? "Cadência leve — ideal para começar ou nichos de longa duração" :
+                 postsPerWeek <= 5 ? "Cadência equilibrada — ótima para crescimento consistente" :
+                 "Cadência intensa — máximo alcance, exige produção acelerada"}
+              </p>
             </div>
 
             {/* Format mix */}
             <div className="space-y-3">
-              <label className="text-xs font-medium text-muted-foreground">{t("planFormatMix")}</label>
-              {(["carousel", "instagram", "linkedin", "newsletter"] as const).map((fmt) => (
-                <div key={fmt} className="flex items-center gap-3">
-                  <span className="text-xs w-28 text-foreground">{FORMAT_LABELS[fmt]}</span>
-                  <input
-                    type="range"
-                    min={0} max={100} step={5}
-                    value={formatWeights[fmt]}
-                    onChange={(e) => setFormatWeights((prev) => ({ ...prev, [fmt]: Number(e.target.value) }))}
-                    className="flex-1 accent-primary"
-                  />
-                  <span className="text-xs w-8 text-right text-primary font-medium">{formatWeights[fmt]}%</span>
-                </div>
-              ))}
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">{t("planFormatMix")}</p>
+                <span className={cn("text-xs font-medium", totalWeight === 100 ? "text-green-600" : totalWeight > 100 ? "text-red-500" : "text-muted-foreground")}>
+                  {totalWeight}% total
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {(["carousel", "instagram", "linkedin", "newsletter"] as const).map((fmt) => {
+                  const cfg = formatConfig[fmt];
+                  return (
+                    <div key={fmt} className={cn(
+                      "rounded-xl border p-3.5 space-y-3 transition-colors",
+                      formatWeights[fmt] > 0 ? "border-border bg-card" : "border-dashed border-border/50 bg-muted/20 opacity-60"
+                    )}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={cfg.color}>{cfg.icon}</span>
+                          <span className="text-xs font-medium text-foreground">{FORMAT_LABELS[fmt]}</span>
+                        </div>
+                        <span className={cn("text-sm font-bold", formatWeights[fmt] > 0 ? cfg.color : "text-muted-foreground")}>
+                          {formatWeights[fmt]}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all duration-200", cfg.bar)}
+                          style={{ width: `${formatWeights[fmt]}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => adjustWeight(fmt, -10)}
+                          disabled={formatWeights[fmt] === 0}
+                          className="w-7 h-7 rounded-md border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-30 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                        >−</button>
+                        <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                          <div className={cn("h-full rounded-full transition-all", cfg.bar, "opacity-40")} style={{ width: `${formatWeights[fmt]}%` }} />
+                        </div>
+                        <button
+                          onClick={() => adjustWeight(fmt, 10)}
+                          disabled={formatWeights[fmt] === 100}
+                          className="w-7 h-7 rounded-md border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/40 disabled:opacity-30 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                        >+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Editorial categories */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">{t("planCategories")}</label>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">{t("planCategories")}</p>
               <Textarea
                 placeholder={t("planCategoriesPlaceholder")}
                 value={categoriesText}
@@ -1777,13 +1865,13 @@ function PlanWizardDialog({
               <p className="text-[11px] text-muted-foreground">{t("planCategoriesHint")}</p>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={handleClose}>{t("cancel")}</Button>
-              <Button size="sm" onClick={handleGenerate} disabled={generateMutation.isPending} className="gap-2">
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={handleClose}>{t("cancel")}</Button>
+              <Button onClick={handleGenerate} disabled={generateMutation.isPending} className="gap-2 min-w-[140px]">
                 {generateMutation.isPending ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("planGenerating")}</>
+                  <><Loader2 className="h-4 w-4 animate-spin" />{t("planGenerating")}</>
                 ) : (
-                  <><Sparkles className="h-3.5 w-3.5" />{t("planGenerateBtn")}</>
+                  <><Sparkles className="h-4 w-4" />{t("planGenerateBtn")}</>
                 )}
               </Button>
             </div>
