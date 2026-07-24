@@ -767,30 +767,60 @@ export async function getImageCount(userId: number): Promise<number> {
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
 
-let _articlesMediumtextReady: Promise<void> | null = null;
-async function ensureArticlesMediumtext() {
+let _articlesTableReady: Promise<void> | null = null;
+async function ensureArticlesTable() {
   const db = await getDb();
   if (!db) return;
-  if (!_articlesMediumtextReady) {
-    _articlesMediumtextReady = (async () => {
+  if (!_articlesTableReady) {
+    _articlesTableReady = (async () => {
+      // Create table if not exists (handles fresh installs)
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`articles\` (
+          \`id\`                 int AUTO_INCREMENT PRIMARY KEY,
+          \`userId\`             int NOT NULL,
+          \`title\`              varchar(512) NOT NULL,
+          \`topic\`              mediumtext,
+          \`sourceUrl\`          text,
+          \`coverImageUrl\`      text,
+          \`content\`            mediumtext NOT NULL,
+          \`summary\`            mediumtext,
+          \`status\`             enum('draft','published','archived') NOT NULL DEFAULT 'draft',
+          \`sourceTopicAngleId\` int,
+          \`hookType\`           varchar(32),
+          \`contentFormat\`      varchar(32) DEFAULT 'article',
+          \`createdAt\`          timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\`          timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX \`idx_articles_userId\` (\`userId\`)
+        )
+      `);
+
+      // For existing installs: add columns that may be missing and upgrade TEXT→MEDIUMTEXT
       for (const [label, stmt] of [
-        ["content", sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`],
-        ["topic",   sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`],
-        ["summary", sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`],
+        ["add sourceTopicAngleId", sql`ALTER TABLE articles ADD COLUMN sourceTopicAngleId int`],
+        ["add hookType",           sql`ALTER TABLE articles ADD COLUMN hookType varchar(32)`],
+        ["add contentFormat",      sql`ALTER TABLE articles ADD COLUMN contentFormat varchar(32) DEFAULT 'article'`],
+        ["content→MEDIUMTEXT",     sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`],
+        ["topic→MEDIUMTEXT",       sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`],
+        ["summary→MEDIUMTEXT",     sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`],
       ] as const) {
         try {
           await db.execute(stmt);
-          console.log(`[DB] articles.${label} migrated to MEDIUMTEXT`);
+          console.log(`[DB] articles: ${label} ok`);
         } catch (e) {
-          console.log(`[DB] articles.${label} MEDIUMTEXT migration skipped (already done or error):`, e);
+          // Duplicate column (1060) or same type = already migrated, ignore
+          const msg = String(e);
+          if (!msg.includes("1060") && !msg.includes("Duplicate column")) {
+            console.warn(`[DB] articles: ${label} skipped:`, msg.slice(0, 200));
+          }
         }
       }
-    })().catch((e) => { _articlesMediumtextReady = null; throw e; });
+    })().catch((e) => { _articlesTableReady = null; throw e; });
   }
-  await _articlesMediumtextReady;
+  await _articlesTableReady;
 }
 
 export async function getArticles(userId: number): Promise<Article[]> {
+  await ensureArticlesTable();
   const db = await getDb();
   if (!db) return [];
   return db.select().from(articles)
@@ -799,6 +829,7 @@ export async function getArticles(userId: number): Promise<Article[]> {
 }
 
 export async function getArticle(id: number, userId: number): Promise<Article | undefined> {
+  await ensureArticlesTable();
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(articles)
@@ -820,7 +851,7 @@ export async function saveArticle(
     contentFormat?: string;
   }
 ): Promise<Article> {
-  await ensureArticlesMediumtext();
+  await ensureArticlesTable();
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const [result] = await db.insert(articles).values({ userId, ...data });
