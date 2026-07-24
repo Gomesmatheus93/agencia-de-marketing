@@ -4054,7 +4054,10 @@ const editorialPlanRouter = router({
     .mutation(async ({ ctx, input }) => {
       requireAgencyPlan(ctx.user as PlanUser);
 
-      const brand = await db.getBrandKit(ctx.user.id);
+      const [brand, radarTopicsRaw] = await Promise.all([
+        db.getBrandKit(ctx.user.id),
+        db.getRadarTopicsForUser(ctx.user.id),
+      ]);
 
       const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
       const monthName = monthNames[input.month - 1];
@@ -4083,11 +4086,30 @@ const editorialPlanRouter = router({
           ].filter(Boolean).join("\n")
         : null;
 
+      // Build radar context: top trending topics not yet used/discarded
+      const radarTopics = radarTopicsRaw
+        .filter((t) => t.angle?.status !== "usado" && t.angle?.status !== "descartado")
+        .sort((a, b) => (b.viralScore ?? 50) - (a.viralScore ?? 50))
+        .slice(0, 12);
+
+      const radarBlock = radarTopics.length > 0
+        ? [
+            `TEMAS EM ALTA — RADAR DE TENDÊNCIAS (incorpore os mais relevantes para as categorias definidas):`,
+            ...radarTopics.map((t, i) => {
+              const hook = t.angle?.suggestedHook ?? t.description ?? "";
+              const hookSnippet = hook.length > 120 ? hook.slice(0, 120) + "…" : hook;
+              return `${i + 1}. "${t.angle?.suggestedTitle ?? t.title}" — ${hookSnippet} [score viral: ${t.viralScore}]`;
+            }),
+            ``,
+            `INSTRUÇÃO: Distribua entre 30-50% dos posts adaptando estes temas em alta para as categorias editoriais. Os demais posts devem ser pautas perenes e estratégicas da marca.`,
+          ].join("\n")
+        : null;
+
       const response = await invokeLLM({
         messages: [
           {
             role: "system",
-            content: "Você é um planejador editorial especialista em marketing digital para o Brasil. Crie planos de conteúdo estratégicos e variados que maximizem engajamento.",
+            content: "Você é um planejador editorial especialista em marketing digital para o Brasil. Crie planos de conteúdo estratégicos e variados que maximizem engajamento, combinando tendências em alta com conteúdo perene.",
           },
           {
             role: "user",
@@ -4101,6 +4123,7 @@ const editorialPlanRouter = router({
               `CATEGORIAS EDITORIAIS (use todas de forma balanceada):`,
               input.categories.join(", "),
               brandContext ? `\nINFO DA MARCA:\n${brandContext}` : "",
+              radarBlock ? `\n${radarBlock}` : "",
               ``,
               `REGRAS:`,
               `- Distribua os posts ao longo do mês (prefira dias úteis: seg-sex)`,
@@ -4154,7 +4177,7 @@ const editorialPlanRouter = router({
             },
           },
         },
-        max_tokens: 4000,
+        max_tokens: 6000,
       });
 
       const raw = response.choices[0]?.message?.content;

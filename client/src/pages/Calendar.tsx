@@ -1866,6 +1866,19 @@ function PlanWizardDialog({
               <p className="text-[11px] text-muted-foreground">{t("planCategoriesHint")}</p>
             </div>
 
+            {/* Radar notice */}
+            <div className="flex items-start gap-2.5 rounded-xl bg-primary/5 border border-primary/15 px-3.5 py-3">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-foreground">Radar de Temas integrado</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  Os temas em alta do seu Radar serão incluídos automaticamente — até 50% das pautas vão surfar tendências reais alinhadas às suas categorias.
+                </p>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={handleClose}>{t("cancel")}</Button>
               <Button onClick={handleGenerate} disabled={generateMutation.isPending} className="gap-2 min-w-[140px]">
