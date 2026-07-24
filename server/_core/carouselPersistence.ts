@@ -4,6 +4,7 @@ import path from "node:path";
 import type { CarouselAgentSlide } from "./carouselAgent";
 import type { CarouselSlideData } from "../../drizzle/schema";
 import { storagePut, isConfiguredPublicStorageUrl } from "../storage";
+import { generateImage } from "./imageGeneration";
 
 type PersistCarouselAssetsInput = {
   userId: number;
@@ -222,29 +223,26 @@ export async function persistCarouselAssets(
   const batchId = randomUUID();
   const cache = new Map<string, string>();
 
-  const persistAssetUrl = async (assetUrl: string | undefined, filePrefix: string) => {
+  const persistAssetUrl = async (
+    assetUrl: string | undefined,
+    filePrefix: string,
+    fallbackPrompt?: string,
+  ) => {
     if (!assetUrl) return undefined;
     if (cache.has(assetUrl)) return cache.get(assetUrl);
 
     // Already in the configured cloud storage — no re-hosting needed.
-    // This prevents downloading from S3 only to re-upload it, which could
-    // accidentally replace a permanent S3 URL with a local path if the
-    // re-upload step fails.
     if (isConfiguredPublicStorageUrl(assetUrl)) {
       cache.set(assetUrl, assetUrl);
       return assetUrl;
     }
 
-    let persistedUrl = assetUrl;
+    let persistedUrl: string | undefined;
 
     try {
-      // Resolve asset from any source: data: URLs, local /uploads/, or remote HTTPS
-      // This re-hosts external images (Wikimedia, Google CSE, DALL-E, etc.) so the
-      // browser can always load them from the app's own storage without hotlink/CORS issues
       const asset = await resolveAnyAsset(assetUrl);
       if (asset) {
         const safePrefix = filePrefix.replace(/[^a-zA-Z0-9._-]/g, "-") || "asset";
-        // Try cloud storage (S3/Catbox/Forge) first for reliable public access
         try {
           const stored = await storagePut(
             `carousels/${input.userId}/${batchId}/sources/${safePrefix}.${asset.extension}`,
@@ -254,31 +252,46 @@ export async function persistCarouselAssets(
           persistedUrl = stored.url;
           console.log(`[Carousel] Asset re-hosted to cloud: ${filePrefix} → ${stored.url}`);
         } catch (uploadErr) {
-          // Fall back to local /uploads/ (dev environment or if cloud fails)
           console.warn(`[Carousel] Cloud upload failed for ${filePrefix}, using local fallback:`, uploadErr);
-          persistedUrl = await writeUploadsAsset({
-            asset,
-            batchId,
-            filePrefix,
-            userId: input.userId,
-          });
+          persistedUrl = await writeUploadsAsset({ asset, batchId, filePrefix, userId: input.userId });
         }
       }
-    } catch (error) {
-      console.warn("[Carousel] Failed to re-host asset, keeping original URL:", error);
+    } catch (fetchErr) {
+      // External URL is broken (400/502/timeout) — generate a DALL-E replacement
+      console.warn(`[Carousel] External image fetch failed for ${filePrefix}, trying DALL-E fallback:`, fetchErr);
     }
 
-    cache.set(assetUrl, persistedUrl);
-    return persistedUrl;
+    // If fetch/upload failed and we have a fallback prompt, generate via DALL-E
+    if (!persistedUrl && fallbackPrompt) {
+      try {
+        const generated = await generateImage({ prompt: fallbackPrompt });
+        if (generated.url) {
+          persistedUrl = generated.url;
+          console.log(`[Carousel] DALL-E fallback used for ${filePrefix}: ${generated.url}`);
+        }
+      } catch (genErr) {
+        console.warn(`[Carousel] DALL-E fallback also failed for ${filePrefix}:`, genErr);
+      }
+    }
+
+    // If still nothing, keep the original URL as last resort
+    const result = persistedUrl ?? assetUrl;
+    cache.set(assetUrl, result);
+    return result;
   };
 
   const slides: CarouselAgentSlide[] = [];
 
   for (let index = 0; index < input.slides.length; index += 1) {
     const slide = input.slides[index];
+    const fallbackPrompt = slide.imagePrompt || slide.title || slide.body || undefined;
     slides.push({
       ...slide,
-      imageUrl: await persistAssetUrl(slide.imageUrl, `slide-${String(index + 1).padStart(2, "0")}`),
+      imageUrl: await persistAssetUrl(
+        slide.imageUrl,
+        `slide-${String(index + 1).padStart(2, "0")}`,
+        fallbackPrompt,
+      ),
     });
   }
 
