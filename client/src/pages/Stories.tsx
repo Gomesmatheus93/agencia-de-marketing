@@ -3,22 +3,29 @@ import type { RadarPrefill } from "@/pages/Radar";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePlan } from "@/_core/hooks/usePlan";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   Layers,
-  Plus,
   Trash2,
   ChevronLeft,
   ChevronRight,
   Sparkles,
   Info,
   Lock,
+  BarChart2,
+  Target,
+  Timer,
+  MessageCircle,
+  Clapperboard,
+  Repeat2,
+  BookMarked,
+  Hash,
 } from "lucide-react";
 // Local type mirrors of StorySlide/StorySet (types only — no server-side code imported)
 type StorySlide =
@@ -50,23 +57,71 @@ const STORY_TYPES = [
 
 type StorySlideType = (typeof STORY_TYPES)[number];
 
-const TYPE_LABELS: Record<StorySlideType, { pt: string; en: string; emoji: string }> = {
-  poll: { pt: "Enquete", en: "Poll", emoji: "📊" },
-  quiz: { pt: "Quiz", en: "Quiz", emoji: "🎯" },
-  countdown: { pt: "Contagem regressiva", en: "Countdown", emoji: "⏳" },
-  question_box: { pt: "Caixinha", en: "Q&A Box", emoji: "💬" },
-  behind_scenes: { pt: "Bastidores", en: "Behind the Scenes", emoji: "🎬" },
-  post_reinforcement: { pt: "Reforço de post", en: "Post Boost", emoji: "🔁" },
+const TYPE_META: Record<StorySlideType, {
+  pt: string; en: string; emoji: string;
+  desc: string;
+  icon: React.ReactNode;
+  badge: string;
+  card: string;
+  iconBg: string;
+}> = {
+  poll: {
+    pt: "Enquete", en: "Poll", emoji: "📊",
+    desc: "Engaja com votação binária",
+    icon: <BarChart2 className="h-4 w-4" />,
+    badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    card: "border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20",
+    iconBg: "bg-blue-500",
+  },
+  quiz: {
+    pt: "Quiz", en: "Quiz", emoji: "🎯",
+    desc: "Testa o conhecimento do seguidor",
+    icon: <Target className="h-4 w-4" />,
+    badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    card: "border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20",
+    iconBg: "bg-amber-500",
+  },
+  countdown: {
+    pt: "Contagem regressiva", en: "Countdown", emoji: "⏳",
+    desc: "Cria antecipação e urgência",
+    icon: <Timer className="h-4 w-4" />,
+    badge: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+    card: "border-orange-200 dark:border-orange-800/50 bg-orange-50/50 dark:bg-orange-950/20",
+    iconBg: "bg-orange-500",
+  },
+  question_box: {
+    pt: "Caixinha", en: "Q&A Box", emoji: "💬",
+    desc: "Coleta perguntas e feedbacks",
+    icon: <MessageCircle className="h-4 w-4" />,
+    badge: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    card: "border-violet-200 dark:border-violet-800/50 bg-violet-50/50 dark:bg-violet-950/20",
+    iconBg: "bg-violet-500",
+  },
+  behind_scenes: {
+    pt: "Bastidores", en: "Behind Scenes", emoji: "🎬",
+    desc: "Humaniza a marca com bastidores",
+    icon: <Clapperboard className="h-4 w-4" />,
+    badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    card: "border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20",
+    iconBg: "bg-emerald-500",
+  },
+  post_reinforcement: {
+    pt: "Reforço de post", en: "Post Boost", emoji: "🔁",
+    desc: "Amplifica conteúdo já publicado",
+    icon: <Repeat2 className="h-4 w-4" />,
+    badge: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
+    card: "border-pink-200 dark:border-pink-800/50 bg-pink-50/50 dark:bg-pink-950/20",
+    iconBg: "bg-pink-500",
+  },
 };
 
-const TYPE_COLORS: Record<StorySlideType, string> = {
-  poll: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  quiz: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  countdown: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  question_box: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
-  behind_scenes: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  post_reinforcement: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",
-};
+const TYPE_LABELS: Record<StorySlideType, { pt: string; en: string; emoji: string }> = Object.fromEntries(
+  Object.entries(TYPE_META).map(([k, v]) => [k, { pt: v.pt, en: v.en, emoji: v.emoji }])
+) as Record<StorySlideType, { pt: string; en: string; emoji: string }>;
+
+const TYPE_COLORS: Record<StorySlideType, string> = Object.fromEntries(
+  Object.entries(TYPE_META).map(([k, v]) => [k, v.badge])
+) as Record<StorySlideType, string>;
 
 // ─── Story slide preview (9:16 CSS, no Canvas) ───────────────────────────────
 
@@ -341,15 +396,15 @@ export default function Stories() {
 
   return (
     <AppLayout activeModule="stories">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 py-6">
 
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 p-2.5">
-            <Layers className="h-5 w-5 text-white" />
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg shadow-pink-500/25">
+            <Layers className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">
+            <h1 className="text-2xl font-bold tracking-tight">
               {language === "pt" ? "Gerador de Stories" : "Stories Generator"}
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -360,50 +415,74 @@ export default function Stories() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
 
-          {/* Left — generator */}
-          <div className="lg:col-span-1 space-y-5">
-            <div className="rounded-2xl border bg-card p-5 space-y-4">
-              <h2 className="font-semibold text-sm">
-                {language === "pt" ? "Configurar stories" : "Configure stories"}
-              </h2>
+          {/* ── Left panel ── */}
+          <div className="space-y-4">
+            <div className="rounded-2xl border bg-card shadow-sm p-6 space-y-6">
 
               {/* Topic */}
-              <div className="space-y-1.5">
-                <Label htmlFor="story-topic" className="text-xs text-muted-foreground">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">
                   {language === "pt" ? "Tema ou assunto" : "Topic or subject"}
-                </Label>
-                <Input
-                  id="story-topic"
-                  placeholder={language === "pt" ? "Ex: Como crescer no Instagram em 2025" : "E.g. How to grow on Instagram in 2025"}
+                </p>
+                <Textarea
+                  placeholder={language === "pt"
+                    ? "Ex: Como crescer no Instagram em 2025, dicas de produtividade para empreendedores…"
+                    : "E.g. How to grow on Instagram in 2025…"}
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleGenerate(); }}
+                  rows={3}
+                  className="resize-none text-sm"
                 />
               </div>
 
               {/* Story types */}
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">
-                  {language === "pt" ? "Tipos de story (selecione os que quer usar)" : "Story types (select the ones to use)"}
-                </Label>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-foreground">
+                    {language === "pt" ? "Tipos de story" : "Story types"}
+                  </p>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedTypes.length} {language === "pt" ? "selecionados" : "selected"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   {STORY_TYPES.map((type) => {
-                    const label = TYPE_LABELS[type];
+                    const meta = TYPE_META[type];
                     const selected = selectedTypes.includes(type);
                     return (
                       <button
                         key={type}
                         onClick={() => toggleType(type)}
-                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${
+                        className={cn(
+                          "relative flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all",
                           selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border text-muted-foreground hover:border-primary/50"
-                        }`}
+                            ? meta.card + " border-opacity-80 ring-1 ring-inset ring-current/20"
+                            : "border-border bg-background hover:bg-muted/40 hover:border-border"
+                        )}
                       >
-                        <span>{label.emoji}</span>
-                        <span>{language === "pt" ? label.pt : label.en}</span>
+                        <div className={cn(
+                          "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-white transition-opacity",
+                          meta.iconBg,
+                          !selected && "opacity-40"
+                        )}>
+                          {meta.icon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn(
+                            "text-xs font-semibold leading-tight",
+                            selected ? "text-foreground" : "text-muted-foreground"
+                          )}>
+                            {language === "pt" ? meta.pt : meta.en}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 line-clamp-1">
+                            {meta.desc}
+                          </p>
+                        </div>
+                        {selected && (
+                          <div className={cn("absolute top-2 right-2 w-2 h-2 rounded-full", meta.iconBg)} />
+                        )}
                       </button>
                     );
                   })}
@@ -411,35 +490,43 @@ export default function Stories() {
               </div>
 
               {/* Number of slides */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  {language === "pt" ? "Número de slides" : "Number of slides"}: {nSlides}
-                </Label>
-                <input
-                  type="range"
-                  min={1}
-                  max={5}
-                  value={nSlides}
-                  onChange={(e) => setNSlides(Number(e.target.value))}
-                  className="w-full accent-primary"
-                />
+              <div className="space-y-2.5">
+                <p className="text-sm font-semibold text-foreground">
+                  {language === "pt" ? "Número de slides" : "Number of slides"}
+                </p>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setNSlides(n)}
+                      className={cn(
+                        "flex-1 py-2 rounded-lg text-sm font-semibold border transition-all",
+                        nSlides === n
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                          : "bg-muted/50 text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <Button
                 onClick={handleGenerate}
-                disabled={generateMutation.isPending || !topic.trim()}
-                className="w-full"
+                disabled={generateMutation.isPending || !topic.trim() || selectedTypes.length === 0}
+                className="w-full h-11 text-sm font-semibold gap-2"
               >
                 {generateMutation.isPending ? (
-                  <><span className="animate-spin mr-2">⏳</span>{language === "pt" ? "Gerando…" : "Generating…"}</>
+                  <><span className="animate-spin">⏳</span>{language === "pt" ? "Gerando…" : "Generating…"}</>
                 ) : (
-                  <><Sparkles className="h-4 w-4 mr-2" />{language === "pt" ? "Gerar stories" : "Generate stories"}</>
+                  <><Sparkles className="h-4 w-4" />{language === "pt" ? "Gerar stories" : "Generate stories"}</>
                 )}
               </Button>
             </div>
 
             {/* API note */}
-            <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-900/20 p-3">
+            <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-950/20 px-4 py-3">
               <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                 {language === "pt"
@@ -449,75 +536,136 @@ export default function Stories() {
             </div>
           </div>
 
-          {/* Right — preview + saved */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* ── Right panel ── */}
+          <div className="space-y-6 min-h-[500px]">
 
             {/* Generated preview */}
             {previewSet && (
-              <div className="rounded-2xl border bg-card p-5 space-y-4">
-                <div className="flex items-center justify-between">
+              <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+                {/* Preview header */}
+                <div className="px-5 py-4 border-b border-border/50 flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-semibold">{previewSet.setTitle}</h2>
-                    <p className="text-xs text-muted-foreground">{previewSet.theme}</p>
+                    <h2 className="font-semibold text-base leading-tight">{previewSet.setTitle}</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{previewSet.theme}</p>
                   </div>
-                  <Button onClick={handleSave} disabled={saving || saveMutation.isPending} size="sm">
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || saveMutation.isPending}
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                  >
+                    <BookMarked className="h-3.5 w-3.5" />
                     {saving ? (language === "pt" ? "Salvando…" : "Saving…") : (language === "pt" ? "Salvar rascunho" : "Save draft")}
                   </Button>
                 </div>
 
-                {/* Slide carousel */}
-                {previewSet.slides.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+                <div className="p-5 space-y-5">
+                  {/* Thumbnails strip */}
+                  {previewSet.slides.length > 0 && (
+                    <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x scrollbar-thin">
                       {previewSet.slides.map((slide, i) => (
                         <div
                           key={i}
-                          className={`shrink-0 w-40 cursor-pointer snap-start transition-transform ${previewSlide === i ? "scale-105" : "opacity-70 hover:opacity-90"}`}
                           onClick={() => setPreviewSlide(i)}
+                          className={cn(
+                            "shrink-0 w-[88px] cursor-pointer snap-start rounded-xl overflow-hidden transition-all",
+                            previewSlide === i
+                              ? "ring-2 ring-primary ring-offset-2 scale-105"
+                              : "opacity-60 hover:opacity-85 hover:scale-102"
+                          )}
                         >
                           <SlidePreview slide={slide} index={i} total={previewSet.slides.length} />
                         </div>
                       ))}
                     </div>
+                  )}
 
-                    {/* Large preview of selected slide */}
-                    <div className="max-w-xs mx-auto">
+                  {/* Large preview + nav */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setPreviewSlide((i) => Math.max(0, i - 1))}
+                      disabled={previewSlide === 0}
+                      className="w-8 h-8 rounded-full border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 disabled:opacity-30 transition-colors shrink-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <div className="flex-1 max-w-[240px] mx-auto">
                       <SlidePreview
                         slide={previewSet.slides[previewSlide]}
                         index={previewSlide}
                         total={previewSet.slides.length}
                       />
                     </div>
+                    <button
+                      onClick={() => setPreviewSlide((i) => Math.min(previewSet.slides.length - 1, i + 1))}
+                      disabled={previewSlide === previewSet.slides.length - 1}
+                      className="w-8 h-8 rounded-full border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 disabled:opacity-30 transition-colors shrink-0"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </div>
-                )}
 
-                {/* Caption + hashtags */}
-                <div className="rounded-xl bg-muted/50 p-3 space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {language === "pt" ? "Legenda sugerida" : "Suggested caption"}
-                  </p>
-                  <p className="text-sm">{previewSet.caption}</p>
-                  {previewSet.hashtags.length > 0 && (
-                    <p className="text-xs text-primary">{previewSet.hashtags.map((h) => `#${h}`).join(" ")}</p>
-                  )}
+                  {/* Caption + hashtags */}
+                  <div className="rounded-xl bg-muted/50 border border-border/50 p-4 space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {language === "pt" ? "Legenda sugerida" : "Suggested caption"}
+                    </p>
+                    <p className="text-sm text-foreground leading-relaxed">{previewSet.caption}</p>
+                    {previewSet.hashtags.length > 0 && (
+                      <div className="flex items-start gap-1.5 pt-1">
+                        <Hash className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                        <p className="text-xs text-primary leading-relaxed">
+                          {previewSet.hashtags.map((h) => `#${h}`).join(" ")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Empty state + saved stories */}
-            {storyPosts.length === 0 && !previewSet && (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
-                <Layers className="h-10 w-10 opacity-20" />
-                <p className="text-sm">{language === "pt" ? "Nenhum story salvo ainda." : "No stories saved yet."}</p>
-                <p className="text-xs">{language === "pt" ? "Gere seu primeiro conjunto acima." : "Generate your first set above."}</p>
+            {/* Empty state */}
+            {!previewSet && storyPosts.length === 0 && (
+              <div className="flex flex-col items-center justify-center min-h-[420px] gap-4">
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-950/40 dark:to-rose-950/40 flex items-center justify-center">
+                    <Layers className="h-9 w-9 text-pink-400 dark:text-pink-500" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center">
+                    <Sparkles className="h-3 w-3 text-white" />
+                  </div>
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-base font-semibold text-foreground">
+                    {language === "pt" ? "Nenhum story gerado ainda" : "No stories generated yet"}
+                  </p>
+                  <p className="text-sm text-muted-foreground max-w-xs">
+                    {language === "pt"
+                      ? "Configure o tema, escolha os tipos e clique em Gerar stories"
+                      : "Set a topic, choose types, and click Generate stories"}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-wrap justify-center">
+                  {STORY_TYPES.slice(0, 4).map((t) => (
+                    <span key={t} className={cn("text-[10px] px-2.5 py-1 rounded-full font-medium", TYPE_META[t].badge)}>
+                      {TYPE_META[t].emoji} {TYPE_META[t].pt}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
+            {/* Saved stories */}
             {storyPosts.length > 0 && (
               <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-muted-foreground">
-                  {language === "pt" ? "Rascunhos salvos" : "Saved drafts"}
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {language === "pt" ? "Rascunhos salvos" : "Saved drafts"}
+                  </h2>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    {storyPosts.length}
+                  </span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {storyPosts.map((post) => (
                     <StorySetCard
