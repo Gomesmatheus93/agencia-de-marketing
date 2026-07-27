@@ -4511,13 +4511,22 @@ const storiesRouter = router({
         return { storySet: payload as unknown as typeof parsed.data, warning: "Estrutura parcial — revise os slides antes de salvar." };
       }
 
-      // Generate background images via OpenAI, store to S3, return URLs
+      // Art director + DALL-E 3 + sharp pipeline: generate 1080×1920 background per slide
       const { generateSlideImages } = await import("./_core/imageGenerator");
-      const imageUrls = await generateSlideImages(parsed.data.slides, input.topic);
-      const slidesWithImages = parsed.data.slides.map((slide, i) => ({
-        ...slide,
-        imageUrl: imageUrls[i] ?? undefined,
-      }));
+      const brandColors = brand
+        ? [brand.primaryColor, brand.secondaryColor, brand.accentColor].filter(Boolean).join(", ")
+        : undefined;
+      const imageResults = await generateSlideImages(parsed.data.slides, input.topic, brandColors ?? undefined);
+      const slidesWithImages = parsed.data.slides.map((slide, i) => {
+        const img = imageResults[i];
+        return {
+          ...slide,
+          imageUrl: img?.url ?? undefined,
+          imageOverlayColor: img?.overlayColor ?? undefined,
+          suggestedHeadline: img?.suggestedHeadline ?? undefined,
+          suggestedCta: img?.suggestedCta ?? undefined,
+        };
+      });
 
       return { storySet: { ...parsed.data, slides: slidesWithImages } };
     }),

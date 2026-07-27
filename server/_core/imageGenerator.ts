@@ -1,90 +1,175 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import { ENV } from "./env";
 import { storagePut } from "../storage";
 import type { StorySlide } from "./storyContentSchema";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
-// Per-type style direction
-const TYPE_STYLE: Record<string, string> = {
-  poll:               "bold graphic design, vivid contrasting colors, split-screen layout, high-contrast, energetic",
-  quiz:               "playful colorful geometry, bright energetic palette, fun quiz-show atmosphere, dynamic shapes",
-  countdown:          "dramatic cinematic lighting, epic moody atmosphere, strong urgency, dark dramatic tones",
-  question_box:       "warm inviting lifestyle, soft pastel tones, approachable, cozy, friendly natural environment",
-  behind_scenes:      "candid authentic mood, golden hour warm lighting, real moments, documentary style photography",
-  post_reinforcement: "modern professional brand aesthetic, clean bold design, strong visual impact, sleek",
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type ArtDirectorResult = {
+  prompt: string;
+  safe_zone_note: string;
+  suggested_headline: string;
+  suggested_cta: string;
+  overlay_color: string;
 };
 
-// Build a rich visual description from slide content
+export type StoryImageResult = {
+  url: string;
+  overlayColor?: string;
+  suggestedHeadline?: string;
+  suggestedCta?: string;
+  safeZoneNote?: string;
+};
+
+// ─── Art Director system prompt ───────────────────────────────────────────────
+
+const ART_DIRECTOR_SYSTEM = `Você é um diretor de arte especializado em Instagram Stories.
+
+Sua função: converter um briefing em um ÚNICO prompt em inglês, otimizado para DALL-E 3, que gere uma imagem de FUNDO para um Story vertical 9:16.
+
+REGRAS OBRIGATÓRIAS:
+1. Responda APENAS com JSON válido. Sem markdown, sem crases, sem preâmbulo.
+2. O prompt deve ser em INGLÊS, de 60 a 120 palavras.
+3. NUNCA inclua texto, palavras, letras, números, logos ou tipografia na imagem. Sempre termine o prompt com: "no text, no letters, no words, no logos, no watermarks."
+4. Composição vertical obrigatória. Descreva explicitamente:
+   - Zona superior (0-25%): respiro visual, sem elemento crítico (a UI do Instagram cobre essa área)
+   - Zona central (25-75%): foco visual principal
+   - Zona inferior (75-100%): área limpa para CTA e sticker de link
+5. Especifique sempre: estilo visual, paleta de cores, tipo de iluminação, ângulo de câmera e profundidade de campo.
+6. Se o briefing indicar paleta de marca, respeite as cores informadas.
+7. Evite composições centralizadas e simétricas demais — Story pede dinamismo e diagonais.
+
+FORMATO DE SAÍDA:
+{
+  "prompt": "prompt em inglês para o DALL-E",
+  "safe_zone_note": "onde a imagem está limpa para receber texto",
+  "suggested_headline": "headline em português, máx 6 palavras",
+  "suggested_cta": "CTA em português, máx 4 palavras",
+  "overlay_color": "#RRGGBB — cor de texto com melhor contraste sobre a imagem"
+}`;
+
+// ─── Per-type style hints (used in fallback briefing) ────────────────────────
+
+const TYPE_STYLE: Record<string, string> = {
+  poll:               "bold graphic split composition, vivid contrasting colors, high-contrast energetic",
+  quiz:               "playful colorful geometry, bright energetic palette, quiz-show atmosphere, dynamic",
+  countdown:          "dramatic cinematic lighting, epic moody atmosphere, strong urgency, dark dramatic",
+  question_box:       "warm inviting lifestyle, soft pastel tones, approachable cozy natural environment",
+  behind_scenes:      "candid authentic mood, golden hour warm lighting, documentary real-life moment",
+  post_reinforcement: "modern professional brand aesthetic, clean bold design, sleek striking",
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function buildSlideContext(slide: StorySlide): string {
-  const parts: string[] = [`Headline context: "${slide.headline}"`];
+  const parts = [`Headline: "${slide.headline}"`];
   switch (slide.type) {
     case "poll":
-      parts.push(`Poll: "${slide.question}" with options "${slide.option_a}" vs "${slide.option_b}"`);
+      parts.push(`Poll question: "${slide.question}" — options: "${slide.option_a}" vs "${slide.option_b}"`);
       break;
     case "quiz":
-      parts.push(`Quiz question: "${slide.question}"`);
+      parts.push(`Quiz: "${slide.question}"`);
       if (slide.options?.length) parts.push(`Options: ${slide.options.join(", ")}`);
       break;
     case "countdown":
-      parts.push(`Countdown message: "${slide.body}". Event: "${slide.target_label}"`);
+      parts.push(`Message: "${slide.body}". Event: "${slide.target_label}"`);
       break;
     case "behind_scenes":
-      parts.push(`Behind the scenes: "${slide.caption}". Tone: ${slide.tone}`);
+      parts.push(`Content: "${slide.caption}". Tone: ${slide.tone}`);
       break;
     case "post_reinforcement":
-      parts.push(`Post angle: "${slide.angle}"`);
+      parts.push(`Angle: "${slide.angle}"`);
       break;
   }
   return parts.join(". ");
 }
 
-// Persist buffer: try S3 → local → base64 data URI (always returns something)
+// Persist buffer: S3 → /uploads/ → base64 data URI (always succeeds)
 async function persistBuffer(buffer: Buffer, ext: string, contentType: string): Promise<string> {
   const filename = `story-${randomUUID()}.${ext}`;
-
   try {
     const result = await storagePut(`stories/${filename}`, buffer, contentType);
     console.log("[StoryImage] Stored to cloud:", result.url.slice(0, 80));
     return result.url;
-  } catch {
-    console.warn("[StoryImage] Cloud storage unavailable, trying local uploads/");
-  }
-
+  } catch { /* fall through */ }
   try {
     if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
     console.log("[StoryImage] Stored locally:", `/uploads/${filename}`);
     return `/uploads/${filename}`;
-  } catch {
-    console.warn("[StoryImage] Local storage failed, returning base64 data URI");
-  }
-
-  // Guaranteed fallback: data URI works in any environment, no server needed
+  } catch { /* fall through */ }
+  // Last resort: embedded data URI (no server needed)
   return `data:${contentType};base64,${buffer.toString("base64")}`;
 }
 
-// Call OpenAI images/generations with a specific model, return stored URL or null
-async function callOpenAI(prompt: string, model: string): Promise<string | null> {
-  const isDalle3 = model === "dall-e-3";
+// ─── Step 1: Art Director — generates optimized DALL-E prompt + metadata ──────
 
-  const body: Record<string, unknown> = { model, prompt, n: 1 };
-
-  if (isDalle3) {
-    body.size = "1024x1792"; // true 9:16 — best for Stories
-    body.quality = "hd";
-    body.response_format = "url";
-  } else {
-    // gpt-image-1 or similar
-    body.size = "1024x1536"; // portrait 2:3
-    body.quality = "high";
-    body.output_format = "webp";
-    body.output_compression = 85;
+async function callArtDirector(
+  slide: StorySlide,
+  topic?: string,
+  brandColors?: string,
+): Promise<ArtDirectorResult | null> {
+  if (!ENV.anthropicApiKey) {
+    console.log("[StoryImage] No ANTHROPIC_API_KEY — skipping art director, using fallback prompt");
+    return null;
   }
 
-  console.log(`[StoryImage] Calling ${model}...`);
+  const slideContext = buildSlideContext(slide);
+  const typeHint = TYPE_STYLE[slide.type] ?? "vivid Instagram Story background";
+
+  const briefing = [
+    `Tipo de story: ${slide.type}`,
+    topic ? `Tema principal: ${topic}` : null,
+    `Contexto do slide: ${slideContext}`,
+    `Cena visual sugerida: ${slide.visual_prompt}`,
+    `Estilo desejado: ${typeHint}`,
+    brandColors ? `Paleta de marca: ${brandColors}` : null,
+  ].filter(Boolean).join("\n");
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ENV.anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 700,
+        system: ART_DIRECTOR_SYSTEM,
+        messages: [{ role: "user", content: briefing }],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      console.warn("[StoryImage] Art director HTTP error:", res.status);
+      return null;
+    }
+
+    const data = (await res.json()) as { content?: Array<{ text?: string }> };
+    const text = (data.content?.[0]?.text ?? "").trim();
+    // Strip accidental markdown fences
+    const clean = text.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+    const parsed = JSON.parse(clean) as ArtDirectorResult;
+    console.log("[StoryImage] Art director done. Prompt:", parsed.prompt.slice(0, 70));
+    return parsed;
+  } catch (err) {
+    console.warn("[StoryImage] Art director failed:", err);
+    return null;
+  }
+}
+
+// ─── Step 2: DALL-E 3 → Step 3: Sharp resize → Step 4: Persist ──────────────
+
+async function generateAndResize(dallePrompt: string): Promise<Buffer | null> {
+  console.log("[StoryImage] Calling DALL-E 3...");
 
   const resp = await fetch(`${ENV.openaiApiBaseUrl.replace(/\/$/, "")}/images/generations`, {
     method: "POST",
@@ -92,105 +177,98 @@ async function callOpenAI(prompt: string, model: string): Promise<string | null>
       Authorization: `Bearer ${ENV.openaiApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: "dall-e-3",
+      prompt: dallePrompt,
+      size: "1024x1792",
+      quality: "hd",
+      style: "vivid",
+      response_format: "b64_json",
+      n: 1,
+    }),
     signal: AbortSignal.timeout(90_000),
   });
 
   if (!resp.ok) {
-    const errorText = await resp.text().catch(() => "");
-    console.warn(`[StoryImage] ${model} failed (${resp.status}): ${errorText.slice(0, 300)}`);
+    const errText = await resp.text().catch(() => "");
+    console.warn(`[StoryImage] DALL-E 3 error (${resp.status}): ${errText.slice(0, 300)}`);
     return null;
   }
 
-  const data = (await resp.json()) as { data?: Array<{ url?: string; b64_json?: string }> };
-  const item = data.data?.[0];
-  if (!item) {
-    console.warn("[StoryImage] No item in OpenAI response");
+  const result = (await resp.json()) as { data?: Array<{ b64_json?: string }> };
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) {
+    console.warn("[StoryImage] No b64_json in DALL-E 3 response");
     return null;
   }
 
-  // DALL-E 3 → temporary URL → download and persist
-  if (item.url) {
-    try {
-      const imgResp = await fetch(item.url, { signal: AbortSignal.timeout(30_000) });
-      if (imgResp.ok) {
-        const buffer = Buffer.from(await imgResp.arrayBuffer());
-        return persistBuffer(buffer, "png", "image/png");
-      }
-    } catch { /* fall through */ }
-    // Use the temp URL directly as last resort (expires in ~1h, ok for immediate preview)
-    console.warn("[StoryImage] Could not download dall-e-3 URL, using it directly");
-    return item.url;
-  }
+  // Resize with sharp to exact Instagram Story resolution (1080×1920)
+  const pngBuffer = await sharp(Buffer.from(b64, "base64"))
+    .resize(1080, 1920, { fit: "cover", position: "center" })
+    .png({ quality: 95 })
+    .toBuffer();
 
-  // gpt-image-1 → b64_json → persist
-  if (item.b64_json) {
-    const buffer = Buffer.from(item.b64_json, "base64");
-    return persistBuffer(buffer, "webp", "image/webp");
-  }
-
-  return null;
+  console.log("[StoryImage] Resized to 1080×1920 via sharp");
+  return pngBuffer;
 }
 
-// Generate one story slide background image
+// ─── Main export: generate one story slide image ─────────────────────────────
+
 export async function generateStoryImage(
   slide: StorySlide,
   topic?: string,
-): Promise<string | null> {
+  brandColors?: string,
+): Promise<StoryImageResult | null> {
   if (!ENV.openaiApiKey) {
-    console.warn("[StoryImage] OPENAI_API_KEY not configured — skipping image generation");
+    console.warn("[StoryImage] OPENAI_API_KEY not configured — skipping");
     return null;
   }
 
-  const typeHint = TYPE_STYLE[slide.type] ?? "vibrant Instagram Story background";
-  const slideContext = buildSlideContext(slide);
+  // Step 1: Art director → optimized DALL-E prompt
+  const artResult = await callArtDirector(slide, topic, brandColors);
 
-  // Rich prompt: includes topic + slide content + visual direction + no-text rule
-  const prompt = [
-    "Professional Instagram Story background image, vertical 9:16 portrait format.",
-    topic ? `Main topic: ${topic}.` : null,
-    `Visual scene: ${slide.visual_prompt}.`,
-    `Story context: ${slideContext}.`,
-    `Design style: ${typeHint}.`,
-    "IMPORTANT: NO text, NO words, NO letters, NO numbers anywhere in the image.",
-    "Photorealistic or high-quality digital art. Cinematic composition, professional social media quality.",
-  ].filter(Boolean).join(" ");
+  let dallePrompt: string;
+  if (artResult?.prompt) {
+    dallePrompt = artResult.prompt;
+  } else {
+    // Fallback: build prompt directly without art director
+    const typeHint = TYPE_STYLE[slide.type] ?? "vivid Instagram Story background";
+    dallePrompt = [
+      "Professional Instagram Story background image, vertical 9:16 portrait format.",
+      topic ? `Main topic: ${topic}.` : null,
+      `Visual scene: ${slide.visual_prompt}.`,
+      buildSlideContext(slide),
+      `Style: ${typeHint}.`,
+      "no text, no letters, no words, no logos, no watermarks.",
+    ].filter(Boolean).join(" ");
+  }
 
-  const primaryModel = ENV.openaiImageModel; // default "gpt-image-1"
-
-  // 1. Try primary model (e.g. gpt-image-1)
+  // Steps 2–4: DALL-E 3 → sharp → persist
   try {
-    const url = await callOpenAI(prompt, primaryModel);
-    if (url) {
-      console.log(`[StoryImage] Success with ${primaryModel} for type=${slide.type}`);
-      return url;
-    }
+    const pngBuffer = await generateAndResize(dallePrompt);
+    if (!pngBuffer) return null;
+
+    const url = await persistBuffer(pngBuffer, "png", "image/png");
+    console.log(`[StoryImage] Complete for type=${slide.type}`);
+
+    return {
+      url,
+      overlayColor: artResult?.overlay_color,
+      suggestedHeadline: artResult?.suggested_headline,
+      suggestedCta: artResult?.suggested_cta,
+      safeZoneNote: artResult?.safe_zone_note,
+    };
   } catch (err) {
-    console.warn(`[StoryImage] Primary model ${primaryModel} threw:`, err);
+    console.error(`[StoryImage] Pipeline failed for type=${slide.type}:`, err);
+    return null;
   }
-
-  // 2. Fallback to dall-e-3 if primary isn't already dall-e-3
-  if (primaryModel !== "dall-e-3") {
-    try {
-      console.log("[StoryImage] Falling back to dall-e-3...");
-      const url = await callOpenAI(prompt, "dall-e-3");
-      if (url) {
-        console.log("[StoryImage] Success with dall-e-3");
-        return url;
-      }
-    } catch (err) {
-      console.warn("[StoryImage] dall-e-3 fallback threw:", err);
-    }
-  }
-
-  console.error(`[StoryImage] All models failed for type=${slide.type}`);
-  return null;
 }
 
-// Generate images for all slides in parallel; returns array aligned to input
+// Generate images for all slides in parallel
 export async function generateSlideImages(
   slides: StorySlide[],
   topic?: string,
-): Promise<Array<string | null>> {
-  return Promise.all(slides.map((s) => generateStoryImage(s, topic)));
+  brandColors?: string,
+): Promise<Array<StoryImageResult | null>> {
+  return Promise.all(slides.map((s) => generateStoryImage(s, topic, brandColors)));
 }

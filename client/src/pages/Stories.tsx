@@ -28,13 +28,21 @@ import {
   Hash,
 } from "lucide-react";
 // Local type mirrors of StorySlide/StorySet (types only — no server-side code imported)
+// Fields added by art director pipeline
+type ImageMeta = {
+  imageUrl?: string;
+  imageOverlayColor?: string;
+  suggestedHeadline?: string;
+  suggestedCta?: string;
+};
+
 type StorySlide =
-  | { type: "poll"; headline: string; question: string; option_a: string; option_b: string; visual_prompt: string; imageUrl?: string }
-  | { type: "quiz"; headline: string; question: string; options: string[]; correct_index: number; explanation?: string; visual_prompt: string; imageUrl?: string }
-  | { type: "countdown"; headline: string; body: string; target_label: string; cta: string; visual_prompt: string; imageUrl?: string }
-  | { type: "question_box"; headline: string; prompt_text: string; visual_prompt: string; imageUrl?: string }
-  | { type: "behind_scenes"; headline: string; caption: string; tone: "personal" | "educational" | "funny"; visual_prompt: string; imageUrl?: string }
-  | { type: "post_reinforcement"; headline: string; angle: string; cta: string; visual_prompt: string; imageUrl?: string };
+  | ({ type: "poll"; headline: string; question: string; option_a: string; option_b: string; visual_prompt: string } & ImageMeta)
+  | ({ type: "quiz"; headline: string; question: string; options: string[]; correct_index: number; explanation?: string; visual_prompt: string } & ImageMeta)
+  | ({ type: "countdown"; headline: string; body: string; target_label: string; cta: string; visual_prompt: string } & ImageMeta)
+  | ({ type: "question_box"; headline: string; prompt_text: string; visual_prompt: string } & ImageMeta)
+  | ({ type: "behind_scenes"; headline: string; caption: string; tone: "personal" | "educational" | "funny"; visual_prompt: string } & ImageMeta)
+  | ({ type: "post_reinforcement"; headline: string; angle: string; cta: string; visual_prompt: string } & ImageMeta);
 
 type StorySet = {
   setTitle: string;
@@ -209,6 +217,8 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
   };
 
   const hasImage = !!slide.imageUrl && !imgFailed;
+  // Art director's recommended text color (or white fallback)
+  const textColor = slide.imageOverlayColor ?? "#ffffff";
   const bgStyle = hasImage
     ? {}
     : { background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" };
@@ -220,21 +230,21 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
         className="relative w-full rounded-2xl overflow-hidden flex flex-col items-center justify-center p-5 gap-4"
         style={{ aspectRatio: "9/16", ...bgStyle }}
       >
-        {/* Background image (hidden if load fails → gradient shows instead) */}
+        {/* Background image — <img> so we can catch load errors */}
         {slide.imageUrl && (
           <img
             src={slide.imageUrl}
             alt=""
             onError={() => setImgFailed(true)}
             className={cn(
-              "absolute inset-0 w-full h-full object-cover rounded-2xl",
+              "absolute inset-0 w-full h-full object-cover",
               imgFailed ? "hidden" : "block"
             )}
           />
         )}
-        {/* Dark overlay for text legibility */}
+        {/* Gradient scrim for text legibility */}
         {hasImage && (
-          <div className="absolute inset-0 bg-black/45" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/60" />
         )}
 
         {/* Top label */}
@@ -246,7 +256,7 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
         </div>
 
         {/* Headline */}
-        <p className="relative z-10 text-white font-bold text-2xl text-center leading-tight mt-8 drop-shadow-lg">
+        <p className="relative z-10 font-bold text-2xl text-center leading-tight mt-8 drop-shadow-lg" style={{ color: textColor }}>
           {slide.headline}
         </p>
 
