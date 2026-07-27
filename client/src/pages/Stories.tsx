@@ -129,6 +129,7 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
   const type = slide.type as StorySlideType;
   const label = TYPE_LABELS[type];
   const color = TYPE_COLORS[type];
+  const [imgFailed, setImgFailed] = useState(false);
 
   const renderContent = () => {
     switch (slide.type) {
@@ -207,8 +208,9 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
     }
   };
 
-  const bgStyle = slide.imageUrl
-    ? { backgroundImage: `url(${slide.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
+  const hasImage = !!slide.imageUrl && !imgFailed;
+  const bgStyle = hasImage
+    ? {}
     : { background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" };
 
   return (
@@ -218,9 +220,21 @@ function SlidePreview({ slide, index, total }: { slide: StorySlide; index: numbe
         className="relative w-full rounded-2xl overflow-hidden flex flex-col items-center justify-center p-5 gap-4"
         style={{ aspectRatio: "9/16", ...bgStyle }}
       >
-        {/* Dark overlay for text legibility over generated images */}
+        {/* Background image (hidden if load fails → gradient shows instead) */}
         {slide.imageUrl && (
-          <div className="absolute inset-0 bg-black/40" />
+          <img
+            src={slide.imageUrl}
+            alt=""
+            onError={() => setImgFailed(true)}
+            className={cn(
+              "absolute inset-0 w-full h-full object-cover rounded-2xl",
+              imgFailed ? "hidden" : "block"
+            )}
+          />
+        )}
+        {/* Dark overlay for text legibility */}
+        {hasImage && (
+          <div className="absolute inset-0 bg-black/45" />
         )}
 
         {/* Top label */}
