@@ -226,7 +226,7 @@ const resolveApiKey = () => ENV.openaiApiKey || ENV.forgeApiKey;
 const resolveModel = () =>
   isUsingOpenAI() ? ENV.openaiChatModel : "gemini-2.5-flash";
 
-const OPENAI_MAX_TOKENS_CAP = 10_000;
+const OPENAI_MAX_TOKENS_CAP = 4_096;
 
 const assertApiKey = () => {
   if (!resolveApiKey()) {

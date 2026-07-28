@@ -141,7 +141,7 @@ async function callArtDirector(
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 700,
+        max_tokens: 450,
         system: ART_DIRECTOR_SYSTEM,
         messages: [{ role: "user", content: briefing }],
       }),

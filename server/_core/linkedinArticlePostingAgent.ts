@@ -400,6 +400,7 @@ Regras:
           },
         },
       },
+      max_tokens: 800,
     });
 
     const rawContent = response.choices[0]?.message?.content;

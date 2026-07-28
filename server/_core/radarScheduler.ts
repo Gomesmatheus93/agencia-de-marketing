@@ -117,6 +117,7 @@ Exemplo de formato:
       },
     ],
     response_format: { type: "json_object" },
+    max_tokens: 1500,
   });
 
   const rawContent = typeof result.choices[0]?.message?.content === "string"
@@ -220,6 +221,7 @@ ${topicList}`,
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 800,
     });
 
     const rawContent = result.choices[0]?.message?.content;
@@ -297,6 +299,7 @@ ${topicList}`,
           },
         ],
         response_format: { type: "json_object" },
+        max_tokens: 600,
       });
 
       const rawContent = result.choices[0]?.message?.content;

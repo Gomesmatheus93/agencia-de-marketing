@@ -29,7 +29,7 @@ import { useLocation } from "wouter";
 const RADAR_PREFILL_KEY = "radar_prefill";
 
 export type RadarPrefill = {
-  topicAngleId: number;
+  topicAngleId?: number;
   topic: string;
   hook: string;
   hookType: string;
@@ -99,7 +99,7 @@ function TopicCard({
 
   // Always build a prefill — use personalized angle if available, otherwise the topic itself
   const prefill: RadarPrefill = {
-    topicAngleId: angle?.id ?? 0,
+    topicAngleId: angle?.id || undefined,
     topic: angle?.suggestedTitle || topic.title,
     hook: angle?.suggestedHook || topic.description || "",
     hookType: topic.emotionalAngle ?? "curiosidade",

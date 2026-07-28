@@ -374,6 +374,7 @@ export async function generateChatAgentReply(input: ChatAgentInput) {
       },
       ...messages,
     ],
+    max_tokens: 800,
   });
 
   const rawContent = response.choices[0]?.message?.content;

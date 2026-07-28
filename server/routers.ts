@@ -247,6 +247,7 @@ const chatRouter = router({
             ...historyMessages.slice(-8),
             { role: "user", content: input.content },
           ],
+          max_tokens: 800,
         });
         const rawContent = llmResponse.choices[0]?.message?.content;
         assistantContent = (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) || "Desculpe, não consegui processar sua mensagem.";
@@ -1253,7 +1254,7 @@ Regras:
 - Nao invente numeros, nomes, datas ou declaracoes.
 - Preserve o contexto da fonte original.
 - Explique impactos praticos para empresas, consumidores ou mercado quando o material permitir.
-- Escreva em markdown, com introducao, 3 a 5 secoes com subtitulos e conclusao.
+- Escreva em markdown, com introducao, 3 a 5 secoes com subtitulos e conclusao. Limite a 600-800 palavras.
 - Evite emojis, sensacionalismo e linguagem generica.
 - Se o conteudo capturado for limitado, deixe o artigo mais analitico e conservador.`,
           },
@@ -1279,6 +1280,7 @@ Regras:
             },
           },
         },
+        max_tokens: 2_000,
       });
 
       const rawArticle = llmResponse.choices[0]?.message?.content;
@@ -1449,6 +1451,7 @@ Formato de resposta JSON:
               },
             },
           },
+          max_tokens: 2000,
         });
 
         const rawArticle = llmResponse.choices[0]?.message?.content;
@@ -1986,6 +1989,7 @@ const carouselRouter = router({
           },
         ],
         response_format: { type: "json_object" },
+        max_tokens: 500,
       });
 
       const rawContent = summaryResponse.choices[0]?.message?.content;
@@ -2179,6 +2183,7 @@ const carouselRouter = router({
             ],
           },
         ],
+        max_tokens: 400,
       });
       const caption = typeof response.choices[0]?.message?.content === "string"
         ? response.choices[0].message.content
@@ -2439,6 +2444,7 @@ Retorne APENAS JSON válido:
           },
         ],
         response_format: { type: "json_object" },
+        max_tokens: 1200,
       });
 
       const rawContent = llmResponse.choices[0]?.message?.content;
@@ -2883,6 +2889,7 @@ Responda em JSON:
             },
           },
         },
+        max_tokens: 1000,
       });
 
       const rawPost = llmResponse.choices[0]?.message?.content;
@@ -2918,6 +2925,7 @@ Responda em JSON:
             ],
           },
         ],
+        max_tokens: 800,
       });
 
       const content = typeof response.choices[0]?.message?.content === "string"
@@ -2984,6 +2992,7 @@ Responda em JSON:
             role: "user",
             content: `Transcrição do áudio do vídeo:\n"${transcript}"\n\nCom base nessa transcrição, crie ${channelGuide[input.channel]}.`,
           }],
+          max_tokens: 800,
         });
         const content = typeof response.choices[0]?.message?.content === "string"
           ? response.choices[0].message.content.trim()
@@ -3001,6 +3010,7 @@ Responda em JSON:
               { type: "text", text: `Analise este vídeo e crie ${channelGuide[input.channel]}.` },
             ],
           }],
+          max_tokens: 800,
         });
         const content = typeof response.choices[0]?.message?.content === "string"
           ? response.choices[0].message.content.trim()
@@ -3898,7 +3908,7 @@ Nunca produza conteúdo genérico. Pense como um Diretor de Arte premiado e Copy
           { role: "user",   content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 4000,
+        max_tokens: 3000,
       });
 
       const rawContent = response.choices[0]?.message?.content;
@@ -4177,7 +4187,7 @@ const editorialPlanRouter = router({
             },
           },
         },
-        max_tokens: 6000,
+        max_tokens: 3500,
       });
 
       const raw = response.choices[0]?.message?.content;
@@ -4366,6 +4376,7 @@ const editorialPlanRouter = router({
                 },
               },
             },
+            max_tokens: 1200,
           });
 
           const rawPost = llmResponse.choices[0]?.message?.content;
@@ -4497,7 +4508,7 @@ const storiesRouter = router({
             },
           },
         },
-        max_tokens: 3000,
+        max_tokens: 2000,
       });
 
       const raw = response.choices[0]?.message?.content;

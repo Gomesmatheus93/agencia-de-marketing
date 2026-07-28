@@ -84,6 +84,7 @@ Lembre:
         },
       },
     },
+    max_tokens: 500,
   });
 
   const raw = llmResponse.choices[0]?.message?.content;
