@@ -3388,6 +3388,7 @@ export default function PrototipoCarrossel() {
                     slideTitle: activeSlide.title, slideBody: activeSlide.body ?? "",
                     currentSlides: result.slides.map((s) => ({ title: s.title, body: s.body ?? "", imageUrl: s.imageUrl, slideType: s.slideType, shortText: s.shortText, imagePrompt: s.imagePrompt, highlightWords: s.highlightWords, wordStyles: s.wordStyles })),
                     imagePrompt: activeSlide.imagePrompt,
+                    useAiImages: true,
                   })}>
                   {regenImageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                   Gerar com IA

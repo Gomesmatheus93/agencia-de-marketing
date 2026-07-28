@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { generateImage } from "./imageGeneration";
 import {
   invokeAnthropicLLM,
@@ -6,6 +7,7 @@ import {
   type AnthropicContent,
 } from "./anthropicClient";
 import { ENV } from "./env";
+import { storagePut } from "../storage";
 import {
   type CarouselContentPayload,
   resolveBlockBody,
@@ -831,6 +833,27 @@ function isCarouselFallbackImageUrl(imageUrl?: string) {
   return payload.includes('data-carousel-fallback="true"') || payload.includes('id="fallbackBg"');
 }
 
+// Download an external image URL and re-upload to stable storage so it never expires.
+// Returns the original URL unchanged if download or upload fails.
+async function persistExternalImage(externalUrl: string): Promise<string> {
+  try {
+    const res = await fetch(externalUrl, {
+      headers: { "User-Agent": "KrythosLab/1.0 carousel-agent", Accept: "image/*" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return externalUrl;
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.startsWith("image/")) return externalUrl;
+    const ext = ct.includes("webp") ? "webp" : ct.includes("jpeg") || ct.includes("jpg") ? "jpg" : "png";
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const filename = `carousel-stock-${randomUUID()}.${ext}`;
+    const stored = await storagePut(`generated/${filename}`, buffer, ct.split(";")[0].trim());
+    return stored.url;
+  } catch {
+    return externalUrl;
+  }
+}
+
 async function resolveCarouselCoverImage(input: {
   topic: string;
   hook: string;
@@ -847,12 +870,12 @@ async function resolveCarouselCoverImage(input: {
 
   // 1. Serper — Google Images via Serper API (requires SERPER_API_KEY)
   const serperResult = await searchSerperImages(query);
-  if (serperResult) return serperResult;
+  if (serperResult) return persistExternalImage(serperResult);
 
   // 2. Google Custom Search JSON API — official Google Images, free 100/day
   //    (requires GOOGLE_CSE_KEY + GOOGLE_CSE_CX in environment)
   const cseResult = await searchGoogleCSE(query);
-  if (cseResult) return cseResult;
+  if (cseResult) return persistExternalImage(cseResult);
 
   // 3. Stock photo libraries (require their own API keys)
   const stockFallbacks = [
@@ -864,7 +887,7 @@ async function resolveCarouselCoverImage(input: {
   for (const fn of stockFallbacks) {
     try {
       const url = await fn();
-      if (url) return url;
+      if (url) return persistExternalImage(url);
     } catch {
       // continue to next source
     }
