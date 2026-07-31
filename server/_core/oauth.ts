@@ -12,6 +12,11 @@ import {
   generateCodeVerifier,
   getCanvaUserProfile,
 } from "./canvaClient";
+import {
+  buildLinkedInAuthUrl,
+  exchangeLinkedInCode,
+  getLinkedInUserInfo,
+} from "./linkedinOAuth";
 
 const GRAPH_BASE = "https://graph.facebook.com";
 const GRAPH_VERSION = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
@@ -776,6 +781,96 @@ export function registerOAuthRoutes(app: Express) {
       console.error("[OAuth/Canva] Erro no callback:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
       res.redirect(`/app/dashboard/carousel?canva_connect=error&detail=${msg}`);
+    }
+  });
+
+  // ── LinkedIn Connect (each user connects their own profile) ──────────────
+  // Requires an active session, links the LinkedIn account to the current
+  // user — same shape as the Instagram/Canva "Connect" flows above.
+
+  const pendingLinkedInStates = new Map<string, { userId: number; ts: number }>();
+
+  app.get("/api/oauth/linkedin/connect", async (req, res) => {
+    if (!ENV.linkedinClientId || !ENV.linkedinClientSecret) {
+      res.status(503).send("LINKEDIN_CLIENT_ID e LINKEDIN_CLIENT_SECRET não configurados.");
+      return;
+    }
+
+    let userId: number | undefined;
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+      const token = match?.[1];
+      if (token) {
+        const payload = await sdk.verifySession(token);
+        if (payload?.openId) {
+          const user = await db.getUserByOpenId(payload.openId);
+          userId = user?.id;
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!userId) {
+      res.redirect("/app/dashboard/analytics?linkedin_connect=requires_login");
+      return;
+    }
+
+    const cutoff = Date.now() - STATE_TTL_MS;
+    Array.from(pendingLinkedInStates.entries()).forEach(([k, v]) => {
+      if (v.ts < cutoff) pendingLinkedInStates.delete(k);
+    });
+
+    const state = nanoid(32);
+    pendingLinkedInStates.set(state, { userId, ts: Date.now() });
+
+    res.redirect(buildLinkedInAuthUrl(state));
+  });
+
+  app.get("/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      console.warn("[OAuth/LinkedIn] Usuário negou autorização:", oauthError);
+      res.redirect("/app/dashboard/analytics?linkedin_connect=denied");
+      return;
+    }
+
+    const pending = state ? pendingLinkedInStates.get(state) : undefined;
+    if (!pending) {
+      res.redirect("/app/dashboard/analytics?linkedin_connect=invalid_state");
+      return;
+    }
+    pendingLinkedInStates.delete(state);
+
+    if (!code) {
+      res.redirect("/app/dashboard/analytics?linkedin_connect=no_code");
+      return;
+    }
+
+    try {
+      const tokens = await exchangeLinkedInCode(code);
+      const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+      const profile = await getLinkedInUserInfo(tokens.access_token);
+
+      await db.upsertLinkedInConnection({
+        userId: pending.userId,
+        linkedinMemberId: profile.sub,
+        authorUrn: `urn:li:person:${profile.sub}`,
+        name: profile.name || `${profile.given_name || ""} ${profile.family_name || ""}`.trim(),
+        email: profile.email,
+        profilePictureUrl: profile.picture,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiresAt,
+        connectedAt: new Date(),
+      });
+
+      console.log(`[OAuth/LinkedIn] Conectado: userId=${pending.userId} sub=${profile.sub}`);
+      res.redirect("/app/dashboard/analytics?linkedin_connect=success");
+    } catch (err) {
+      console.error("[OAuth/LinkedIn] Erro no callback:", err);
+      const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
+      res.redirect(`/app/dashboard/analytics?linkedin_connect=error&detail=${msg}`);
     }
   });
 }

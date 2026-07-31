@@ -1501,14 +1501,25 @@ Formato de resposta JSON:
         throw new TRPCError({ code: "NOT_FOUND", message: "Artigo nao encontrado" });
       }
 
-      const result = await publishArticleToLinkedInWithAgent({
-        title: article.title,
-        content: article.content,
-        summary: article.summary,
-        topic: article.topic,
-        sourceUrl: article.sourceUrl,
-        coverImageUrl: article.coverImageUrl,
-      });
+      const connection = await db.getLinkedInConnection(ctx.user.id);
+      if (!connection) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Conecte sua conta do LinkedIn em Analytics antes de publicar.",
+        });
+      }
+
+      const result = await publishArticleToLinkedInWithAgent(
+        {
+          title: article.title,
+          content: article.content,
+          summary: article.summary,
+          topic: article.topic,
+          sourceUrl: article.sourceUrl,
+          coverImageUrl: article.coverImageUrl,
+        },
+        { accessToken: connection.accessToken, authorUrn: connection.authorUrn }
+      );
 
       await db.updateArticle(article.id, ctx.user.id, {
         status: "published",
@@ -1532,8 +1543,15 @@ Formato de resposta JSON:
       return result;
     }),
 
-  diagnoseLinkedIn: protectedProcedure.mutation(async () => {
-    return diagnoseLinkedInAuth();
+  diagnoseLinkedIn: protectedProcedure.mutation(async ({ ctx }) => {
+    const connection = await db.getLinkedInConnection(ctx.user.id);
+    if (!connection) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Conecte sua conta do LinkedIn em Analytics antes de diagnosticar.",
+      });
+    }
+    return diagnoseLinkedInAuth({ accessToken: connection.accessToken, authorUrn: connection.authorUrn });
   }),
 
   update: protectedProcedure
@@ -3527,9 +3545,30 @@ const analyticsRouter = router({
     return { connected: false };
   }),
 
-  getLinkedInProfile: protectedProcedure.query(async () => {
-    if (!ENV.linkedinAccessToken) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "LINKEDIN_ACCESS_TOKEN não configurado." });
+  getLinkedInConnectionStatus: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getLinkedInConnection(ctx.user.id);
+    if (connection) {
+      return {
+        connected: true,
+        name: connection.name,
+        email: connection.email,
+        profilePictureUrl: connection.profilePictureUrl,
+        authorUrn: connection.authorUrn,
+        tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,
+      };
+    }
+    return { connected: false };
+  }),
+
+  disconnectLinkedIn: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.deleteLinkedInConnection(ctx.user.id);
+    return { success: true };
+  }),
+
+  getLinkedInProfile: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getLinkedInConnection(ctx.user.id);
+    if (!connection) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Conecte sua conta do LinkedIn primeiro." });
     }
     const profile = await linkedInGet<{
       sub?: string;
@@ -3538,33 +3577,14 @@ const analyticsRouter = router({
       family_name?: string;
       picture?: string;
       email?: string;
-    }>("https://api.linkedin.com/v2/userinfo", ENV.linkedinAccessToken);
-
-    const authorUrn = ENV.linkedinAuthorUrn || "";
-    const isOrg = /^urn:li:organization:/i.test(authorUrn);
-    let followerCount: number | undefined;
-
-    if (isOrg && authorUrn) {
-      try {
-        const encoded = encodeURIComponent(authorUrn);
-        const sizeData = await linkedInGet<{ firstDegreeSize?: number }>(
-          `/networkSizes/${encoded}?edgeType=CompanyFollowedByMember`,
-          ENV.linkedinAccessToken
-        );
-        followerCount = sizeData.firstDegreeSize;
-      } catch {
-        // follower count is optional
-      }
-    }
+    }>("https://api.linkedin.com/v2/userinfo", connection.accessToken);
 
     return {
       sub: profile.sub,
-      name: profile.name || `${profile.given_name || ""} ${profile.family_name || ""}`.trim(),
-      picture: profile.picture,
-      email: profile.email,
-      authorUrn,
-      isOrg,
-      followerCount,
+      name: profile.name || `${profile.given_name || ""} ${profile.family_name || ""}`.trim() || connection.name,
+      picture: profile.picture || connection.profilePictureUrl,
+      email: profile.email || connection.email,
+      authorUrn: connection.authorUrn,
     };
   }),
 

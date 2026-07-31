@@ -19,6 +19,7 @@ import {
   socialPosts,
   instagramConnections,
   canvaConnections,
+  linkedinConnections,
   featureFlags,
   postMetrics,
   templatePerformance,
@@ -36,6 +37,8 @@ import {
   type InsertInstagramConnection,
   type CanvaConnection,
   type InsertCanvaConnection,
+  type LinkedInConnection,
+  type InsertLinkedInConnection,
   type FeatureFlag,
   type PostMetric,
   type TemplatePerformance,
@@ -58,6 +61,7 @@ let _avatarVideoTableReady: Promise<void> | null = null;
 let _socialPostsMetadataReady: Promise<void> | null = null;
 let _featureFlagsTableReady: Promise<void> | null = null;
 let _canvaConnectionsTableReady: Promise<void> | null = null;
+let _linkedinConnectionsTableReady: Promise<void> | null = null;
 let _reelsScriptsTableReady: Promise<void> | null = null;
 let _commentPollStateReady: Promise<void> | null = null;
 let _commentAlertsReady: Promise<void> | null = null;
@@ -1464,6 +1468,82 @@ export async function deleteCanvaConnection(userId: number): Promise<void> {
     const db = await getDb();
     if (!db) return;
     await db.delete(canvaConnections).where(eq(canvaConnections.userId, userId));
+  } catch {
+    // table may not exist yet
+  }
+}
+
+// ─── LinkedIn Connections ──────────────────────────────────────────────────────
+
+async function ensureLinkedInConnectionsTable(): Promise<void> {
+  if (!_linkedinConnectionsTableReady) {
+    _linkedinConnectionsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`linkedin_connections\` (
+          \`id\` int AUTO_INCREMENT NOT NULL,
+          \`userId\` int NOT NULL,
+          \`linkedinMemberId\` varchar(128) NOT NULL,
+          \`authorUrn\` varchar(160) NOT NULL,
+          \`name\` varchar(255),
+          \`email\` varchar(320),
+          \`profilePictureUrl\` text,
+          \`accessToken\` text NOT NULL,
+          \`refreshToken\` text,
+          \`tokenExpiresAt\` timestamp NULL,
+          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`linkedin_connections_pk\` PRIMARY KEY (\`id\`),
+          CONSTRAINT \`linkedin_connections_userId_unique\` UNIQUE (\`userId\`)
+        )
+      `);
+    })();
+  }
+  return _linkedinConnectionsTableReady;
+}
+
+export async function getLinkedInConnection(userId: number): Promise<LinkedInConnection | null> {
+  try {
+    await ensureLinkedInConnectionsTable();
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db.select().from(linkedinConnections).where(eq(linkedinConnections.userId, userId));
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertLinkedInConnection(data: InsertLinkedInConnection): Promise<void> {
+  await ensureLinkedInConnectionsTable();
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getLinkedInConnection(data.userId);
+  if (existing) {
+    await db.update(linkedinConnections)
+      .set({
+        linkedinMemberId: data.linkedinMemberId,
+        authorUrn: data.authorUrn,
+        name: data.name,
+        email: data.email,
+        profilePictureUrl: data.profilePictureUrl,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        tokenExpiresAt: data.tokenExpiresAt,
+      })
+      .where(eq(linkedinConnections.userId, data.userId));
+  } else {
+    await db.insert(linkedinConnections).values(data);
+  }
+}
+
+export async function deleteLinkedInConnection(userId: number): Promise<void> {
+  try {
+    await ensureLinkedInConnectionsTable();
+    const db = await getDb();
+    if (!db) return;
+    await db.delete(linkedinConnections).where(eq(linkedinConnections.userId, userId));
   } catch {
     // table may not exist yet
   }

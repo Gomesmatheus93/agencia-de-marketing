@@ -253,33 +253,22 @@ function looksLikeValidAuthorUrn(value: string) {
   return getAuthorUrnType(value) !== "unknown";
 }
 
-function isPlaceholderAuthorUrn(value: string) {
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized.includes("seu_id") ||
-    normalized.includes("your_id") ||
-    normalized.includes("{id}") ||
-    normalized.includes("<id>") ||
-    normalized.endsWith(":id")
-  );
-}
+export type LinkedInConnectionInput = {
+  accessToken: string;
+  authorUrn: string;
+};
 
-function getLinkedInConfig() {
-  const missing: string[] = [];
-
-  if (!ENV.linkedinAccessToken) missing.push("LINKEDIN_ACCESS_TOKEN");
-  if (!ENV.linkedinAuthorUrn) missing.push("LINKEDIN_AUTHOR_URN");
-
-  if (missing.length > 0) {
+function getLinkedInConfig(connection: LinkedInConnectionInput) {
+  if (!connection.accessToken || !connection.authorUrn) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: `Configuracao do LinkedIn incompleta. Defina no .env: ${missing.join(", ")}.`,
+      message: "Conecte sua conta do LinkedIn antes de publicar.",
     });
   }
 
   return {
-    accessToken: ENV.linkedinAccessToken,
-    authorUrn: ENV.linkedinAuthorUrn,
+    accessToken: connection.accessToken,
+    authorUrn: connection.authorUrn,
     apiBaseUrl: (ENV.linkedinApiBaseUrl || DEFAULT_LINKEDIN_API_BASE_URL).replace(/\/+$/, ""),
     apiVersion: (ENV.linkedinApiVersion || DEFAULT_LINKEDIN_API_VERSION).trim(),
   };
@@ -575,12 +564,12 @@ async function uploadImageToLinkedIn(
   return imageUrn;
 }
 
-export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResult> {
-  const tokenValue = ENV.linkedinAccessToken || "";
-  const authorUrn = ENV.linkedinAuthorUrn || "";
+export async function diagnoseLinkedInAuth(
+  connection: LinkedInConnectionInput
+): Promise<LinkedInAuthDiagnosticResult> {
+  const authorUrn = connection.authorUrn || "";
   const configuredAuthorUrnType = getAuthorUrnType(authorUrn);
   const configuredAuthorUrnLooksValid = looksLikeValidAuthorUrn(authorUrn);
-  const configuredAuthorUrnIsPlaceholder = isPlaceholderAuthorUrn(authorUrn);
   const apiBaseUrl = (ENV.linkedinApiBaseUrl || DEFAULT_LINKEDIN_API_BASE_URL).replace(/\/+$/, "");
   const apiVersion = (ENV.linkedinApiVersion || DEFAULT_LINKEDIN_API_VERSION).trim();
 
@@ -588,75 +577,45 @@ export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResu
     success: false,
     apiBaseUrl,
     apiVersion,
-    tokenPresent: tokenValue.trim().length > 0,
-    tokenPreview: maskToken(tokenValue),
+    tokenPresent: Boolean(connection.accessToken?.trim()),
+    tokenPreview: maskToken(connection.accessToken || ""),
     configuredAuthorUrn: authorUrn.trim(),
     configuredAuthorUrnType,
     configuredAuthorUrnLooksValid,
-    configuredAuthorUrnIsPlaceholder,
+    configuredAuthorUrnIsPlaceholder: false,
     administeredOrganizationUrns: [],
     recommendedAuthorUrns: [],
     checks: [],
     nextSteps: [],
   };
 
-  if (!result.tokenPresent) {
+  let config: ReturnType<typeof getLinkedInConfig>;
+  try {
+    config = getLinkedInConfig(connection);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Conexao do LinkedIn invalida.";
     result.checks.push({
-      name: "Access token",
+      name: "Conexao",
       ok: false,
-      detail: "LINKEDIN_ACCESS_TOKEN nao esta definido.",
+      detail: message,
     });
-    result.nextSteps.push("Defina LINKEDIN_ACCESS_TOKEN no .env e reinicie o servidor.");
+    result.nextSteps.push("Conecte sua conta do LinkedIn novamente em Analytics.");
     return result;
   }
 
   result.checks.push({
     name: "Access token",
     ok: true,
-    detail: `Token presente no ambiente (${tokenValue.trim().length} caracteres).`,
+    detail: `Token presente na conexao (${connection.accessToken.trim().length} caracteres).`,
   });
 
-  if (!authorUrn.trim()) {
-    result.checks.push({
-      name: "Author URN",
-      ok: false,
-      detail: "LINKEDIN_AUTHOR_URN nao esta definido.",
-    });
-    result.nextSteps.push("Defina LINKEDIN_AUTHOR_URN com urn:li:person:... ou urn:li:organization:....");
-  } else if (!configuredAuthorUrnLooksValid) {
-    result.checks.push({
-      name: "Author URN",
-      ok: false,
-      detail: "O formato atual de LINKEDIN_AUTHOR_URN nao e valido.",
-    });
-    result.nextSteps.push("Corrija LINKEDIN_AUTHOR_URN para urn:li:person:... ou urn:li:organization:....");
-  } else if (configuredAuthorUrnIsPlaceholder) {
-    result.checks.push({
-      name: "Author URN",
-      ok: false,
-      detail: "LINKEDIN_AUTHOR_URN ainda parece estar com placeholder.",
-    });
-    result.nextSteps.push("Troque SEU_ID pelo id real da pessoa ou organizacao.");
-  } else {
-    result.checks.push({
-      name: "Author URN",
-      ok: true,
-      detail: `Formato valido detectado para ${configuredAuthorUrnType}.`,
-    });
-  }
-
-  let config: ReturnType<typeof getLinkedInConfig>;
-  try {
-    config = getLinkedInConfig();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Configuracao incompleta do LinkedIn.";
-    result.checks.push({
-      name: "Configuracao",
-      ok: false,
-      detail: message,
-    });
-    return result;
-  }
+  result.checks.push({
+    name: "Author URN",
+    ok: configuredAuthorUrnLooksValid,
+    detail: configuredAuthorUrnLooksValid
+      ? `Formato valido detectado para ${configuredAuthorUrnType}.`
+      : "O formato do author URN salvo na conexao nao e valido.",
+  });
 
   const identityResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
     method: "GET",
@@ -672,7 +631,7 @@ export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResu
       ok: false,
       detail: detail || identityResponse.statusText,
     });
-    result.nextSteps.push("Gere um novo LINKEDIN_ACCESS_TOKEN com as permissoes corretas e reinicie o servidor.");
+    result.nextSteps.push("Conecte sua conta do LinkedIn novamente em Analytics.");
     return result;
   }
 
@@ -764,11 +723,11 @@ export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResu
       name: "Compatibilidade do author person URN",
       ok: matches,
       detail: matches
-        ? "O LINKEDIN_AUTHOR_URN bate com o perfil autenticado."
-        : `O token pertence a ${result.detectedPersonUrn}, mas o .env esta configurado com ${authorUrn.trim()}.`,
+        ? "O author URN da conexao bate com o perfil autenticado."
+        : `O token pertence a ${result.detectedPersonUrn}, mas a conexao esta salva com ${authorUrn.trim()}.`,
     });
     if (!matches) {
-      result.nextSteps.push(`Troque LINKEDIN_AUTHOR_URN para ${result.detectedPersonUrn}.`);
+      result.nextSteps.push("Reconecte sua conta do LinkedIn para atualizar o author URN salvo.");
     }
   }
 
@@ -778,8 +737,8 @@ export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResu
       name: "Compatibilidade do author organization URN",
       ok: allowed,
       detail: allowed
-        ? "O LINKEDIN_AUTHOR_URN esta entre as organizacoes administradas pelo token."
-        : "O LINKEDIN_AUTHOR_URN nao apareceu na lista de organizacoes administradas pelo token.",
+        ? "O author URN da conexao esta entre as organizacoes administradas pelo token."
+        : "O author URN da conexao nao apareceu na lista de organizacoes administradas pelo token.",
     });
     if (!allowed && result.administeredOrganizationUrns.length > 0) {
       result.nextSteps.push(
@@ -798,9 +757,10 @@ export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnosticResu
 }
 
 export async function publishArticleToLinkedInWithAgent(
-  input: LinkedInArticlePostingInput
+  input: LinkedInArticlePostingInput,
+  connection: LinkedInConnectionInput
 ): Promise<LinkedInArticlePostingResult> {
-  const config = getLinkedInConfig();
+  const config = getLinkedInConfig(connection);
   const sourceUrl = normalizeSourceUrl(input.sourceUrl);
 
   if (!input.coverImageUrl) {

@@ -126,6 +126,22 @@ vi.mock("./db", () => ({
   getPostCount: vi.fn().mockResolvedValue(10),
   getUserByOpenId: vi.fn().mockResolvedValue({ id: 1, openId: "test-user" }),
   upsertUser: vi.fn().mockResolvedValue(undefined),
+  getLinkedInConnection: vi.fn().mockResolvedValue({
+    id: 1,
+    userId: 1,
+    linkedinMemberId: "real-id",
+    authorUrn: "urn:li:person:real-id",
+    name: "Pessoa Teste",
+    email: "pessoa@example.com",
+    profilePictureUrl: null,
+    accessToken: "AQS7fake-token-1234",
+    refreshToken: null,
+    tokenExpiresAt: null,
+    connectedAt: new Date(),
+    updatedAt: new Date(),
+  }),
+  upsertLinkedInConnection: vi.fn().mockResolvedValue(undefined),
+  deleteLinkedInConnection: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock LLM
@@ -176,10 +192,10 @@ vi.mock("./_core/linkedinArticlePostingAgent", () => ({
     apiVersion: "202601",
     tokenPresent: true,
     tokenPreview: "AQS7****1234",
-    configuredAuthorUrn: "urn:li:person:SEU_ID",
+    configuredAuthorUrn: "urn:li:person:outro-id",
     configuredAuthorUrnType: "person",
     configuredAuthorUrnLooksValid: true,
-    configuredAuthorUrnIsPlaceholder: true,
+    configuredAuthorUrnIsPlaceholder: false,
     detectedPersonUrn: "urn:li:person:real-id",
     detectedMemberId: "real-id",
     detectedMemberName: "Pessoa Teste",
@@ -192,7 +208,7 @@ vi.mock("./_core/linkedinArticlePostingAgent", () => ({
         detail: "Token valido.",
       },
     ],
-    nextSteps: ["Troque LINKEDIN_AUTHOR_URN para urn:li:person:real-id."],
+    nextSteps: ["Reconecte sua conta do LinkedIn para atualizar o author URN salvo."],
   }),
 }));
 
@@ -498,6 +514,10 @@ describe("articles", () => {
       expect.objectContaining({
         title: "Mercado livre de energia em 2026",
         sourceUrl: "https://example.com/article",
+      }),
+      expect.objectContaining({
+        accessToken: "AQS7fake-token-1234",
+        authorUrn: "urn:li:person:real-id",
       })
     );
     expect(vi.mocked(db.updateArticle)).toHaveBeenCalledWith(7, 1, {
@@ -523,7 +543,7 @@ describe("articles", () => {
 
     expect(result.success).toBe(false);
     expect(result.detectedPersonUrn).toBe("urn:li:person:real-id");
-    expect(result.nextSteps[0]).toContain("LINKEDIN_AUTHOR_URN");
+    expect(result.nextSteps[0]).toContain("Reconecte sua conta do LinkedIn");
   });
 });
 

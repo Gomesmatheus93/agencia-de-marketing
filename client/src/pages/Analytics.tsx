@@ -1134,11 +1134,43 @@ function CommentAlertsPanel() {
 
 // ─── LinkedIn Tab ─────────────────────────────────────────────────────────────
 
+function LinkedInLoginPrompt() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-border/40 bg-gradient-to-br from-background to-muted/20 py-20 px-6 text-center">
+      <div className="relative">
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#0A66C2] shadow-lg shadow-[#0A66C2]/20">
+          <Linkedin className="h-10 w-10 text-white" />
+        </div>
+        <div className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-muted-foreground/20" />
+      </div>
+      <div>
+        <h3 className="text-lg font-bold text-foreground">Conecte seu LinkedIn</h3>
+        <p className="mt-1.5 text-sm text-muted-foreground max-w-sm">
+          Conecte sua conta pessoal do LinkedIn para publicar artigos e acompanhar métricas.
+        </p>
+      </div>
+      <Button
+        className="bg-[#0A66C2] text-white shadow-md shadow-[#0A66C2]/20 hover:bg-[#0A66C2]/90 hover:shadow-lg"
+        onClick={() => { window.location.href = "/api/oauth/linkedin/connect"; }}
+      >
+        <Linkedin className="h-4 w-4 mr-2" />
+        Conectar com LinkedIn
+      </Button>
+    </div>
+  );
+}
+
 function LinkedInTab() {
-  const profileQuery = trpc.analytics.getLinkedInProfile.useQuery(undefined, { retry: 1 });
-  const statsQuery = trpc.analytics.getLinkedInStats.useQuery(undefined, { retry: 1 });
+  const connectionQuery = trpc.analytics.getLinkedInConnectionStatus.useQuery(undefined, { retry: 1 });
+  const isConnected = connectionQuery.data?.connected === true;
+  const profileQuery = trpc.analytics.getLinkedInProfile.useQuery(undefined, { enabled: isConnected, retry: 1 });
+  const statsQuery = trpc.analytics.getLinkedInStats.useQuery(undefined, { enabled: isConnected, retry: 1 });
+  const disconnectMutation = trpc.analytics.disconnectLinkedIn.useMutation({
+    onSuccess: () => { toast.success("LinkedIn desconectado."); void connectionQuery.refetch(); },
+  });
 
   const refetchAll = () => {
+    void connectionQuery.refetch();
     void profileQuery.refetch();
     void statsQuery.refetch();
   };
@@ -1147,7 +1179,23 @@ function LinkedInTab() {
   const stats = statsQuery.data;
   const isLoading = profileQuery.isLoading || statsQuery.isLoading;
   const isFetching = profileQuery.isFetching || statsQuery.isFetching;
-  const hasProfileError = profileQuery.isError;
+  const notConnected = connectionQuery.isSuccess && !isConnected;
+
+  const linkedinConnectParam = new URLSearchParams(window.location.search).get("linkedin_connect");
+  useEffect(() => {
+    if (linkedinConnectParam === "success") {
+      toast.success("LinkedIn conectado com sucesso!");
+      void connectionQuery.refetch();
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (linkedinConnectParam === "denied") {
+      toast.error("Autorização negada pelo LinkedIn.");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (linkedinConnectParam === "error") {
+      const detail = new URLSearchParams(window.location.search).get("detail") ?? "";
+      toast.error(`Erro ao conectar LinkedIn: ${detail}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [linkedinConnectParam]);
 
   return (
     <div className="space-y-6">
@@ -1162,18 +1210,22 @@ function LinkedInTab() {
             <p className="text-xs text-muted-foreground/70">Histórico de publicações e métricas da conta</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
-          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          {isConnected && (
+            <Button variant="ghost" size="sm" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="text-xs text-muted-foreground">
+              Desconectar
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
-      {hasProfileError && (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Não foi possível carregar o perfil do LinkedIn. Verifique se LINKEDIN_ACCESS_TOKEN está configurado no .env.
-        </div>
-      )}
+      {notConnected && <LinkedInLoginPrompt />}
 
+      {isConnected && <>
       {/* Profile card */}
       <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/80">
         <div className="h-28 bg-gradient-to-r from-[#0A66C2]/25 via-[#0A66C2]/10 to-transparent" />
@@ -1190,12 +1242,6 @@ function LinkedInTab() {
                 </div>
               )}
             </div>
-            {profile?.followerCount !== undefined && (
-              <div className="text-center pb-1">
-                <p className="text-lg font-bold text-foreground tabular-nums">{fmt(profile.followerCount)}</p>
-                <p className="text-[11px] text-muted-foreground/70">Seguidores</p>
-              </div>
-            )}
           </div>
           {isLoading ? (
             <div className="space-y-2">
@@ -1207,7 +1253,7 @@ function LinkedInTab() {
               <p className="text-lg font-bold text-foreground leading-tight">{profile?.name || "LinkedIn"}</p>
               {profile?.email && <p className="text-sm text-muted-foreground/70">{profile.email}</p>}
               <p className="text-xs text-muted-foreground/50">
-                {profile?.isOrg ? "Página de empresa" : "Perfil pessoal"} · {profile?.authorUrn}
+                Perfil pessoal · {profile?.authorUrn}
               </p>
             </div>
           )}
@@ -1310,6 +1356,7 @@ function LinkedInTab() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }

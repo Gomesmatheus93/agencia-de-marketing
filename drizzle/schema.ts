@@ -334,6 +334,29 @@ export const canvaConnections = mysqlTable(
 export type CanvaConnection = typeof canvaConnections.$inferSelect;
 export type InsertCanvaConnection = typeof canvaConnections.$inferInsert;
 
+// ─── LinkedIn Connections ───────────────────────────────────────────────────────
+export const linkedinConnections = mysqlTable(
+  "linkedin_connections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    linkedinMemberId: varchar("linkedinMemberId", { length: 128 }).notNull(),
+    authorUrn: varchar("authorUrn", { length: 160 }).notNull(),
+    name: varchar("name", { length: 255 }),
+    email: varchar("email", { length: 320 }),
+    profilePictureUrl: text("profilePictureUrl"),
+    accessToken: text("accessToken").notNull(),
+    refreshToken: text("refreshToken"),
+    tokenExpiresAt: timestamp("tokenExpiresAt"),
+    connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_linkedin_connections_userId").on(t.userId)]
+);
+
+export type LinkedInConnection = typeof linkedinConnections.$inferSelect;
+export type InsertLinkedInConnection = typeof linkedinConnections.$inferInsert;
+
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 export const featureFlags = mysqlTable("feature_flags", {
   id: int("id").autoincrement().primaryKey(),

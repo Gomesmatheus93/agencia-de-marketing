@@ -58,8 +58,10 @@ export const ENV = {
   instagramBusinessAppId: process.env.INSTAGRAM_BUSINESS_APP_ID ?? "",
   linkedinApiBaseUrl: process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest",
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION ?? "202601",
-  linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
-  linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
+  linkedinClientId: process.env.LINKEDIN_CLIENT_ID ?? "",
+  linkedinClientSecret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
+  // Must exactly match the Redirect URL already whitelisted in the LinkedIn Developer app.
+  linkedinRedirectUri: process.env.LINKEDIN_REDIRECT_URI ?? "",
   // WhatsApp Cloud API (Meta) — aprovação de conteúdo
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
   whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
