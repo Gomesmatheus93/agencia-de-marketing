@@ -744,14 +744,25 @@ export async function saveImage(
   userId: number,
   prompt: string,
   imageUrl: string,
-  fileKey?: string
+  fileKey?: string,
+  width?: number,
+  height?: number
 ): Promise<GeneratedImage> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(generatedImages).values({ userId, prompt, imageUrl, fileKey });
+  const [result] = await db.insert(generatedImages).values({ userId, prompt, imageUrl, fileKey, width, height });
   const created = await db.select().from(generatedImages)
     .where(eq(generatedImages.id, insertId(result))).limit(1);
   return created[0];
+}
+
+export async function getImageById(id: number, userId: number): Promise<GeneratedImage | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(generatedImages).where(
+    and(eq(generatedImages.id, id), eq(generatedImages.userId, userId))
+  );
+  return row ?? null;
 }
 
 export async function deleteImage(id: number, userId: number) {

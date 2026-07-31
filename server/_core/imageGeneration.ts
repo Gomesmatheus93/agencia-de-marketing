@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { ENV } from "./env";
 import { storagePut } from "../storage";
 
@@ -334,7 +335,7 @@ export type GenerateImageResponse = {
   url?: string;
 };
 
-type StorageAsset = {
+export type StorageAsset = {
   data: Buffer;
   contentType: string;
   extension: string;
@@ -449,7 +450,7 @@ async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefin
   };
 }
 
-async function resolveReferenceImageAsset(
+export async function resolveReferenceImageAsset(
   referenceImageUrl?: string
 ): Promise<StorageAsset | undefined> {
   if (!referenceImageUrl) return undefined;
@@ -463,7 +464,7 @@ async function resolveReferenceImageAsset(
   return readRemoteAsset(referenceImageUrl);
 }
 
-async function persistGeneratedImage(b64: string, ext = "webp"): Promise<{ url: string }> {
+export async function persistGeneratedImage(b64: string, ext = "webp"): Promise<{ url: string }> {
   const buffer = Buffer.from(b64, "base64");
   const filename = `${randomUUID()}.${ext}`;
   const contentType = ext === "webp" ? "image/webp" : ext === "jpg" ? "image/jpeg" : "image/png";
@@ -615,4 +616,157 @@ export async function generateImage(
   }
 
   return generateWithHuggingFace(options);
+}
+
+// ─── Reformat / outpaint to another aspect ratio ──────────────────────────────
+
+export type ReformatTarget = "square" | "portrait" | "story";
+
+const REFORMAT_TARGET_DIMENSIONS: Record<ReformatTarget, { width: number; height: number }> = {
+  square: { width: 1080, height: 1080 },
+  portrait: { width: 1080, height: 1350 },
+  story: { width: 1080, height: 1920 },
+};
+
+// gpt-image-1's /images/edits endpoint only accepts these three canvas sizes —
+// we outpaint onto whichever one best matches the target's orientation, then
+// crop the result down to the exact requested pixel dimensions at the end.
+const REFORMAT_OPENAI_CANVAS: Record<ReformatTarget, { size: "1024x1024" | "1024x1536"; width: number; height: number }> = {
+  square: { size: "1024x1024", width: 1024, height: 1024 },
+  portrait: { size: "1024x1536", width: 1024, height: 1536 },
+  story: { size: "1024x1536", width: 1024, height: 1536 },
+};
+
+// Below this fraction of new canvas area, skip the AI outpaint call entirely —
+// it's just a light reframe/crop, not worth the latency + generation cost.
+const OUTPAINT_SKIP_THRESHOLD = 0.03;
+
+const OUTPAINT_PROMPT = [
+  "Extend this image naturally to fill the fully transparent areas of the canvas.",
+  "Seamlessly continue the existing scene, background, lighting, colors, textures and style.",
+  "Do not add any new subjects, people, text, letters, logos or watermarks.",
+  "The extended area must look like a natural continuation of the original photo/design, not a new composition.",
+].join(" ");
+
+async function buildPaddedCanvasAndMask(
+  sourceBuffer: Buffer,
+  canvasWidth: number,
+  canvasHeight: number
+): Promise<{ paddedImage: Buffer; mask: Buffer; paddingFraction: number }> {
+  const source = sharp(sourceBuffer).ensureAlpha();
+  const metadata = await source.metadata();
+  const srcWidth = metadata.width ?? canvasWidth;
+  const srcHeight = metadata.height ?? canvasHeight;
+
+  const scale = Math.min(canvasWidth / srcWidth, canvasHeight / srcHeight);
+  const placedWidth = Math.max(1, Math.round(srcWidth * scale));
+  const placedHeight = Math.max(1, Math.round(srcHeight * scale));
+  const left = Math.round((canvasWidth - placedWidth) / 2);
+  const top = Math.round((canvasHeight - placedHeight) / 2);
+
+  const resizedSource = await source.resize(placedWidth, placedHeight).png().toBuffer();
+
+  const paddedImage = await sharp({
+    create: { width: canvasWidth, height: canvasHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([{ input: resizedSource, left, top }])
+    .png()
+    .toBuffer();
+
+  const opaqueRect = await sharp({
+    create: { width: placedWidth, height: placedHeight, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  const mask = await sharp({
+    create: { width: canvasWidth, height: canvasHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([{ input: opaqueRect, left, top }])
+    .png()
+    .toBuffer();
+
+  const paddingFraction = 1 - (placedWidth * placedHeight) / (canvasWidth * canvasHeight);
+
+  return { paddedImage, mask, paddingFraction };
+}
+
+async function outpaintWithOpenAI(
+  paddedImage: Buffer,
+  mask: Buffer,
+  canvasSize: "1024x1024" | "1024x1536",
+  contextPrompt?: string
+): Promise<Buffer> {
+  const prompt = contextPrompt
+    ? `${OUTPAINT_PROMPT} Original image context: ${contextPrompt}`
+    : OUTPAINT_PROMPT;
+
+  const formData = new FormData();
+  formData.append("model", ENV.openaiImageModel);
+  formData.append("prompt", prompt);
+  formData.append("size", canvasSize);
+  formData.append("quality", "high");
+  formData.append("image", new Blob([new Uint8Array(paddedImage)], { type: "image/png" }), "canvas.png");
+  formData.append("mask", new Blob([new Uint8Array(mask)], { type: "image/png" }), "mask.png");
+
+  const response = await fetch(`${ENV.openaiApiBaseUrl.replace(/\/$/, "")}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ENV.openaiApiKey}` },
+    body: formData,
+    signal: AbortSignal.timeout(120_000),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`OpenAI outpaint failed (${response.status}): ${detail}`);
+  }
+
+  const result = (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) {
+    throw new Error("No image returned from OpenAI outpaint");
+  }
+
+  return Buffer.from(b64, "base64");
+}
+
+export type ReformatImageResult = {
+  url: string;
+  width: number;
+  height: number;
+  usedAI: boolean;
+};
+
+export async function reformatImageToTarget(
+  sourceImageUrl: string,
+  target: ReformatTarget,
+  contextPrompt?: string
+): Promise<ReformatImageResult> {
+  const asset = await resolveReferenceImageAsset(sourceImageUrl);
+  if (!asset) {
+    throw new Error("Não foi possível carregar a imagem de origem para redimensionar.");
+  }
+
+  const targetDims = REFORMAT_TARGET_DIMENSIONS[target];
+  const canvas = REFORMAT_OPENAI_CANVAS[target];
+
+  const { paddedImage, mask, paddingFraction } = await buildPaddedCanvasAndMask(
+    asset.data,
+    canvas.width,
+    canvas.height
+  );
+
+  const usedAI = paddingFraction > OUTPAINT_SKIP_THRESHOLD && Boolean(ENV.openaiApiKey);
+  const baseBuffer = usedAI
+    ? await outpaintWithOpenAI(paddedImage, mask, canvas.size, contextPrompt)
+    : paddedImage;
+
+  const finalBuffer = await sharp(baseBuffer)
+    .resize(targetDims.width, targetDims.height, { fit: "cover", position: "center" })
+    .webp({ quality: 92 })
+    .toBuffer();
+
+  const { url } = await persistGeneratedImage(finalBuffer.toString("base64"), "webp");
+
+  return { url, width: targetDims.width, height: targetDims.height, usedAI };
 }

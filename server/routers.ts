@@ -7,7 +7,7 @@ import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProc
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { buildNewsletterHtml } from "./_core/newsletterTemplate";
-import { generateImage, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
+import { generateImage, reformatImageToTarget, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
 import {
   generateCarouselWithAgent,
   regenerateSlide,
@@ -392,6 +392,36 @@ const imagesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await db.deleteImage(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  reformat: aiProcedure
+    .input(z.object({
+      id: z.number(),
+      format: z.enum(["square", "portrait", "story"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const image = await db.getImageById(input.id, ctx.user.id);
+      if (!image) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Imagem não encontrada" });
+      }
+
+      const result = await reformatImageToTarget(image.imageUrl, input.format, image.prompt);
+
+      if (result.usedAI) {
+        await checkAndIncrTrialUsage(ctx.user.id, ctx.user as PlanUser, "images");
+      }
+
+      const saved = await db.saveImage(
+        ctx.user.id,
+        `${image.prompt} (reformatado: ${input.format})`,
+        result.url,
+        undefined,
+        result.width,
+        result.height
+      );
+      const { getMetaFetchableStorageUrl } = await import("./storage");
+      const displayUrl = await getMetaFetchableStorageUrl(result.url).catch(() => result.url);
+      return { ...saved, displayUrl };
     }),
 
   getStats: protectedProcedure.query(async ({ ctx }) => {

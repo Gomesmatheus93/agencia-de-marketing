@@ -27,6 +27,7 @@ import {
   Layers,
   RefreshCw,
   Check,
+  Crop,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -90,6 +91,20 @@ const STYLE_SUGGESTIONS: Record<ImageStyle, string[]> = {
     "Influencer segurando produto de beleza, estúdio clean, tom pastel",
   ],
 };
+
+type ReformatFormat = "square" | "portrait" | "story";
+
+const FORMAT_OPTIONS: {
+  id: ReformatFormat | "original";
+  label: string;
+  dims: string;
+  ratioClass: string;
+}[] = [
+  { id: "original", label: "Original",      dims: "tamanho atual", ratioClass: "aspect-square" },
+  { id: "portrait", label: "Feed retrato",  dims: "1080 x 1350px", ratioClass: "aspect-[4/5]" },
+  { id: "square",   label: "Feed quadrado", dims: "1080 x 1080px", ratioClass: "aspect-square" },
+  { id: "story",    label: "Story",         dims: "1080 x 1920px", ratioClass: "aspect-[9/16]" },
+];
 
 function ReferenceImageUpload({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -171,6 +186,8 @@ export default function Images() {
   const [selectedNiche, setSelectedNiche] = useState<string>("none");
   const [variations, setVariations] = useState<{ url: string }[]>([]);
   const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+  const [showFormatDialog, setShowFormatDialog] = useState(false);
+  const [reformattingId, setReformattingId] = useState<number | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
@@ -217,6 +234,20 @@ export default function Images() {
       if (selectedImage) setSelectedImage(null);
     },
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
+  });
+
+  const reformatMutation = trpc.images.reformat.useMutation({
+    onSuccess: () => {
+      utils.images.getAll.invalidate();
+      utils.images.getStats.invalidate();
+      toast.success("Nova versão criada no formato escolhido!");
+      setShowFormatDialog(false);
+      setReformattingId(null);
+    },
+    onError: (err) => {
+      toast.error("Erro ao redimensionar: " + err.message);
+      setReformattingId(null);
+    },
   });
 
   const isPending = generateMutation.isPending || generateVariationsMutation.isPending;
@@ -614,6 +645,9 @@ export default function Images() {
                   <Button variant="outline" onClick={() => { navigator.clipboard.writeText(selectedImage.prompt); toast.success("Prompt copiado!"); }} title="Copiar prompt">
                     <Copy className="w-4 h-4" />
                   </Button>
+                  <Button variant="outline" onClick={() => setShowFormatDialog(true)} title="Redimensionar para outro formato">
+                    <Crop className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={() => deleteMutation.mutate({ id: selectedImage.id })}
@@ -627,6 +661,49 @@ export default function Images() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Format picker dialog */}
+      <Dialog open={showFormatDialog} onOpenChange={setShowFormatDialog}>
+        <DialogContent className="max-w-md glass-card border-border/50">
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-foreground">Redimensionar imagem</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                A IA estende a cena para preencher o novo formato de forma natural.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {FORMAT_OPTIONS.map((opt) => {
+                const isLoadingThis = reformattingId === selectedImage?.id && reformatMutation.isPending && opt.id !== "original";
+                return (
+                  <button
+                    key={opt.id}
+                    disabled={reformatMutation.isPending}
+                    onClick={() => {
+                      if (opt.id === "original") { setShowFormatDialog(false); return; }
+                      if (!selectedImage) return;
+                      setReformattingId(selectedImage.id);
+                      reformatMutation.mutate({ id: selectedImage.id, format: opt.id as ReformatFormat });
+                    }}
+                    className="flex flex-col items-center gap-2 p-3 rounded-xl border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className={cn("w-12 rounded-md border border-border/60 bg-muted/40 flex items-center justify-center", opt.ratioClass)}>
+                      {isLoadingThis
+                        ? <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        : <Crop className="w-4 h-4 text-muted-foreground/50" />
+                      }
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-medium text-foreground">{opt.label}</p>
+                      <p className="text-[10px] text-muted-foreground">{opt.dims}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>
