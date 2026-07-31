@@ -1162,15 +1162,27 @@ export async function fetchArticleContext(news: z.infer<typeof selectedNewsSchem
   }
 }
 
+// The stored coverImageUrl points at a private S3 object (the bucket blocks anonymous
+// reads), so it must be re-signed into a fetchable URL every time it's sent to the
+// browser — otherwise <img> tags 403. The raw URL is what stays persisted in the DB.
+async function withSignedCover<T extends { coverImageUrl?: string | null }>(article: T): Promise<T> {
+  if (!article.coverImageUrl) return article;
+  const { getMetaFetchableStorageUrl } = await import("./storage");
+  const coverImageUrl = await getMetaFetchableStorageUrl(article.coverImageUrl).catch(() => article.coverImageUrl);
+  return { ...article, coverImageUrl };
+}
+
 const articlesRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    return db.getArticles(ctx.user.id);
+    const articles = await db.getArticles(ctx.user.id);
+    return Promise.all(articles.map(withSignedCover));
   }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
-      return db.getArticle(input.id, ctx.user.id);
+      const article = await db.getArticle(input.id, ctx.user.id);
+      return article ? withSignedCover(article) : article;
     }),
 
   researchEnergyNews: aiProcedure
@@ -1322,7 +1334,7 @@ Regras:
         summary,
       });
 
-      return saved;
+      return withSignedCover(saved);
     }),
 
   regenerateCover: protectedProcedure
@@ -1349,8 +1361,10 @@ Regras:
         coverImageUrl,
       });
 
+      const { coverImageUrl: signedCoverImageUrl } = await withSignedCover({ coverImageUrl });
+
       return {
-        coverImageUrl,
+        coverImageUrl: signedCoverImageUrl,
         prompt: cover.prompt,
       };
     }),
@@ -1598,9 +1612,10 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
         });
       }
 
+      const { coverImageUrl } = await withSignedCover(article);
       const htmlContent = buildNewsletterHtml({
         title: article.title,
-        coverImageUrl: article.coverImageUrl,
+        coverImageUrl,
         sourceUrl: article.sourceUrl,
         ...newsletterData,
       });

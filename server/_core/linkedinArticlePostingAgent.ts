@@ -3,6 +3,7 @@ import path from "node:path";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
 import { invokeLLM } from "./llm";
+import { getMetaFetchableStorageUrl } from "../storage";
 
 const LINKEDIN_COMMENTARY_LIMIT = 3000;
 const LINKEDIN_ARTICLE_DESCRIPTION_LIMIT = 400;
@@ -493,7 +494,8 @@ function parseDataUrlAsset(assetUrl: string): BinaryAsset | undefined {
 }
 
 async function fetchRemoteAsset(assetUrl: string) {
-  const response = await fetch(assetUrl);
+  const fetchableUrl = await getMetaFetchableStorageUrl(assetUrl);
+  const response = await fetch(fetchableUrl);
   if (!response.ok) {
     throw new Error(`Falha ao baixar a imagem da capa (${response.status} ${response.statusText})`);
   }

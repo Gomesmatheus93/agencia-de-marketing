@@ -41,6 +41,7 @@ import {
   Phone,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type Article = {
@@ -284,6 +285,11 @@ export default function Articles() {
   const resetDigestMutation = trpc.articles.resetDigestToday.useMutation({
     onSuccess: () => { toast.success("Resetado! O envio automático vai tentar na próxima janela."); void refetchDigest(); void refetchStatus(); },
     onError: (err) => toast.error(err.message),
+  });
+
+  const sendTestDigestMutation = trpc.articles.sendTestDigest.useMutation({
+    onSuccess: (result) => { toast.success(`Teste enviado! ${result.sent} notícia(s) para ${result.to}.`); void refetchStatus(); },
+    onError: (err) => toast.error("Erro ao enviar teste: " + err.message),
   });
 
   const handleSaveDigest = () => {
@@ -1103,20 +1109,12 @@ export default function Articles() {
                     {digestEnabled ? "Envio automático ativo" : "Envio automático pausado"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDigestEnabled(!digestEnabled)}
+                <Switch
+                  checked={digestEnabled}
+                  onCheckedChange={setDigestEnabled}
                   title={digestEnabled ? "Clique para pausar" : "Clique para ativar"}
-                  className={cn(
-                    "shrink-0 w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
-                    digestEnabled ? "bg-emerald-500" : "bg-border"
-                  )}
-                >
-                  <span className={cn(
-                    "absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200",
-                    digestEnabled ? "translate-x-[1.375rem]" : "translate-x-1"
-                  )} />
-                </button>
+                  className="shrink-0 data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-border"
+                />
               </div>
             </div>
 
@@ -1168,11 +1166,24 @@ export default function Articles() {
           </div>
 
           {/* Footer — save */}
-          <div className="px-5 py-4 border-t border-border/40 bg-background/30 shrink-0">
+          <div className="px-5 py-4 border-t border-border/40 bg-background/30 shrink-0 flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => sendTestDigestMutation.mutate()}
+              disabled={sendTestDigestMutation.isPending || !digestNumber.trim()}
+              title={!digestNumber.trim() ? "Informe e salve um número antes de testar" : "Envia o digest agora, para o número salvo"}
+              className="gap-2 h-10 text-sm font-medium shrink-0"
+            >
+              {sendTestDigestMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Send className="w-4 h-4" />
+              }
+              Testar envio
+            </Button>
             <Button
               onClick={handleSaveDigest}
               disabled={saveDigestMutation.isPending}
-              className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-0 h-10 text-sm font-medium shadow-sm"
+              className="flex-1 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-0 h-10 text-sm font-medium shadow-sm"
             >
               {saveDigestMutation.isPending
                 ? <Loader2 className="w-4 h-4 animate-spin" />
