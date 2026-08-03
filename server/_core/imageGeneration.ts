@@ -331,6 +331,17 @@ CRITICAL LANGUAGE RULE: All text visible in the final image MUST be written in B
 User request: ${prompt}`;
 }
 
+// Applied as the very last thing before every OpenAI image call, regardless of which
+// prompt-building path produced the text above. The designer-AI brief and the per-style
+// instructions already ask for Portuguese, but that instruction can get diluted inside a
+// long, detailed prompt — gpt-image-1 pays the most attention to the end of the prompt,
+// so repeating the rule here, short and unambiguous, is what actually makes it stick.
+function enforcePortugueseLanguage(prompt: string): string {
+  return `${prompt}
+
+LANGUAGE OF ON-IMAGE TEXT (FINAL RULE, TAKES PRIORITY OVER ANYTHING ABOVE): every visible piece of text rendered in this image — headline, subheadline, CTA button, badge, price, slogan, label, caption, watermark — must be written in Brazilian Portuguese (pt-BR). Do not render any English words as visual text. Translate/adapt anything that would otherwise appear in English.`;
+}
+
 export type GenerateImageResponse = {
   url?: string;
 };
@@ -498,9 +509,11 @@ async function generateWithOpenAI(options: GenerateImageOptions): Promise<Genera
   // Always 1024x1536 (closest to Instagram's 1080×1350 / 4:5)
   const apiSize = options.size ? SIZE_MAP[options.size] : DEFAULT_API_SIZE;
 
-  const prompt = hasReference
-    ? buildReferencePrompt(options.prompt, options.style)
-    : await buildEnhancedPromptWithDesigner(options.prompt, options.style ?? "commercial", options.brandContext, options.nicheProfile);
+  const prompt = enforcePortugueseLanguage(
+    hasReference
+      ? buildReferencePrompt(options.prompt, options.style)
+      : await buildEnhancedPromptWithDesigner(options.prompt, options.style ?? "commercial", options.brandContext, options.nicheProfile)
+  );
 
   const requestInit: RequestInit = hasReference
     ? (() => {
@@ -577,7 +590,7 @@ async function generateWithHuggingFace(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt: options.prompt,
+        prompt: enforcePortugueseLanguage(options.prompt),
         num_inference_steps: 4,
         width: 1080,
         height: 1080,
