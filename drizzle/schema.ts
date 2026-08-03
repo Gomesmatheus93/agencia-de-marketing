@@ -503,12 +503,47 @@ export const postMetrics = mysqlTable(
     followsDelta: int("followsDelta").default(0).notNull(),
     rawScore: int("rawScore").default(0).notNull(),
     normalizedScore: int("normalizedScore").default(0).notNull(),
+    impressions: int("impressions").default(0).notNull(),
+    videoViews: int("videoViews").default(0).notNull(),
+    avgWatchTimeMs: int("avgWatchTimeMs").default(0).notNull(),
   },
   (t) => [index("idx_post_metrics_socialPostId").on(t.socialPostId)]
 );
 
 export type PostMetric = typeof postMetrics.$inferSelect;
 export type InsertPostMetric = typeof postMetrics.$inferInsert;
+
+// ─── Instagram Account Insights Daily (Analytics — demographics & profile actions) ────
+export type InstagramDemographicsBreakdown = {
+  genderAge?: Array<{ dimension: string; value: number }>;
+  city?: Array<{ dimension: string; value: number }>;
+  country?: Array<{ dimension: string; value: number }>;
+};
+
+export const instagramAccountInsightsDaily = mysqlTable(
+  "instagram_account_insights_daily",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    dateKey: varchar("dateKey", { length: 10 }).notNull(),
+    collectedAt: timestamp("collectedAt").defaultNow().onUpdateNow().notNull(),
+    demographics: json("demographics").$type<InstagramDemographicsBreakdown>(),
+    websiteClicks: int("websiteClicks").default(0).notNull(),
+    phoneCallClicks: int("phoneCallClicks").default(0).notNull(),
+    emailContacts: int("emailContacts").default(0).notNull(),
+    textMessageClicks: int("textMessageClicks").default(0).notNull(),
+    getDirectionsClicks: int("getDirectionsClicks").default(0).notNull(),
+    totalInteractions: int("totalInteractions").default(0).notNull(),
+    accountsEngaged: int("accountsEngaged").default(0).notNull(),
+  },
+  (t) => [
+    uniqueIndex("uq_ig_account_insights_user_date").on(t.userId, t.dateKey),
+    index("idx_ig_account_insights_userId").on(t.userId),
+  ]
+);
+
+export type InstagramAccountInsightsDaily = typeof instagramAccountInsightsDaily.$inferSelect;
+export type InsertInstagramAccountInsightsDaily = typeof instagramAccountInsightsDaily.$inferInsert;
 
 // ─── Template Performance (Module 1.3) ───────────────────────────────────────
 export const templatePerformance = mysqlTable(

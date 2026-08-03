@@ -4,7 +4,57 @@ import {
   upsertTemplatePerformance,
   getUserNicheForPerformance,
   getLatestMetricForPost,
+  getAllInstagramConnections,
+  saveInstagramAccountInsightsSnapshot,
 } from "../db";
+import { ENV } from "./env";
+import type { InstagramDemographicsBreakdown } from "../../drizzle/schema";
+
+function graphBaseUrl(): string {
+  const base = (ENV.metaGraphApiBaseUrl || "https://graph.facebook.com").replace(/\/+$/, "");
+  const version = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
+  return `${base}/${version}`;
+}
+
+async function fetchGraphMetric(path: string, params: Record<string, string>, accessToken: string): Promise<{ name: string; value: number }[]> {
+  try {
+    const qs = new URLSearchParams({ ...params, access_token: accessToken }).toString();
+    const res = await fetch(`${graphBaseUrl()}/${path}?${qs}`);
+    const data = (await res.json()) as {
+      data?: Array<{ name: string; values?: Array<{ value: number }>; total_value?: { value?: number; breakdowns?: Array<{ results?: Array<{ dimension_values: string[]; value: number }> }> } }>;
+      error?: { message?: string };
+    };
+    if (!res.ok || data.error) return [];
+    return (data.data ?? []).map((d) => ({
+      name: d.name,
+      value: d.total_value?.value ?? d.values?.[0]?.value ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchGraphBreakdown(path: string, metric: string, breakdown: string, accessToken: string): Promise<Array<{ dimension: string; value: number }>> {
+  try {
+    const qs = new URLSearchParams({
+      metric,
+      period: "lifetime",
+      metric_type: "total_value",
+      breakdown,
+      access_token: accessToken,
+    }).toString();
+    const res = await fetch(`${graphBaseUrl()}/${path}?${qs}`);
+    const data = (await res.json()) as {
+      data?: Array<{ total_value?: { breakdowns?: Array<{ results?: Array<{ dimension_values: string[]; value: number }> }> } }>;
+      error?: { message?: string };
+    };
+    if (!res.ok || data.error) return [];
+    const results = data.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+    return results.map((r) => ({ dimension: r.dimension_values.join(" / "), value: r.value }));
+  } catch {
+    return [];
+  }
+}
 
 const TZ = "America/Fortaleza";
 const RUN_HOUR = 3;
@@ -28,31 +78,51 @@ function normalizeScores(rawScores: number[]): number[] {
   return rawScores.map((s) => Math.min(100, Math.round((s / median) * 50)));
 }
 
+// One request per metric — a single unsupported metric (e.g. "impressions" on a Reel) makes the
+// Graph API reject the *entire* comma-joined call, so per-metric isolation is what keeps the rest
+// of the numbers flowing when one doesn't apply to this media type.
+async function fetchSingleMediaMetric(igMediaId: string, metric: string, accessToken: string): Promise<number> {
+  try {
+    const res = await fetch(
+      `${graphBaseUrl()}/${igMediaId}/insights?metric=${metric}&period=lifetime&access_token=${accessToken}`
+    );
+    const data = (await res.json()) as {
+      data?: Array<{ values?: Array<{ value: number }> }>;
+      error?: { message?: string };
+    };
+    if (!res.ok || data.error) return 0;
+    return Number(data.data?.[0]?.values?.[0]?.value ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 async function fetchIgMediaInsights(
   igMediaId: string,
-  accessToken: string
-): Promise<{ reach: number; saves: number; shares: number; comments: number; likes: number } | null> {
+  accessToken: string,
+  isReel: boolean
+): Promise<{ reach: number; saves: number; shares: number; comments: number; likes: number; impressions: number; videoViews: number; avgWatchTimeMs: number } | null> {
   try {
-    const graphBase = "https://graph.facebook.com/v19.0";
-    const [insightsResp, mediaResp] = await Promise.all([
-      fetch(`${graphBase}/${igMediaId}/insights?metric=reach,saved,shares&period=lifetime&access_token=${accessToken}`).then((r) => r.json() as Promise<unknown>),
-      fetch(`${graphBase}/${igMediaId}?fields=like_count,comments_count&access_token=${accessToken}`).then((r) => r.json() as Promise<unknown>),
+    const baseMetrics = ["reach", "saved", "shares"];
+    const extraMetrics = isReel ? ["views", "ig_reels_avg_watch_time"] : ["impressions"];
+
+    const [mediaResp, ...metricResults] = await Promise.all([
+      fetch(`${graphBaseUrl()}/${igMediaId}?fields=like_count,comments_count&access_token=${accessToken}`).then((r) => r.json() as Promise<unknown>),
+      ...[...baseMetrics, ...extraMetrics].map((m) => fetchSingleMediaMetric(igMediaId, m, accessToken)),
     ]);
 
-    const insights = insightsResp as { data?: Array<{ name: string; values: Array<{ value: number }> }> };
     const media = mediaResp as { like_count?: number; comments_count?: number };
-
-    const getMetric = (name: string) => {
-      const item = insights.data?.find((d) => d.name === name);
-      return Number(item?.values?.[0]?.value ?? 0);
-    };
+    const values = new Map(([...baseMetrics, ...extraMetrics] as string[]).map((m, i) => [m, metricResults[i] as number]));
 
     return {
-      reach: getMetric("reach"),
-      saves: getMetric("saved"),
-      shares: getMetric("shares"),
+      reach: values.get("reach") ?? 0,
+      saves: values.get("saved") ?? 0,
+      shares: values.get("shares") ?? 0,
       comments: Number(media.comments_count ?? 0),
       likes: Number(media.like_count ?? 0),
+      impressions: values.get("impressions") ?? 0,
+      videoViews: values.get("views") ?? 0,
+      avgWatchTimeMs: values.get("ig_reels_avg_watch_time") ?? 0,
     };
   } catch {
     return null;
@@ -100,7 +170,8 @@ async function collectMetrics(): Promise<void> {
           const conn = await getToken(post.userId);
           if (!conn) return;
 
-          const metrics = await fetchIgMediaInsights(post.igMediaId, conn.accessToken);
+          const isReel = post.contentType === "reels";
+          const metrics = await fetchIgMediaInsights(post.igMediaId, conn.accessToken, isReel);
           if (!metrics) return;
 
           const rawScore = calcRawScore(metrics);
@@ -136,6 +207,9 @@ async function collectMetrics(): Promise<void> {
             followsDelta: 0,
             rawScore: Math.round(rawScore * 1000),
             normalizedScore: 0,
+            impressions: metrics.impressions,
+            videoViews: metrics.videoViews,
+            avgWatchTimeMs: metrics.avgWatchTimeMs,
           });
         } catch (e) {
           console.warn(`[MetricsScheduler] Failed for post ${post.id}:`, e);
@@ -182,6 +256,63 @@ async function collectMetrics(): Promise<void> {
   console.log(`[MetricsScheduler] Collected metrics for ${postDataForAggregation.length} posts, updated ${aggMap.size} performance records.`);
 }
 
+const PROFILE_ACTION_METRICS = [
+  "website_clicks",
+  "phone_call_clicks",
+  "email_contacts",
+  "text_message_clicks",
+  "get_directions_clicks",
+  "total_interactions",
+  "accounts_engaged",
+] as const;
+
+async function collectAccountInsights(): Promise<void> {
+  const connections = await getAllInstagramConnections();
+  if (connections.length === 0) return;
+
+  let collected = 0;
+  for (const conn of connections) {
+    try {
+      const [genderAge, city, country, ...actionResults] = await Promise.all([
+        fetchGraphBreakdown(`${conn.instagramAccountId}/insights`, "follower_demographics", "age,gender", conn.accessToken),
+        fetchGraphBreakdown(`${conn.instagramAccountId}/insights`, "follower_demographics", "city", conn.accessToken),
+        fetchGraphBreakdown(`${conn.instagramAccountId}/insights`, "follower_demographics", "country", conn.accessToken),
+        ...PROFILE_ACTION_METRICS.map((metric) =>
+          fetchGraphMetric(`${conn.instagramAccountId}/insights`, { metric, period: "day" }, conn.accessToken)
+        ),
+      ]);
+
+      const actionValues = new Map<string, number>();
+      PROFILE_ACTION_METRICS.forEach((metric, i) => {
+        const found = (actionResults[i] as Array<{ name: string; value: number }>).find((d) => d.name === metric);
+        actionValues.set(metric, found?.value ?? 0);
+      });
+
+      const demographics: InstagramDemographicsBreakdown = {};
+      if (genderAge.length) demographics.genderAge = genderAge;
+      if (city.length) demographics.city = city;
+      if (country.length) demographics.country = country;
+
+      await saveInstagramAccountInsightsSnapshot({
+        userId: conn.userId,
+        demographics: Object.keys(demographics).length ? demographics : undefined,
+        websiteClicks: actionValues.get("website_clicks") ?? 0,
+        phoneCallClicks: actionValues.get("phone_call_clicks") ?? 0,
+        emailContacts: actionValues.get("email_contacts") ?? 0,
+        textMessageClicks: actionValues.get("text_message_clicks") ?? 0,
+        getDirectionsClicks: actionValues.get("get_directions_clicks") ?? 0,
+        totalInteractions: actionValues.get("total_interactions") ?? 0,
+        accountsEngaged: actionValues.get("accounts_engaged") ?? 0,
+      });
+      collected += 1;
+    } catch (e) {
+      console.warn(`[MetricsScheduler] Account insights failed for user ${conn.userId}:`, e);
+    }
+  }
+
+  console.log(`[MetricsScheduler] Collected account insights snapshot for ${collected}/${connections.length} connected accounts.`);
+}
+
 export function startMetricsScheduler(): void {
   setInterval(async () => {
     const now = new Intl.DateTimeFormat("en-CA", {
@@ -201,8 +332,9 @@ export function startMetricsScheduler(): void {
       ranToday.forEach((k) => { if (!k.startsWith(dateKey)) ranToday.delete(k); });
       console.log(`[MetricsScheduler] Collecting Instagram metrics at ${dateKey} ${hour}:${String(minute).padStart(2, "0")}...`);
       collectMetrics().catch((e) => console.error("[MetricsScheduler] Pipeline error:", e));
+      collectAccountInsights().catch((e) => console.error("[MetricsScheduler] Account insights pipeline error:", e));
     }
   }, 60_000).unref();
 }
 
-export { collectMetrics as runMetricsPipeline };
+export { collectMetrics as runMetricsPipeline, collectAccountInsights as runAccountInsightsPipeline };

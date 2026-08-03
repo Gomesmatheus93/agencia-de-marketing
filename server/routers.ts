@@ -3666,7 +3666,19 @@ const analyticsRouter = router({
       const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
       const until = Math.floor(Date.now() / 1000);
       const since = until - input.days * 86400;
-      const metrics = ["impressions", "reach", "profile_views", "follower_count"] as const;
+      const metrics = [
+        "impressions",
+        "reach",
+        "profile_views",
+        "follower_count",
+        "website_clicks",
+        "phone_call_clicks",
+        "email_contacts",
+        "text_message_clicks",
+        "get_directions_clicks",
+        "total_interactions",
+        "accounts_engaged",
+      ] as const;
 
       const results = await Promise.allSettled(
         metrics.map((metric) =>
@@ -3695,6 +3707,7 @@ const analyticsRouter = router({
         id: string;
         caption?: string;
         media_type: string;
+        media_product_type?: string;
         media_url?: string;
         thumbnail_url?: string;
         timestamp: string;
@@ -3706,45 +3719,123 @@ const analyticsRouter = router({
       const mediaData = await graphGet<{ data: MediaItem[] }>(
         `${igAccountId}/media`,
         {
-          fields: "id,caption,media_type,media_url,thumbnail_url,timestamp,like_count,comments_count,permalink",
+          fields: "id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,like_count,comments_count,permalink",
           limit: String(input.limit),
         },
         accessToken
       );
 
       const items = mediaData.data ?? [];
+
+      // One request per metric — a single unsupported metric for this media type (e.g.
+      // "impressions" on a Reel) makes the Graph API reject the whole comma-joined call.
+      const fetchMetric = async (mediaId: string, metric: string): Promise<number> => {
+        try {
+          const data = await graphGet<{ data: Array<{ values?: Array<{ value: number }>; value?: number }> }>(
+            `${mediaId}/insights`,
+            { metric },
+            accessToken
+          );
+          return data.data?.[0]?.value ?? data.data?.[0]?.values?.[0]?.value ?? 0;
+        } catch {
+          return 0;
+        }
+      };
+
       const withInsights = await Promise.all(
         items.map(async (item) => {
-          try {
-            const insightsData = await graphGet<{
-              data: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
-            }>(`${item.id}/insights`, { metric: "impressions,reach,saved,shares" }, accessToken);
+          const isReel = item.media_product_type === "REELS";
+          const baseMetrics = ["reach", "saved", "shares"];
+          const extraMetrics = isReel ? ["views", "ig_reels_avg_watch_time"] : ["impressions"];
+          const allMetrics = [...baseMetrics, ...extraMetrics];
 
-            const insights: Record<string, number> = {};
-            for (const d of insightsData.data ?? []) {
-              insights[d.name] = d.value ?? d.values?.[0]?.value ?? 0;
-            }
-
-            // Weighted engagement score (Instagram 2026 algorithm priorities)
-            // shares = total shares via API (DM-specific not available — Meta limitation)
-            // comments = total count (word-count filter not available via API)
-            const reach = insights.reach ?? 0;
-            const engagementScore = reach > 0
-              ? parseFloat((
-                  ((insights.saved ?? 0) * 3 + (insights.shares ?? 0) * 4 + item.comments_count * 2 + item.like_count * 1)
-                  / reach * 100
-                ).toFixed(2))
-              : 0;
-
-            return { ...item, insights, engagementScore };
-          } catch {
-            return { ...item, insights: {} as Record<string, number>, engagementScore: 0 };
+          const values = await Promise.all(allMetrics.map((m) => fetchMetric(item.id, m)));
+          const insights: Record<string, number> = {};
+          allMetrics.forEach((m, i) => { insights[m] = values[i]; });
+          if (isReel) {
+            insights.videoViews = insights.views ?? 0;
+            insights.avgWatchTimeMs = insights.ig_reels_avg_watch_time ?? 0;
           }
+
+          // Weighted engagement score (Instagram 2026 algorithm priorities)
+          // shares = total shares via API (DM-specific not available — Meta limitation)
+          // comments = total count (word-count filter not available via API)
+          const reach = insights.reach ?? 0;
+          const engagementScore = reach > 0
+            ? parseFloat((
+                ((insights.saved ?? 0) * 3 + (insights.shares ?? 0) * 4 + item.comments_count * 2 + item.like_count * 1)
+                / reach * 100
+              ).toFixed(2))
+            : 0;
+
+          return { ...item, insights, engagementScore };
         })
       );
 
       return withInsights;
     }),
+
+  getAudienceDemographics: protectedProcedure.query(async ({ ctx }) => {
+    const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
+
+    const fetchBreakdown = async (breakdown: string) => {
+      try {
+        const qs = new URLSearchParams({
+          metric: "follower_demographics",
+          period: "lifetime",
+          metric_type: "total_value",
+          breakdown,
+          access_token: accessToken,
+        }).toString();
+        const res = await fetch(`${graphUrl(`${igAccountId}/insights`)}?${qs}`);
+        const data = (await res.json()) as {
+          data?: Array<{ total_value?: { breakdowns?: Array<{ results?: Array<{ dimension_values: string[]; value: number }> }> } }>;
+          error?: { message?: string };
+        };
+        if (!res.ok || data.error) return [];
+        const results = data.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+        return results.map((r) => ({ dimension: r.dimension_values.join(" / "), value: r.value }));
+      } catch {
+        return [];
+      }
+    };
+
+    const [genderAge, city, country] = await Promise.all([
+      fetchBreakdown("age,gender"),
+      fetchBreakdown("city"),
+      fetchBreakdown("country"),
+    ]);
+
+    const hasData = genderAge.length > 0 || city.length > 0 || country.length > 0;
+    if (hasData) {
+      await db.saveInstagramAccountInsightsSnapshot({
+        userId: ctx.user.id,
+        demographics: { genderAge, city, country },
+        websiteClicks: 0,
+        phoneCallClicks: 0,
+        emailContacts: 0,
+        textMessageClicks: 0,
+        getDirectionsClicks: 0,
+        totalInteractions: 0,
+        accountsEngaged: 0,
+      });
+    }
+
+    const [latest, history] = await Promise.all([
+      db.getLatestInstagramAccountInsights(ctx.user.id),
+      db.getInstagramAccountInsightsHistory(ctx.user.id, 90),
+    ]);
+
+    return {
+      current: hasData ? { genderAge, city, country } : (latest?.demographics ?? null),
+      available: hasData || Boolean(latest?.demographics),
+      history: history.map((h) => ({
+        dateKey: h.dateKey,
+        totalInteractions: h.totalInteractions,
+        accountsEngaged: h.accountsEngaged,
+      })),
+    };
+  }),
 });
 
 
@@ -4106,8 +4197,9 @@ const performanceRouter = router({
     if ((ctx.user as { role?: string }).role !== "admin") {
       throw new TRPCError({ code: "FORBIDDEN", message: "Apenas admins" });
     }
-    const { runMetricsPipeline } = await import("./_core/metricsScheduler");
+    const { runMetricsPipeline, runAccountInsightsPipeline } = await import("./_core/metricsScheduler");
     runMetricsPipeline().catch((e: unknown) => console.error("[Performance] Admin trigger error:", e));
+    runAccountInsightsPipeline().catch((e: unknown) => console.error("[Performance] Admin trigger (account insights) error:", e));
     return { ok: true };
   }),
 });

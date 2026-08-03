@@ -43,6 +43,12 @@ import {
   CheckCheck,
   Award,
   Minus,
+  Phone,
+  MapPin,
+  Activity,
+  Users2,
+  PieChart as PieChartIcon,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -174,6 +180,7 @@ function PostCard({
     id: string;
     caption?: string;
     media_type: string;
+    media_product_type?: string;
     media_url?: string;
     thumbnail_url?: string;
     timestamp: string;
@@ -189,6 +196,7 @@ function PostCard({
     new Date(post.timestamp)
   );
   const score = post.engagementScore ?? 0;
+  const isReel = post.media_product_type === "REELS";
 
   return (
     <div className="group overflow-hidden rounded-2xl border border-border/40 bg-background/80 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-border/70">
@@ -226,6 +234,14 @@ function PostCard({
           <Zap className="h-2.5 w-2.5" />
           {score.toFixed(1)}
         </span>
+
+        {/* Reels badge */}
+        {isReel && (
+          <span className="absolute top-2 right-2 flex items-center gap-0.5 rounded-md border border-fuchsia-500/40 bg-fuchsia-950/60 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-300 backdrop-blur-sm">
+            <Video className="h-2.5 w-2.5" />
+            Reels
+          </span>
+        )}
       </div>
 
       <div className="p-3">
@@ -239,7 +255,14 @@ function PostCard({
           <Metric icon={MessageCircle} label="Comentários" value={post.comments_count} />
           <Metric icon={Eye} label="Alcance" value={post.insights.reach ?? 0} />
           <Metric icon={Bookmark} label="Salvamentos" value={post.insights.saved ?? 0} />
-          <Metric icon={TrendingUp} label="Impressões" value={post.insights.impressions ?? 0} />
+          {isReel ? (
+            <>
+              <Metric icon={Video} label="Visualizações" value={post.insights.videoViews ?? 0} />
+              <Metric icon={Clock} label="Tempo médio (s)" value={Math.round((post.insights.avgWatchTimeMs ?? 0) / 1000)} />
+            </>
+          ) : (
+            <Metric icon={TrendingUp} label="Impressões" value={post.insights.impressions ?? 0} />
+          )}
           <Metric icon={Share2} label="Compart." value={post.insights.shares ?? 0} />
         </div>
       </div>
@@ -419,6 +442,13 @@ function InstagramTab() {
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
+  const demographicsQuery = trpc.analytics.getAudienceDemographics.useQuery(undefined, {
+    enabled: isConnected,
+    retry: 1,
+    refetchInterval: PROFILE_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
   const disconnectMutation = trpc.analytics.disconnectInstagram.useMutation({
     onSuccess: () => { toast.success("Instagram desconectado."); void connectionQuery.refetch(); },
   });
@@ -432,6 +462,7 @@ function InstagramTab() {
     void profileQuery.refetch();
     void insightsQuery.refetch();
     void mediaQuery.refetch();
+    void demographicsQuery.refetch();
   };
 
   const isFetching = profileQuery.isFetching || insightsQuery.isFetching || mediaQuery.isFetching;
@@ -444,6 +475,11 @@ function InstagramTab() {
   const totalImpressions = sumMetric(insights, "impressions");
   const totalProfileViews = sumMetric(insights, "profile_views");
   const followerChange = sumMetric(insights, "follower_count");
+  const totalWebsiteClicks = sumMetric(insights, "website_clicks");
+  const totalPhoneClicks = sumMetric(insights, "phone_call_clicks");
+  const totalDirectionsClicks = sumMetric(insights, "get_directions_clicks");
+  const totalInteractions = sumMetric(insights, "total_interactions");
+  const totalAccountsEngaged = sumMetric(insights, "accounts_engaged");
 
   const isLoading = profileQuery.isLoading || insightsQuery.isLoading;
   const hasError = profileQuery.isError || insightsQuery.isError;
@@ -855,6 +891,62 @@ function InstagramTab() {
             )}
           </div>
 
+          {/* ── Profile Action KPI Cards ─────────────────────────── */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-2xl border border-border/40 bg-background/80 p-5">
+                  <Skeleton className="h-2.5 w-20" />
+                  <Skeleton className="mt-2 h-8 w-16" />
+                  <Skeleton className="mt-1.5 h-2.5 w-28" />
+                </div>
+              ))
+            ) : (
+              <>
+                <KpiCard
+                  label="Cliques no Site"
+                  value={fmt(totalWebsiteClicks)}
+                  icon={ExternalLink}
+                  accentClass="bg-gradient-to-br from-indigo-500 to-violet-600"
+                  isEmpty={totalWebsiteClicks === 0}
+                  sub="Últimos 30 dias"
+                />
+                <KpiCard
+                  label="Ligações"
+                  value={fmt(totalPhoneClicks)}
+                  icon={Phone}
+                  accentClass="bg-gradient-to-br from-emerald-500 to-teal-600"
+                  isEmpty={totalPhoneClicks === 0}
+                  sub="Últimos 30 dias"
+                />
+                <KpiCard
+                  label="Direções"
+                  value={fmt(totalDirectionsClicks)}
+                  icon={MapPin}
+                  accentClass="bg-gradient-to-br from-amber-500 to-orange-600"
+                  isEmpty={totalDirectionsClicks === 0}
+                  sub="Últimos 30 dias"
+                />
+                <KpiCard
+                  label="Interações Totais"
+                  value={fmt(totalInteractions)}
+                  icon={Activity}
+                  accentClass="bg-gradient-to-br from-rose-500 to-pink-600"
+                  isEmpty={totalInteractions === 0}
+                  sub="Últimos 30 dias"
+                />
+                <KpiCard
+                  label="Contas Engajadas"
+                  value={fmt(totalAccountsEngaged)}
+                  icon={Users2}
+                  accentClass="bg-gradient-to-br from-sky-500 to-cyan-600"
+                  isEmpty={totalAccountsEngaged === 0}
+                  sub="Últimos 30 dias"
+                />
+              </>
+            )}
+          </div>
+
           {/* ── Charts ───────────────────────────────────────────── */}
           <div className="grid gap-4 lg:grid-cols-3">
             {/* Area chart — Alcance & Impressões */}
@@ -915,6 +1007,9 @@ function InstagramTab() {
               )}
             </div>
           </div>
+
+          {/* ── Audience Demographics ────────────────────────────── */}
+          <AudienceDemographicsSection />
 
           {/* ── Comment Alerts ───────────────────────────────────── */}
           <CommentAlertsPanel />
@@ -1065,6 +1160,102 @@ function AlertCard({
           <CheckCheck className="h-3 w-3" />
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Audience Demographics ──────────────────────────────────────────────────
+
+const DEMOGRAPHICS_COLORS = ["#7b00ae", "#fe6e00", "#06b6d4", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#0ea5e9"];
+
+function DemographicsBarList({ items, limit = 6 }: { items: Array<{ dimension: string; value: number }>; limit?: number }) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const top = [...items].sort((a, b) => b.value - a.value).slice(0, limit);
+
+  if (top.length === 0) {
+    return <p className="text-xs text-muted-foreground/40 py-2">Sem dados suficientes.</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {top.map((item, i) => {
+        const pct = total > 0 ? (item.value / total) * 100 : 0;
+        return (
+          <div key={item.dimension} className="flex items-center gap-2">
+            <span className="w-24 shrink-0 truncate text-[11px] text-muted-foreground/70">{item.dimension}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/40">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${pct}%`, backgroundColor: DEMOGRAPHICS_COLORS[i % DEMOGRAPHICS_COLORS.length] }}
+              />
+            </div>
+            <span className="w-10 shrink-0 text-right text-[11px] font-semibold tabular-nums text-foreground">{pct.toFixed(0)}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AudienceDemographicsSection() {
+  const { data, isLoading } = trpc.analytics.getAudienceDemographics.useQuery(undefined, {
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  const current = data?.current;
+  const genderAge = current?.genderAge ?? [];
+  const city = current?.city ?? [];
+  const country = current?.country ?? [];
+
+  return (
+    <div className="rounded-2xl border border-border/40 bg-background/80 p-5">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#7b00ae] to-[#fe6e00]">
+          <PieChartIcon className="h-3.5 w-3.5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-foreground">Demografia da Audiência</p>
+          <p className="text-[11px] text-muted-foreground/60">Idade, gênero e localização de quem interage</p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : !data?.available ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+          <Users2 className="h-8 w-8 text-muted-foreground/20" />
+          <p className="text-sm text-muted-foreground/50">
+            Sem dados de demografia ainda.
+          </p>
+          <p className="max-w-sm text-xs text-muted-foreground/40">
+            A Meta só libera esses dados para contas com pelo menos 100 seguidores. Se sua conta já
+            atende esse mínimo, os dados aparecem aqui após a próxima coleta.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-3">
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Idade / Gênero</p>
+            <DemographicsBarList items={genderAge} />
+          </div>
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Principais Cidades</p>
+            <DemographicsBarList items={city} />
+          </div>
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Principais Países</p>
+            <DemographicsBarList items={country} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

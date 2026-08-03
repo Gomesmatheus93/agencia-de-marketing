@@ -24,6 +24,7 @@ import {
   postMetrics,
   templatePerformance,
   editorialPlanItems,
+  instagramAccountInsightsDaily,
   type ChatConversation,
   type ChatMessage,
   type GeneratedImage,
@@ -44,6 +45,8 @@ import {
   type TemplatePerformance,
   type EditorialPlanItem,
   type InsertEditorialPlanItem,
+  type InstagramAccountInsightsDaily,
+  type InstagramDemographicsBreakdown,
   brandKits,
   type BrandKit,
   type CommentAutomation,
@@ -67,6 +70,8 @@ let _commentPollStateReady: Promise<void> | null = null;
 let _commentAlertsReady: Promise<void> | null = null;
 let _commentAutomationsTableReady: Promise<void> | null = null;
 let _postMetricsTableReady: Promise<void> | null = null;
+let _postMetricsVideoColumnsReady: Promise<void> | null = null;
+let _igAccountInsightsTableReady: Promise<void> | null = null;
 let _templatePerformanceTableReady: Promise<void> | null = null;
 let _editorialPlanItemsTableReady: Promise<void> | null = null;
 
@@ -3049,12 +3054,68 @@ async function ensurePostMetricsTable() {
           followsDelta int NOT NULL DEFAULT 0,
           rawScore int NOT NULL DEFAULT 0,
           normalizedScore int NOT NULL DEFAULT 0,
+          impressions int NOT NULL DEFAULT 0,
+          videoViews int NOT NULL DEFAULT 0,
+          avgWatchTimeMs int NOT NULL DEFAULT 0,
           INDEX idx_post_metrics_socialPostId (socialPostId)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       `);
     })().catch((e) => { _postMetricsTableReady = null; throw e; });
   }
   await _postMetricsTableReady;
+  await ensurePostMetricsVideoColumns();
+}
+
+async function ensurePostMetricsVideoColumns(): Promise<void> {
+  if (!_postMetricsVideoColumnsReady) {
+    _postMetricsVideoColumnsReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      const [cols] = await db.execute(sql`
+        SELECT COLUMN_NAME FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'post_metrics'
+      `);
+      const existing = new Set((cols as unknown as Array<{ COLUMN_NAME: string }>).map(c => c.COLUMN_NAME));
+      if (!existing.has("impressions")) {
+        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`impressions\` int NOT NULL DEFAULT 0`);
+      }
+      if (!existing.has("videoViews")) {
+        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`videoViews\` int NOT NULL DEFAULT 0`);
+      }
+      if (!existing.has("avgWatchTimeMs")) {
+        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`avgWatchTimeMs\` int NOT NULL DEFAULT 0`);
+      }
+    })().catch((e) => { _postMetricsVideoColumnsReady = null; throw e; });
+  }
+  await _postMetricsVideoColumnsReady;
+}
+
+async function ensureInstagramAccountInsightsDailyTable(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  if (!_igAccountInsightsTableReady) {
+    _igAccountInsightsTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS instagram_account_insights_daily (
+          id int AUTO_INCREMENT PRIMARY KEY,
+          userId int NOT NULL,
+          dateKey varchar(10) NOT NULL,
+          collectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          demographics json,
+          websiteClicks int NOT NULL DEFAULT 0,
+          phoneCallClicks int NOT NULL DEFAULT 0,
+          emailContacts int NOT NULL DEFAULT 0,
+          textMessageClicks int NOT NULL DEFAULT 0,
+          getDirectionsClicks int NOT NULL DEFAULT 0,
+          totalInteractions int NOT NULL DEFAULT 0,
+          accountsEngaged int NOT NULL DEFAULT 0,
+          INDEX idx_ig_account_insights_userId (userId),
+          UNIQUE KEY uq_ig_account_insights_user_date (userId, dateKey)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+    })().catch((e) => { _igAccountInsightsTableReady = null; throw e; });
+  }
+  await _igAccountInsightsTableReady;
 }
 
 async function ensureTemplatePerformanceTable() {
@@ -3093,6 +3154,9 @@ export async function savePostMetric(data: {
   followsDelta: number;
   rawScore: number;
   normalizedScore: number;
+  impressions?: number;
+  videoViews?: number;
+  avgWatchTimeMs?: number;
 }): Promise<void> {
   await ensurePostMetricsTable();
   const db = await getDb();
@@ -3107,6 +3171,9 @@ export async function savePostMetric(data: {
     followsDelta: data.followsDelta,
     rawScore: data.rawScore,
     normalizedScore: data.normalizedScore,
+    impressions: data.impressions ?? 0,
+    videoViews: data.videoViews ?? 0,
+    avgWatchTimeMs: data.avgWatchTimeMs ?? 0,
   });
 }
 
@@ -3121,6 +3188,81 @@ export async function getLatestMetricForPost(socialPostId: number): Promise<Post
     .orderBy(desc(postMetrics.collectedAt))
     .limit(1);
   return rows[0] ?? null;
+}
+
+function todayDateKey(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Fortaleza" }).format(new Date());
+}
+
+export async function saveInstagramAccountInsightsSnapshot(data: {
+  userId: number;
+  demographics?: InstagramDemographicsBreakdown;
+  websiteClicks: number;
+  phoneCallClicks: number;
+  emailContacts: number;
+  textMessageClicks: number;
+  getDirectionsClicks: number;
+  totalInteractions: number;
+  accountsEngaged: number;
+}): Promise<void> {
+  await ensureInstagramAccountInsightsDailyTable();
+  const db = await getDb();
+  if (!db) return;
+  const dateKey = todayDateKey();
+
+  const [existing] = await db
+    .select()
+    .from(instagramAccountInsightsDaily)
+    .where(and(eq(instagramAccountInsightsDaily.userId, data.userId), eq(instagramAccountInsightsDaily.dateKey, dateKey)));
+
+  const values = {
+    demographics: data.demographics ?? undefined,
+    websiteClicks: data.websiteClicks,
+    phoneCallClicks: data.phoneCallClicks,
+    emailContacts: data.emailContacts,
+    textMessageClicks: data.textMessageClicks,
+    getDirectionsClicks: data.getDirectionsClicks,
+    totalInteractions: data.totalInteractions,
+    accountsEngaged: data.accountsEngaged,
+  };
+
+  if (existing) {
+    await db.update(instagramAccountInsightsDaily)
+      .set(values)
+      .where(eq(instagramAccountInsightsDaily.id, existing.id));
+  } else {
+    await db.insert(instagramAccountInsightsDaily).values({
+      userId: data.userId,
+      dateKey,
+      ...values,
+    });
+  }
+}
+
+export async function getLatestInstagramAccountInsights(userId: number): Promise<InstagramAccountInsightsDaily | null> {
+  await ensureInstagramAccountInsightsDailyTable();
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(instagramAccountInsightsDaily)
+    .where(eq(instagramAccountInsightsDaily.userId, userId))
+    .orderBy(desc(instagramAccountInsightsDaily.dateKey))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getInstagramAccountInsightsHistory(userId: number, days: number): Promise<InstagramAccountInsightsDaily[]> {
+  await ensureInstagramAccountInsightsDailyTable();
+  const db = await getDb();
+  if (!db) return [];
+  const since = new Date(Date.now() - days * 86400_000);
+  const sinceKey = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Fortaleza" }).format(since);
+  return db
+    .select()
+    .from(instagramAccountInsightsDaily)
+    .where(and(eq(instagramAccountInsightsDaily.userId, userId), sql`${instagramAccountInsightsDaily.dateKey} >= ${sinceKey}`))
+    .orderBy(asc(instagramAccountInsightsDaily.dateKey));
 }
 
 export async function getPublishedPostsWithIgMedia(): Promise<Array<{
