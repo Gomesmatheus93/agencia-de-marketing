@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 import {
   Film,
   Trash2,
@@ -23,7 +24,10 @@ import {
   Award,
   RotateCcw,
   Hash,
+  Video,
 } from "lucide-react";
+
+const VIDEOS_SCRIPT_PREFILL_KEY = "videos_script_prefill";
 import type { ReelsScript } from "@/../../server/db";
 
 type SceneType = "hook" | "context" | "content" | "reward" | "loop_close" | "cta";
@@ -110,6 +114,7 @@ export default function Reels() {
     radarPrefillRef.current = null;
   }
 
+  const [, navigate] = useLocation();
   const displayScript = selected ?? (scripts.length > 0 ? scripts[0] as unknown as ReelsScript : null);
 
   return (
@@ -240,6 +245,10 @@ export default function Reels() {
               script={displayScript}
               onDelete={() => deleteMut.mutate({ id: displayScript.id })}
               deleting={deleteMut.isPending}
+              onCreateVideo={(scriptText) => {
+                sessionStorage.setItem(VIDEOS_SCRIPT_PREFILL_KEY, JSON.stringify({ script: scriptText }));
+                navigate("/dashboard/videos");
+              }}
             />
           ) : null}
         </div>
@@ -252,10 +261,12 @@ function ScriptViewer({
   script,
   onDelete,
   deleting,
+  onCreateVideo,
 }: {
   script: ReelsScript;
   onDelete: () => void;
   deleting: boolean;
+  onCreateVideo: (scriptText: string) => void;
 }) {
   const [copiedCaption, setCopiedCaption] = useState(false);
 
@@ -278,15 +289,32 @@ function ScriptViewer({
             <span>{script.scenes?.length ?? 0} cenas</span>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={onDelete}
-          disabled={deleting}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const fullScript = [
+                script.hook,
+                ...(script.scenes ?? []).map((s) => s.audio).filter(Boolean),
+                script.loopClose,
+              ].join("\n\n");
+              onCreateVideo(fullScript);
+            }}
+          >
+            <Video className="h-4 w-4 mr-1.5" />
+            Criar Vídeo com Avatar
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+            disabled={deleting}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}

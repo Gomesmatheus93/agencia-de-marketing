@@ -182,9 +182,10 @@ export default function Images() {
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
   const [selectedImage, setSelectedImage] = useState<{ id: number; imageUrl: string; prompt: string } | null>(null);
   const [style, setStyle] = useState<ImageStyle>("commercial");
-  const [genMode, setGenMode] = useState<"single" | "variations">("single");
+  const [genMode, setGenMode] = useState<"single" | "variations" | "abtest">("single");
   const [selectedNiche, setSelectedNiche] = useState<string>("none");
   const [variations, setVariations] = useState<{ url: string }[]>([]);
+  const [abWinner, setAbWinner] = useState<"A" | "B" | null>(null);
   const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
   const [showFormatDialog, setShowFormatDialog] = useState(false);
   const [reformattingId, setReformattingId] = useState<number | null>(null);
@@ -263,6 +264,15 @@ export default function Images() {
         nicheId: selectedNiche !== "none" ? selectedNiche : undefined,
         count: 3,
       });
+    } else if (genMode === "abtest") {
+      setVariations([]);
+      setAbWinner(null);
+      generateVariationsMutation.mutate({
+        prompt: prompt.trim(),
+        style,
+        nicheId: selectedNiche !== "none" ? selectedNiche : undefined,
+        count: 2,
+      });
     } else {
       generateMutation.mutate({
         prompt: prompt.trim(),
@@ -338,6 +348,19 @@ export default function Images() {
               >
                 <Layers className="w-3.5 h-3.5" />
                 3 variações
+              </button>
+              <button
+                onClick={() => { setGenMode("abtest"); setVariations([]); setAbWinner(null); }}
+                disabled={isPending}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  genMode === "abtest"
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="font-bold text-[11px]">A/B</span>
+                Teste
               </button>
             </div>
           </div>
@@ -462,12 +485,12 @@ export default function Images() {
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {genMode === "variations" ? "Gerando 3 variações..." : "Criando imagem com IA..."}
+                  {genMode === "abtest" ? "Gerando variações A e B..." : genMode === "variations" ? "Gerando 3 variações..." : "Criando imagem com IA..."}
                 </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4" />
-                  {genMode === "variations" ? "Gerar 3 Variações" : referenceImageUrl ? "Gerar com Referência" : "Gerar Imagem"}
+                  {genMode === "abtest" ? "Gerar Teste A/B" : genMode === "variations" ? "Gerar 3 Variações" : referenceImageUrl ? "Gerar com Referência" : "Gerar Imagem"}
                 </>
               )}
             </Button>
@@ -480,7 +503,18 @@ export default function Images() {
             {/* Loading skeleton */}
             {isPending && (
               <div className="rounded-xl overflow-hidden border border-border/20 bg-muted/10">
-                {genMode === "variations" ? (
+                {genMode === "abtest" ? (
+                  <div className="grid grid-cols-2 gap-4 p-4">
+                    {["A", "B"].map((label) => (
+                      <div key={label} className="aspect-square shimmer rounded-xl flex items-center justify-center">
+                        <div className="text-center">
+                          <Loader2 className="w-5 h-5 text-muted-foreground/30 animate-spin mx-auto mb-1" />
+                          <p className="text-[10px] text-muted-foreground/50 font-bold">{label}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : genMode === "variations" ? (
                   <div className="grid grid-cols-3 gap-3 p-3">
                     {[1, 2, 3].map((i) => (
                       <div key={i} className="aspect-square shimmer rounded-xl flex items-center justify-center">
@@ -501,6 +535,68 @@ export default function Images() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* A/B Test result */}
+            {genMode === "abtest" && variations.length >= 2 && !isPending && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-foreground">
+                    {abWinner ? `Você escolheu a versão ${abWinner} ✓` : "Qual versão performa melhor? Escolha:"}
+                  </p>
+                  {abWinner && (
+                    <button onClick={() => setAbWinner(null)} className="text-[11px] text-muted-foreground hover:text-foreground underline">
+                      Comparar novamente
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {(["A", "B"] as const).map((label, i) => {
+                    const v = variations[i];
+                    const isWinner = abWinner === label;
+                    const isLoser = abWinner && abWinner !== label;
+                    return (
+                      <div key={label} className={cn(
+                        "relative rounded-xl overflow-hidden border-2 transition-all",
+                        isWinner ? "border-emerald-500 ring-2 ring-emerald-500/30 scale-[1.02]" :
+                        isLoser ? "border-border/30 opacity-50" :
+                        "border-border/40 hover:border-primary/50 hover:scale-[1.01] cursor-pointer"
+                      )}>
+                        <div className="absolute top-2 left-2 z-10">
+                          <span className={cn(
+                            "text-white text-sm font-black px-3 py-1 rounded-lg shadow-lg",
+                            isWinner ? "bg-emerald-500" : "bg-black/70"
+                          )}>{label}</span>
+                        </div>
+                        {isWinner && (
+                          <div className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">ESCOLHIDA</div>
+                        )}
+                        <SafeImage src={resolveImgUrl(v.url)} alt={`Versão ${label}`} className="w-full aspect-square object-cover" />
+                        {!abWinner && (
+                          <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-all flex items-center justify-center opacity-0 hover:opacity-100">
+                            <button
+                              onClick={() => { setAbWinner(label); handleDownload(v.url); }}
+                              className="px-5 py-2.5 rounded-xl bg-white text-gray-900 text-sm font-bold shadow-lg"
+                            >
+                              Escolher {label} e Baixar
+                            </button>
+                          </div>
+                        )}
+                        {abWinner && isWinner && (
+                          <div className="absolute inset-x-0 bottom-0 p-3">
+                            <button
+                              onClick={() => handleDownload(v.url)}
+                              className="w-full py-2 rounded-lg bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar versão {label}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

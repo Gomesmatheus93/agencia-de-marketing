@@ -2,7 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "@/components/SafeImage";
-import { type ComponentType, useRef, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
@@ -220,6 +220,17 @@ export default function Videos() {
   const [emotion, setEmotion] = useState<Emotion>("Friendly");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState("");
   const [selectedVideo, setSelectedVideo] = useState<AvatarVideo | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("videos_script_prefill");
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as { script: string };
+      sessionStorage.removeItem("videos_script_prefill");
+      setScript(prefill.script);
+      toast.info("Roteiro do Reels carregado — adicione sua foto e clique em Gerar Vídeo.");
+    } catch { /* ignore */ }
+  }, []);
 
   const { data: videos = [], isLoading } = trpc.videos.getAll.useQuery();
 

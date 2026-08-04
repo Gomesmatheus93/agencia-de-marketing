@@ -14,6 +14,9 @@ const TRIAL_LOCKED_FEATURES = new Set([
   "radar",
   "editorialPlan",
   "stories",
+  "campaign",
+  "report",
+  "emailMarketing",
 ]);
 
 export function usePlan() {

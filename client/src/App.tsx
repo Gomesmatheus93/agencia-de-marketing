@@ -23,6 +23,11 @@ import StyleAnalyzer from "./pages/StyleAnalyzer";
 import Radar from "./pages/Radar";
 import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
+import Resize from "./pages/Resize";
+import Campaign from "./pages/Campaign";
+import Report from "./pages/Report";
+import EmailMarketing from "./pages/EmailMarketing";
+import Onboarding from "./pages/Onboarding";
 
 function AppRoutes() {
   return (
@@ -47,6 +52,11 @@ function AppRoutes() {
       <Route path="/dashboard/style-analyzer" component={StyleAnalyzer} />
       <Route path="/dashboard/radar" component={Radar} />
       <Route path="/dashboard/stories" component={Stories} />
+      <Route path="/dashboard/resize" component={Resize} />
+      <Route path="/dashboard/campaign" component={Campaign} />
+      <Route path="/dashboard/report" component={Report} />
+      <Route path="/dashboard/email-marketing" component={EmailMarketing} />
+      <Route path="/dashboard/onboarding" component={Onboarding} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

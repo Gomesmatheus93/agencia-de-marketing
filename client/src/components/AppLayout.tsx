@@ -30,6 +30,10 @@ import {
   Lock,
   Crown,
   Layers,
+  Crop,
+  Target,
+  FileBarChart2,
+  Mail,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -61,6 +65,10 @@ const NAV_ITEMS_CONFIG = [
   { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const },
   { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const },
   { id: "stories", icon: Layers, path: "/dashboard/stories", color: "from-pink-500 to-rose-500", labelKey: "stories" as const, descKey: "storiesDesc" as const },
+  { id: "resize", icon: Crop, path: "/dashboard/resize", color: "from-cyan-500 to-blue-500", labelKey: "resize" as const, descKey: "resizeDesc" as const },
+  { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-orange-500 to-red-500", labelKey: "campaign" as const, descKey: "campaignDesc" as const },
+  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const },
+  { id: "emailMarketing", icon: Mail, path: "/dashboard/email-marketing", color: "from-emerald-500 to-teal-500", labelKey: "emailMarketing" as const, descKey: "emailMarketingDesc" as const },
 ];
 
 const SETTINGS_CONFIG = {
