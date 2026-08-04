@@ -2079,6 +2079,28 @@ export async function getActiveDigestSession(
 }
 
 
+export async function getRecentSentNewsUrls(userId: number, daysBack = 7): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+  await ensureDigestTables(db);
+  const rows = await db.execute(sql`
+    SELECT news_items FROM whatsapp_digest_sessions
+    WHERE user_id = ${userId}
+      AND sent_at >= DATE_SUB(NOW(), INTERVAL ${daysBack} DAY)
+    ORDER BY sent_at DESC
+  `);
+  const urls = new Set<string>();
+  for (const row of rows[0] as unknown as Array<Record<string, unknown>>) {
+    try {
+      const items = JSON.parse(String(row.news_items)) as DigestNewsItem[];
+      for (const item of items) {
+        if (item.url) urls.add(item.url.trim().replace(/\/$/, "").toLowerCase());
+      }
+    } catch { /* skip malformed rows */ }
+  }
+  return urls;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Reels Scripts
 // ─────────────────────────────────────────────────────────────

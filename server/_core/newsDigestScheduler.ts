@@ -2,7 +2,7 @@ import { getPostSchedulerTimeZone } from "./postScheduling";
 import { fetchNewsFromSite, dedupeNewsItems, rankNewsItems, DEFAULT_NEWS_SITES } from "../routers";
 import { sendNewsDigest } from "./whatsapp";
 import { buildDigestTextMessage } from "./aggregatorWebhook";
-import { getAllEnabledDigestSettings, saveDigestSession, markDigestLastSent } from "../db";
+import { getAllEnabledDigestSettings, saveDigestSession, markDigestLastSent, getRecentSentNewsUrls } from "../db";
 import { ENV } from "./env";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -47,12 +47,30 @@ function incrementAttempts(userId: number, today: string) {
   attemptsToday.set(userId, { date: today, tries: prev + 1 });
 }
 
-async function fetchTop5News() {
+function normalizeUrl(url: string) {
+  return url.trim().replace(/\/$/, "").toLowerCase();
+}
+
+async function fetchTop5News(excludedUrls: Set<string> = new Set()) {
   const results = await Promise.allSettled(DEFAULT_NEWS_SITES.map(fetchNewsFromSite));
-  const items = dedupeNewsItems(
+  const all = dedupeNewsItems(
     results.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
   );
-  return rankNewsItems(items, "energia").slice(0, 5);
+
+  const fresh = all.filter((item) => !excludedUrls.has(normalizeUrl(item.url)));
+  const stale = all.filter((item) => excludedUrls.has(normalizeUrl(item.url)));
+
+  const freshCount = fresh.length;
+  const staleCount = stale.length;
+  console.log(`[NewsDigest] Notícias encontradas: ${all.length} total, ${freshCount} novas, ${staleCount} já enviadas anteriormente.`);
+
+  if (freshCount === 0 && staleCount > 0) {
+    console.warn("[NewsDigest] Todas as notícias já foram enviadas recentemente. Buscando as mais antigas do histórico para reuso...");
+    // Sort stale by publishedAt desc and return the 5 "least stale"
+    return rankNewsItems(stale, "energia").slice(0, 5);
+  }
+
+  return rankNewsItems(fresh, "energia").slice(0, 5);
 }
 
 export async function fetchMoreNews(
@@ -63,7 +81,7 @@ export async function fetchMoreNews(
     results.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
   );
   const ranked = rankNewsItems(items, "energia");
-  const fresh = ranked.filter((item) => !excludedUrls.has(item.url));
+  const fresh = ranked.filter((item) => !excludedUrls.has(normalizeUrl(item.url)));
   return fresh.slice(0, 5).map((item) => ({
     title: item.title,
     url: item.url,
@@ -153,22 +171,18 @@ async function runDigestTick() {
     `(${Math.floor(currentMins / 60)}:${String(currentMins % 60).padStart(2, "0")} ${timeZone})`
   );
 
-  let top5: Awaited<ReturnType<typeof fetchTop5News>>;
-  try {
-    top5 = await fetchTop5News();
-  } catch (err) {
-    console.error("[NewsDigest] Erro ao buscar notícias:", err);
-    return;
-  }
-
-  if (top5.length === 0) {
-    console.warn("[NewsDigest] Nenhuma notícia encontrada — digest adiado para o próximo minuto.");
-    return;
-  }
-
   for (const user of due) {
     try {
       incrementAttempts(user.userId, today);
+
+      const sentUrls = await getRecentSentNewsUrls(user.userId, 7).catch(() => new Set<string>());
+      const top5 = await fetchTop5News(sentUrls);
+
+      if (top5.length === 0) {
+        console.warn(`[NewsDigest] user=${user.userId} — nenhuma notícia encontrada, adiando.`);
+        continue;
+      }
+
       const ok = await runDigestForUser(user.userId, user.whatsappNumber, top5, user.templateName, user.templateLanguage);
       if (ok) {
         await markDigestLastSent(user.userId, today);
