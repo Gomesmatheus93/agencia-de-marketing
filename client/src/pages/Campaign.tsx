@@ -18,7 +18,6 @@ import {
   FileText,
   MessageSquare,
   Film,
-  LayoutGrid,
   Layers,
   Shuffle,
   BarChart2,
@@ -26,7 +25,6 @@ import {
   Users,
   Tag,
   Megaphone,
-  ChevronRight,
   Sparkles,
   Hash,
   Image,
@@ -37,6 +35,7 @@ import {
 type ArtCopy = {
   title: string;
   subtitle: string;
+  body: string;
   cta: string;
   secondary: string;
   badge: string | null;
@@ -44,23 +43,25 @@ type ArtCopy = {
 
 type StorySlide = {
   slide: number;
+  visual: string;
   text: string;
   cta: string;
 };
 
-type Reel = {
-  hook: string;
-  scene1: string;
-  scene2: string;
-  scene3: string;
-  closing: string;
-  cta: string;
+type ReelScene = {
+  narration: string;
+  visual: string;
+  overlay: string;
 };
 
-type CarouselSlide = {
-  slide: number;
-  title: string;
-  body: string;
+type Reel = {
+  musicSuggestion: string;
+  hook: ReelScene;
+  scene1: ReelScene;
+  scene2: ReelScene;
+  scene3: ReelScene;
+  closing: ReelScene;
+  cta: ReelScene;
 };
 
 type Variation = {
@@ -85,7 +86,6 @@ type CampaignResult = {
   caption: string;
   stories: StorySlide[];
   reel: Reel;
-  carousel: CarouselSlide[];
   variations: {
     emotional: Variation;
     sales: Variation;
@@ -144,14 +144,44 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 // ─── Result Tabs ─────────────────────────────────────────────────────────────
 
 function ResultPanel({ result }: { result: CampaignResult }) {
+  const [genImageUrl, setGenImageUrl] = useState<Record<string, string>>({});
+  const [genImagePending, setGenImagePending] = useState<Record<string, boolean>>({});
+
+  const generateImageMut = trpc.images.generate.useMutation({
+    onSuccess: (data, variables) => {
+      const key = (variables as { _key?: string })._key ?? "main";
+      setGenImageUrl((prev) => ({ ...prev, [key]: (data as unknown as { imageUrl?: string; displayUrl?: string }).displayUrl ?? (data as unknown as { imageUrl?: string }).imageUrl ?? "" }));
+      setGenImagePending((prev) => ({ ...prev, [key]: false }));
+      toast.success("Imagem gerada!");
+    },
+    onError: (e) => {
+      toast.error("Erro ao gerar imagem: " + e.message);
+      setGenImagePending({});
+    },
+  });
+
+  function generateImage(key: string, prompt: string, style: "commercial" | "social_post" = "commercial") {
+    setGenImagePending((prev) => ({ ...prev, [key]: true }));
+    generateImageMut.mutate({ prompt, style, _key: key } as Parameters<typeof generateImageMut.mutate>[0]);
+  }
+
   const reelScenes = [
-    { key: "hook",    label: "Gancho (0–3s)",       color: "bg-red-500/10 border-red-500/30 text-red-400" },
-    { key: "scene1",  label: "Cena 1 (3–10s)",      color: "bg-blue-500/10 border-blue-500/30 text-blue-400" },
-    { key: "scene2",  label: "Cena 2 (10–18s)",     color: "bg-violet-500/10 border-violet-500/30 text-violet-400" },
-    { key: "scene3",  label: "Cena 3 (18–24s)",     color: "bg-amber-500/10 border-amber-500/30 text-amber-400" },
-    { key: "closing", label: "Encerramento (24–27s)", color: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" },
-    { key: "cta",     label: "CTA Final (27–30s)",  color: "bg-pink-500/10 border-pink-500/30 text-pink-400" },
-  ] as const;
+    { key: "hook" as const,    label: "Gancho",       timing: "0–3s",   accent: "red" },
+    { key: "scene1" as const,  label: "Cena 1",       timing: "3–10s",  accent: "blue" },
+    { key: "scene2" as const,  label: "Cena 2",       timing: "10–18s", accent: "violet" },
+    { key: "scene3" as const,  label: "Cena 3",       timing: "18–24s", accent: "amber" },
+    { key: "closing" as const, label: "Encerramento", timing: "24–27s", accent: "emerald" },
+    { key: "cta" as const,     label: "CTA Final",    timing: "27–30s", accent: "pink" },
+  ];
+
+  const accentCls: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+    red:     { bg: "bg-red-500/5",     border: "border-red-500/20",     text: "text-red-400",     badge: "bg-red-500/15" },
+    blue:    { bg: "bg-blue-500/5",    border: "border-blue-500/20",    text: "text-blue-400",    badge: "bg-blue-500/15" },
+    violet:  { bg: "bg-violet-500/5",  border: "border-violet-500/20",  text: "text-violet-400",  badge: "bg-violet-500/15" },
+    amber:   { bg: "bg-amber-500/5",   border: "border-amber-500/20",   text: "text-amber-400",   badge: "bg-amber-500/15" },
+    emerald: { bg: "bg-emerald-500/5", border: "border-emerald-500/20", text: "text-emerald-400", badge: "bg-emerald-500/15" },
+    pink:    { bg: "bg-pink-500/5",    border: "border-pink-500/20",    text: "text-pink-400",    badge: "bg-pink-500/15" },
+  };
 
   return (
     <Tabs defaultValue="concept" className="flex flex-col h-full">
@@ -163,7 +193,7 @@ function ResultPanel({ result }: { result: CampaignResult }) {
             { value: "copy",      label: "Copy",         icon: FileText },
             { value: "caption",   label: "Legenda",      icon: MessageSquare },
             { value: "reel",      label: "Reel",         icon: Film },
-            { value: "carousel",  label: "Carrossel",    icon: LayoutGrid },
+            { value: "image",     label: "Imagem",       icon: Image },
             { value: "stories",   label: "Stories",      icon: Layers },
             { value: "variations",label: "Variações",    icon: Shuffle },
             { value: "recs",      label: "Recomendações",icon: BarChart2 },
@@ -212,33 +242,44 @@ function ResultPanel({ result }: { result: CampaignResult }) {
 
         {/* ── Copy para Arte ────────────────────────────────────────── */}
         <TabsContent value="copy" className="mt-0 space-y-3">
-          <p className="text-xs text-muted-foreground">Textos prontos para uso nas peças gráficas.</p>
-          {[
-            { key: "title",    label: "Título",           color: "from-violet-500/10 to-purple-500/10 border-violet-500/30" },
-            { key: "subtitle", label: "Subtítulo",        color: "from-blue-500/10 to-cyan-500/10 border-blue-500/30" },
-            { key: "cta",      label: "Chamada para Ação",color: "from-emerald-500/10 to-teal-500/10 border-emerald-500/30" },
-            { key: "secondary",label: "Texto Secundário", color: "from-orange-500/10 to-amber-500/10 border-orange-500/30" },
-          ].map(({ key, label, color }) => {
-            const value = result.artCopy[key as keyof ArtCopy];
+          <p className="text-xs text-muted-foreground">Textos completos para uso nas peças gráficas.</p>
+          {/* Título + Subtítulo + CTA */}
+          {([
+            { key: "title",    label: "Título",           color: "from-violet-500/10 to-purple-500/10 border-violet-500/30", size: "text-xl font-bold" },
+            { key: "subtitle", label: "Subtítulo",        color: "from-blue-500/10 to-cyan-500/10 border-blue-500/30",       size: "text-base font-semibold" },
+            { key: "cta",      label: "Chamada para Ação",color: "from-emerald-500/10 to-teal-500/10 border-emerald-500/30", size: "text-base font-bold" },
+            { key: "secondary",label: "Texto de Suporte", color: "from-orange-500/10 to-amber-500/10 border-orange-500/30",  size: "text-sm" },
+          ] as const).map(({ key, label, color, size }) => {
+            const value = result.artCopy[key];
             if (!value) return null;
             return (
               <div key={key} className={cn("rounded-xl border bg-gradient-to-br p-4", color)}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{label}</p>
-                    <p className="text-base font-semibold leading-snug text-foreground">{value}</p>
+                    <p className={cn("leading-snug text-foreground", size)}>{value}</p>
                   </div>
-                  <CopyButton text={value as string} className="shrink-0" />
+                  <CopyButton text={value} className="shrink-0" />
                 </div>
               </div>
             );
           })}
+          {/* Corpo persuasivo */}
+          {result.artCopy.body && (
+            <div className="rounded-xl border border-slate-500/20 bg-gradient-to-br from-slate-500/5 to-gray-500/5 p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Copy de Corpo — texto persuasivo completo</p>
+                <CopyButton text={result.artCopy.body} className="shrink-0" />
+              </div>
+              <p className="text-sm leading-relaxed text-foreground">{result.artCopy.body}</p>
+            </div>
+          )}
           {result.artCopy.badge && (
             <div className="rounded-xl border border-pink-500/30 bg-gradient-to-br from-pink-500/10 to-rose-500/10 p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Selo Promocional</p>
-                  <Badge className="text-sm px-3 py-1 bg-pink-500/20 text-pink-300 border-pink-500/40 border">
+                  <Badge className="text-sm px-3 py-1.5 bg-pink-500/20 text-pink-300 border-pink-500/40 border">
                     {result.artCopy.badge}
                   </Badge>
                 </div>
@@ -266,72 +307,164 @@ function ResultPanel({ result }: { result: CampaignResult }) {
 
         {/* ── Reel ──────────────────────────────────────────────────── */}
         <TabsContent value="reel" className="mt-0 space-y-3">
-          <p className="text-xs text-muted-foreground">Roteiro completo para Reels de 30 segundos.</p>
-          <div className="space-y-2">
-            {reelScenes.map(({ key, label, color }) => (
-              <div key={key} className={cn("rounded-xl border p-4", color.split(" ").slice(0, 2).join(" "), "border", color.split(" ")[2])}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                      <p className={cn("text-[10px] font-bold uppercase tracking-widest", color.split(" ")[3])}>{label}</p>
-                    </div>
-                    <p className="text-sm leading-relaxed text-foreground">{result.reel[key]}</p>
-                  </div>
-                  <CopyButton text={result.reel[key]} className="shrink-0" />
-                </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Roteiro completo para filmar o Reel — narração exata + direção visual.</p>
+            {result.reel.musicSuggestion && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-1.5">
+                <span className="text-base">🎵</span>
+                <span className="font-medium">{result.reel.musicSuggestion}</span>
               </div>
-            ))}
+            )}
           </div>
+          <div className="space-y-3">
+            {reelScenes.map(({ key, label, timing, accent }) => {
+              const scene: ReelScene | undefined = result.reel[key] as ReelScene | undefined;
+              if (!scene) return null;
+              const cls = accentCls[accent];
+              const fullScript = `${label} (${timing})\n🎙 ${scene.narration}\n📸 ${scene.visual}\n📝 ${scene.overlay}`;
+              return (
+                <div key={key} className={cn("rounded-xl border p-4 space-y-3", cls.bg, cls.border)}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("text-xs font-black uppercase tracking-widest px-2 py-0.5 rounded-md", cls.badge, cls.text)}>{label}</span>
+                      <span className="text-[10px] text-muted-foreground">{timing}</span>
+                    </div>
+                    <CopyButton text={fullScript} />
+                  </div>
+                  {/* Narration */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">🎙 Narração — o que dizer</p>
+                    <p className="text-sm font-medium text-foreground leading-relaxed bg-background/60 rounded-lg px-3 py-2 border border-border/30">"{scene.narration}"</p>
+                  </div>
+                  {/* Visual direction */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">📸 Direção visual — o que filmar</p>
+                    <p className="text-xs text-foreground/80 leading-relaxed">{scene.visual}</p>
+                  </div>
+                  {/* Overlay */}
+                  {scene.overlay && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">📝 Texto na tela</p>
+                      <p className={cn("text-xs font-bold inline-block px-2 py-0.5 rounded", cls.badge, cls.text)}>{scene.overlay}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* Full script copy */}
+          <SectionCard>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Roteiro completo (copiar tudo)</p>
+              <CopyButton text={
+                reelScenes.map(({ key, label, timing }) => {
+                  const s = result.reel[key] as ReelScene | undefined;
+                  if (!s) return "";
+                  return `${label} (${timing})\n🎙 ${s.narration}\n📸 ${s.visual}${s.overlay ? `\n📝 ${s.overlay}` : ""}`;
+                }).filter(Boolean).join("\n\n")
+              } />
+            </div>
+          </SectionCard>
         </TabsContent>
 
-        {/* ── Carrossel ─────────────────────────────────────────────── */}
-        <TabsContent value="carousel" className="mt-0 space-y-3">
-          <p className="text-xs text-muted-foreground">Slides prontos para montar o carrossel.</p>
-          <div className="grid gap-3">
-            {(result.carousel ?? []).map((slide) => (
-              <SectionCard key={slide.slide}>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-                    {slide.slide}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm mb-1">{slide.title}</p>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{slide.body}</p>
-                  </div>
-                  <CopyButton text={`${slide.title}\n${slide.body}`} className="shrink-0" />
-                </div>
-              </SectionCard>
-            ))}
-          </div>
+        {/* ── Imagem ────────────────────────────────────────────────── */}
+        <TabsContent value="image" className="mt-0 space-y-4">
+          <p className="text-xs text-muted-foreground">Gere a imagem da campanha diretamente com IA usando o prompt criativo.</p>
+          <SectionCard>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Image className="h-3.5 w-3.5" />Prompt para imagem principal
+              </p>
+              <CopyButton text={result.artPrompt} />
+            </div>
+            <p className="text-xs text-muted-foreground font-mono bg-muted/50 rounded-lg p-3 whitespace-pre-wrap leading-relaxed">{result.artPrompt}</p>
+          </SectionCard>
+          {genImageUrl["main"] ? (
+            <div className="space-y-3">
+              <img src={genImageUrl["main"]} alt="Imagem da campanha" className="w-full rounded-2xl border border-border shadow-lg" />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { const a = document.createElement("a"); a.href = genImageUrl["main"]; a.download = "campanha.png"; a.click(); }}>
+                  <Image className="h-3.5 w-3.5 mr-1.5" />Baixar
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setGenImageUrl((p) => ({ ...p, main: "" }))}>
+                  Regenerar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 hover:from-orange-600 hover:to-red-600"
+              onClick={() => generateImage("main", result.artPrompt, "commercial")}
+              disabled={genImagePending["main"]}
+            >
+              {genImagePending["main"] ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando imagem...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" />Gerar Imagem da Campanha</>
+              )}
+            </Button>
+          )}
         </TabsContent>
 
         {/* ── Stories ───────────────────────────────────────────────── */}
-        <TabsContent value="stories" className="mt-0 space-y-3">
-          <p className="text-xs text-muted-foreground">Sequência de Stories para engajar a audiência.</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {(result.stories ?? []).map((story) => (
-              <div
-                key={story.slide}
-                className="rounded-xl border border-border/60 bg-gradient-to-b from-background/80 to-muted/20 p-4 flex flex-col gap-3 relative overflow-hidden"
-              >
-                <div className="absolute top-2 right-2">
-                  <CopyButton text={`${story.text}\n${story.cta}`} />
-                </div>
-                <div className="w-6 h-6 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                  {story.slide}
-                </div>
-                <p className="text-sm leading-relaxed text-foreground flex-1">{story.text}</p>
-                {story.cta && (
-                  <div className="pt-2 border-t border-border/40">
-                    <Badge variant="outline" className="text-xs gap-1">
-                      <Megaphone className="h-2.5 w-2.5" />
-                      {story.cta}
-                    </Badge>
+        <TabsContent value="stories" className="mt-0 space-y-4">
+          <p className="text-xs text-muted-foreground">Gere as imagens de cada Story com IA — cada slide tem um prompt visual específico.</p>
+          <div className="space-y-5">
+            {(result.stories ?? []).map((story) => {
+              const storyKey = `story_${story.slide}`;
+              return (
+                <div key={story.slide} className="rounded-xl border border-border/60 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">{story.slide}</div>
+                    <p className="text-sm font-semibold text-foreground">Story {story.slide}</p>
+                    {story.cta && (
+                      <Badge variant="outline" className="text-xs ml-auto">
+                        <Megaphone className="h-2.5 w-2.5 mr-1" />{story.cta}
+                      </Badge>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                  {/* Overlay text */}
+                  {story.text && (
+                    <div className="bg-muted/30 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Texto de overlay</p>
+                      <p className="text-sm font-bold text-foreground">{story.text}</p>
+                    </div>
+                  )}
+                  {/* Generated image or generate button */}
+                  {genImageUrl[storyKey] ? (
+                    <div className="space-y-2">
+                      <img src={genImageUrl[storyKey]} alt={`Story ${story.slide}`} className="w-full aspect-[9/16] max-h-80 object-cover rounded-xl border border-border" />
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => { const a = document.createElement("a"); a.href = genImageUrl[storyKey]; a.download = `story-${story.slide}.png`; a.click(); }}>
+                          Baixar Story {story.slide}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setGenImageUrl((p) => { const n = { ...p }; delete n[storyKey]; return n; })}>
+                          Regenerar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Prompt visual</p>
+                      <p className="text-xs text-muted-foreground font-mono bg-muted/30 rounded-lg p-2.5 leading-relaxed">{story.visual}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => generateImage(storyKey, story.visual, "social_post")}
+                        disabled={genImagePending[storyKey]}
+                      >
+                        {genImagePending[storyKey] ? (
+                          <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Gerando...</>
+                        ) : (
+                          <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Gerar Story {story.slide}</>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </TabsContent>
 
