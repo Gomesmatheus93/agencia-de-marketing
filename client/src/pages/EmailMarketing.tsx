@@ -62,34 +62,43 @@ export default function EmailMarketing() {
   async function handleExportImage() {
     if (!newsletter) return;
     setExporting(true);
+    const container = document.createElement("div");
     try {
       const { toPng } = await import("html-to-image");
 
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:640px;border:0;visibility:hidden;";
-      iframe.style.height = "10px";
-      document.body.appendChild(iframe);
+      // Parse the newsletter HTML to extract styles + body content
+      const parser = new DOMParser();
+      const parsed = parser.parseFromString(newsletter.htmlContent, "text/html");
 
-      await new Promise<void>((resolve, reject) => {
-        iframe.onload = () => resolve();
-        iframe.onerror = reject;
-        iframe.srcdoc = newsletter.htmlContent;
+      // Off-screen container in the MAIN document (html-to-image needs same-document nodes)
+      container.style.cssText =
+        "position:fixed;left:-9999px;top:0;width:640px;background:#ffffff;overflow:hidden;z-index:-1;";
+
+      // Inject newsletter <style> tags
+      parsed.querySelectorAll("style").forEach((s) => {
+        const clone = document.createElement("style");
+        clone.textContent = s.textContent;
+        container.appendChild(clone);
       });
 
-      // expand to full content height
-      const doc = iframe.contentDocument;
-      if (!doc) throw new Error("iframe not accessible");
-      const fullHeight = doc.documentElement.scrollHeight || doc.body.scrollHeight || 800;
-      iframe.style.height = `${fullHeight}px`;
-      // allow layout to settle
-      await new Promise((r) => setTimeout(r, 120));
+      // Inject body content
+      const inner = document.createElement("div");
+      inner.innerHTML = parsed.body.innerHTML;
+      const bodyInline = parsed.body.getAttribute("style");
+      if (bodyInline) inner.setAttribute("style", bodyInline);
+      container.appendChild(inner);
 
-      const body = doc.body;
-      body.style.margin = "0";
+      document.body.appendChild(container);
 
-      const dataUrl = await toPng(body, { width: 640, pixelRatio: 2, skipFonts: false });
+      // Let images and layout settle
+      await new Promise((r) => setTimeout(r, 350));
 
-      document.body.removeChild(iframe);
+      const dataUrl = await toPng(container, {
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+        width: 640,
+        skipFonts: true,
+      });
 
       const link = document.createElement("a");
       link.download = "newsletter.png";
@@ -98,8 +107,9 @@ export default function EmailMarketing() {
       toast.success("Imagem exportada com sucesso!");
     } catch (e) {
       console.error("[ExportImage]", e);
-      toast.error("Erro ao exportar imagem. Tente copiar o HTML e converter em outra ferramenta.");
+      toast.error("Erro ao exportar imagem.");
     } finally {
+      container.remove();
       setExporting(false);
     }
   }
