@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Mail, Sparkles, Loader2, Copy, Check, Eye, EyeOff, FileText, Send, RefreshCw } from "lucide-react";
+import { Mail, Sparkles, Loader2, Copy, Check, Eye, EyeOff, FileText, Send, RefreshCw, ImageDown } from "lucide-react";
 
 export default function EmailMarketing() {
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
@@ -14,6 +14,7 @@ export default function EmailMarketing() {
   const [copied, setCopied] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [sendStatus, setSendStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [exporting, setExporting] = useState(false);
 
   const { data: articles = [] } = trpc.articles.getAll.useQuery();
 
@@ -56,6 +57,51 @@ export default function EmailMarketing() {
     handleCopy();
     setSendStatus("sent");
     toast.info("Configure RESEND_API_KEY no .env para enviar por e-mail. HTML copiado para área de transferência.");
+  }
+
+  async function handleExportImage() {
+    if (!newsletter) return;
+    setExporting(true);
+    try {
+      const { toPng } = await import("html-to-image");
+
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:640px;border:0;visibility:hidden;";
+      iframe.style.height = "10px";
+      document.body.appendChild(iframe);
+
+      await new Promise<void>((resolve, reject) => {
+        iframe.onload = () => resolve();
+        iframe.onerror = reject;
+        iframe.srcdoc = newsletter.htmlContent;
+      });
+
+      // expand to full content height
+      const doc = iframe.contentDocument;
+      if (!doc) throw new Error("iframe not accessible");
+      const fullHeight = doc.documentElement.scrollHeight || doc.body.scrollHeight || 800;
+      iframe.style.height = `${fullHeight}px`;
+      // allow layout to settle
+      await new Promise((r) => setTimeout(r, 120));
+
+      const body = doc.body;
+      body.style.margin = "0";
+
+      const dataUrl = await toPng(body, { width: 640, pixelRatio: 2, skipFonts: false });
+
+      document.body.removeChild(iframe);
+
+      const link = document.createElement("a");
+      link.download = "newsletter.png";
+      link.href = dataUrl;
+      link.click();
+      toast.success("Imagem exportada com sucesso!");
+    } catch (e) {
+      console.error("[ExportImage]", e);
+      toast.error("Erro ao exportar imagem. Tente copiar o HTML e converter em outra ferramenta.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const selectedArticle = articles.find((a) => a.id === selectedArticleId);
@@ -201,7 +247,7 @@ export default function EmailMarketing() {
               </div>
 
               {/* Ações */}
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Button variant="outline" onClick={() => setShowPreview(!showPreview)}>
                   {showPreview ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
                   {showPreview ? "Ocultar preview" : "Ver preview"}
@@ -209,6 +255,12 @@ export default function EmailMarketing() {
                 <Button variant="outline" onClick={handleCopy}>
                   {copied ? <Check className="w-4 h-4 mr-2 text-emerald-500" /> : <Copy className="w-4 h-4 mr-2" />}
                   {copied ? "Copiado!" : "Copiar HTML"}
+                </Button>
+                <Button variant="outline" onClick={handleExportImage} disabled={exporting}>
+                  {exporting
+                    ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    : <ImageDown className="w-4 h-4 mr-2" />}
+                  {exporting ? "Exportando..." : "Exportar como PNG"}
                 </Button>
                 <Button variant="outline" onClick={handleGenerate}>
                   <RefreshCw className="w-4 h-4 mr-2" />Regenerar
