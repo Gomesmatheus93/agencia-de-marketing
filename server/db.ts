@@ -1639,38 +1639,45 @@ export async function deleteFeatureFlag(key: string): Promise<void> {
 
 // ─── Brand Kits ───────────────────────────────────────────────────────────────
 
+let _brandKitTableReady: Promise<void> | null = null;
+
 async function ensureBrandKitTable(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return;
-  // If the table exists with the OLD schema (has a 'name' column), drop and recreate.
-  const [oldCols] = await db.execute(sql`
-    SELECT COUNT(*) AS cnt FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name   = 'brand_kits'
-      AND column_name  = 'name'
-  `) as unknown as [Array<{ cnt: number }>, unknown];
-  if (Number((oldCols as Array<{ cnt: number }>)[0]?.cnt) > 0) {
-    await db.execute(sql`DROP TABLE brand_kits`);
+  if (!_brandKitTableReady) {
+    _brandKitTableReady = (async () => {
+      // If the table exists with the OLD schema (has a 'name' column), drop and recreate.
+      const [oldCols] = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name   = 'brand_kits'
+          AND column_name  = 'name'
+      `) as unknown as [Array<{ cnt: number }>, unknown];
+      if (Number((oldCols as Array<{ cnt: number }>)[0]?.cnt) > 0) {
+        await db.execute(sql`DROP TABLE brand_kits`);
+      }
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS brand_kits (
+          id              int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          userId          int NOT NULL UNIQUE,
+          companyName     varchar(255),
+          tagline         varchar(512),
+          logoUrl         text,
+          industry        varchar(128),
+          targetAudience  text,
+          brandValues     text,
+          toneOfVoice     varchar(64)  DEFAULT 'professional',
+          primaryColor    varchar(7)   DEFAULT '#6366f1',
+          secondaryColor  varchar(7)   DEFAULT '#8b5cf6',
+          accentColor     varchar(7)   DEFAULT '#06b6d4',
+          instagramHandle varchar(128),
+          linkedinUrl     varchar(255),
+          createdAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `);
+    })().catch((e) => { _brandKitTableReady = null; throw e; });
   }
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS brand_kits (
-      id              int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      userId          int NOT NULL UNIQUE,
-      companyName     varchar(255),
-      tagline         varchar(512),
-      logoUrl         text,
-      industry        varchar(128),
-      targetAudience  text,
-      brandValues     text,
-      toneOfVoice     varchar(64)  DEFAULT 'professional',
-      primaryColor    varchar(7)   DEFAULT '#6366f1',
-      secondaryColor  varchar(7)   DEFAULT '#8b5cf6',
-      accentColor     varchar(7)   DEFAULT '#06b6d4',
-      instagramHandle varchar(128),
-      linkedinUrl     varchar(255),
-      createdAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updatedAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
+  await _brandKitTableReady;
 }
 
 export async function getBrandKit(userId: number): Promise<BrandKit | null> {

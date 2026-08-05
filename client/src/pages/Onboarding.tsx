@@ -22,7 +22,7 @@ type Step = "welcome" | "brandkit" | "instagram" | "whatsapp" | "done";
 const STEPS: { id: Step; title: string; icon: React.ElementType; color: string }[] = [
   { id: "welcome",   title: "Bem-vindo",    icon: Sparkles,      color: "from-violet-500 to-purple-600" },
   { id: "brandkit",  title: "Brand Kit",    icon: Palette,       color: "from-pink-500 to-rose-500" },
-  { id: "instagram", title: "AtSign",    icon: AtSign,     color: "from-orange-500 to-amber-500" },
+  { id: "instagram", title: "Instagram",  icon: AtSign,        color: "from-orange-500 to-amber-500" },
   { id: "whatsapp",  title: "WhatsApp",     icon: MessageSquare, color: "from-emerald-500 to-teal-500" },
   { id: "done",      title: "Pronto!",      icon: Rocket,        color: "from-blue-500 to-cyan-500" },
 ];
@@ -101,12 +101,12 @@ export default function Onboarding() {
             <div className="text-center space-y-4">
               <p className="text-foreground font-semibold text-lg">Seja bem-vindo à KrythosLab!</p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                Vamos configurar sua agência em menos de 3 minutos. Você vai definir sua identidade de marca, conectar seu AtSign e configurar o envio de notícias pelo WhatsApp.
+                Vamos configurar sua agência em menos de 3 minutos. Você vai definir sua identidade de marca, conectar seu Instagram e configurar o envio de notícias pelo WhatsApp.
               </p>
               <div className="grid grid-cols-3 gap-3 pt-2">
                 {[
                   { icon: Palette, label: "Brand Kit" },
-                  { icon: AtSign, label: "AtSign" },
+                  { icon: AtSign, label: "Instagram" },
                   { icon: MessageSquare, label: "WhatsApp" },
                 ].map(({ icon: StepIcon, label }) => (
                   <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/30 border border-border">
@@ -177,13 +177,13 @@ export default function Onboarding() {
           {step === "instagram" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Conecte sua conta do AtSign para ver métricas, agendar posts e monitorar engajamento diretamente na plataforma.
+                Conecte sua conta do Instagram para ver métricas, agendar posts e monitorar engajamento diretamente na plataforma.
               </p>
               <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20 space-y-2">
                 <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">Como conectar:</p>
                 <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
                   <li>Vá em <strong>Analytics</strong> no menu lateral</li>
-                  <li>Clique em "Conectar AtSign"</li>
+                  <li>Clique em "Conectar Instagram"</li>
                   <li>Autorize via Facebook/Meta</li>
                 </ol>
               </div>
@@ -250,7 +250,7 @@ export default function Onboarding() {
               <div>
                 <p className="text-foreground font-semibold text-lg">Tudo pronto!</p>
                 <p className="text-muted-foreground text-sm leading-relaxed mt-1">
-                  Sua agência está configurada. Comece gerando imagens, criando artigos ou conectando seu AtSign para ver suas métricas.
+                  Sua agência está configurada. Comece gerando imagens, criando artigos ou conectando seu Instagram para ver suas métricas.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-1">
