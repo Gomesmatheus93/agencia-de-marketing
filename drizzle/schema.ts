@@ -357,6 +357,28 @@ export const linkedinConnections = mysqlTable(
 export type LinkedInConnection = typeof linkedinConnections.$inferSelect;
 export type InsertLinkedInConnection = typeof linkedinConnections.$inferInsert;
 
+// ─── Google Search Console Connections ─────────────────────────────────────────
+export const searchConsoleConnections = mysqlTable(
+  "search_console_connections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    accessToken: text("accessToken").notNull(),
+    refreshToken: text("refreshToken"),
+    tokenExpiresAt: timestamp("tokenExpiresAt"),
+    // Site the user picked to report on (e.g. "https://example.com/" or "sc-domain:example.com")
+    selectedSiteUrl: varchar("selectedSiteUrl", { length: 512 }),
+    // JSON array of every verified site the connected Google account can access
+    availableSites: mediumtext("availableSites"),
+    connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_search_console_connections_userId").on(t.userId)]
+);
+
+export type SearchConsoleConnection = typeof searchConsoleConnections.$inferSelect;
+export type InsertSearchConsoleConnection = typeof searchConsoleConnections.$inferInsert;
+
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 export const featureFlags = mysqlTable("feature_flags", {
   id: int("id").autoincrement().primaryKey(),

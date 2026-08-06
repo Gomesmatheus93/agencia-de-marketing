@@ -1289,16 +1289,22 @@ const articlesRouter = router({
         messages: [
           {
             role: "system",
-            content: `Voce e um agente redator especializado no setor de energia. Transforme uma noticia em um artigo claro, profissional e publicavel em portugues brasileiro.
+            content: `Voce e um agente redator especializado no setor de energia. Transforme uma noticia em um artigo claro, profissional e publicavel em portugues brasileiro. Este artigo sera publicado no LinkedIn, uma pagina publica indexada pelo Google e rastreada por buscadores de IA (ChatGPT, Perplexity, Google AI Overviews) — por isso, alem de bem escrito, o texto precisa ser facil de citar.
 
-Regras:
+Regras de conteudo:
 - Use somente informacoes presentes no material da noticia.
 - Nao invente numeros, nomes, datas ou declaracoes.
 - Preserve o contexto da fonte original.
 - Explique impactos praticos para empresas, consumidores ou mercado quando o material permitir.
-- Escreva em markdown, com introducao, 3 a 5 secoes com subtitulos e conclusao. Limite a 600-800 palavras.
 - Evite emojis, sensacionalismo e linguagem generica.
-- Se o conteudo capturado for limitado, deixe o artigo mais analitico e conservador.`,
+- Se o conteudo capturado for limitado, deixe o artigo mais analitico e conservador.
+
+Regras de estrutura (para ficar citavel por buscadores de IA, sem prejudicar a leitura humana):
+- Escreva em markdown, com introducao, 3 a 5 secoes com subtitulos e conclusao. Limite a 600-800 palavras.
+- Cada secao deve abrir com uma resposta direta e autocontida de 40-60 palavras (o leitor entende o ponto principal so com esse trecho, antes de qualquer detalhamento).
+- Sempre que o material trouxer numeros, datas ou dados concretos, cite-os explicitamente e atribua a fonte (ex: "segundo [fonte]") — isso aumenta a chance do texto ser citado por IA.
+- Encerre com uma secao "## Perguntas frequentes" com 2 a 3 perguntas em linguagem natural e respostas curtas, SOMENTE se o material capturado tiver base suficiente para responde-las sem inventar informacao. Se nao tiver, omita essa secao.
+- Nao fragmente o texto em pedacos artificiais nem escreva paragrafos separados "para IA" — a estrutura acima serve tanto para quem le quanto para quem indexa.`,
           },
           {
             role: "user",
@@ -4170,6 +4176,95 @@ const styleAnalyzerRouter = router({
     }),
 });
 
+// ─── SEO Keyword Research Router ─────────────────────────────────────────────
+
+const seoRouter = router({
+  researchKeywords: aiProcedure
+    .input(z.object({
+      seedKeyword: z.string().trim().min(2).max(150),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+      const { researchKeywordsWithAgent } = await import("./_core/seoKeywordAgent");
+      const brand = await db.getBrandKit(ctx.user.id);
+
+      try {
+        return await researchKeywordsWithAgent({
+          seedKeyword: input.seedKeyword,
+          companyName: brand?.companyName ?? undefined,
+          industry: brand?.industry ?? undefined,
+          targetAudience: brand?.targetAudience ?? undefined,
+        });
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Erro ao pesquisar palavras-chave: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+        });
+      }
+    }),
+});
+
+// ─── Google Search Console Router ────────────────────────────────────────────
+
+const searchConsoleRouter = router({
+  getStatus: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getSearchConsoleConnection(ctx.user.id);
+    if (!connection) return { connected: false as const };
+
+    let availableSites: string[] = [];
+    try {
+      availableSites = connection.availableSites ? JSON.parse(connection.availableSites) : [];
+    } catch {
+      availableSites = [];
+    }
+
+    return {
+      connected: true as const,
+      selectedSiteUrl: connection.selectedSiteUrl,
+      availableSites,
+    };
+  }),
+
+  selectSite: protectedProcedure
+    .input(z.object({ siteUrl: z.string().min(1).max(512) }))
+    .mutation(async ({ ctx, input }) => {
+      const connection = await db.getSearchConsoleConnection(ctx.user.id);
+      if (!connection) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Conecte o Google Search Console primeiro." });
+      }
+      await db.updateSearchConsoleSelectedSite(ctx.user.id, input.siteUrl);
+      return { success: true };
+    }),
+
+  disconnect: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.deleteSearchConsoleConnection(ctx.user.id);
+    return { success: true };
+  }),
+
+  getTopQueries: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getSearchConsoleConnection(ctx.user.id);
+    if (!connection || !connection.selectedSiteUrl) return { rows: [] };
+
+    const { getValidGscAccessToken, fetchGscTopQueries } = await import("./_core/googleSearchConsoleClient");
+
+    try {
+      const accessToken = await getValidGscAccessToken({
+        userId: ctx.user.id,
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        tokenExpiresAt: connection.tokenExpiresAt,
+      });
+      const rows = await fetchGscTopQueries({ accessToken, siteUrl: connection.selectedSiteUrl });
+      return { rows };
+    } catch (err) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Erro ao buscar dados do Search Console: ${err instanceof Error ? err.message : "falha desconhecida"}`,
+      });
+    }
+  }),
+});
+
 // ─── Performance Router (Module 1.3) ─────────────────────────────────────────
 
 const performanceRouter = router({
@@ -4927,6 +5022,8 @@ export const appRouter = router({
   commentAutomations: commentAutomationsRouter,
   styleAnalyzer: styleAnalyzerRouter,
   radar: radarRouter,
+  seo: seoRouter,
+  searchConsole: searchConsoleRouter,
   performance: performanceRouter,
   editorialPlan: editorialPlanRouter,
   stories: storiesRouter,

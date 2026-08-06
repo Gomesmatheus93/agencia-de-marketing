@@ -17,6 +17,11 @@ import {
   exchangeLinkedInCode,
   getLinkedInUserInfo,
 } from "./linkedinOAuth";
+import {
+  buildGscAuthUrl,
+  exchangeGscCode,
+  listGscSites,
+} from "./googleSearchConsoleClient";
 
 const GRAPH_BASE = "https://graph.facebook.com";
 const GRAPH_VERSION = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
@@ -871,6 +876,98 @@ export function registerOAuthRoutes(app: Express) {
       console.error("[OAuth/LinkedIn] Erro no callback:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
       res.redirect(`/app/dashboard/analytics?linkedin_connect=error&detail=${msg}`);
+    }
+  });
+
+  // ── Google Search Console Connect (each user connects their own property) ──
+  // Same shape as the LinkedIn/Canva "Connect" flows above: requires an active
+  // session, links the connection to the current user, never creates a new one.
+
+  const pendingGscStates = new Map<string, { userId: number; ts: number }>();
+
+  app.get("/api/oauth/gsc/connect", async (req, res) => {
+    if (!ENV.googleGscClientId || !ENV.googleGscClientSecret) {
+      res.status(503).send("GOOGLE_GSC_CLIENT_ID e GOOGLE_GSC_CLIENT_SECRET não configurados.");
+      return;
+    }
+
+    let userId: number | undefined;
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+      const token = match?.[1];
+      if (token) {
+        const payload = await sdk.verifySession(token);
+        if (payload?.openId) {
+          const user = await db.getUserByOpenId(payload.openId);
+          userId = user?.id;
+        }
+      }
+    } catch { /* ignore */ }
+
+    if (!userId) {
+      res.redirect("/app/dashboard/seo?gsc_connect=requires_login");
+      return;
+    }
+
+    const cutoff = Date.now() - STATE_TTL_MS;
+    Array.from(pendingGscStates.entries()).forEach(([k, v]) => {
+      if (v.ts < cutoff) pendingGscStates.delete(k);
+    });
+
+    const state = nanoid(32);
+    pendingGscStates.set(state, { userId, ts: Date.now() });
+
+    res.redirect(buildGscAuthUrl(state));
+  });
+
+  app.get("/api/oauth/gsc/connect/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      console.warn("[OAuth/GSC] Usuário negou autorização:", oauthError);
+      res.redirect("/app/dashboard/seo?gsc_connect=denied");
+      return;
+    }
+
+    const pending = state ? pendingGscStates.get(state) : undefined;
+    if (!pending) {
+      res.redirect("/app/dashboard/seo?gsc_connect=invalid_state");
+      return;
+    }
+    pendingGscStates.delete(state);
+
+    if (!code) {
+      res.redirect("/app/dashboard/seo?gsc_connect=no_code");
+      return;
+    }
+
+    try {
+      const tokens = await exchangeGscCode(code);
+      const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+      let sites: string[] = [];
+      try {
+        sites = await listGscSites(tokens.access_token);
+      } catch (e) {
+        console.warn("[OAuth/GSC] Falha ao listar propriedades:", e);
+      }
+
+      await db.upsertSearchConsoleConnection({
+        userId: pending.userId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiresAt,
+        selectedSiteUrl: sites.length === 1 ? sites[0] : undefined,
+        availableSites: JSON.stringify(sites),
+      });
+
+      console.log(`[OAuth/GSC] Conectado: userId=${pending.userId} sites=${sites.length}`);
+      res.redirect("/app/dashboard/seo?gsc_connect=success");
+    } catch (err) {
+      console.error("[OAuth/GSC] Erro no callback:", err);
+      const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
+      res.redirect(`/app/dashboard/seo?gsc_connect=error&detail=${msg}`);
     }
   });
 }

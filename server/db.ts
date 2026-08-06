@@ -40,6 +40,9 @@ import {
   type InsertCanvaConnection,
   type LinkedInConnection,
   type InsertLinkedInConnection,
+  searchConsoleConnections,
+  type SearchConsoleConnection,
+  type InsertSearchConsoleConnection,
   type FeatureFlag,
   type PostMetric,
   type TemplatePerformance,
@@ -65,6 +68,7 @@ let _socialPostsMetadataReady: Promise<void> | null = null;
 let _featureFlagsTableReady: Promise<void> | null = null;
 let _canvaConnectionsTableReady: Promise<void> | null = null;
 let _linkedinConnectionsTableReady: Promise<void> | null = null;
+let _searchConsoleConnectionsTableReady: Promise<void> | null = null;
 let _reelsScriptsTableReady: Promise<void> | null = null;
 let _commentPollStateReady: Promise<void> | null = null;
 let _commentAlertsReady: Promise<void> | null = null;
@@ -1560,6 +1564,97 @@ export async function deleteLinkedInConnection(userId: number): Promise<void> {
     const db = await getDb();
     if (!db) return;
     await db.delete(linkedinConnections).where(eq(linkedinConnections.userId, userId));
+  } catch {
+    // table may not exist yet
+  }
+}
+
+// ─── Google Search Console Connections ─────────────────────────────────────────
+
+async function ensureSearchConsoleConnectionsTable(): Promise<void> {
+  if (!_searchConsoleConnectionsTableReady) {
+    _searchConsoleConnectionsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`search_console_connections\` (
+          \`id\` int AUTO_INCREMENT NOT NULL,
+          \`userId\` int NOT NULL,
+          \`accessToken\` text NOT NULL,
+          \`refreshToken\` text,
+          \`tokenExpiresAt\` timestamp NULL,
+          \`selectedSiteUrl\` varchar(512),
+          \`availableSites\` mediumtext,
+          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`search_console_connections_pk\` PRIMARY KEY (\`id\`),
+          CONSTRAINT \`search_console_connections_userId_unique\` UNIQUE (\`userId\`)
+        )
+      `);
+    })();
+  }
+  return _searchConsoleConnectionsTableReady;
+}
+
+export async function getSearchConsoleConnection(userId: number): Promise<SearchConsoleConnection | null> {
+  try {
+    await ensureSearchConsoleConnectionsTable();
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db.select().from(searchConsoleConnections).where(eq(searchConsoleConnections.userId, userId));
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertSearchConsoleConnection(data: InsertSearchConsoleConnection): Promise<void> {
+  await ensureSearchConsoleConnectionsTable();
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getSearchConsoleConnection(data.userId);
+  if (existing) {
+    await db.update(searchConsoleConnections)
+      .set({
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken ?? existing.refreshToken,
+        tokenExpiresAt: data.tokenExpiresAt,
+        selectedSiteUrl: data.selectedSiteUrl ?? existing.selectedSiteUrl,
+        availableSites: data.availableSites ?? existing.availableSites,
+      })
+      .where(eq(searchConsoleConnections.userId, data.userId));
+  } else {
+    await db.insert(searchConsoleConnections).values(data);
+  }
+}
+
+export async function updateSearchConsoleSelectedSite(userId: number, selectedSiteUrl: string): Promise<void> {
+  await ensureSearchConsoleConnectionsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.update(searchConsoleConnections)
+    .set({ selectedSiteUrl })
+    .where(eq(searchConsoleConnections.userId, userId));
+}
+
+export async function updateSearchConsoleTokens(
+  userId: number,
+  data: { accessToken: string; tokenExpiresAt: Date }
+): Promise<void> {
+  await ensureSearchConsoleConnectionsTable();
+  const db = await getDb();
+  if (!db) return;
+  await db.update(searchConsoleConnections)
+    .set({ accessToken: data.accessToken, tokenExpiresAt: data.tokenExpiresAt })
+    .where(eq(searchConsoleConnections.userId, userId));
+}
+
+export async function deleteSearchConsoleConnection(userId: number): Promise<void> {
+  try {
+    await ensureSearchConsoleConnectionsTable();
+    const db = await getDb();
+    if (!db) return;
+    await db.delete(searchConsoleConnections).where(eq(searchConsoleConnections.userId, userId));
   } catch {
     // table may not exist yet
   }

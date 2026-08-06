@@ -73,6 +73,12 @@ export const ENV = {
   // ScraperAPI — usado para buscar posts de perfis externos do Instagram via proxy residencial
   // Cadastro gratuito: https://www.scraperapi.com (1000 req/mês grátis)
   scraperApiKey: process.env.SCRAPERAPI_KEY ?? "",
+  // Google Search Console (OAuth) — API gratuita, dados reais de SEO (cliques, impressões, posição)
+  // Setup: console.cloud.google.com → criar OAuth client (Web application) → habilitar
+  //        "Google Search Console API" → adicionar redirect URI abaixo aos "Authorized redirect URIs"
+  googleGscClientId: process.env.GOOGLE_GSC_CLIENT_ID ?? "",
+  googleGscClientSecret: process.env.GOOGLE_GSC_CLIENT_SECRET ?? "",
+  googleGscRedirectUri: process.env.GOOGLE_GSC_REDIRECT_URI ?? "",
 };
 
 const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [
