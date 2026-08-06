@@ -357,6 +357,27 @@ export const linkedinConnections = mysqlTable(
 export type LinkedInConnection = typeof linkedinConnections.$inferSelect;
 export type InsertLinkedInConnection = typeof linkedinConnections.$inferInsert;
 
+// ─── HeyGen Digital Twin (video-trained avatar, full-body natural motion) ─────
+export const heygenDigitalTwins = mysqlTable(
+  "heygen_digital_twins",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    avatarId: varchar("avatarId", { length: 128 }),
+    groupId: varchar("groupId", { length: 128 }).notNull(),
+    name: varchar("name", { length: 255 }),
+    // pending_consent | training | ready | failed
+    status: varchar("status", { length: 32 }).notNull().default("pending_consent"),
+    errorMessage: text("errorMessage"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_heygen_digital_twins_userId").on(t.userId)]
+);
+
+export type HeygenDigitalTwin = typeof heygenDigitalTwins.$inferSelect;
+export type InsertHeygenDigitalTwin = typeof heygenDigitalTwins.$inferInsert;
+
 // ─── Google Search Console Connections ─────────────────────────────────────────
 export const searchConsoleConnections = mysqlTable(
   "search_console_connections",

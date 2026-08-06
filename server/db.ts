@@ -40,6 +40,9 @@ import {
   type InsertCanvaConnection,
   type LinkedInConnection,
   type InsertLinkedInConnection,
+  heygenDigitalTwins,
+  type HeygenDigitalTwin,
+  type InsertHeygenDigitalTwin,
   searchConsoleConnections,
   type SearchConsoleConnection,
   type InsertSearchConsoleConnection,
@@ -68,6 +71,7 @@ let _socialPostsMetadataReady: Promise<void> | null = null;
 let _featureFlagsTableReady: Promise<void> | null = null;
 let _canvaConnectionsTableReady: Promise<void> | null = null;
 let _linkedinConnectionsTableReady: Promise<void> | null = null;
+let _heygenDigitalTwinsTableReady: Promise<void> | null = null;
 let _searchConsoleConnectionsTableReady: Promise<void> | null = null;
 let _reelsScriptsTableReady: Promise<void> | null = null;
 let _commentPollStateReady: Promise<void> | null = null;
@@ -1564,6 +1568,76 @@ export async function deleteLinkedInConnection(userId: number): Promise<void> {
     const db = await getDb();
     if (!db) return;
     await db.delete(linkedinConnections).where(eq(linkedinConnections.userId, userId));
+  } catch {
+    // table may not exist yet
+  }
+}
+
+// ─── HeyGen Digital Twin ────────────────────────────────────────────────────
+
+async function ensureHeygenDigitalTwinsTable(): Promise<void> {
+  if (!_heygenDigitalTwinsTableReady) {
+    _heygenDigitalTwinsTableReady = (async () => {
+      const db = await getDb();
+      if (!db) return;
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`heygen_digital_twins\` (
+          \`id\` int AUTO_INCREMENT NOT NULL,
+          \`userId\` int NOT NULL,
+          \`avatarId\` varchar(128),
+          \`groupId\` varchar(128) NOT NULL,
+          \`name\` varchar(255),
+          \`status\` varchar(32) NOT NULL DEFAULT 'pending_consent',
+          \`errorMessage\` text,
+          \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          CONSTRAINT \`heygen_digital_twins_pk\` PRIMARY KEY (\`id\`),
+          CONSTRAINT \`heygen_digital_twins_userId_unique\` UNIQUE (\`userId\`)
+        )
+      `);
+    })().catch((e) => { _heygenDigitalTwinsTableReady = null; throw e; });
+  }
+  return _heygenDigitalTwinsTableReady;
+}
+
+export async function getHeygenDigitalTwin(userId: number): Promise<HeygenDigitalTwin | null> {
+  try {
+    await ensureHeygenDigitalTwinsTable();
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db.select().from(heygenDigitalTwins).where(eq(heygenDigitalTwins.userId, userId));
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertHeygenDigitalTwin(data: InsertHeygenDigitalTwin): Promise<void> {
+  await ensureHeygenDigitalTwinsTable();
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getHeygenDigitalTwin(data.userId);
+  if (existing) {
+    await db.update(heygenDigitalTwins)
+      .set({
+        avatarId: data.avatarId ?? existing.avatarId,
+        groupId: data.groupId,
+        name: data.name ?? existing.name,
+        status: data.status,
+        errorMessage: data.errorMessage ?? null,
+      })
+      .where(eq(heygenDigitalTwins.userId, data.userId));
+  } else {
+    await db.insert(heygenDigitalTwins).values(data);
+  }
+}
+
+export async function deleteHeygenDigitalTwin(userId: number): Promise<void> {
+  try {
+    await ensureHeygenDigitalTwinsTable();
+    const db = await getDb();
+    if (!db) return;
+    await db.delete(heygenDigitalTwins).where(eq(heygenDigitalTwins.userId, userId));
   } catch {
     // table may not exist yet
   }

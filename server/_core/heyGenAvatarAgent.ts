@@ -51,12 +51,12 @@ async function normalizeToJpeg(buffer: Buffer): Promise<{ buffer: Buffer; width:
   return { buffer: out.data, width: out.info.width, height: out.info.height };
 }
 
-// Passo 1: faz upload da imagem como asset → retorna asset_id (abordagem recomendada pela HeyGen)
-async function uploadImageAsset(buffer: Buffer): Promise<string> {
+// Faz upload de um asset (imagem ou vídeo) → retorna asset_id (abordagem recomendada pela HeyGen)
+async function uploadAsset(buffer: Buffer, contentType: string, fileName: string): Promise<string> {
   const apiKey = getApiKey();
-  const blob = new Blob([new Uint8Array(buffer)], { type: "image/jpeg" });
+  const blob = new Blob([new Uint8Array(buffer)], { type: contentType });
   const formData = new FormData();
-  formData.append("file", blob, "photo.jpg");
+  formData.append("file", blob, fileName);
 
   const res = await fetch(`${HEYGEN_API}/v3/assets`, {
     method: "POST",
@@ -81,6 +81,10 @@ async function uploadImageAsset(buffer: Buffer): Promise<string> {
   const assetId = parsed.data?.asset_id ?? parsed.data?.id;
   if (!assetId) throw new Error(`HeyGen asset upload: asset_id não retornado. ${text.slice(0, 200)}`);
   return assetId;
+}
+
+async function uploadImageAsset(buffer: Buffer): Promise<string> {
+  return uploadAsset(buffer, "image/jpeg", "photo.jpg");
 }
 
 // Passo 2: cria photo avatar com asset_id
@@ -151,6 +155,240 @@ async function waitForAvatarReady(avatarId: string, maxWaitMs = 180_000): Promis
   }
 
   throw new Error("HeyGen avatar demorou mais do que 3 minutos para ficar pronto. Tente novamente.");
+}
+
+// ─── Digital Twin (avatar treinado a partir de um vídeo real — corpo inteiro,
+// gestos e movimento naturais, diferente do Photo Avatar que só anima a boca) ──
+
+export type DigitalTwinStatus = "pending_consent" | "training" | "ready" | "failed";
+
+async function createDigitalTwinGroup(name: string, videoAssetId: string): Promise<string> {
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "digital_twin",
+      name,
+      file: { type: "asset_id", asset_id: videoAssetId },
+    }),
+  });
+
+  const json = (await res.json()) as {
+    data?: { avatar_group?: { id?: string }; group_id?: string; id?: string };
+    error?: { message?: string };
+  };
+
+  if (json.error) throw new Error(`HeyGen create digital twin: ${json.error.message}`);
+
+  const groupId = json.data?.avatar_group?.id ?? json.data?.group_id ?? json.data?.id;
+  if (!groupId) throw new Error(`HeyGen create digital twin: group_id não retornado. ${JSON.stringify(json)}`);
+  return groupId;
+}
+
+async function submitDigitalTwinConsent(groupId: string, consentAssetId: string): Promise<void> {
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/${groupId}/consent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "asset_id", asset_id: consentAssetId }),
+  });
+
+  const text = await res.text();
+  console.log(`[HeyGen] Digital twin consent (raw) para groupId=${groupId}:`, text.slice(0, 2000));
+
+  let parsed: { error?: { message?: string } };
+  try { parsed = JSON.parse(text); } catch { parsed = {}; }
+  if (parsed.error) throw new Error(`HeyGen digital twin consent: ${parsed.error.message}`);
+}
+
+// Reenvia so o video de consentimento para um grupo ja existente — usado quando a
+// HeyGen reporta "avatar_consent_required" mesmo apos o envio inicial (o consentimento
+// e processado/validado de forma assincrona pela HeyGen, entao pode nao ter sido
+// aceito da primeira vez).
+export async function resubmitDigitalTwinConsent(input: {
+  groupId: string;
+  consentVideoBuffer: Buffer;
+  consentVideoContentType: string;
+}): Promise<void> {
+  const consentAssetId = await uploadAsset(
+    input.consentVideoBuffer,
+    input.consentVideoContentType,
+    "consent.mp4"
+  );
+  await submitDigitalTwinConsent(input.groupId, consentAssetId);
+}
+
+type DigitalTwinGroupInfo = {
+  consentStatus: string | null;
+  trainingStatus: string | null;
+  avatarId: string | null;
+};
+
+// Busca o "look" (avatar individual) pertencente a este grupo na listagem de digital
+// twins — mesmo endpoint/padrao ja comprovado para Photo Avatar (waitForAvatarReady),
+// so trocando avatar_type. O group_id do avatar NAO serve como avatar_id na geracao
+// de video — precisa ser o id do look especifico dentro do grupo.
+async function findDigitalTwinLookId(groupId: string): Promise<{ id: string; status?: string } | undefined> {
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/looks?avatar_type=digital_twin`, { method: "GET" });
+  const text = await res.text();
+  console.log(`[HeyGen] Digital twin looks (raw) para groupId=${groupId}:`, text.slice(0, 2000));
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { return undefined; }
+
+  const data = (parsed as Record<string, unknown>)?.data;
+  let items: Array<Record<string, unknown>> = [];
+  if (Array.isArray(data)) items = data as Array<Record<string, unknown>>;
+  else if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const list = obj.looks ?? obj.avatar_list ?? obj.items ?? obj.list;
+    if (Array.isArray(list)) items = list as Array<Record<string, unknown>>;
+  }
+
+  const match = items.find((item) => {
+    const candidateGroupId =
+      (item.group_id as string | undefined) ??
+      (item.avatar_group_id as string | undefined) ??
+      (item.groupId as string | undefined) ??
+      ((item.avatar_group as Record<string, unknown> | undefined)?.id as string | undefined);
+    return candidateGroupId === groupId;
+  });
+
+  if (!match) return undefined;
+  const id = (match.id as string | undefined) ?? (match.avatar_id as string | undefined);
+  if (!id) return undefined;
+  return { id, status: match.status as string | undefined };
+}
+
+async function getDigitalTwinGroupInfo(groupId: string): Promise<DigitalTwinGroupInfo> {
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/${groupId}`, { method: "GET" });
+  const text = await res.text();
+  console.log(`[HeyGen] Digital twin group info (raw) para groupId=${groupId}:`, text.slice(0, 2000));
+
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(text); } catch { parsed = {}; }
+
+  const data = (parsed.data ?? parsed) as Record<string, unknown>;
+  const consentStatus = (data.consent_status as string | undefined) ?? (data.consentStatus as string | undefined) ?? null;
+  const trainingStatus = (data.status as string | undefined) ?? (data.training_status as string | undefined) ?? null;
+
+  // Tenta achar o look (avatar individual) correspondente — e' o id que a geracao de
+  // video espera. So usa data.id/data.avatar_id como ultimo recurso (pode ser so o
+  // group_id de volta, o que causa "avatar_not_found" na geracao de video).
+  let avatarId: string | null = null;
+  try {
+    const look = await findDigitalTwinLookId(groupId);
+    if (look) avatarId = look.id;
+  } catch (err) {
+    console.warn("[HeyGen] Falha ao buscar looks do digital twin:", err);
+  }
+
+  if (!avatarId) {
+    const looks = data.looks as Array<Record<string, unknown>> | undefined;
+    const firstLook = Array.isArray(looks) && looks.length > 0 ? looks[0] : undefined;
+    avatarId = (data.avatar_id as string | undefined) ?? (firstLook?.id as string | undefined) ?? null;
+  }
+
+  return { consentStatus, trainingStatus, avatarId };
+}
+
+export type CreateDigitalTwinInput = {
+  videoBuffer: Buffer;
+  videoContentType: string;
+  consentVideoBuffer: Buffer;
+  consentVideoContentType: string;
+  name: string;
+};
+
+export async function createDigitalTwinAvatar(
+  input: CreateDigitalTwinInput
+): Promise<{ groupId: string }> {
+  const videoAssetId = await uploadAsset(input.videoBuffer, input.videoContentType, "training.mp4");
+  const groupId = await createDigitalTwinGroup(input.name, videoAssetId);
+
+  const consentAssetId = await uploadAsset(
+    input.consentVideoBuffer,
+    input.consentVideoContentType,
+    "consent.mp4"
+  );
+  await submitDigitalTwinConsent(groupId, consentAssetId);
+
+  return { groupId };
+}
+
+export async function checkDigitalTwinStatus(
+  groupId: string
+): Promise<{ status: DigitalTwinStatus; avatarId: string | null }> {
+  const info = await getDigitalTwinGroupInfo(groupId);
+
+  const consentFailed = info.consentStatus ? /fail|error|reject|denied/i.test(info.consentStatus) : false;
+  const trainingFailed = info.trainingStatus ? /fail|error|reject/i.test(info.trainingStatus) : false;
+  if (consentFailed || trainingFailed) {
+    return { status: "failed", avatarId: null };
+  }
+
+  if (info.avatarId) {
+    return { status: "ready", avatarId: info.avatarId };
+  }
+
+  const consentOk = info.consentStatus ? /complete|approved|success/i.test(info.consentStatus) : false;
+  if (!consentOk) {
+    return { status: "pending_consent", avatarId: null };
+  }
+
+  return { status: "training", avatarId: null };
+}
+
+// Gera vídeo com o Digital Twin — tenta o motor Avatar V (corpo inteiro, aprendido
+// do vídeo real) e cai para Avatar IV se a conta/plano não tiver acesso ao Avatar V.
+export async function generateDigitalTwinVideo(input: {
+  avatarId: string;
+  script: string;
+  voiceId: string;
+  emotion?: string;
+}): Promise<string> {
+  const engines = [{ type: "avatar_v" }, { type: "avatar_iv" }] as const;
+  let lastErr: unknown;
+
+  for (const engine of engines) {
+    try {
+      const res = await heyGenFetch(`${HEYGEN_API}/v3/videos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "avatar",
+          avatar_id: input.avatarId,
+          script: input.script,
+          voice_id: input.voiceId,
+          resolution: "1080p",
+          aspect_ratio: "9:16",
+          engine,
+          expressiveness: "high",
+          motion_prompt:
+            "natural full body movement, direct eye contact with camera, conversational hand gestures, warm engaging expression, realistic human presence",
+          voice_settings: { emotion: input.emotion ?? "Friendly", speed: 1.0 },
+        }),
+      });
+
+      const text = await res.text();
+      let parsed: { data?: { video_id?: string }; error?: { message?: string; code?: number } };
+      try { parsed = JSON.parse(text); } catch {
+        throw new Error(`HeyGen Digital Twin vídeo: resposta inválida — ${text.slice(0, 200)}`);
+      }
+
+      if (parsed.error) {
+        throw new Error(`HeyGen Digital Twin vídeo: ${parsed.error.message ?? JSON.stringify(parsed.error)}`);
+      }
+
+      const videoId = parsed.data?.video_id;
+      if (!videoId) throw new Error(`HeyGen Digital Twin vídeo: video_id não retornado. ${JSON.stringify(parsed)}`);
+      return videoId;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[HeyGen] engine ${engine.type} falhou: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error("HeyGen: não foi possível gerar vídeo com o Digital Twin.");
 }
 
 // Passo 4: gera vídeo com Avatar IV — gestos, expressividade e movimento natural

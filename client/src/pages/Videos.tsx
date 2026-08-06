@@ -28,8 +28,317 @@ import {
   XCircle,
   Zap,
   Lock,
+  Video,
+  ShieldCheck,
+  RefreshCw,
+  Film,
 } from "lucide-react";
 import { usePlan } from "@/_core/hooks/usePlan";
+
+const CONSENT_STATEMENT_PT =
+  "Oi! Estou falando com bastante energia, de forma natural e confiante. Isso ajuda a HeyGen a capturar minha voz, minhas expressões e meus movimentos, para que meu avatar se comporte exatamente como eu, em qualquer vídeo!";
+
+async function uploadFileToStorage(file: File): Promise<string> {
+  const presignRes = await fetch("/api/request-presigned-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contentType: file.type }),
+    credentials: "include",
+  });
+  if (!presignRes.ok) throw new Error("Falha ao preparar o upload.");
+  const { presignedUrl, publicUrl } = (await presignRes.json()) as { presignedUrl: string | null; publicUrl: string };
+  if (!presignedUrl) throw new Error("Upload direto não configurado (defina PUBLIC_STORAGE_PROVIDER=aws no servidor).");
+  const putRes = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error("Falha ao enviar o arquivo.");
+  return publicUrl;
+}
+
+type DigitalTwinStatusData =
+  | { exists: false }
+  | {
+      exists: true;
+      name: string | null;
+      status: "pending_consent" | "training" | "ready" | "failed";
+      errorMessage: string | null;
+    };
+
+function DigitalTwinVideoInput({
+  label,
+  hint,
+  file,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  file: File | null;
+  onChange: (file: File | null) => void;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-foreground">{label}</label>
+      <div
+        onClick={() => !disabled && inputRef.current?.click()}
+        className={cn(
+          "flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed p-3 transition-all duration-200",
+          disabled ? "opacity-50 cursor-not-allowed" : "border-border/40 hover:border-border hover:bg-accent/30"
+        )}
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-500 to-rose-500">
+          <Video className="w-4 h-4 text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{file ? file.name : "Escolher arquivo"}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+        </div>
+        {file && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); onChange(null); }}
+            className="h-7 w-7 shrink-0 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/mp4,video/quicktime,video/webm"
+          className="hidden"
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUseTwinChange: (value: boolean) => void }) {
+  const utils = trpc.useUtils();
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [trainingFile, setTrainingFile] = useState<File | null>(null);
+  const [consentFile, setConsentFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const statusQuery = trpc.videos.getDigitalTwinStatus.useQuery(undefined, {
+    refetchInterval: (query) => {
+      const data = query.state.data as DigitalTwinStatusData | undefined;
+      return data?.exists && (data.status === "training" || data.status === "pending_consent") ? 15000 : false;
+    },
+  });
+
+  const createMutation = trpc.videos.createDigitalTwin.useMutation({
+    onSuccess: () => {
+      toast.success("Vídeos enviados! O treinamento do avatar leva de 10 a 20 minutos.");
+      setTrainingFile(null);
+      setConsentFile(null);
+      setName("");
+      setShowForm(false);
+      void utils.videos.getDigitalTwinStatus.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteMutation = trpc.videos.deleteDigitalTwin.useMutation({
+    onSuccess: () => {
+      toast.success("Avatar 3D removido.");
+      onUseTwinChange(false);
+      void utils.videos.getDigitalTwinStatus.invalidate();
+    },
+  });
+
+  const [resubmitFile, setResubmitFile] = useState<File | null>(null);
+  const [resubmitting, setResubmitting] = useState(false);
+
+  const resubmitMutation = trpc.videos.resubmitDigitalTwinConsent.useMutation({
+    onSuccess: () => {
+      toast.success("Consentimento reenviado! Aguardando validação da HeyGen.");
+      setResubmitFile(null);
+      void utils.videos.getDigitalTwinStatus.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleResubmitConsent = async () => {
+    if (!resubmitFile) return;
+    setResubmitting(true);
+    try {
+      const consentVideoUrl = await uploadFileToStorage(resubmitFile);
+      resubmitMutation.mutate({ consentVideoUrl });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao enviar o vídeo.");
+    } finally {
+      setResubmitting(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!name.trim()) { toast.error("Dê um nome para o seu Avatar 3D."); return; }
+    if (!trainingFile) { toast.error("Envie o vídeo de treino (pelo menos 15 segundos)."); return; }
+    if (!consentFile) { toast.error("Envie o vídeo de consentimento."); return; }
+
+    setUploading(true);
+    try {
+      const [videoUrl, consentVideoUrl] = await Promise.all([
+        uploadFileToStorage(trainingFile),
+        uploadFileToStorage(consentFile),
+      ]);
+      createMutation.mutate({ name: name.trim(), videoUrl, consentVideoUrl });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao enviar os vídeos.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const data = statusQuery.data as DigitalTwinStatusData | undefined;
+  const busy = uploading || createMutation.isPending;
+
+  return (
+    <div className="glass-card space-y-4 p-6 animate-fade-in-up">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-rose-500 shadow-md">
+            <Film className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Avatar 3D (Digital Twin)</h2>
+            <p className="text-xs text-muted-foreground">Treinado a partir de um vídeo seu — corpo inteiro, gestos e movimento naturais, não só a boca.</p>
+          </div>
+        </div>
+      </div>
+
+      {(!data || !data.exists) && !statusQuery.isLoading && !showForm && (
+        <Button type="button" variant="outline" onClick={() => setShowForm(true)} className="gap-2 glass border-border/50">
+          <Sparkles className="w-4 h-4" />
+          Criar meu Avatar 3D
+        </Button>
+      )}
+
+      {data?.exists && data.status === "failed" && !showForm && (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/20 dark:text-red-300">
+            <AlertCircle className="mt-0.5 w-4 h-4 flex-shrink-0" />
+            <span>{data.errorMessage || "O treinamento do avatar falhou."}</span>
+          </div>
+          <Button type="button" variant="outline" onClick={() => setShowForm(true)} className="gap-2 glass border-border/50">
+            <RefreshCw className="w-4 h-4" />
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+
+      {data?.exists && (data.status === "pending_consent" || data.status === "training") && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
+            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+            <span>
+              {data.status === "pending_consent" ? "Validando consentimento…" : "Treinando seu Avatar 3D…"}{" "}
+              Isso geralmente leva de 10 a 20 minutos. Pode continuar usando o app normalmente.
+            </span>
+          </div>
+
+          {data.status === "pending_consent" && data.errorMessage && (
+            <div className="space-y-2 rounded-xl border border-border/40 p-3">
+              <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
+                <AlertCircle className="mt-0.5 w-3.5 h-3.5 flex-shrink-0" />
+                <span>{data.errorMessage}</span>
+              </div>
+              <DigitalTwinVideoInput
+                label="Reenviar vídeo de consentimento"
+                hint="Você lendo a frase de consentimento novamente, com o rosto visível."
+                file={resubmitFile}
+                onChange={setResubmitFile}
+                disabled={resubmitting}
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleResubmitConsent}
+                disabled={!resubmitFile || resubmitting}
+                className="gap-2 bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white border-0 hover:opacity-90"
+              >
+                {resubmitting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Reenviando…</> : <><ShieldCheck className="w-3.5 h-3.5" />Reenviar consentimento</>}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {data?.exists && data.status === "ready" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-border/40 p-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <div>
+                <p className="text-sm font-medium text-foreground">{data.name || "Meu Avatar 3D"}</p>
+                <p className="text-xs text-muted-foreground">Pronto para uso</p>
+              </div>
+            </div>
+            <Button type="button" variant="ghost" size="icon" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/5">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={useTwin} onChange={(e) => onUseTwinChange(e.target.checked)} className="h-4 w-4 rounded border-border/50" />
+            <span className="text-sm text-foreground">Usar meu Avatar 3D neste vídeo (em vez de subir uma foto)</span>
+          </label>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="space-y-3 rounded-xl border border-border/40 p-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Nome do avatar</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Meu avatar principal" className="glass border-border/50" disabled={busy} />
+          </div>
+
+          <DigitalTwinVideoInput
+            label="Vídeo de treino"
+            hint="Mínimo 15 segundos, bem iluminado, fundo simples, sua voz falando naturalmente."
+            file={trainingFile}
+            onChange={setTrainingFile}
+            disabled={busy}
+          />
+
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" />
+              <label className="text-xs font-medium text-foreground">Vídeo de consentimento (exigido pela HeyGen)</label>
+            </div>
+            <p className="rounded-lg bg-muted/50 p-2.5 text-xs italic text-muted-foreground">"{CONSENT_STATEMENT_PT}"</p>
+            <p className="text-[11px] text-muted-foreground">Grave-se falando essa frase em voz alta, até 30 segundos. Pode ser em português.</p>
+          </div>
+
+          <DigitalTwinVideoInput
+            label="Enviar vídeo de consentimento"
+            hint="Você lendo a frase acima, com o rosto visível."
+            file={consentFile}
+            onChange={setConsentFile}
+            disabled={busy}
+          />
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setShowForm(false)} disabled={busy}>Cancelar</Button>
+            <Button type="button" onClick={handleCreate} disabled={busy} className="gap-2 bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white border-0 hover:opacity-90">
+              {busy ? <><Loader2 className="w-4 h-4 animate-spin" />{uploading ? "Enviando vídeos…" : "Criando…"}</> : <><Sparkles className="w-4 h-4" />Criar Avatar 3D</>}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type AvatarVideoStatus = "processing" | "completed" | "failed";
 type Provider = "did" | "heygen";
@@ -224,6 +533,7 @@ export default function Videos() {
   const [emotion, setEmotion] = useState<Emotion>("Friendly");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState("");
   const [selectedVideo, setSelectedVideo] = useState<AvatarVideo | null>(null);
+  const [useDigitalTwin, setUseDigitalTwin] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("videos_script_prefill");
@@ -282,20 +592,23 @@ export default function Videos() {
     generateScriptMutation.mutate({ topic: topic.trim(), tone });
   };
 
+  const activeUseDigitalTwin = useDigitalTwin && provider === "heygen";
+
   const handleGenerateVideo = () => {
     if (!script.trim()) { toast.error("Escreva ou gere um roteiro antes de criar o vídeo."); return; }
-    if (!sourceImageDataUrl) { toast.error("Adicione a foto da pessoa para gerar o avatar."); return; }
+    if (!activeUseDigitalTwin && !sourceImageDataUrl) { toast.error("Adicione a foto da pessoa para gerar o avatar."); return; }
     if (provider === "heygen" && !voiceId) { toast.error("Selecione uma voz para continuar."); return; }
 
     generateVideoMutation.mutate({
       title: title.trim() || undefined,
       topic: topic.trim() || undefined,
       script: script.trim(),
-      sourceImageDataUrl,
+      sourceImageDataUrl: activeUseDigitalTwin ? undefined : sourceImageDataUrl,
       voiceId: voiceId || undefined,
       provider,
       emotion: provider === "heygen" ? emotion : undefined,
       talkingStyle: provider === "heygen" ? "expressive" : undefined,
+      useDigitalTwin: activeUseDigitalTwin || undefined,
     });
   };
 
@@ -420,6 +733,10 @@ export default function Videos() {
             </p>
           </button>
         </div>
+
+        {provider === "heygen" && (
+          <DigitalTwinPanel useTwin={useDigitalTwin} onUseTwinChange={setUseDigitalTwin} />
+        )}
 
         <div className="glass-card space-y-5 p-6 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
           <div className="flex items-center gap-2">
@@ -557,20 +874,27 @@ export default function Videos() {
             <p className="text-right text-xs text-muted-foreground">{script.length} caracteres</p>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Foto da pessoa
-              {provider === "heygen" && (
-                <span className="ml-2 text-xs text-muted-foreground">— Use foto com rosto centralizado e boa iluminação para melhor resultado</span>
-              )}
-            </label>
-            <SourceImageUpload value={sourceImageDataUrl} onChange={setSourceImageDataUrl} />
-          </div>
+          {activeUseDigitalTwin ? (
+            <div className="flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3 text-sm text-foreground">
+              <Sparkles className="w-4 h-4 text-fuchsia-500 flex-shrink-0" />
+              Usando seu Avatar 3D — não precisa enviar foto para este vídeo.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Foto da pessoa
+                {provider === "heygen" && (
+                  <span className="ml-2 text-xs text-muted-foreground">— Use foto com rosto centralizado e boa iluminação para melhor resultado</span>
+                )}
+              </label>
+              <SourceImageUpload value={sourceImageDataUrl} onChange={setSourceImageDataUrl} />
+            </div>
+          )}
 
           <div className="flex justify-end">
             <Button
               onClick={handleGenerateVideo}
-              disabled={!script.trim() || !sourceImageDataUrl || generateVideoMutation.isPending || (provider === "heygen" && !voiceId)}
+              disabled={!script.trim() || (!activeUseDigitalTwin && !sourceImageDataUrl) || generateVideoMutation.isPending || (provider === "heygen" && !voiceId)}
               className={cn(
                 "gap-2 border-0 text-white hover:opacity-90",
                 provider === "heygen"

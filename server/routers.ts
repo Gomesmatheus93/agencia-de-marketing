@@ -38,6 +38,10 @@ import {
   listHeyGenVoices,
   deleteHeyGenTalkingPhoto,
   deleteHeyGenAvatar,
+  createDigitalTwinAvatar,
+  checkDigitalTwinStatus,
+  generateDigitalTwinVideo,
+  resubmitDigitalTwinConsent,
 } from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
@@ -497,7 +501,10 @@ const videosRouter = router({
         provider: z.enum(["did", "heygen"]).default("did"),
         emotion: z.enum(["Excited", "Friendly", "Serious", "Soothing", "Broadcaster"]).optional(),
         talkingStyle: z.enum(["expressive", "stable"]).optional(),
-      }).refine((value) => Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
+        // Usa o Digital Twin (avatar treinado a partir de um video real do usuario,
+        // corpo inteiro e movimento natural) em vez do Photo Avatar (so anima a boca).
+        useDigitalTwin: z.boolean().optional(),
+      }).refine((value) => value.useDigitalTwin || Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
         message: "Envie a foto da pessoa para gerar o video.",
         path: ["sourceImageDataUrl"],
       })
@@ -505,6 +512,98 @@ const videosRouter = router({
     .mutation(async ({ ctx, input }) => {
       requirePaidPlan(ctx.user as PlanUser);
       const normalizedScript = input.script.replace(/\s+/g, " ").trim();
+
+      // === Caminho Digital Twin: reusa o avatar 3D ja treinado, sem foto nova ===
+      if (input.useDigitalTwin) {
+        if (input.provider !== "heygen") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O Avatar 3D so esta disponivel com o motor HeyGen." });
+        }
+        if (!input.voiceId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma voz para continuar." });
+        }
+
+        const twin = await db.getHeygenDigitalTwin(ctx.user.id);
+        if (!twin || twin.status !== "ready" || !twin.avatarId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seu Avatar 3D ainda nao esta pronto. Crie ou aguarde o treinamento terminar em Videos.",
+          });
+        }
+
+        const fallbackTitleTwin = (
+          input.topic?.trim() ||
+          normalizedScript.split(/[.!?]/)[0] ||
+          "Video com Avatar 3D"
+        ).slice(0, 512);
+
+        const savedTwin = await db.saveAvatarVideo(ctx.user.id, {
+          title: input.title?.trim() || fallbackTitleTwin,
+          topic: input.topic?.trim(),
+          script: normalizedScript,
+          sourceImageUrl: "",
+          provider: "heygen",
+          voiceProvider: "heygen",
+          voiceId: input.voiceId,
+          status: "processing",
+        });
+
+        try {
+          const videoId = await generateDigitalTwinVideo({
+            avatarId: twin.avatarId,
+            script: normalizedScript,
+            voiceId: input.voiceId,
+            emotion: input.emotion,
+          });
+
+          await db.updateAvatarVideo(savedTwin.id, ctx.user.id, { providerJobId: videoId, errorMessage: null });
+
+          const completed = await waitForHeyGenCompletion(videoId, { provider: "v3" });
+          const stored = await downloadAndStoreHeyGenVideo({
+            userId: ctx.user.id,
+            videoId: savedTwin.id,
+            resultUrl: completed.resultUrl,
+          });
+
+          const updatedTwin = await db.updateAvatarVideo(savedTwin.id, ctx.user.id, {
+            videoUrl: stored.videoUrl,
+            status: "completed",
+            errorMessage: null,
+          });
+
+          if (!updatedTwin) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "O video foi gerado, mas nao consegui salvar o resultado final." });
+          }
+
+          return updatedTwin;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "falha desconhecida";
+          await db.updateAvatarVideo(savedTwin.id, ctx.user.id, { status: "failed", errorMessage: message });
+
+          // A HeyGen as vezes processa o consentimento de forma assincrona e so acusa
+          // "avatar_consent_required" na hora de gerar o video, mesmo apos o envio
+          // inicial. Volta o status do twin para pending_consent para reabilitar o
+          // botao de reenviar consentimento na UI, em vez de deixar preso em "ready".
+          if (message.includes("avatar_consent_required") || message.includes("requires consent")) {
+            const twinRecord = await db.getHeygenDigitalTwin(ctx.user.id);
+            if (twinRecord) {
+              await db.upsertHeygenDigitalTwin({
+                userId: ctx.user.id,
+                groupId: twinRecord.groupId,
+                avatarId: null,
+                name: twinRecord.name,
+                status: "pending_consent",
+                errorMessage: "A HeyGen ainda nao confirmou o consentimento. Reenvie o vídeo de consentimento abaixo.",
+              });
+            }
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "A HeyGen ainda nao confirmou o consentimento do seu Avatar 3D. Reenvie o vídeo de consentimento em Vídeos e tente novamente.",
+            });
+          }
+
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao gerar video com Avatar 3D: ${message}` });
+        }
+      }
 
       const preparedSourceImage = await prepareDidSourceImage({
         userId: ctx.user.id,
@@ -621,6 +720,131 @@ const videosRouter = router({
     .mutation(async ({ ctx, input }) => {
       await db.deleteAvatarVideo(input.id, ctx.user.id);
       return { success: true };
+    }),
+
+  // === Digital Twin (avatar 3D treinado do video real do usuario) ===
+
+  getDigitalTwinStatus: protectedProcedure.query(async ({ ctx }) => {
+    const twin = await db.getHeygenDigitalTwin(ctx.user.id);
+    if (!twin) return { exists: false as const };
+
+    // Reconsulta a HeyGen sempre que nao tiver falhado — inclui "ready" de proposito:
+    // se o avatarId salvo estiver errado (bug conhecido, HeyGen nao documenta bem o
+    // formato de resposta do digital twin), isso se autocorrige a cada carregamento
+    // da pagina sem precisar retreinar do zero.
+    if (twin.status !== "failed") {
+      try {
+        const check = await checkDigitalTwinStatus(twin.groupId);
+        if (check.status !== twin.status || (check.avatarId && check.avatarId !== twin.avatarId)) {
+          await db.upsertHeygenDigitalTwin({
+            userId: ctx.user.id,
+            groupId: twin.groupId,
+            avatarId: check.avatarId ?? twin.avatarId,
+            name: twin.name,
+            status: check.status,
+            errorMessage: check.status === "failed" ? "O treinamento do avatar falhou na HeyGen." : null,
+          });
+        }
+        return {
+          exists: true as const,
+          name: twin.name,
+          status: check.status,
+          errorMessage: check.status === "failed" ? "O treinamento do avatar falhou na HeyGen." : null,
+        };
+      } catch (err) {
+        console.warn("[Videos] Falha ao consultar status do Digital Twin:", err);
+      }
+    }
+
+    return { exists: true as const, name: twin.name, status: twin.status, errorMessage: twin.errorMessage };
+  }),
+
+  createDigitalTwin: aiProcedure
+    .input(z.object({
+      name: z.string().min(1).max(100),
+      // URLs publicas (upload direto para S3 via /api/request-presigned-upload) —
+      // videos de treino/consentimento sao grandes demais para o limite de 20mb
+      // do body JSON do Express, entao nao passam em base64.
+      videoUrl: z.string().url(),
+      consentVideoUrl: z.string().url(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+
+      const fetchAsBuffer = async (url: string, label: string) => {
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Nao consegui baixar o ${label} enviado.` });
+        }
+        const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || "video/mp4";
+        return { buffer: Buffer.from(await res.arrayBuffer()), contentType };
+      };
+
+      const video = await fetchAsBuffer(input.videoUrl, "video de treino");
+      const consent = await fetchAsBuffer(input.consentVideoUrl, "video de consentimento");
+
+      try {
+        const { groupId } = await createDigitalTwinAvatar({
+          videoBuffer: video.buffer,
+          videoContentType: video.contentType,
+          consentVideoBuffer: consent.buffer,
+          consentVideoContentType: consent.contentType,
+          name: input.name.trim(),
+        });
+
+        await db.upsertHeygenDigitalTwin({
+          userId: ctx.user.id,
+          groupId,
+          avatarId: null,
+          name: input.name.trim(),
+          status: "training",
+          errorMessage: null,
+        });
+
+        return { success: true, status: "training" as const };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "falha desconhecida";
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao criar Avatar 3D: ${message}` });
+      }
+    }),
+
+  deleteDigitalTwin: protectedProcedure.mutation(async ({ ctx }) => {
+    await db.deleteHeygenDigitalTwin(ctx.user.id);
+    return { success: true };
+  }),
+
+  resubmitDigitalTwinConsent: aiProcedure
+    .input(z.object({ consentVideoUrl: z.string().url() }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+
+      const twin = await db.getHeygenDigitalTwin(ctx.user.id);
+      if (!twin) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum Avatar 3D encontrado para reenviar consentimento." });
+      }
+
+      const res = await fetch(input.consentVideoUrl);
+      if (!res.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nao consegui baixar o video de consentimento enviado." });
+      }
+      const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || "video/mp4";
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      try {
+        await resubmitDigitalTwinConsent({ groupId: twin.groupId, consentVideoBuffer: buffer, consentVideoContentType: contentType });
+        await db.upsertHeygenDigitalTwin({
+          userId: ctx.user.id,
+          groupId: twin.groupId,
+          avatarId: null,
+          name: twin.name,
+          status: "pending_consent",
+          errorMessage: null,
+        });
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "falha desconhecida";
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao reenviar consentimento: ${message}` });
+      }
     }),
 
   getStats: protectedProcedure.query(async ({ ctx }) => {
