@@ -17,6 +17,7 @@ const TRIAL_LOCKED_FEATURES = new Set([
   "campaign",
   "report",
   "emailMarketing",
+  "seo",
 ]);
 
 export function usePlan() {

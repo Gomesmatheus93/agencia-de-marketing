@@ -18,6 +18,7 @@ import {
   Upload,
   ImagePlus,
   Layers,
+  Lock,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
+import { usePlan } from "@/_core/hooks/usePlan";
 import type { InstagramStyleResult } from "../../../server/_core/instagramStyleAgent";
 
 const NICHE_KEYWORDS: [string, string[]][] = [
@@ -390,6 +392,8 @@ function ProfileCard({
 }
 
 export default function StyleAnalyzer() {
+  const { isLocked } = usePlan();
+  const locked = isLocked("styleAnalyzer");
   const [mode, setMode] = useState<Mode>("list");
   const [username, setUsername] = useState("");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -568,6 +572,22 @@ export default function StyleAnalyzer() {
     setUsername("");
     setUploadedImages([]);
   };
+
+  if (locked) {
+    return (
+      <AppLayout activeModule="styleAnalyzer">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="rounded-full bg-muted p-5">
+            <Lock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Analisador de Estilo</h2>
+          <p className="text-muted-foreground max-w-md">
+            Disponível no plano Pro ou superior. Faça upgrade para analisar o estilo visual de perfis do Instagram.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout activeModule="styleAnalyzer">

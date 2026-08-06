@@ -27,7 +27,9 @@ import {
   X,
   XCircle,
   Zap,
+  Lock,
 } from "lucide-react";
+import { usePlan } from "@/_core/hooks/usePlan";
 
 type AvatarVideoStatus = "processing" | "completed" | "failed";
 type Provider = "did" | "heygen";
@@ -210,6 +212,8 @@ function SourceImageUpload({ value, onChange }: { value: string; onChange: (url:
 
 export default function Videos() {
   const { t } = useLanguage();
+  const { isLocked } = usePlan();
+  const locked = isLocked("videos");
   const utils = trpc.useUtils();
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
@@ -334,6 +338,22 @@ export default function Videos() {
   );
 
   const voiceOptions = provider === "heygen" ? heyGenVoiceOptions : DID_VOICES;
+
+  if (locked) {
+    return (
+      <AppLayout activeModule="videos">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="rounded-full bg-muted p-5">
+            <Lock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Vídeos com Avatar</h2>
+          <p className="text-muted-foreground max-w-md">
+            Disponível no plano Pro ou superior. Faça upgrade para gerar vídeos com avatar de IA.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout activeModule="videos">

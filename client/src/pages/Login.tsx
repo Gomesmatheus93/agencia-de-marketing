@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Sparkles, Zap, Image, FileText, Share2, Eye, EyeOff, AlertCircle } from "lucide-react";
 
@@ -41,18 +41,24 @@ export default function Login() {
     } else if (igConnect === "invalid_state") setError("Sessão de login expirada. Tente novamente.");
   }, []);
 
+  // Set right before a fresh registration so the auth-redirect effect below
+  // sends the new user to onboarding instead of straight to the dashboard.
+  const justRegisteredRef = useRef(false);
+
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => { refresh(); navigate("/dashboard"); },
+    onSuccess: () => { refresh(); },
     onError: (e) => setError(e.message),
   });
 
   const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: () => { refresh(); navigate("/dashboard"); },
+    onSuccess: () => { justRegisteredRef.current = true; refresh(); },
     onError: (e) => setError(e.message),
   });
 
   useEffect(() => {
-    if (!loading && isAuthenticated) navigate("/dashboard");
+    if (!loading && isAuthenticated) {
+      navigate(justRegisteredRef.current ? "/dashboard/onboarding" : "/dashboard");
+    }
   }, [isAuthenticated, loading, navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {

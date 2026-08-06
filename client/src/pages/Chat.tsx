@@ -22,6 +22,7 @@ import {
   Zap,
   ChevronLeft,
   MoreHorizontal,
+  Lock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePlan } from "@/_core/hooks/usePlan";
 
 type Message = {
   id: number;
@@ -45,6 +47,8 @@ type Conversation = {
 
 export default function Chat() {
   const { t } = useLanguage();
+  const { isLocked } = usePlan();
+  const locked = isLocked("chat");
   const utils = trpc.useUtils();
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [input, setInput] = useState("");
@@ -146,6 +150,22 @@ export default function Chat() {
   };
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
+
+  if (locked) {
+    return (
+      <AppLayout activeModule="chat">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="rounded-full bg-muted p-5">
+            <Lock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Chat com IA</h2>
+          <p className="text-muted-foreground max-w-md">
+            Disponível no plano Pro ou superior. Faça upgrade para conversar com o assistente de marketing ilimitadamente.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout activeModule="chat">

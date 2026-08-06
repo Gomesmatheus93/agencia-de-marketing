@@ -25,7 +25,9 @@ import {
   RotateCcw,
   Hash,
   Video,
+  Lock,
 } from "lucide-react";
+import { usePlan } from "@/_core/hooks/usePlan";
 
 const VIDEOS_SCRIPT_PREFILL_KEY = "videos_script_prefill";
 import type { ReelsScript } from "@/../../server/db";
@@ -61,6 +63,8 @@ const DURATION_DISPLAY: Record<string, string> = {
 };
 
 export default function Reels() {
+  const { isLocked } = usePlan();
+  const locked = isLocked("reels");
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState<"educational" | "entertaining" | "inspiring" | "informative">("educational");
   const [duration, setDuration] = useState<"short" | "medium" | "long">("medium");
@@ -116,6 +120,22 @@ export default function Reels() {
 
   const [, navigate] = useLocation();
   const displayScript = selected ?? (scripts.length > 0 ? scripts[0] as unknown as ReelsScript : null);
+
+  if (locked) {
+    return (
+      <AppLayout activeModule="reels">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="rounded-full bg-muted p-5">
+            <Lock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Roteiros de Reels</h2>
+          <p className="text-muted-foreground max-w-md">
+            Disponível no plano Pro ou superior. Faça upgrade para gerar roteiros de Reels com IA.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout activeModule="reels">

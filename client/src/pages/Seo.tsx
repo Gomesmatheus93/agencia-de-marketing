@@ -19,6 +19,7 @@ import {
   Unlink,
   MousePointerClick,
   Eye,
+  Lock,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+import { usePlan } from "@/_core/hooks/usePlan";
 import type { RadarPrefill } from "./Radar";
 
 const RADAR_PREFILL_KEY = "radar_prefill";
@@ -229,6 +231,8 @@ function GscPerformanceCard() {
 }
 
 export default function Seo() {
+  const { isLocked } = usePlan();
+  const locked = isLocked("seo");
   const [, navigate] = useLocation();
   const [seedKeyword, setSeedKeyword] = useState("");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
@@ -266,6 +270,22 @@ export default function Seo() {
   }
 
   const result = research.data;
+
+  if (locked) {
+    return (
+      <AppLayout activeModule="seo">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="rounded-full bg-muted p-5">
+            <Lock className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Pesquisa de Palavras-chave (SEO)</h2>
+          <p className="text-muted-foreground max-w-md">
+            Disponível no plano Pro ou superior. Faça upgrade para pesquisar palavras-chave e conectar o Google Search Console.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout activeModule="seo">
