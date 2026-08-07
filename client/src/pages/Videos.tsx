@@ -35,9 +35,6 @@ import {
 } from "lucide-react";
 import { usePlan } from "@/_core/hooks/usePlan";
 
-const CONSENT_STATEMENT_PT =
-  "Oi! Estou falando com bastante energia, de forma natural e confiante. Isso ajuda a HeyGen a capturar minha voz, minhas expressões e meus movimentos, para que meu avatar se comporte exatamente como eu, em qualquer vídeo!";
-
 // MODO TESTE Avatar 3D (temporário — pedido pelo usuário em 2026-08-07 para não
 // estourar o saldo de API HeyGen enquanto valida o Digital Twin). Precisa bater com
 // DIGITAL_TWIN_TEST_SCRIPT_LIMIT em server/routers.ts. Para voltar ao normal, apague
@@ -128,12 +125,26 @@ function DigitalTwinVideoInput({
   );
 }
 
+// Abre uma aba em branco de forma síncrona (dentro do clique do usuário, pra não ser
+// bloqueada como pop-up) e só navega ela pra URL real depois que a chamada assíncrona
+// à HeyGen retornar o link de consentimento.
+function openConsentTabWhenReady(loadUrl: () => Promise<string>, onError: (err: unknown) => void) {
+  const tab = window.open("", "_blank");
+  loadUrl()
+    .then((url) => {
+      if (tab) tab.location.href = url;
+    })
+    .catch((err) => {
+      tab?.close();
+      onError(err);
+    });
+}
+
 function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUseTwinChange: (value: boolean) => void }) {
   const utils = trpc.useUtils();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [trainingFile, setTrainingFile] = useState<File | null>(null);
-  const [consentFile, setConsentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const statusQuery = trpc.videos.getDigitalTwinStatus.useQuery(undefined, {
@@ -143,17 +154,7 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
     },
   });
 
-  const createMutation = trpc.videos.createDigitalTwin.useMutation({
-    onSuccess: () => {
-      toast.success("Vídeos enviados! O treinamento do avatar leva de 10 a 20 minutos.");
-      setTrainingFile(null);
-      setConsentFile(null);
-      setName("");
-      setShowForm(false);
-      void utils.videos.getDigitalTwinStatus.invalidate();
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  const createMutation = trpc.videos.createDigitalTwin.useMutation();
 
   const deleteMutation = trpc.videos.deleteDigitalTwin.useMutation({
     onSuccess: () => {
@@ -163,48 +164,36 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
     },
   });
 
-  const [resubmitFile, setResubmitFile] = useState<File | null>(null);
-  const [resubmitting, setResubmitting] = useState(false);
+  const consentUrlMutation = trpc.videos.getDigitalTwinConsentUrl.useMutation();
 
-  const resubmitMutation = trpc.videos.resubmitDigitalTwinConsent.useMutation({
-    onSuccess: () => {
-      toast.success("Consentimento reenviado! Aguardando validação da HeyGen.");
-      setResubmitFile(null);
-      void utils.videos.getDigitalTwinStatus.invalidate();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const handleResubmitConsent = async () => {
-    if (!resubmitFile) return;
-    setResubmitting(true);
-    try {
-      const consentVideoUrl = await uploadFileToStorage(resubmitFile);
-      resubmitMutation.mutate({ consentVideoUrl });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao enviar o vídeo.");
-    } finally {
-      setResubmitting(false);
-    }
+  const handleOpenConsent = () => {
+    openConsentTabWhenReady(
+      () => consentUrlMutation.mutateAsync().then((r) => r.consentUrl),
+      (err) => toast.error(err instanceof Error ? err.message : "Falha ao gerar o link de consentimento.")
+    );
   };
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!name.trim()) { toast.error("Dê um nome para o seu Avatar 3D."); return; }
     if (!trainingFile) { toast.error("Envie o vídeo de treino (pelo menos 15 segundos)."); return; }
-    if (!consentFile) { toast.error("Envie o vídeo de consentimento."); return; }
 
-    setUploading(true);
-    try {
-      const [videoUrl, consentVideoUrl] = await Promise.all([
-        uploadFileToStorage(trainingFile),
-        uploadFileToStorage(consentFile),
-      ]);
-      createMutation.mutate({ name: name.trim(), videoUrl, consentVideoUrl });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao enviar os vídeos.");
-    } finally {
-      setUploading(false);
-    }
+    const nameValue = name.trim();
+    const fileValue = trainingFile;
+
+    openConsentTabWhenReady(
+      async () => {
+        setUploading(true);
+        const videoUrl = await uploadFileToStorage(fileValue).finally(() => setUploading(false));
+        const result = await createMutation.mutateAsync({ name: nameValue, videoUrl });
+        toast.success("Vídeo de treino enviado! Agora grave o consentimento na aba que acabou de abrir.");
+        setTrainingFile(null);
+        setName("");
+        setShowForm(false);
+        void utils.videos.getDigitalTwinStatus.invalidate();
+        return result.consentUrl;
+      },
+      (err) => toast.error(err instanceof Error ? err.message : "Falha ao criar o Avatar 3D.")
+    );
   };
 
   const data = statusQuery.data as DigitalTwinStatusData | undefined;
@@ -222,6 +211,19 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
             <p className="text-xs text-muted-foreground">Treinado a partir de um vídeo seu — corpo inteiro, gestos e movimento naturais, não só a boca.</p>
           </div>
         </div>
+        {data?.exists && data.status !== "ready" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+            title="Excluir este avatar e começar outro"
+            className="h-8 w-8 shrink-0 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/5"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       {(!data || !data.exists) && !statusQuery.isLoading && !showForm && (
@@ -254,27 +256,25 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
             </span>
           </div>
 
-          {data.status === "pending_consent" && data.errorMessage && (
+          {data.status === "pending_consent" && (
             <div className="space-y-2 rounded-xl border border-border/40 p-3">
-              <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
-                <AlertCircle className="mt-0.5 w-3.5 h-3.5 flex-shrink-0" />
-                <span>{data.errorMessage}</span>
-              </div>
-              <DigitalTwinVideoInput
-                label="Reenviar vídeo de consentimento"
-                hint="Você lendo a frase de consentimento novamente, com o rosto visível."
-                file={resubmitFile}
-                onChange={setResubmitFile}
-                disabled={resubmitting}
-              />
+              {data.errorMessage && (
+                <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
+                  <AlertCircle className="mt-0.5 w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{data.errorMessage}</span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                A HeyGen exige que você grave o consentimento ao vivo pela webcam, direto no site deles.
+              </p>
               <Button
                 type="button"
                 size="sm"
-                onClick={handleResubmitConsent}
-                disabled={!resubmitFile || resubmitting}
+                onClick={handleOpenConsent}
+                disabled={consentUrlMutation.isPending}
                 className="gap-2 bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white border-0 hover:opacity-90"
               >
-                {resubmitting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Reenviando…</> : <><ShieldCheck className="w-3.5 h-3.5" />Reenviar consentimento</>}
+                {consentUrlMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Gerando link…</> : <><ShieldCheck className="w-3.5 h-3.5" />Gravar consentimento pela webcam</>}
               </Button>
             </div>
           )}
@@ -317,27 +317,15 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
             disabled={busy}
           />
 
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" />
-              <label className="text-xs font-medium text-foreground">Vídeo de consentimento (exigido pela HeyGen)</label>
-            </div>
-            <p className="rounded-lg bg-muted/50 p-2.5 text-xs italic text-muted-foreground">"{CONSENT_STATEMENT_PT}"</p>
-            <p className="text-[11px] text-muted-foreground">Grave-se falando essa frase em voz alta, até 30 segundos. Pode ser em português.</p>
+          <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-0.5 w-3.5 h-3.5 flex-shrink-0" />
+            <span>Depois de enviar o vídeo de treino, uma aba vai abrir pra você gravar o consentimento ao vivo pela webcam, direto no site da HeyGen.</span>
           </div>
-
-          <DigitalTwinVideoInput
-            label="Enviar vídeo de consentimento"
-            hint="Você lendo a frase acima, com o rosto visível."
-            file={consentFile}
-            onChange={setConsentFile}
-            disabled={busy}
-          />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setShowForm(false)} disabled={busy}>Cancelar</Button>
             <Button type="button" onClick={handleCreate} disabled={busy} className="gap-2 bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white border-0 hover:opacity-90">
-              {busy ? <><Loader2 className="w-4 h-4 animate-spin" />{uploading ? "Enviando vídeos…" : "Criando…"}</> : <><Sparkles className="w-4 h-4" />Criar Avatar 3D</>}
+              {busy ? <><Loader2 className="w-4 h-4 animate-spin" />{uploading ? "Enviando vídeo…" : "Criando…"}</> : <><Sparkles className="w-4 h-4" />Criar Avatar 3D</>}
             </Button>
           </div>
         </div>

@@ -185,36 +185,29 @@ async function createDigitalTwinGroup(name: string, videoAssetId: string): Promi
   return groupId;
 }
 
-async function submitDigitalTwinConsent(groupId: string, consentAssetId: string): Promise<void> {
+// Upload de vídeo de consentimento pré-gravado via API só está disponível pra contas
+// Enterprise da HeyGen (HTTP 403 resource_access_denied em contas normais). Por isso
+// usamos o fluxo "webcam": a HeyGen gera um link temporário (24h) onde a própria pessoa
+// grava o consentimento ao vivo pela webcam, direto na página hospedada pela HeyGen.
+export async function requestDigitalTwinConsentUrl(groupId: string): Promise<string> {
   const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/${groupId}/consent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "asset_id", asset_id: consentAssetId }),
+    body: JSON.stringify({}),
   });
 
   const text = await res.text();
-  console.log(`[HeyGen] Digital twin consent (raw) para groupId=${groupId}:`, text.slice(0, 2000));
+  console.log(`[HeyGen] Digital twin consent webcam url (raw) para groupId=${groupId}:`, text.slice(0, 2000));
 
-  let parsed: { error?: { message?: string } };
-  try { parsed = JSON.parse(text); } catch { parsed = {}; }
+  let parsed: { data?: { url?: string }; error?: { message?: string } };
+  try { parsed = JSON.parse(text); } catch {
+    throw new Error(`HeyGen digital twin consent: resposta inválida — ${text.slice(0, 200)}`);
+  }
   if (parsed.error) throw new Error(`HeyGen digital twin consent: ${parsed.error.message}`);
-}
 
-// Reenvia so o video de consentimento para um grupo ja existente — usado quando a
-// HeyGen reporta "avatar_consent_required" mesmo apos o envio inicial (o consentimento
-// e processado/validado de forma assincrona pela HeyGen, entao pode nao ter sido
-// aceito da primeira vez).
-export async function resubmitDigitalTwinConsent(input: {
-  groupId: string;
-  consentVideoBuffer: Buffer;
-  consentVideoContentType: string;
-}): Promise<void> {
-  const consentAssetId = await uploadAsset(
-    input.consentVideoBuffer,
-    input.consentVideoContentType,
-    "consent.mp4"
-  );
-  await submitDigitalTwinConsent(input.groupId, consentAssetId);
+  const url = parsed.data?.url;
+  if (!url) throw new Error(`HeyGen digital twin consent: link não retornado. ${text.slice(0, 200)}`);
+  return url;
 }
 
 type DigitalTwinGroupInfo = {
@@ -271,21 +264,18 @@ async function getDigitalTwinGroupInfo(groupId: string): Promise<DigitalTwinGrou
   const consentStatus = (data.consent_status as string | undefined) ?? (data.consentStatus as string | undefined) ?? null;
   const trainingStatus = (data.status as string | undefined) ?? (data.training_status as string | undefined) ?? null;
 
-  // Tenta achar o look (avatar individual) correspondente — e' o id que a geracao de
-  // video espera. So usa data.id/data.avatar_id como ultimo recurso (pode ser so o
-  // group_id de volta, o que causa "avatar_not_found" na geracao de video).
+  // So confiamos no avatarId quando ele vem de um "look" realmente encontrado na
+  // listagem E com status "completed" — usar data.avatar_id como fallback (como o
+  // codigo fazia antes) e' arriscado: esse campo as vezes devolve o proprio group_id,
+  // que a geracao de video rejeita com "invalid_parameter ... is not supported"
+  // (visto em producao). Melhor ficar em "training" mais tempo do que marcar "ready"
+  // com um id invalido.
   let avatarId: string | null = null;
   try {
     const look = await findDigitalTwinLookId(groupId);
-    if (look) avatarId = look.id;
+    if (look && look.status === "completed") avatarId = look.id;
   } catch (err) {
     console.warn("[HeyGen] Falha ao buscar looks do digital twin:", err);
-  }
-
-  if (!avatarId) {
-    const looks = data.looks as Array<Record<string, unknown>> | undefined;
-    const firstLook = Array.isArray(looks) && looks.length > 0 ? looks[0] : undefined;
-    avatarId = (data.avatar_id as string | undefined) ?? (firstLook?.id as string | undefined) ?? null;
   }
 
   return { consentStatus, trainingStatus, avatarId };
@@ -294,25 +284,17 @@ async function getDigitalTwinGroupInfo(groupId: string): Promise<DigitalTwinGrou
 export type CreateDigitalTwinInput = {
   videoBuffer: Buffer;
   videoContentType: string;
-  consentVideoBuffer: Buffer;
-  consentVideoContentType: string;
   name: string;
 };
 
 export async function createDigitalTwinAvatar(
   input: CreateDigitalTwinInput
-): Promise<{ groupId: string }> {
+): Promise<{ groupId: string; consentUrl: string }> {
   const videoAssetId = await uploadAsset(input.videoBuffer, input.videoContentType, "training.mp4");
   const groupId = await createDigitalTwinGroup(input.name, videoAssetId);
+  const consentUrl = await requestDigitalTwinConsentUrl(groupId);
 
-  const consentAssetId = await uploadAsset(
-    input.consentVideoBuffer,
-    input.consentVideoContentType,
-    "consent.mp4"
-  );
-  await submitDigitalTwinConsent(groupId, consentAssetId);
-
-  return { groupId };
+  return { groupId, consentUrl };
 }
 
 export async function checkDigitalTwinStatus(
@@ -362,9 +344,6 @@ export async function generateDigitalTwinVideo(input: {
           resolution: "1080p",
           aspect_ratio: "9:16",
           engine,
-          expressiveness: "high",
-          motion_prompt:
-            "natural full body movement, direct eye contact with camera, conversational hand gestures, warm engaging expression, realistic human presence",
           voice_settings: { emotion: input.emotion ?? "Friendly", speed: 1.0 },
         }),
       });

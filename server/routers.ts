@@ -41,7 +41,7 @@ import {
   createDigitalTwinAvatar,
   checkDigitalTwinStatus,
   generateDigitalTwinVideo,
-  resubmitDigitalTwinConsent,
+  requestDigitalTwinConsentUrl,
 } from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
@@ -439,6 +439,17 @@ const imagesRouter = router({
 // normal, apague esta constante e o bloco "if" que a usa dentro de videosRouter.generate.
 const DIGITAL_TWIN_TEST_SCRIPT_LIMIT = 60;
 
+// A HeyGen às vezes lista o "look" do Digital Twin como existente (o que nosso
+// checkDigitalTwinStatus interpreta como "ready") antes de terminar de processar o
+// consentimento internamente — daí a geração de vídeo rejeita com
+// avatar_consent_required mesmo com o avatar aparecendo pronto. Quando isso acontece,
+// marcamos com esta mensagem e aplicamos um cooldown antes de voltar a confiar no
+// "ready" reportado pela HeyGen, pra evitar que o status pisque de "pendente" pra
+// "pronto" de novo antes da HeyGen realmente terminar.
+const DIGITAL_TWIN_CONSENT_REJECTED_MESSAGE =
+  "A HeyGen ainda nao confirmou o consentimento. Reenvie o vídeo de consentimento abaixo.";
+const DIGITAL_TWIN_CONSENT_COOLDOWN_MS = 2 * 60 * 1000;
+
 // ─── Articles Router ──────────────────────────────────────────────────────────
 const videosRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
@@ -603,7 +614,7 @@ const videosRouter = router({
                 avatarId: null,
                 name: twinRecord.name,
                 status: "pending_consent",
-                errorMessage: "A HeyGen ainda nao confirmou o consentimento. Reenvie o vídeo de consentimento abaixo.",
+                errorMessage: DIGITAL_TWIN_CONSENT_REJECTED_MESSAGE,
               });
             }
             throw new TRPCError({
@@ -739,11 +750,21 @@ const videosRouter = router({
     const twin = await db.getHeygenDigitalTwin(ctx.user.id);
     if (!twin) return { exists: false as const };
 
+    // Se a geracao de video acabou de rejeitar por falta de consentimento, o "look" do
+    // avatar ainda aparece listado na HeyGen (o que reconciliaria pra "ready" abaixo) —
+    // por isso aguardamos um cooldown antes de voltar a confiar nesse sinal, pra nao
+    // o status ficar piscando entre "pendente" e "pronto" sem a HeyGen ter de fato
+    // terminado de processar o consentimento internamente.
+    const consentJustRejectedByGeneration =
+      twin.status === "pending_consent" &&
+      twin.errorMessage === DIGITAL_TWIN_CONSENT_REJECTED_MESSAGE &&
+      Date.now() - twin.updatedAt.getTime() < DIGITAL_TWIN_CONSENT_COOLDOWN_MS;
+
     // Reconsulta a HeyGen sempre que nao tiver falhado — inclui "ready" de proposito:
     // se o avatarId salvo estiver errado (bug conhecido, HeyGen nao documenta bem o
     // formato de resposta do digital twin), isso se autocorrige a cada carregamento
     // da pagina sem precisar retreinar do zero.
-    if (twin.status !== "failed") {
+    if (twin.status !== "failed" && !consentJustRejectedByGeneration) {
       try {
         const check = await checkDigitalTwinStatus(twin.groupId);
         if (check.status !== twin.status || (check.avatarId && check.avatarId !== twin.avatarId)) {
@@ -773,33 +794,25 @@ const videosRouter = router({
   createDigitalTwin: aiProcedure
     .input(z.object({
       name: z.string().min(1).max(100),
-      // URLs publicas (upload direto para S3 via /api/request-presigned-upload) —
-      // videos de treino/consentimento sao grandes demais para o limite de 20mb
-      // do body JSON do Express, entao nao passam em base64.
+      // URL publica (upload direto para S3 via /api/request-presigned-upload) — o
+      // video de treino e grande demais para o limite de 20mb do body JSON do Express,
+      // entao nao passa em base64.
       videoUrl: z.string().url(),
-      consentVideoUrl: z.string().url(),
     }))
     .mutation(async ({ ctx, input }) => {
       requirePaidPlan(ctx.user as PlanUser);
 
-      const fetchAsBuffer = async (url: string, label: string) => {
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `Nao consegui baixar o ${label} enviado.` });
-        }
-        const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || "video/mp4";
-        return { buffer: Buffer.from(await res.arrayBuffer()), contentType };
-      };
-
-      const video = await fetchAsBuffer(input.videoUrl, "video de treino");
-      const consent = await fetchAsBuffer(input.consentVideoUrl, "video de consentimento");
+      const res = await fetch(input.videoUrl);
+      if (!res.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nao consegui baixar o video de treino enviado." });
+      }
+      const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || "video/mp4";
+      const buffer = Buffer.from(await res.arrayBuffer());
 
       try {
-        const { groupId } = await createDigitalTwinAvatar({
-          videoBuffer: video.buffer,
-          videoContentType: video.contentType,
-          consentVideoBuffer: consent.buffer,
-          consentVideoContentType: consent.contentType,
+        const { groupId, consentUrl } = await createDigitalTwinAvatar({
+          videoBuffer: buffer,
+          videoContentType: contentType,
           name: input.name.trim(),
         });
 
@@ -808,11 +821,11 @@ const videosRouter = router({
           groupId,
           avatarId: null,
           name: input.name.trim(),
-          status: "training",
+          status: "pending_consent",
           errorMessage: null,
         });
 
-        return { success: true, status: "training" as const };
+        return { success: true, status: "pending_consent" as const, consentUrl };
       } catch (err) {
         const message = err instanceof Error ? err.message : "falha desconhecida";
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao criar Avatar 3D: ${message}` });
@@ -824,39 +837,24 @@ const videosRouter = router({
     return { success: true };
   }),
 
-  resubmitDigitalTwinConsent: aiProcedure
-    .input(z.object({ consentVideoUrl: z.string().url() }))
-    .mutation(async ({ ctx, input }) => {
-      requirePaidPlan(ctx.user as PlanUser);
+  // Gera um novo link de consentimento por webcam (o link da HeyGen expira em 24h, ou
+  // o usuario pode precisar refazer a gravacao apos uma rejeicao).
+  getDigitalTwinConsentUrl: aiProcedure.mutation(async ({ ctx }) => {
+    requirePaidPlan(ctx.user as PlanUser);
 
-      const twin = await db.getHeygenDigitalTwin(ctx.user.id);
-      if (!twin) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum Avatar 3D encontrado para reenviar consentimento." });
-      }
+    const twin = await db.getHeygenDigitalTwin(ctx.user.id);
+    if (!twin) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum Avatar 3D encontrado para gerar o link de consentimento." });
+    }
 
-      const res = await fetch(input.consentVideoUrl);
-      if (!res.ok) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nao consegui baixar o video de consentimento enviado." });
-      }
-      const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || "video/mp4";
-      const buffer = Buffer.from(await res.arrayBuffer());
-
-      try {
-        await resubmitDigitalTwinConsent({ groupId: twin.groupId, consentVideoBuffer: buffer, consentVideoContentType: contentType });
-        await db.upsertHeygenDigitalTwin({
-          userId: ctx.user.id,
-          groupId: twin.groupId,
-          avatarId: null,
-          name: twin.name,
-          status: "pending_consent",
-          errorMessage: null,
-        });
-        return { success: true };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "falha desconhecida";
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao reenviar consentimento: ${message}` });
-      }
-    }),
+    try {
+      const consentUrl = await requestDigitalTwinConsentUrl(twin.groupId);
+      return { consentUrl };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "falha desconhecida";
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao gerar link de consentimento: ${message}` });
+    }
+  }),
 
   getStats: protectedProcedure.query(async ({ ctx }) => {
     const count = await db.getAvatarVideoCount(ctx.user.id);
