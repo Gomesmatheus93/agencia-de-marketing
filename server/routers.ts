@@ -434,6 +434,11 @@ const imagesRouter = router({
   }),
 });
 
+// MODO TESTE Avatar 3D (temporário — pedido pelo usuário em 2026-08-07 para não
+// estourar o saldo de API HeyGen enquanto valida o Digital Twin). Para voltar ao
+// normal, apague esta constante e o bloco "if" que a usa dentro de videosRouter.generate.
+const DIGITAL_TWIN_TEST_SCRIPT_LIMIT = 60;
+
 // ─── Articles Router ──────────────────────────────────────────────────────────
 const videosRouter = router({
   getAll: protectedProcedure.query(async ({ ctx }) => {
@@ -520,6 +525,12 @@ const videosRouter = router({
         }
         if (!input.voiceId) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma voz para continuar." });
+        }
+        if (normalizedScript.length > DIGITAL_TWIN_TEST_SCRIPT_LIMIT) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Modo teste: roteiro do Avatar 3D limitado a ${DIGITAL_TWIN_TEST_SCRIPT_LIMIT} caracteres para controlar o gasto de API. Peça para remover esse limite quando quiser gerar vídeos normais.`,
+          });
         }
 
         const twin = await db.getHeygenDigitalTwin(ctx.user.id);
