@@ -35,12 +35,6 @@ import {
 } from "lucide-react";
 import { usePlan } from "@/_core/hooks/usePlan";
 
-// MODO TESTE Avatar 3D (temporário — pedido pelo usuário em 2026-08-07 para não
-// estourar o saldo de API HeyGen enquanto valida o Digital Twin). Precisa bater com
-// DIGITAL_TWIN_TEST_SCRIPT_LIMIT em server/routers.ts. Para voltar ao normal, apague
-// esta constante e o uso dela abaixo (maxLength do Textarea e o aviso de modo teste).
-const DIGITAL_TWIN_TEST_SCRIPT_LIMIT = 60;
-
 async function uploadFileToStorage(file: File): Promise<string> {
   const presignRes = await fetch("/api/request-presigned-upload", {
     method: "POST",
@@ -864,15 +858,8 @@ export default function Videos() {
               placeholder="Escreva aqui o texto que o avatar vai falar."
               className="min-h-[160px] resize-none glass border-border/50"
               disabled={generateVideoMutation.isPending}
-              maxLength={activeUseDigitalTwin ? DIGITAL_TWIN_TEST_SCRIPT_LIMIT : undefined}
             />
-            {activeUseDigitalTwin ? (
-              <p className="text-right text-xs text-amber-500">
-                Modo teste: {script.length}/{DIGITAL_TWIN_TEST_SCRIPT_LIMIT} caracteres (limite temporário para economizar créditos da API)
-              </p>
-            ) : (
-              <p className="text-right text-xs text-muted-foreground">{script.length} caracteres</p>
-            )}
+            <p className="text-right text-xs text-muted-foreground">{script.length} caracteres</p>
           </div>
 
           {activeUseDigitalTwin ? (
