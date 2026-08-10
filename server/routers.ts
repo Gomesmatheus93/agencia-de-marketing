@@ -816,11 +816,26 @@ const videosRouter = router({
         return { success: true, status: "pending_consent" as const, consentUrl };
       } catch (err) {
         const message = err instanceof Error ? err.message : "falha desconhecida";
+        if (message.includes("resource_limit_reached")) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Sua conta HeyGen só permite 1 avatar 3D verificado por vez. " +
+              "Acesse app.heygen.com → Avatars, delete o avatar antigo e tente novamente.",
+          });
+        }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao criar Avatar 3D: ${message}` });
       }
     }),
 
   deleteDigitalTwin: protectedProcedure.mutation(async ({ ctx }) => {
+    // Apaga tambem do lado da HeyGen — a conta so permite 1 avatar group
+    // verificado; sem isso o grupo antigo fica orfao e trava a criacao de um
+    // novo (erro "resource_limit_reached") mesmo depois de excluido aqui.
+    const twin = await db.getHeygenDigitalTwin(ctx.user.id);
+    if (twin?.groupId) {
+      await deleteHeyGenAvatar(twin.groupId);
+    }
     await db.deleteHeygenDigitalTwin(ctx.user.id);
     return { success: true };
   }),
