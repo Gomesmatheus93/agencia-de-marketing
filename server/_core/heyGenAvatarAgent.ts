@@ -17,11 +17,33 @@ function getApiKey(): string {
   return ENV.heyGenApiKey;
 }
 
+// O fetch nativo lança TypeError("fetch failed") quando a conexão de rede em si
+// falha (DNS, TLS, conexão recusada/resetada) — antes de qualquer resposta HTTP.
+// É diferente dos Error de negócio que lançamos abaixo para respostas HTTP com erro.
+// Esses casos costumam ser transitórios (ex: blip de rede em produção), então vale
+// re-tentar algumas vezes em vez de propagar direto pro usuário.
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError && /fetch failed/i.test(err.message);
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = 2): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      if (!isNetworkError(err) || attempt >= retries) throw err;
+      const cause = err instanceof Error && err.cause ? ` (${String(err.cause)})` : "";
+      console.warn(`[HeyGen] fetch failed em ${url} — tentativa ${attempt + 1}/${retries + 1}${cause}`);
+      await sleep(500 * (attempt + 1));
+    }
+  }
+}
+
 async function heyGenFetch(url: string, init: RequestInit): Promise<Response> {
   const apiKey = getApiKey();
   const headers: Record<string, string> = { "X-Api-Key": apiKey };
   if (init.headers) Object.assign(headers, init.headers);
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetchWithRetry(url, { ...init, headers });
   if (!res.ok) {
     const body = await res.text();
     const isHtml = body.includes("<html") || body.includes("<!DOCTYPE");
@@ -58,7 +80,7 @@ async function uploadAsset(buffer: Buffer, contentType: string, fileName: string
   const formData = new FormData();
   formData.append("file", blob, fileName);
 
-  const res = await fetch(`${HEYGEN_API}/v3/assets`, {
+  const res = await fetchWithRetry(`${HEYGEN_API}/v3/assets`, {
     method: "POST",
     headers: { "X-Api-Key": apiKey },
     body: formData,
@@ -411,7 +433,7 @@ async function generateV3Video(input: {
 // Fallback V1/V2 com Avatar IV (caso V3 falhe)
 async function createTalkingPhotoV1(buffer: Buffer): Promise<string | null> {
   const apiKey = getApiKey();
-  const res = await fetch("https://upload.heygen.com/v1/talking_photo", {
+  const res = await fetchWithRetry("https://upload.heygen.com/v1/talking_photo", {
     method: "POST",
     headers: { "X-Api-Key": apiKey, "Content-Type": "image/jpeg" },
     body: new Uint8Array(buffer),
@@ -697,7 +719,7 @@ export async function downloadAndStoreHeyGenVideo(input: {
   videoId: number;
   resultUrl: string;
 }): Promise<{ videoUrl: string }> {
-  const res = await fetch(input.resultUrl);
+  const res = await fetchWithRetry(input.resultUrl, {});
   if (!res.ok) throw new Error(`Falha ao baixar vídeo do HeyGen (${res.status})`);
 
   const relativePath = path.posix.join(

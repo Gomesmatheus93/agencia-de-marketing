@@ -1,4 +1,5 @@
 import "dotenv/config";
+import dns from "node:dns";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -92,6 +93,12 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   }
   throw new Error(`No available port found starting from ${startPort}`);
 }
+
+// Em containers/produção o host frequentemente anuncia rota IPv6 sem conectividade
+// real de saída. O fetch nativo (undici) não faz fallback confiável para IPv4 nesse
+// caso e lança "TypeError: fetch failed" em chamadas de API externas (ex: HeyGen).
+// Forçar IPv4 primeiro elimina essa classe de falha intermitente.
+dns.setDefaultResultOrder("ipv4first");
 
 async function startServer() {
   validateRequiredEnv();
