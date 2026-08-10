@@ -21,6 +21,16 @@ import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
 
+// Comparação em tempo constante do X-Api-Key contra N8N_SECRET, evitando
+// timing attacks que uma comparação `!==` simples permitiria.
+function isValidN8nApiKey(apiKey: unknown): boolean {
+  if (!ENV.n8nSecret || typeof apiKey !== "string") return false;
+  const provided = Buffer.from(apiKey);
+  const expected = Buffer.from(ENV.n8nSecret);
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
+}
+
 function approvalHtmlPage(ok: boolean, action: string, reason?: string): string {
   const icon = ok ? "✅" : "❌";
   const title = ok ? `Post ${action}!` : "Não foi possível processar";
@@ -207,8 +217,13 @@ async function startServer() {
         const { url } = await storagePut(key, req.body as Buffer, contentType);
         res.json({ url });
       } catch (err) {
-        const status = err instanceof Error && err.message.includes("Unauthorized") ? 401 : 500;
-        res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+        const unauthorized = err instanceof Error && err.message.includes("Unauthorized");
+        if (unauthorized) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        console.error("[upload-media] Erro:", err);
+        res.status(500).json({ error: "Falha ao enviar o arquivo." });
       }
     }
   );
@@ -234,8 +249,13 @@ async function startServer() {
       const publicUrl = buildAwsPublicUrl({ bucket: process.env.AWS_BUCKET ?? "", region: process.env.AWS_REGION ?? "", publicBaseUrl: process.env.AWS_PUBLIC_BASE_URL }, key);
       res.json({ presignedUrl, publicUrl, key });
     } catch (err) {
-      const status = err instanceof Error && err.message.includes("Unauthorized") ? 401 : 500;
-      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+      const unauthorized = err instanceof Error && err.message.includes("Unauthorized");
+      if (unauthorized) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      console.error("[request-presigned-upload] Erro:", err);
+      res.status(500).json({ error: "Falha ao gerar URL de upload." });
     }
   });
 
@@ -258,7 +278,7 @@ async function startServer() {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && token === ENV.whatsappVerifyToken) {
+    if (mode === "subscribe" && !!ENV.whatsappVerifyToken && token === ENV.whatsappVerifyToken) {
       res.status(200).send(challenge);
     } else {
       res.status(403).send("Forbidden");
@@ -439,14 +459,24 @@ async function startServer() {
   // ── Agregador webhook ──────────────────────────────────────────────────────
   // POST: recebe mensagem do usuário vinda do agregador de números.
   // Processa de forma SÍNCRONA e devolve JSON estruturado imediatamente.
-  app.post("/api/aggregator/webhook", express.json(), handleAggregatorWebhook);
+  // Auth: X-Api-Key header must match N8N_SECRET env var (mesma regra dos
+  // demais endpoints de automação abaixo — sem isso, qualquer requisição
+  // forjada poderia disparar geração de conteúdo por IA e mensagens WhatsApp).
+  app.post("/api/aggregator/webhook", express.json(), (req, res) => {
+    const apiKey = req.headers["x-api-key"];
+    if (!isValidN8nApiKey(apiKey)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    void handleAggregatorWebhook(req, res);
+  });
 
   // ── n8n: match comment against active automations ────────────────────────
   // Called by n8n when Instagram sends a comment webhook.
   // Auth: X-Api-Key header must match N8N_SECRET env var.
   app.post("/api/automations/match-comment", express.json(), async (req, res) => {
     const apiKey = req.headers["x-api-key"];
-    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+    if (!isValidN8nApiKey(apiKey)) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
@@ -490,7 +520,7 @@ async function startServer() {
   // ── n8n: post public reply to a comment ─────────────────────────────────
   app.post("/api/automations/post-reply", express.json(), async (req, res) => {
     const apiKey = req.headers["x-api-key"];
-    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+    if (!isValidN8nApiKey(apiKey)) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
@@ -528,7 +558,7 @@ async function startServer() {
   // ── n8n: send DM to a commenter ─────────────────────────────────────────
   app.post("/api/automations/send-dm", express.json(), async (req, res) => {
     const apiKey = req.headers["x-api-key"];
-    if (!ENV.n8nSecret || apiKey !== ENV.n8nSecret) {
+    if (!isValidN8nApiKey(apiKey)) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }

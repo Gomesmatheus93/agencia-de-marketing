@@ -43,7 +43,11 @@ export function getSessionCookieOptions(
   return {
     httpOnly: true,
     path: "/",
-    sameSite: secure ? "none" : "lax",
+    // "lax" basta: front-end e API são servidos pela mesma origem (o Express
+    // serve o build do SPA), então não há necessidade de "none" (que é a
+    // configuração mais permissiva a CSRF). "lax" ainda permite o cookie em
+    // navegações top-level GET, necessário para os redirects de OAuth.
+    sameSite: "lax",
     secure,
   };
 }
