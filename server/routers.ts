@@ -2,7 +2,8 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminRouter, featuresRouter } from "./_core/adminRouter";
+import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
+import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
 import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
@@ -2060,8 +2061,12 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
     if (top5.length === 0) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma notícia encontrada nos sites monitorados no momento." });
     }
-    await db.saveDigestSession(ctx.user.id, settings.whatsappNumber, top5);
-    const result = await sendNewsDigest(top5, settings.whatsappNumber, settings.templateName, settings.templateLanguage);
+    const session = await db.saveDigestSession(ctx.user.id, settings.whatsappNumber, top5);
+    const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
+    const shortLinkedTop5 = session.id
+      ? top5.map((item, idx) => ({ ...item, url: `${baseUrl}/n/${session.id}/${idx}` }))
+      : top5;
+    const result = await sendNewsDigest(shortLinkedTop5, settings.whatsappNumber, settings.templateName, settings.templateLanguage);
     if (result.error) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Falha ao enviar: ${result.error}` });
     }
@@ -4220,6 +4225,68 @@ const reelsRouter = router({
 });
 
 
+// ─── Art Studio Router (artes prontas, liberadas por domínio de e-mail) ───────
+
+const artStudioRouter = router({
+  // Não lança erro — usado pelo client só pra decidir se mostra a aba.
+  myAccess: protectedProcedure.query(async ({ ctx }) => {
+    const company = await getUserCompany(ctx.user as { email: string | null; role?: string | null });
+    return company ? { companyId: company.id, companyName: company.name } : null;
+  }),
+
+  templates: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role === "admin") {
+        return db.listArtTemplates();
+      }
+      const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null });
+      return db.listArtTemplates(company ? company.id : null);
+    }),
+  }),
+
+  artworks: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.listArtworks(ctx.user.id);
+    }),
+
+    save: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        canvasJson: z.record(z.string(), z.unknown()),
+        imageDataUrl: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const template = await db.getArtTemplate(input.templateId);
+        if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Arte não encontrada." });
+
+        if (ctx.user.role !== "admin") {
+          const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null });
+          const visible = template.companyId === null || template.companyId === company?.id;
+          if (!visible) throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a essa arte." });
+        }
+
+        const { data, contentType, extension } = parseImageDataUrl(input.imageDataUrl);
+        const { storagePut } = await import("./storage");
+        const { url } = await storagePut(`artworks/${ctx.user.id}/${nanoid()}.${extension}`, data, contentType);
+
+        return db.saveArtwork({
+          templateId: input.templateId,
+          userId: ctx.user.id,
+          canvasJson: input.canvasJson,
+          imageUrl: url,
+        });
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteArtwork(input.id, ctx.user.id);
+        return { success: true };
+      }),
+  }),
+});
+
+
 // ─── Campaign Router ──────────────────────────────────────────────────────────
 
 const campaignRouter = router({
@@ -5254,6 +5321,7 @@ export const appRouter = router({
   features: featuresRouter,
   brandKit: brandKitRouter,
   reels: reelsRouter,
+  artStudio: artStudioRouter,
   commentAlerts: commentAlertsRouter,
   commentAutomations: commentAutomationsRouter,
   styleAnalyzer: styleAnalyzerRouter,

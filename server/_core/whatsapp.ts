@@ -139,12 +139,20 @@ export interface NewsDigestItem {
 }
 
 function sanitizeParam(text: string, maxLen: number): string {
-  return text
+  const cleaned = text
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .replace(/[\n\r\t]/g, " ")           // Meta rejects newlines/tabs in template params
     .replace(/ {5,}/g, "    ")           // Meta rejects >4 consecutive spaces
-    .trim()
-    .slice(0, maxLen);
+    .trim();
+
+  if (cleaned.length <= maxLen) return cleaned;
+
+  // Corta na última palavra inteira (em vez de no meio de uma palavra/URL) e
+  // sinaliza com "…" que o texto foi encurtado.
+  const sliced = cleaned.slice(0, maxLen - 1);
+  const lastSpace = sliced.lastIndexOf(" ");
+  const base = lastSpace > maxLen * 0.6 ? sliced.slice(0, lastSpace) : sliced;
+  return `${base.trimEnd()}…`;
 }
 
 function looksGarbled(text: string): boolean {
@@ -161,14 +169,16 @@ function sanitizePhone(number: string): string {
 }
 
 // Budget: 1024 total - ~150 static template chars = 874 for params / 15 params = ~58/param
-// We use: title 80, source 20, url 50 → 5×(80+20+50)=750 + static ≈ 900 < 1024
+// item.url chega aqui já como link curto interno (/n/:id/:idx, ~30-35 chars),
+// então sobra bem mais espaço pro título completo sem estourar o limite do template.
+// We use: title 100, source 18, url 45 → 5×(100+18+45)=815 + static ≈ 965 < 1024
 function buildNewsItemParams(
   item: NewsDigestItem
 ): [{ type: "text"; text: string }, { type: "text"; text: string }, { type: "text"; text: string }] {
   const rawTitle = looksGarbled(item.title) ? "Noticia indisponivel" : item.title;
-  const title = sanitizeParam(rawTitle, 80);
-  const source = sanitizeParam(item.source || "—", 20);
-  const url = sanitizeParam(item.url || "—", 50);
+  const title = sanitizeParam(rawTitle, 100);
+  const source = sanitizeParam(item.source || "—", 18);
+  const url = sanitizeParam(item.url || "—", 45);
   return [
     { type: "text", text: title || "Noticia indisponivel" },
     { type: "text", text: source },

@@ -107,8 +107,16 @@ async function runDigestForUser(
   }));
 
   const messageText = buildDigestTextMessage(newsItems);
-  await saveDigestSession(userId, whatsappNumber, newsItems, undefined, messageText);
-  const result = await sendNewsDigest(top5, whatsappNumber, templateName, templateLanguage);
+  const session = await saveDigestSession(userId, whatsappNumber, newsItems, undefined, messageText);
+
+  // Substitui a URL longa da notícia por um link curto interno (/n/:id/:idx),
+  // liberando espaço de caracteres pro título completo no template do WhatsApp.
+  const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
+  const shortLinkedTop5 = session.id
+    ? top5.map((item, idx) => ({ ...item, url: `${baseUrl}/n/${session.id}/${idx}` }))
+    : top5;
+
+  const result = await sendNewsDigest(shortLinkedTop5, whatsappNumber, templateName, templateLanguage);
 
   if (result.error) {
     console.error(`[NewsDigest] user=${userId} falha no envio:`, result.error);

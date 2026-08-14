@@ -35,6 +35,7 @@ import {
   Target,
   FileBarChart2,
   Mail,
+  LayoutGrid,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -48,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePlan } from "@/_core/hooks/usePlan";
+import { useCompanyAccess } from "@/_core/hooks/useCompanyAccess";
 import UpgradeModal from "@/components/UpgradeModal";
 
 const NAV_ITEMS_CONFIG = [
@@ -77,6 +79,10 @@ const SETTINGS_CONFIG = {
   id: "settings", icon: Settings, path: "/dashboard/settings", color: "from-slate-500 to-slate-600", labelKey: "settings" as const, descKey: "settingsDesc" as const,
 };
 
+const ART_STUDIO_CONFIG = {
+  id: "artStudio", icon: LayoutGrid, path: "/dashboard/artes", color: "from-indigo-500 to-blue-600", labelKey: "artStudio" as const, descKey: "artStudioDesc" as const,
+};
+
 interface AppLayoutProps {
   children: React.ReactNode;
   activeModule?: string;
@@ -100,6 +106,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     description: t(item.descKey),
   }));
   const settingsItem = { ...SETTINGS_CONFIG, label: t(SETTINGS_CONFIG.labelKey), description: t(SETTINGS_CONFIG.descKey) };
+  const artStudioItem = { ...ART_STUDIO_CONFIG, label: t(ART_STUDIO_CONFIG.labelKey), description: t(ART_STUDIO_CONFIG.descKey) };
+  const { hasCompanyAccess } = useCompanyAccess();
   const handleThemeToggle = () => {
     if (!switchable || !toggleTheme) return;
     toggleTheme();
@@ -288,6 +296,15 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               {t("system")}
             </div>
             <NavButton item={settingsItem} />
+          </>
+        )}
+
+        {(hasCompanyAccess || user?.role === "admin") && (
+          <>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
+              {t("company")}
+            </div>
+            <NavButton item={artStudioItem} />
           </>
         )}
       </nav>

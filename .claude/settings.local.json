@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:mypostflow.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node -e ' *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

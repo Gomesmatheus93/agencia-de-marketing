@@ -29,6 +29,7 @@ import Campaign from "./pages/Campaign";
 import Report from "./pages/Report";
 import EmailMarketing from "./pages/EmailMarketing";
 import Onboarding from "./pages/Onboarding";
+import ArtStudio from "./pages/ArtStudio";
 
 function AppRoutes() {
   return (
@@ -59,6 +60,7 @@ function AppRoutes() {
       <Route path="/dashboard/report" component={Report} />
       <Route path="/dashboard/email-marketing" component={EmailMarketing} />
       <Route path="/dashboard/onboarding" component={Onboarding} />
+      <Route path="/dashboard/artes" component={ArtStudio} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

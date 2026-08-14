@@ -1,4 +1,4 @@
-﻿import { eq, desc, asc, and, lte, sql, count } from "drizzle-orm";
+﻿import { eq, desc, asc, and, or, isNull, lte, sql, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { ResultSetHeader } from "mysql2";
 
@@ -60,6 +60,14 @@ import {
   userTopicAngles,
   type TrendingTopic,
   type UserTopicAngle,
+  companies,
+  companyDomains,
+  artTemplates,
+  artworks,
+  type Company,
+  type CompanyDomain,
+  type ArtTemplate,
+  type Artwork,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -82,6 +90,7 @@ let _postMetricsVideoColumnsReady: Promise<void> | null = null;
 let _igAccountInsightsTableReady: Promise<void> | null = null;
 let _templatePerformanceTableReady: Promise<void> | null = null;
 let _editorialPlanItemsTableReady: Promise<void> | null = null;
+let _artStudioTablesReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -2164,20 +2173,36 @@ export async function saveDigestSession(
   newsItems: DigestNewsItem[],
   campaignId?: string,
   messageText?: string
-): Promise<string> {
+): Promise<{ id: number; campaignId: string }> {
   const db = await getDb();
-  const id = campaignId ?? randomCampaignId();
-  if (!db) return id;
+  const campaign = campaignId ?? randomCampaignId();
+  if (!db) return { id: 0, campaignId: campaign };
   await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const now = new Date();
   const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  console.log(`[DigestSession] Salvando sessão phone=${normalized} userId=${userId} campaign=${id}`);
-  await db.execute(sql`
+  console.log(`[DigestSession] Salvando sessão phone=${normalized} userId=${userId} campaign=${campaign}`);
+  const insertResult = await db.execute(sql`
     INSERT INTO whatsapp_digest_sessions (campaign_id, user_id, phone_number, news_items, message_text, sent_at, expires_at)
-    VALUES (${id}, ${userId}, ${normalized}, ${JSON.stringify(newsItems)}, ${messageText ?? null}, ${now}, ${expires})
+    VALUES (${campaign}, ${userId}, ${normalized}, ${JSON.stringify(newsItems)}, ${messageText ?? null}, ${now}, ${expires})
   `);
-  return id;
+  return { id: insertId(insertResult[0]), campaignId: campaign };
+}
+
+// Usada pela rota de link curto (/n/:id/:idx) para redirecionar até a notícia
+// original sem depender do reply-matching de 24h (que serve outro propósito).
+export async function getDigestSessionNewsItems(id: number): Promise<DigestNewsItem[] | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureDigestTables(db);
+  const rows = await db.execute(sql`SELECT news_items FROM whatsapp_digest_sessions WHERE id = ${id} LIMIT 1`);
+  const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+  try {
+    return JSON.parse(String(row.news_items)) as DigestNewsItem[];
+  } catch {
+    return null;
+  }
 }
 
 export async function recordSessionResponse(
@@ -3693,4 +3718,236 @@ export async function deleteEditorialPlanItem(userId: number, id: number): Promi
   await db.delete(editorialPlanItems).where(
     and(eq(editorialPlanItems.id, id), eq(editorialPlanItems.userId, userId))
   );
+}
+
+// ─── Art Studio (empresas, domínios e artes prontas editáveis) ────────────────
+
+async function ensureArtStudioTables() {
+  const db = await getDb();
+  if (!db) return;
+
+  if (!_artStudioTablesReady) {
+    _artStudioTablesReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS companies (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS company_domains (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          companyId INT NOT NULL,
+          domain VARCHAR(255) NOT NULL UNIQUE,
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_company_domains_companyId (companyId)
+        )
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS art_templates (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          companyId INT NULL,
+          name VARCHAR(255) NOT NULL,
+          imageUrl TEXT NOT NULL,
+          thumbnailUrl TEXT,
+          canvasJson JSON,
+          width INT NOT NULL DEFAULT 1080,
+          height INT NOT NULL DEFAULT 1350,
+          createdByUserId INT NOT NULL,
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_art_templates_companyId (companyId)
+        )
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS artworks (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          templateId INT NOT NULL,
+          userId INT NOT NULL,
+          canvasJson JSON NOT NULL,
+          imageUrl TEXT NOT NULL,
+          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_artworks_userId (userId),
+          INDEX idx_artworks_templateId (templateId)
+        )
+      `);
+    })().catch((error) => {
+      _artStudioTablesReady = null;
+      throw error;
+    });
+  }
+
+  await _artStudioTablesReady;
+}
+
+// Companies
+
+export async function listCompanies(): Promise<Array<Company & { domains: CompanyDomain[] }>> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureArtStudioTables();
+  const companyRows = await db.select().from(companies).orderBy(desc(companies.createdAt));
+  const domainRows = await db.select().from(companyDomains);
+  return companyRows.map((c) => ({
+    ...c,
+    domains: domainRows.filter((d) => d.companyId === c.id),
+  }));
+}
+
+export async function createCompany(name: string): Promise<Company> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureArtStudioTables();
+  const [result] = await db.insert(companies).values({ name });
+  const [row] = await db.select().from(companies).where(eq(companies.id, insertId(result))).limit(1);
+  return row;
+}
+
+export async function deleteCompany(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureArtStudioTables();
+  await db.delete(companyDomains).where(eq(companyDomains.companyId, id));
+  await db.delete(artTemplates).where(eq(artTemplates.companyId, id));
+  await db.delete(companies).where(eq(companies.id, id));
+}
+
+export async function addCompanyDomain(companyId: number, domain: string): Promise<CompanyDomain> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureArtStudioTables();
+  const normalized = domain.trim().toLowerCase();
+  const [result] = await db.insert(companyDomains).values({ companyId, domain: normalized });
+  const [row] = await db.select().from(companyDomains).where(eq(companyDomains.id, insertId(result))).limit(1);
+  return row;
+}
+
+export async function removeCompanyDomain(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureArtStudioTables();
+  await db.delete(companyDomains).where(eq(companyDomains.id, id));
+}
+
+export async function getCompanyByDomain(domain: string): Promise<Company | null> {
+  const db = await getDb();
+  if (!db) return null;
+  await ensureArtStudioTables();
+  const normalized = domain.trim().toLowerCase();
+  const rows = await db
+    .select({ id: companies.id, name: companies.name, createdAt: companies.createdAt })
+    .from(companyDomains)
+    .innerJoin(companies, eq(companies.id, companyDomains.companyId))
+    .where(eq(companyDomains.domain, normalized))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// Art templates
+
+export async function listArtTemplates(companyId?: number | null): Promise<ArtTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureArtStudioTables();
+  if (companyId === undefined) {
+    return db.select().from(artTemplates).orderBy(desc(artTemplates.createdAt));
+  }
+  const visibility = companyId === null
+    ? isNull(artTemplates.companyId)
+    : or(eq(artTemplates.companyId, companyId), isNull(artTemplates.companyId));
+  return db.select().from(artTemplates).where(visibility).orderBy(desc(artTemplates.createdAt));
+}
+
+export async function getArtTemplate(id: number): Promise<ArtTemplate | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureArtStudioTables();
+  const rows = await db.select().from(artTemplates).where(eq(artTemplates.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createArtTemplate(data: {
+  name: string;
+  companyId: number | null;
+  imageUrl: string;
+  createdByUserId: number;
+  width?: number;
+  height?: number;
+}): Promise<ArtTemplate> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureArtStudioTables();
+  const [result] = await db.insert(artTemplates).values({
+    name: data.name,
+    companyId: data.companyId,
+    imageUrl: data.imageUrl,
+    createdByUserId: data.createdByUserId,
+    width: data.width ?? 1080,
+    height: data.height ?? 1350,
+  });
+  const [row] = await db.select().from(artTemplates).where(eq(artTemplates.id, insertId(result))).limit(1);
+  return row;
+}
+
+export async function updateArtTemplate(
+  id: number,
+  data: { name?: string; canvasJson?: Record<string, unknown>; thumbnailUrl?: string }
+): Promise<ArtTemplate | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  await ensureArtStudioTables();
+  const updates: Record<string, unknown> = {};
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.canvasJson !== undefined) updates.canvasJson = data.canvasJson;
+  if (data.thumbnailUrl !== undefined) updates.thumbnailUrl = data.thumbnailUrl;
+  if (Object.keys(updates).length > 0) {
+    await db.update(artTemplates).set(updates).where(eq(artTemplates.id, id));
+  }
+  const rows = await db.select().from(artTemplates).where(eq(artTemplates.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function deleteArtTemplate(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureArtStudioTables();
+  await db.delete(artworks).where(eq(artworks.templateId, id));
+  await db.delete(artTemplates).where(eq(artTemplates.id, id));
+}
+
+// Artworks (cópia editada de um template, salva pelo usuário)
+
+export async function listArtworks(userId: number): Promise<Artwork[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureArtStudioTables();
+  return db.select().from(artworks).where(eq(artworks.userId, userId)).orderBy(desc(artworks.updatedAt));
+}
+
+export async function saveArtwork(data: {
+  templateId: number;
+  userId: number;
+  canvasJson: Record<string, unknown>;
+  imageUrl: string;
+}): Promise<Artwork> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureArtStudioTables();
+  const [result] = await db.insert(artworks).values({
+    templateId: data.templateId,
+    userId: data.userId,
+    canvasJson: data.canvasJson,
+    imageUrl: data.imageUrl,
+  });
+  const [row] = await db.select().from(artworks).where(eq(artworks.id, insertId(result))).limit(1);
+  return row;
+}
+
+export async function deleteArtwork(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureArtStudioTables();
+  await db.delete(artworks).where(and(eq(artworks.id, id), eq(artworks.userId, userId)));
 }

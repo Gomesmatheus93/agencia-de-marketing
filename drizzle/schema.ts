@@ -641,3 +641,69 @@ export const editorialPlanItems = mysqlTable(
 
 export type EditorialPlanItem = typeof editorialPlanItems.$inferSelect;
 export type InsertEditorialPlanItem = typeof editorialPlanItems.$inferInsert;
+
+// ─── Companies (multi-tenant domain gating for the "Artes" tab) ──────────────
+export const companies = mysqlTable("companies", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Company = typeof companies.$inferSelect;
+export type InsertCompany = typeof companies.$inferInsert;
+
+export const companyDomains = mysqlTable(
+  "company_domains",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    companyId: int("companyId").notNull(),
+    domain: varchar("domain", { length: 255 }).notNull().unique(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_company_domains_companyId").on(t.companyId)]
+);
+
+export type CompanyDomain = typeof companyDomains.$inferSelect;
+export type InsertCompanyDomain = typeof companyDomains.$inferInsert;
+
+// ─── Art Templates (ready-made artwork, editable by company users) ───────────
+export const artTemplates = mysqlTable(
+  "art_templates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    companyId: int("companyId"), // null = global, visible to every company
+    name: varchar("name", { length: 255 }).notNull(),
+    imageUrl: text("imageUrl").notNull(),
+    thumbnailUrl: text("thumbnailUrl"),
+    canvasJson: json("canvasJson").$type<Record<string, unknown>>(),
+    width: int("width").notNull().default(1080),
+    height: int("height").notNull().default(1350),
+    createdByUserId: int("createdByUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_art_templates_companyId").on(t.companyId)]
+);
+
+export type ArtTemplate = typeof artTemplates.$inferSelect;
+export type InsertArtTemplate = typeof artTemplates.$inferInsert;
+
+export const artworks = mysqlTable(
+  "artworks",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    templateId: int("templateId").notNull(),
+    userId: int("userId").notNull(),
+    canvasJson: json("canvasJson").$type<Record<string, unknown>>().notNull(),
+    imageUrl: text("imageUrl").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("idx_artworks_userId").on(t.userId),
+    index("idx_artworks_templateId").on(t.templateId),
+  ]
+);
+
+export type Artwork = typeof artworks.$inferSelect;
+export type InsertArtwork = typeof artworks.$inferInsert;

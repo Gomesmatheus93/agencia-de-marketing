@@ -7,7 +7,8 @@ import {
   MousePointer2, Type, Square, Circle as CircleIcon,
   Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
   Save, X, Minus, Plus, ChevronUp, ChevronDown,
-  Image as ImageIcon,
+  Image as ImageIcon, Eye, EyeOff, Lock, Layers as LayersIcon, Hand,
+  Upload,
 } from "lucide-react";
 
 // ── Google Fonts ──────────────────────────────────────────────────────────────
@@ -32,34 +33,134 @@ function injectGoogleFonts() {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tool = "select" | "text" | "rect" | "circle";
+type Tool = "select" | "text" | "rect" | "circle" | "pan";
 
 // Selected object type guard
 function isText(obj: any) {
   return obj?.type === "i-text" || obj?.type === "textbox";
 }
-function isShape(obj: any) {
-  return obj && !isText(obj) && obj.name !== "__bg__";
+function isBg(obj: any) {
+  return obj?.name === "__bg__";
 }
+function isImage(obj: any) {
+  return obj?.type === "image" && !isBg(obj);
+}
+function isShape(obj: any) {
+  return obj && !isText(obj) && !isImage(obj) && obj.name !== "__bg__";
+}
+
+// Background fica travado — não é um elemento manipulável, só a base da arte.
+const BG_IMAGE_PROPS = {
+  selectable: false,
+  evented: false,
+  name: "__bg__",
+} as const;
 
 export interface DesignEditorProps {
   open: boolean;
   onClose: () => void;
   initialImageUrl?: string | null;
-  onSave: (dataUrl: string) => void;
+  /** Estado completo de um canvas fabric.js (canvas.toJSON()) já com textos posicionados.
+   *  Quando presente, tem prioridade sobre `initialImageUrl` — usado pra abrir um
+   *  template pronto (ou uma arte salva) pro usuário editar só o texto. */
+  initialCanvasJson?: Record<string, unknown> | null;
+  onSave: (dataUrl: string, canvasJson: Record<string, unknown>) => void;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignEditorProps) {
+export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson, onSave }: DesignEditorProps) {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  // O <div> do workspace só existe depois que o Dialog termina de montar o
+  // conteúdo — os efeitos que anexam listeners nativos nele (roda do mouse,
+  // arraste) rodavam ANTES disso, viam workspaceRef.current === null, e
+  // como suas dependências não mudavam de novo, nunca tentavam de novo:
+  // os listeners simplesmente nunca eram criados. `workspaceReady` dá um
+  // gatilho pra esses efeitos rodarem de novo assim que o nó existir.
+  const [workspaceReady, setWorkspaceReady] = useState(0);
+  const setWorkspaceRef = useCallback((node: HTMLDivElement | null) => {
+    workspaceRef.current = node;
+    if (node) setWorkspaceReady((n) => n + 1);
+  }, []);
   const fabricRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const elementImageInputRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<string[]>([]);
   const historyIdxRef = useRef(-1);
 
   const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<any>(null);
+  const [zoom, setZoom] = useState(1);
+  const [layersTick, setLayersTick] = useState(0);
+  const refreshLayers = useCallback(() => setLayersTick((t) => t + 1), []);
+
+  const spaceDownRef = useRef(false);
+  const isPanningRef = useRef(false);
+  // Posição do ponteiro e valor do pan no instante em que o gesto começou —
+  // cada movimento recalcula o pan do zero a partir dessa âncora (em vez de
+  // acumular delta a delta), pra não haver deriva se algum evento
+  // intermediário vier fora de ordem ou duplicado.
+  const startPosRef = useRef({ x: 0, y: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
+  // Um mousedown+arrastar+mouseup no mesmo elemento ainda dispara um evento
+  // "click" logo depois — sem isso, o clique-pra-recentralizar reagia de
+  // novo ao soltar o arraste, causando um salto extra.
+  const dragMovedRef = useRef(false);
+  const toolRef = useRef<Tool>("select");
+  // Deslocamento do pan (em px, sempre a partir do centro) — aplicado via
+  // transform no wrapper do canvas. Não usamos scroll pra isso: com o
+  // canvas em 100% de zoom ele quase sempre cabe inteiro na área de
+  // trabalho, então não há overflow nenhum pra rolar e a "mão" parecia
+  // travada. Transform funciona em qualquer zoom, com ou sem overflow.
+  const panRef = useRef({ x: 0, y: 0 });
+  const panContentRef = useRef<HTMLDivElement>(null);
+  // panRef é o alvo (onde o pan "deveria" estar); renderedPanRef é o que
+  // está na tela agora. Um loop de animação (abaixo) suaviza um em direção
+  // ao outro a cada frame — assim, mesmo quando o input chega em saltos
+  // grandes/irregulares (em vez de muitos eventos pequenos e contínuos), a
+  // visão desliza de forma animada em vez de "teleportar".
+  const renderedPanRef = useRef({ x: 0, y: 0 });
+
+  const paintPan = useCallback(() => {
+    const el = panContentRef.current;
+    if (el) el.style.transform = `translate(${renderedPanRef.current.x}px, ${renderedPanRef.current.y}px)`;
+  }, []);
+
+  const resetPan = useCallback(() => {
+    panRef.current = { x: 0, y: 0 };
+    renderedPanRef.current = { x: 0, y: 0 };
+    paintPan();
+  }, [paintPan]);
+
+  // Loop de acompanhamento do pan: enquanto o arraste está ativo, o
+  // Photoshop rastreia o cursor 1:1, sem atraso nenhum — só suavizamos
+  // (interpolando renderedPanRef em direção a panRef) fora de um arraste
+  // ativo, ex: roda do mouse ou setas, pra não ficar "pulando" no clique.
+  useEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const EASE = 0.35;
+    const tick = () => {
+      const target = panRef.current;
+      const cur = renderedPanRef.current;
+      if (isPanningRef.current) {
+        if (cur.x !== target.x || cur.y !== target.y) { renderedPanRef.current = { ...target }; paintPan(); }
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const dx = target.x - cur.x, dy = target.y - cur.y;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+        if (dx !== 0 || dy !== 0) { renderedPanRef.current = { ...target }; paintPan(); }
+      } else {
+        renderedPanRef.current = { x: cur.x + dx * EASE, y: cur.y + dy * EASE };
+        paintPan();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [open, paintPan]);
 
   // Text props
   const [fontFamily, setFontFamily] = useState("Montserrat");
@@ -78,6 +179,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
   useEffect(() => {
     if (!open) return;
     injectGoogleFonts();
+    setTool("select");
 
     let canvas: any;
     let disposed = false;
@@ -89,15 +191,30 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
       canvas = new Canvas(canvasElRef.current, {
         width: 540,
         height: 675,
-        backgroundColor: "#111111",
+        backgroundColor: "#ffffff",
         preserveObjectStacking: true,
       });
       fabricRef.current = canvas;
       historyRef.current = [];
       historyIdxRef.current = -1;
+      spaceDownRef.current = false;
+      isPanningRef.current = false;
+      setZoom(1);
+      resetPan();
 
-      // Background image
-      if (initialImageUrl) {
+      if (initialCanvasJson) {
+        // Estado completo já montado (template ou arte salva) — carrega direto,
+        // preservando os textos/posições já colocados.
+        try {
+          await canvas.loadFromJSON(initialCanvasJson);
+          const bg = canvas.getObjects().find((o: any) => isBg(o));
+          if (bg) bg.set(BG_IMAGE_PROPS);
+          canvas.renderAll();
+        } catch (err) {
+          console.warn("[DesignEditor] initialCanvasJson failed to load:", err);
+        }
+      } else if (initialImageUrl) {
+        // Background image
         try {
           let src = initialImageUrl;
           if (/^https?:\/\//i.test(initialImageUrl)) {
@@ -105,13 +222,14 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
           }
           const img = await FabricImage.fromURL(src);
           if (img.width && img.height) {
-            const scale = Math.max(540 / img.width, 675 / img.height);
+            // "contain" (não "cover"): mostra a arte inteira, centralizada, sem cortar bordas
+            const scale = Math.min(540 / img.width, 675 / img.height);
             img.set({
               scaleX: scale, scaleY: scale,
               left: (540 - img.width * scale) / 2,
               top: (675 - img.height * scale) / 2,
-              selectable: false, evented: false,
-              name: "__bg__",
+              originX: "left", originY: "top",
+              ...BG_IMAGE_PROPS,
             });
             canvas.add(img);
             canvas.sendObjectToBack(img);
@@ -135,10 +253,11 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
         historyRef.current = trimmed.slice(-30);
         historyIdxRef.current = historyRef.current.length - 1;
       };
-      canvas.on("object:added", saveHistory);
+      canvas.on("object:added", () => { saveHistory(); refreshLayers(); });
       canvas.on("object:modified", saveHistory);
-      canvas.on("object:removed", saveHistory);
+      canvas.on("object:removed", () => { saveHistory(); refreshLayers(); });
 
+      refreshLayers();
       canvas.renderAll();
     })();
 
@@ -146,7 +265,74 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
       disposed = true;
       if (canvas) { canvas.dispose(); fabricRef.current = null; }
     };
-  }, [open, initialImageUrl]);
+  }, [open, initialImageUrl, initialCanvasJson]);
+
+  // Segurar espaço para arrastar o canvas (pan), como no Canva/Figma.
+  // Ignora quando o foco está em um campo de texto (inclui o textarea
+  // que o fabric usa por trás dos panos pra edição de texto no canvas).
+  useEffect(() => {
+    if (!open) return;
+    const isTyping = (target: EventTarget | null) => {
+      const tag = (target as HTMLElement)?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || (target as HTMLElement)?.isContentEditable;
+    };
+    const arrowSteps: Record<string, [number, number]> = {
+      ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0],
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Setas movem a visão com a ferramenta "Mão" ativa — alternativa ao
+      // clique+arraste, útil quando o drag do mouse não é confiável.
+      const arrowStep = arrowSteps[e.key];
+      if (arrowStep && toolRef.current === "pan" && !isTyping(e.target)) {
+        const amount = e.shiftKey ? 120 : 40;
+        panRef.current = { x: panRef.current.x + arrowStep[0] * amount, y: panRef.current.y + arrowStep[1] * amount };
+        e.preventDefault();
+        return;
+      }
+      if (e.code !== "Space" || isTyping(e.target) || spaceDownRef.current) return;
+      spaceDownRef.current = true;
+      const canvas = fabricRef.current;
+      if (canvas) {
+        canvas.defaultCursor = "grab";
+        canvas.selection = false;
+        canvas.skipTargetFind = true;
+      }
+      if (workspaceRef.current) workspaceRef.current.style.cursor = "grab";
+      e.preventDefault();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      spaceDownRef.current = false;
+      const canvas = fabricRef.current;
+      const panning = toolRef.current === "pan";
+      if (canvas) {
+        canvas.defaultCursor = panning ? "grab" : "default";
+        canvas.selection = !panning;
+        canvas.skipTargetFind = panning;
+      }
+      if (workspaceRef.current) workspaceRef.current.style.cursor = panning ? "grab" : "";
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [open]);
+
+  // Ferramenta "Mão" (igual ao Photoshop/Canva): com ela ativa, clicar e
+  // arrastar em qualquer lugar do canvas move a visão, sem selecionar nem
+  // mexer nos elementos da arte.
+  useEffect(() => {
+    toolRef.current = tool;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const panning = tool === "pan";
+    canvas.selection = !panning;
+    canvas.skipTargetFind = panning;
+    canvas.defaultCursor = panning ? "grab" : "default";
+    canvas.hoverCursor = panning ? "grab" : "move";
+  }, [tool]);
 
   function syncSelected(obj: any) {
     setSelected(obj ?? null);
@@ -158,6 +344,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
       setBold(obj.fontWeight === "bold");
       setItalic(obj.fontStyle === "italic");
       setAlign(obj.textAlign ?? "center");
+    } else if (isImage(obj)) {
+      setShapeOpacity(Math.round((obj.opacity ?? 1) * 100));
     } else if (isShape(obj)) {
       setShapeColor(typeof obj.fill === "string" ? obj.fill : "#00bcd4");
       setShapeOpacity(Math.round((obj.opacity ?? 1) * 100));
@@ -180,7 +368,10 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     const canvas = fabricRef.current;
     if (!canvas) return;
     const text = new IText("Seu texto aqui", {
-      left: 80, top: canvas.height / 2 - 30,
+      // 675 é a altura lógica fixa da arte — não usar canvas.height aqui,
+      // pois o zoom redimensiona o canvas de verdade (ver applyZoom).
+      left: 80, top: 675 / 2 - 30,
+      originX: "left", originY: "top",
       fontFamily, fontSize, fill: textColor,
       fontWeight: bold ? "bold" : "normal",
       fontStyle: italic ? "italic" : "normal",
@@ -199,6 +390,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     if (!canvas) return;
     const rect = new Rect({
       left: 80, top: 550,
+      originX: "left", originY: "top",
       width: 380, height: 72,
       fill: shapeColor,
       opacity: shapeOpacity / 100,
@@ -216,6 +408,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     if (!canvas) return;
     const circle = new Circle({
       left: 180, top: 200,
+      originX: "left", originY: "top",
       radius: 80,
       fill: shapeColor,
       opacity: shapeOpacity / 100,
@@ -226,11 +419,37 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     setTool("select");
   }, [shapeColor, shapeOpacity]);
 
+  // Upload de imagem como ELEMENTO solto na arte (diferente de "Trocar
+  // fundo": fica por cima, é movível/redimensionável, não trava no lugar).
+  const addImageElement = useCallback(async (file: File) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const { FabricImage } = await import("fabric");
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const src = ev.target?.result as string;
+      const img = await FabricImage.fromURL(src);
+      const maxDim = 260;
+      const scale = Math.min(maxDim / (img.width || 1), maxDim / (img.height || 1), 1);
+      img.set({
+        scaleX: scale, scaleY: scale,
+        left: (540 - (img.width || 0) * scale) / 2,
+        top: (675 - (img.height || 0) * scale) / 2,
+        originX: "left", originY: "top",
+      });
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.renderAll();
+      setTool("select");
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const deleteSelected = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const obj = canvas.getActiveObject();
-    if (obj && obj.name !== "__bg__") {
+    if (obj && !isBg(obj)) {
       canvas.remove(obj);
       canvas.discardActiveObject();
       canvas.renderAll();
@@ -243,19 +462,164 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     if (!canvas || historyIdxRef.current <= 0) return;
     historyIdxRef.current--;
     const state = JSON.parse(historyRef.current[historyIdxRef.current]);
-    canvas.loadFromJSON(state).then(() => canvas.renderAll());
-  }, []);
+    canvas.loadFromJSON(state).then(() => { canvas.renderAll(); refreshLayers(); });
+  }, [refreshLayers]);
 
   const layerUp = useCallback(() => {
     const canvas = fabricRef.current;
     const obj = canvas?.getActiveObject();
-    if (obj) { canvas.bringObjectForward(obj); canvas.renderAll(); }
-  }, []);
+    if (obj) { canvas.bringObjectForward(obj); canvas.renderAll(); refreshLayers(); }
+  }, [refreshLayers]);
 
   const layerDown = useCallback(() => {
     const canvas = fabricRef.current;
     const obj = canvas?.getActiveObject();
-    if (obj && obj.name !== "__bg__") { canvas.sendObjectBackwards(obj); canvas.renderAll(); }
+    if (obj && !isBg(obj)) { canvas.sendObjectBackwards(obj); canvas.renderAll(); refreshLayers(); }
+  }, [refreshLayers]);
+
+  // ── Camadas (lista/seleção/reordenação/visibilidade de cada elemento) ──────
+
+  const selectLayer = useCallback((obj: any) => {
+    const canvas = fabricRef.current;
+    if (!canvas || isBg(obj)) return;
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    syncSelected(obj);
+  }, []);
+
+  const moveLayer = useCallback((obj: any, dir: 1 | -1) => {
+    const canvas = fabricRef.current;
+    if (!canvas || isBg(obj)) return;
+    const objects = canvas.getObjects();
+    const target = objects[objects.indexOf(obj) + dir];
+    if (!target || isBg(target)) return;
+    if (dir === 1) canvas.bringObjectForward(obj);
+    else canvas.sendObjectBackwards(obj);
+    canvas.renderAll();
+    refreshLayers();
+  }, [refreshLayers]);
+
+  const toggleLayerVisibility = useCallback((obj: any) => {
+    obj.visible = obj.visible === false ? true : false;
+    fabricRef.current?.renderAll();
+    refreshLayers();
+  }, [refreshLayers]);
+
+  const deleteLayer = useCallback((obj: any) => {
+    const canvas = fabricRef.current;
+    if (!canvas || isBg(obj)) return;
+    if (canvas.getActiveObject() === obj) { canvas.discardActiveObject(); setSelected(null); }
+    canvas.remove(obj);
+    canvas.renderAll();
+    refreshLayers();
+  }, [refreshLayers]);
+
+  // ── Zoom / pan ───────────────────────────────────────────────────────────
+  // O zoom redimensiona o canvas de verdade (em vez de só escalar o que é
+  // desenhado dentro de um quadro fixo) — assim dar zoom nunca corta a arte,
+  // só deixa ela maior/menor. O pan usa um transform (translate) no wrapper
+  // do canvas, não scroll: em 100% de zoom o canvas quase sempre cabe
+  // inteiro na área de trabalho (sem overflow nenhum pra rolar), então
+  // scroll-based pan não tinha o que mover. Transform funciona sempre.
+
+  const applyZoom = useCallback((z: number) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const clamped = Math.min(4, Math.max(0.25, z));
+    canvas.setDimensions({ width: 540 * clamped, height: 675 * clamped });
+    canvas.setZoom(clamped);
+    canvas.renderAll();
+    setZoom(clamped);
+    resetPan();
+  }, [resetPan]);
+
+  const resetZoom = useCallback(() => applyZoom(1), [applyZoom]);
+
+  // Roda do mouse com Ctrl/Cmd = zoom; roda sozinha pan (como no Figma).
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!el || !open) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+        applyZoom(canvas.getZoom() * (0.998 ** e.deltaY));
+        return;
+      }
+      panRef.current = { x: panRef.current.x - e.deltaX, y: panRef.current.y - e.deltaY };
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [open, applyZoom, workspaceReady]);
+
+  // Pan: segurar espaço (em qualquer ferramenta) ou usar a ferramenta "Mão"
+  // e arrastar — desloca o wrapper do canvas (transform), não os elementos.
+  // Só Pointer Events, com captura de ponteiro (o mesmo padrão usado por
+  // Figma/Excalidraw/etc pra arrastar um canvas): o elemento continua
+  // recebendo pointermove/pointerup mesmo se o cursor sair dele, sem
+  // precisar ouvir em `window` nem coordenar múltiplas famílias de evento.
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!el || !open) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!spaceDownRef.current && toolRef.current !== "pan") return;
+      el.setPointerCapture(e.pointerId);
+      isPanningRef.current = true;
+      dragMovedRef.current = false;
+      startPosRef.current = { x: e.clientX, y: e.clientY };
+      panStartRef.current = { ...panRef.current };
+      el.style.cursor = "grabbing";
+      fabricRef.current?.discardActiveObject();
+      fabricRef.current?.renderAll();
+      e.preventDefault();
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isPanningRef.current) return;
+      if (Math.abs(e.clientX - startPosRef.current.x) > 3 || Math.abs(e.clientY - startPosRef.current.y) > 3) dragMovedRef.current = true;
+      // O ponto "agarrado" pela mão segue o cursor 1:1 (efeito "gancho"):
+      // arrastar pra direita revela a parte esquerda da arte, como no
+      // Photoshop — sempre recalculado a partir da âncora do início do
+      // gesto, nunca por acúmulo de delta a delta.
+      panRef.current = {
+        x: panStartRef.current.x + (e.clientX - startPosRef.current.x),
+        y: panStartRef.current.y + (e.clientY - startPosRef.current.y),
+      };
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!isPanningRef.current) return;
+      el.releasePointerCapture(e.pointerId);
+      isPanningRef.current = false;
+      el.style.cursor = spaceDownRef.current || toolRef.current === "pan" ? "grab" : "";
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove);
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [open, workspaceReady]);
+
+  // Clique único com a ferramenta "Mão" ativa recentraliza a visão no ponto
+  // clicado — alternativa que não depende de "segurar e arrastar" continuar
+  // pressionado, só de um clique simples (mais robusto em alguns ambientes).
+  const onWorkspaceClick = useCallback((e: React.MouseEvent) => {
+    // O "click" que fecha um mousedown+arraste+mouseup dispara DEPOIS que
+    // isPanningRef já voltou a false — por isso o guard real é dragMovedRef,
+    // não isPanningRef (que só cobre um clique durante um arraste em curso).
+    if (toolRef.current !== "pan" || isPanningRef.current || dragMovedRef.current) return;
+    const el = workspaceRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const dx = rect.left + rect.width / 2 - e.clientX;
+    const dy = rect.top + rect.height / 2 - e.clientY;
+    panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy };
   }, []);
 
   // ── Background image upload ───────────────────────────────────────────────
@@ -269,12 +633,13 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     reader.onload = async (ev) => {
       const src = ev.target?.result as string;
       const img = await FabricImage.fromURL(src);
-      const scale = Math.max(540 / img.width!, 675 / img.height!);
+      const scale = Math.min(540 / img.width!, 675 / img.height!);
       img.set({
         scaleX: scale, scaleY: scale,
         left: (540 - img.width! * scale) / 2,
         top: (675 - img.height! * scale) / 2,
-        selectable: false, evented: false, name: "__bg__",
+        originX: "left", originY: "top",
+        ...BG_IMAGE_PROPS,
       });
       const old = canvas.getObjects().find((o: any) => o.name === "__bg__");
       if (old) canvas.remove(old);
@@ -292,6 +657,10 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
     const canvas = fabricRef.current;
     if (!canvas) return;
     canvas.discardActiveObject();
+    // Exportar precisa ignorar o zoom/pan da navegação (senão salva o
+    // canvas redimensionado/deslocado da hora, em vez da arte inteira).
+    canvas.setDimensions({ width: 540, height: 675 });
+    canvas.setZoom(1);
     canvas.renderAll();
     // small delay so renderAll finishes before capture
     await new Promise((r) => setTimeout(r, 80));
@@ -306,8 +675,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
         toast.error("Erro ao exportar o design.");
         return;
       }
-      onSave(dataUrl);
-      toast.success("Design aplicado ao slide!");
+      onSave(dataUrl, canvas.toJSON(["name"]));
+      toast.success("Design salvo!");
       onClose();
     } catch (err) {
       console.error("[DesignEditor] export failed:", err);
@@ -334,6 +703,9 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
 
   const textSel = isText(selected);
   const shapeSel = isShape(selected);
+  const imageSel = isImage(selected);
+  const layers = fabricRef.current ? [...fabricRef.current.getObjects()].reverse() : [];
+  void layersTick; // força reler getObjects() acima a cada mudança de camadas
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -366,6 +738,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
           <div className="w-14 border-r border-border/40 flex flex-col items-center gap-1 py-3 bg-muted/10 shrink-0">
             {([
               { id: "select" as Tool, Icon: MousePointer2, label: "Selecionar", action: () => setTool("select") },
+              { id: "pan" as Tool, Icon: Hand, label: "Mover a visão (arraste, segure espaço, ou use as setas do teclado)", action: () => setTool("pan") },
               { id: "text" as Tool, Icon: Type, label: "Texto", action: () => { setTool("text"); addText(); } },
               { id: "rect" as Tool, Icon: Square, label: "Retângulo", action: () => { setTool("rect"); addRect(); } },
               { id: "circle" as Tool, Icon: CircleIcon, label: "Círculo", action: () => { setTool("circle"); addCircle(); } },
@@ -395,7 +768,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
                 className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-[10px] font-bold">
                 ↩
               </button>
-              <button title="Excluir" onClick={deleteSelected} disabled={!selected || selected?.name === "__bg__"}
+              <button title="Excluir" onClick={deleteSelected} disabled={!selected || isBg(selected)}
                 className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors">
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -403,9 +776,31 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
           </div>
 
           {/* Canvas workspace */}
-          <div className="flex-1 flex items-center justify-center bg-muted/20 overflow-hidden">
-            <div className="shadow-2xl rounded-lg overflow-hidden" style={{ width: 540, height: 675 }}>
-              <canvas ref={canvasElRef} />
+          <div className="flex-1 relative bg-muted/20 overflow-hidden">
+            <div ref={setWorkspaceRef} onClick={onWorkspaceClick} className={cn("w-full h-full overflow-hidden", tool === "pan" && "cursor-grab")}>
+              <div ref={panContentRef} className="w-full h-full flex items-center justify-center">
+                <div className="shadow-2xl rounded-lg overflow-hidden bg-white shrink-0">
+                  <canvas ref={canvasElRef} />
+                </div>
+              </div>
+            </div>
+
+            {/* Zoom controls — roda do mouse com Ctrl/Cmd também dá zoom (a arte
+                fica maior/menor sem nunca ser cortada); segurar espaço, ou usar
+                a ferramenta "Mão", e arrastar navega pela arte (pan). */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-0.5 bg-background/95 border border-border/40 rounded-lg shadow-lg px-1.5 py-1.5">
+              <button title="Diminuir zoom" onClick={() => applyZoom(zoom - 0.1)}
+                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button title="Redefinir zoom (100%)" onClick={resetZoom}
+                className="text-[11px] font-medium text-muted-foreground w-11 text-center hover:text-foreground transition-colors">
+                {Math.round(zoom * 100)}%
+              </button>
+              <button title="Aumentar zoom" onClick={() => applyZoom(zoom + 0.1)}
+                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -507,11 +902,98 @@ export function DesignEditor({ open, onClose, initialImageUrl, onSave }: DesignE
                 </div>
               )}
 
+              {/* Image element properties */}
+              {imageSel && (
+                <div className="space-y-2.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Imagem</p>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Opacidade: {shapeOpacity}%</label>
+                    <input type="range" min={10} max={100} step={5} className="w-full accent-primary"
+                      value={shapeOpacity} onChange={(e) => { const v = Number(e.target.value); setShapeOpacity(v); applyProp("opacity", v / 100); }} />
+                  </div>
+                </div>
+              )}
+
               {!selected && tool === "select" && (
                 <p className="text-[10px] text-muted-foreground/50 text-center py-6 leading-relaxed">
                   Clique em um elemento para editar suas propriedades
                 </p>
               )}
+
+              {/* Layers */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                  <LayersIcon className="w-3 h-3" /> Camadas
+                </p>
+                <div className="space-y-1 max-h-56 overflow-y-auto">
+                  {layers.length === 0 && (
+                    <p className="text-[10px] text-muted-foreground/50 text-center py-3">Nenhum elemento ainda</p>
+                  )}
+                  {layers.map((obj: any, i: number) => {
+                    const bg = isBg(obj);
+                    const text = isText(obj);
+                    const isActive = selected === obj;
+                    const isImage = obj.type === "image";
+                    const Icon = bg ? ImageIcon : text ? Type : isImage ? ImageIcon : obj.type === "circle" ? CircleIcon : Square;
+                    const label = bg
+                      ? "Imagem de fundo"
+                      : text
+                      ? (obj.text?.trim()?.slice(0, 22) || "Texto")
+                      : isImage ? "Imagem"
+                      : obj.type === "circle" ? "Círculo" : "Retângulo";
+                    const hidden = obj.visible === false;
+                    return (
+                      <div key={i}
+                        className={cn(
+                          "flex items-center gap-1 px-1.5 py-1 rounded-md border transition-colors",
+                          isActive ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/50"
+                        )}
+                      >
+                        <button onClick={() => selectLayer(obj)} disabled={bg}
+                          className="flex-1 flex items-center gap-1.5 min-w-0 text-left disabled:cursor-default">
+                          <Icon className={cn("w-3.5 h-3.5 shrink-0", hidden ? "text-muted-foreground/30" : "text-muted-foreground")} />
+                          <span className={cn("text-[11px] truncate", hidden && "text-muted-foreground/40")}>{label}</span>
+                          {bg && <Lock className="w-3 h-3 shrink-0 text-muted-foreground/40" />}
+                        </button>
+                        <button onClick={() => toggleLayerVisibility(obj)} title={hidden ? "Mostrar" : "Ocultar"}
+                          className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                          {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        {!bg && (
+                          <>
+                            <button onClick={() => moveLayer(obj, 1)} title="Subir"
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => moveLayer(obj, -1)} title="Descer"
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => deleteLayer(obj)} title="Excluir"
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Elementos — upload de imagem solta na arte (logo, foto etc.) */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                  <Upload className="w-3 h-3" /> Elementos
+                </p>
+                <input ref={elementImageInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageElement(f); e.target.value = ""; }} />
+                <button onClick={() => elementImageInputRef.current?.click()}
+                  className="w-full h-16 rounded-lg border border-dashed border-border/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:bg-muted/50 hover:border-primary/50 transition-colors">
+                  <ImageIcon className="w-4 h-4" />
+                  <span className="text-[10px]">Enviar imagem</span>
+                </button>
+              </div>
 
               {/* Color palette */}
               <div className="space-y-2">

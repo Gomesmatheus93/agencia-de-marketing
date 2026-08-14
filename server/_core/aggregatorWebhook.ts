@@ -156,6 +156,10 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
       noticia_selecionada: null,
       erro: "Resposta inválida — esperado número de 1 a 5.",
     } satisfies AggregatorReply);
+    // Envia direto pelo mesmo canal que manda o digest — não depende do n8n repassar o JSON.
+    await sendWhatsAppText(phone, replyText).catch((err) => {
+      console.error("[AggregatorWebhook] Falha ao enviar resposta (inválida) via WA direto:", err);
+    });
     return;
   }
 
@@ -173,13 +177,16 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
       noticia_selecionada: null,
       erro: "Nenhuma sessão ativa (expirada após 24h ou número não reconhecido).",
     } satisfies AggregatorReply);
+    await sendWhatsAppText(phone, replyText).catch((err) => {
+      console.error("[AggregatorWebhook] Falha ao enviar resposta (sem sessão) via WA direto:", err);
+    });
     return;
   }
 
   const { chosenItem, userId, campaignId } = session;
   console.log(`[AggregatorWebhook] Sessão encontrada: userId=${userId} campaign=${campaignId} notícia="${chosenItem.title}"`);
 
-  // ── Monta texto de resposta imediata (n8n repassa ao usuário) ──
+  // ── Monta texto de resposta imediata ──
   const excerpt = chosenItem.excerpt
     ? `\n\n${chosenItem.excerpt.slice(0, 300).trim()}...`
     : "";
@@ -190,7 +197,7 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
     `\n\n🔗 Fonte: ${chosenItem.source}\n🌐 ${chosenItem.url}\n\n` +
     `⚙️ Estamos gerando seu artigo completo — aguarde até 2 minutos.`;
 
-  // ── Responde ao n8n IMEDIATAMENTE com o texto pronto ──
+  // ── Responde ao n8n com o texto pronto (mantido por compatibilidade/log) ──
   res.status(200).json({
     resposta_texto: replyText,
     telefone: phone,
@@ -204,13 +211,19 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
     },
   } satisfies AggregatorReply);
 
+  // ── Envia a confirmação direto pelo WhatsApp — mesmo canal usado pro digest —
+  // em vez de depender do n8n repassar "resposta_texto" de volta ao usuário.
+  await sendWhatsAppText(phone, replyText).catch((err) => {
+    console.error("[AggregatorWebhook] Falha ao enviar confirmação via WA direto:", err);
+  });
+
   // ── Geração em background ───────────────────────────────────────────────
   // newsAutoGenerator.ts envia a notificação WhatsApp ao concluir — sem duplicar aqui
   void (async () => {
     try {
       console.log(`[AggregatorWebhook] Iniciando geração: userId=${userId}`);
       const result = await autoGenerateFromNews(userId, chosenItem, phone);
-      console.log(`[AggregatorWebhook] Concluído: articleId=${result.articleId} carouselId=${result.carouselId}`);
+      console.log(`[AggregatorWebhook] Concluído: articleId=${result.articleId} carouselId=${result.carouselId} reelsScriptId=${result.reelsScriptId}`);
     } catch (err) {
       console.error("[AggregatorWebhook] ERRO NA GERAÇÃO:", err);
       await sendWhatsAppText(

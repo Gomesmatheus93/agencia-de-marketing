@@ -4,6 +4,32 @@ import { ownerProcedure, protectedProcedure, router } from "./trpc";
 import * as db from "../db";
 import { hashPassword } from "./password";
 import { nanoid } from "nanoid";
+import { storagePut } from "../storage";
+
+function extensionFromMimeType(mimeType: string): string {
+  const map: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+  };
+  return map[mimeType] ?? "png";
+}
+
+export function parseImageDataUrl(dataUrl: string): { data: Buffer; contentType: string; extension: string } {
+  if (!dataUrl.startsWith("data:")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida (esperado data URL)." });
+  }
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida (esperado data URL)." });
+  }
+  const header = dataUrl.slice(5, commaIndex);
+  const body = dataUrl.slice(commaIndex + 1);
+  const contentType = header.split(";")[0] || "image/png";
+  const data = Buffer.from(body, "base64");
+  return { data, contentType, extension: extensionFromMimeType(contentType) };
+}
 
 export const adminRouter = router({
   // ─── Stats ────────────────────────────────────────────────────────────────
@@ -127,6 +153,94 @@ export const adminRouter = router({
       const flag = await db.getFeatureFlagByKey(input.key);
       if (!flag) throw new TRPCError({ code: "NOT_FOUND", message: "Feature flag não encontrada" });
       await db.deleteFeatureFlag(input.key);
+      return { success: true } as const;
+    }),
+
+  // ─── Companies (domínios que liberam a aba "Artes") ──────────────────────
+  listCompanies: ownerProcedure.query(async () => {
+    return db.listCompanies();
+  }),
+
+  createCompany: ownerProcedure
+    .input(z.object({ name: z.string().min(1).max(255) }))
+    .mutation(async ({ input }) => {
+      return db.createCompany(input.name);
+    }),
+
+  deleteCompany: ownerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.deleteCompany(input.id);
+      return { success: true } as const;
+    }),
+
+  addCompanyDomain: ownerProcedure
+    .input(z.object({ companyId: z.number(), domain: z.string().min(3).max(255) }))
+    .mutation(async ({ input }) => {
+      const domain = input.domain.trim().toLowerCase();
+      const existing = await db.getCompanyByDomain(domain);
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: "Esse domínio já está vinculado a outra empresa." });
+      }
+      return db.addCompanyDomain(input.companyId, domain);
+    }),
+
+  removeCompanyDomain: ownerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.removeCompanyDomain(input.id);
+      return { success: true } as const;
+    }),
+
+  // ─── Art Templates (artes prontas, editáveis pelos usuários da empresa) ──
+  listArtTemplates: ownerProcedure.query(async () => {
+    return db.listArtTemplates(); // admin sempre vê todas; filtro visual fica no client
+  }),
+
+  createArtTemplate: ownerProcedure
+    .input(z.object({
+      name: z.string().min(1).max(255),
+      companyId: z.number().nullable(),
+      imageDataUrl: z.string().min(1),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { data, contentType, extension } = parseImageDataUrl(input.imageDataUrl);
+      const { url } = await storagePut(`art-templates/${nanoid()}.${extension}`, data, contentType);
+      return db.createArtTemplate({
+        name: input.name,
+        companyId: input.companyId,
+        imageUrl: url,
+        createdByUserId: ctx.user.id,
+      });
+    }),
+
+  updateArtTemplate: ownerProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(255).optional(),
+      canvasJson: z.record(z.string(), z.unknown()).optional(),
+      thumbnailDataUrl: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      let thumbnailUrl: string | undefined;
+      if (input.thumbnailDataUrl) {
+        const { data, contentType, extension } = parseImageDataUrl(input.thumbnailDataUrl);
+        const uploaded = await storagePut(`art-templates/${nanoid()}-thumb.${extension}`, data, contentType);
+        thumbnailUrl = uploaded.url;
+      }
+      const updated = await db.updateArtTemplate(input.id, {
+        name: input.name,
+        canvasJson: input.canvasJson,
+        thumbnailUrl,
+      });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Arte não encontrada." });
+      return updated;
+    }),
+
+  deleteArtTemplate: ownerProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.deleteArtTemplate(input.id);
       return { success: true } as const;
     }),
 });

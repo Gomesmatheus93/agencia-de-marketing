@@ -3,7 +3,8 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useLocation } from "wouter";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DesignEditor } from "@/components/DesignEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +41,10 @@ import {
   TrendingUp,
   Search,
   Download,
+  Building2,
+  Upload,
+  ImageOff,
+  Pencil,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -350,9 +355,306 @@ function StatCard({ label, value, sub, color, icon: Icon }: { label: string; val
   );
 }
 
+// ── Companies & Arts ─────────────────────────────────────────────────────────
+
+type CompanyRow = {
+  id: number;
+  name: string;
+  domains: { id: number; domain: string }[];
+};
+
+type ArtTemplateRow = {
+  id: number;
+  companyId: number | null;
+  name: string;
+  imageUrl: string;
+  thumbnailUrl: string | null;
+  canvasJson: Record<string, unknown> | null;
+};
+
+function CompanyCard({ company, onChanged }: { company: CompanyRow; onChanged: () => void }) {
+  const [domain, setDomain] = useState("");
+  const addDomain = trpc.admin.addCompanyDomain.useMutation({
+    onSuccess: () => { setDomain(""); onChanged(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const removeDomain = trpc.admin.removeCompanyDomain.useMutation({
+    onSuccess: onChanged,
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteCompany = trpc.admin.deleteCompany.useMutation({
+    onSuccess: () => { toast.success("Empresa removida"); onChanged(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="glass-card rounded-xl px-4 py-3 border border-border/40 space-y-2.5">
+      <div className="flex items-center gap-3">
+        <p className="text-sm font-medium flex-1">{company.name}</p>
+        <Button
+          size="icon" variant="ghost" className="h-7 w-7 text-destructive/60 hover:text-destructive"
+          onClick={() => { if (confirm(`Excluir "${company.name}" e todas as artes vinculadas a ela?`)) deleteCompany.mutate({ id: company.id }); }}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {company.domains.map((d) => (
+          <Badge key={d.id} variant="outline" className="text-[11px] gap-1.5 pr-1.5">
+            {d.domain}
+            <button
+              className="text-muted-foreground/60 hover:text-destructive"
+              onClick={() => removeDomain.mutate({ id: d.id })}
+              title="Remover domínio"
+            >
+              <XCircle className="w-3 h-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          placeholder="dominio-da-empresa.com"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          className="h-8 text-xs flex-1"
+        />
+        <Button
+          size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+          disabled={!domain || addDomain.isPending}
+          onClick={() => addDomain.mutate({ companyId: company.id, domain })}
+        >
+          <Plus className="w-3.5 h-3.5" /> Domínio
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function NewArtTemplateForm({
+  companies,
+  onCreated,
+}: {
+  companies: CompanyRow[];
+  onCreated: (template: ArtTemplateRow) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [companyId, setCompanyId] = useState<string>("global");
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const createTemplate = trpc.admin.createArtTemplate.useMutation({
+    onSuccess: (tpl) => {
+      toast.success("Arte criada — agora monte o layout no editor.");
+      setOpen(false);
+      setName("");
+      setCompanyId("global");
+      setSelectedFileName(null);
+      onCreated(tpl as ArtTemplateRow);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-2">
+        <Plus className="w-4 h-4" /> Nova arte
+      </Button>
+    );
+  }
+
+  return (
+    <div className="glass-card p-4 rounded-xl space-y-3 border border-border/50">
+      <p className="text-sm font-semibold">Nova arte</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Nome</label>
+          <Input placeholder="ex: Post institucional" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Empresa</label>
+          <select
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="global">Global (todas as empresas)</option>
+            {companies.map((c) => (
+              <option key={c.id} value={String(c.id)}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Imagem base</label>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (!file.type.startsWith("image/")) {
+              toast.error("Selecione apenas arquivos de imagem");
+              return;
+            }
+            setSelectedFileName(file.name);
+            if (!name) setName(file.name.replace(/\.[^.]+$/, ""));
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const imageDataUrl = (ev.target?.result as string) || "";
+              if (!imageDataUrl) return;
+              createTemplate.mutate({
+                name: name || file.name.replace(/\.[^.]+$/, ""),
+                companyId: companyId === "global" ? null : Number(companyId),
+                imageDataUrl,
+              });
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
+        <button
+          type="button"
+          disabled={createTemplate.isPending}
+          onClick={() => fileInputRef.current?.click()}
+          className={cn(
+            "w-full flex items-center gap-3 rounded-lg border border-dashed px-3 py-2.5 text-left transition-colors",
+            "border-border/60 hover:border-primary/50 hover:bg-accent/30 disabled:opacity-60"
+          )}
+        >
+          <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            {createTemplate.isPending ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <Upload className="w-4 h-4 text-muted-foreground" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium truncate">
+              {createTemplate.isPending ? "Enviando..." : selectedFileName ?? "Clique para selecionar uma imagem"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">{selectedFileName ? "Clique para trocar" : "PNG ou JPG"}</p>
+          </div>
+        </button>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+      </div>
+    </div>
+  );
+}
+
+function CompaniesArtsSection() {
+  const companiesQuery = trpc.admin.listCompanies.useQuery();
+  const templatesQuery = trpc.admin.listArtTemplates.useQuery();
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [editorTarget, setEditorTarget] = useState<{ id: number; imageUrl: string; canvasJson: Record<string, unknown> | null } | null>(null);
+
+  const createCompany = trpc.admin.createCompany.useMutation({
+    onSuccess: () => { setNewCompanyName(""); companiesQuery.refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteTemplate = trpc.admin.deleteArtTemplate.useMutation({
+    onSuccess: () => { toast.success("Arte removida"); templatesQuery.refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateTemplate = trpc.admin.updateArtTemplate.useMutation({
+    onSuccess: () => { toast.success("Layout salvo!"); templatesQuery.refetch(); setEditorTarget(null); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const companies = (companiesQuery.data ?? []) as CompanyRow[];
+  const templates = (templatesQuery.data ?? []) as ArtTemplateRow[];
+  const companyName = (id: number | null) => (id === null ? "Global" : companies.find((c) => c.id === id)?.name ?? "—");
+
+  return (
+    <div className="space-y-8">
+      {/* Empresas */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-base flex items-center gap-2"><Building2 className="w-4 h-4" />Empresas</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Domínios de e-mail que liberam a aba "Artes" pros usuários dessa empresa.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input placeholder="Nome da empresa" value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} className="w-48 h-9" />
+            <Button size="sm" disabled={!newCompanyName || createCompany.isPending} onClick={() => createCompany.mutate({ name: newCompanyName })}>
+              <Plus className="w-4 h-4" /> Nova empresa
+            </Button>
+          </div>
+        </div>
+        {companies.length === 0 ? (
+          <div className="glass-card rounded-xl p-6 text-center text-muted-foreground text-sm">Nenhuma empresa cadastrada ainda.</div>
+        ) : (
+          <div className="space-y-2">
+            {companies.map((c) => (
+              <CompanyCard key={c.id} company={c} onChanged={() => companiesQuery.refetch()} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Artes */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-base flex items-center gap-2"><Upload className="w-4 h-4" />Artes prontas</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Suba a imagem-base e monte o layout com os textos que os usuários vão poder editar.</p>
+          </div>
+          <NewArtTemplateForm companies={companies} onCreated={(tpl) => setEditorTarget({ id: tpl.id, imageUrl: tpl.imageUrl, canvasJson: null })} />
+        </div>
+        {templates.length === 0 ? (
+          <div className="glass-card rounded-xl p-8 text-center text-muted-foreground text-sm">Nenhuma arte cadastrada ainda.</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {templates.map((tpl) => (
+              <div key={tpl.id} className="glass-card rounded-xl overflow-hidden border border-border/40">
+                <div className="aspect-[4/5] bg-muted/40">
+                  {tpl.thumbnailUrl || tpl.imageUrl ? (
+                    <img src={tpl.thumbnailUrl ?? tpl.imageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground/40"><ImageOff className="w-8 h-8" /></div>
+                  )}
+                </div>
+                <div className="p-2.5 space-y-1.5">
+                  <p className="text-xs font-medium truncate">{tpl.name}</p>
+                  <Badge variant="outline" className="text-[10px]">{companyName(tpl.companyId)}</Badge>
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <Button
+                      size="sm" variant="outline" className="flex-1 gap-1.5 h-7 text-xs"
+                      onClick={() => setEditorTarget({ id: tpl.id, imageUrl: tpl.imageUrl, canvasJson: tpl.canvasJson })}
+                    >
+                      <Pencil className="w-3 h-3" /> {tpl.canvasJson ? "Editar layout" : "Montar layout"}
+                    </Button>
+                    <Button
+                      size="icon" variant="ghost" className="h-7 w-7 text-destructive/60 hover:text-destructive"
+                      onClick={() => { if (confirm(`Excluir arte "${tpl.name}"?`)) deleteTemplate.mutate({ id: tpl.id }); }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <DesignEditor
+        open={!!editorTarget}
+        onClose={() => setEditorTarget(null)}
+        initialImageUrl={editorTarget?.canvasJson ? undefined : editorTarget?.imageUrl}
+        initialCanvasJson={editorTarget?.canvasJson ?? null}
+        onSave={(dataUrl, canvasJson) => {
+          if (!editorTarget) return;
+          updateTemplate.mutate({ id: editorTarget.id, canvasJson, thumbnailDataUrl: dataUrl });
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "users" | "platform";
+type Tab = "overview" | "users" | "platform" | "companies";
 
 export default function SettingsPage() {
   const { t } = useLanguage();
@@ -425,9 +727,10 @@ export default function SettingsPage() {
   });
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
-    { id: "users",    label: "Usuários",    icon: Users },
-    { id: "platform", label: "Plataforma",  icon: Settings },
+    { id: "overview",   label: "Visão Geral",      icon: LayoutDashboard },
+    { id: "users",      label: "Usuários",         icon: Users },
+    { id: "platform",   label: "Plataforma",       icon: Settings },
+    { id: "companies",  label: "Empresas & Artes", icon: Building2 },
   ];
 
   return (
@@ -743,6 +1046,13 @@ export default function SettingsPage() {
                 </div>
               )}
             </section>
+          </div>
+        )}
+
+        {/* ── COMPANIES & ARTS TAB ── */}
+        {tab === "companies" && (
+          <div className="animate-fade-in-up">
+            <CompaniesArtsSection />
           </div>
         )}
       </div>

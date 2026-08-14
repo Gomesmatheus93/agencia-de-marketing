@@ -2,6 +2,7 @@ import { invokeLLM } from "./llm";
 import { generateArticleCoverWithDesigner } from "./articleDesignerAgent";
 import { generateCarouselWithAgent } from "./carouselAgent";
 import { persistCarouselAssets } from "./carouselPersistence";
+import { generateReelsScript, type GeneratedReelsScript } from "./reelsScriptAgent";
 import { sendWhatsAppText } from "./whatsapp";
 import { fetchArticleContext } from "../routers";
 import * as db from "../db";
@@ -12,11 +13,49 @@ function compact(s: string) {
   return s.replace(/ /g, " ").replace(/\s+/g, " ").trim();
 }
 
+const SCENE_TYPE_LABEL: Record<string, string> = {
+  hook: "Gancho",
+  context: "Contexto",
+  content: "Conteúdo",
+  reward: "Recompensa",
+  loop_close: "Fechamento",
+  cta: "CTA",
+};
+
+function formatReelsScriptForWhatsApp(script: GeneratedReelsScript, newsTitle: string): string {
+  const scenesText = script.scenes
+    .map((scene) => {
+      const label = SCENE_TYPE_LABEL[scene.type] ?? scene.type;
+      const lines = [
+        `*${scene.id}. ${label}* (${scene.duration})`,
+        `Visual: ${scene.visual}`,
+        `Fala: ${scene.audio}`,
+      ];
+      if (scene.caption) lines.push(`Overlay: ${scene.caption}`);
+      if (scene.note) lines.push(`Nota: ${scene.note}`);
+      return lines.join("\n");
+    })
+    .join("\n\n");
+
+  const hashtags = script.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ");
+
+  return (
+    `🎬 *Roteiro de Reels pronto para gravar!*\n` +
+    `_Baseado na notícia: ${newsTitle}_\n\n` +
+    `*${script.title}*\n` +
+    `⏱️ Duração alvo: ${script.targetDuration}\n\n` +
+    `${scenesText}\n\n` +
+    `*Legenda sugerida:*\n${script.caption}\n\n` +
+    (hashtags ? `${hashtags}\n\n` : "") +
+    `Grave seguindo a ordem das cenas acima. Bom vídeo!`
+  );
+}
+
 export async function autoGenerateFromNews(
   userId: number,
   newsItem: DigestNewsItem,
   whatsappNumber: string
-): Promise<{ articleId: number; carouselId: number }> {
+): Promise<{ articleId: number; carouselId: number; reelsScriptId: number }> {
   // 1. Scrape article context
   const articleContext = await fetchArticleContext({
     title: newsItem.title,
@@ -171,21 +210,76 @@ Regras:
     console.error("[NewsAutoGen] ERRO ao gerar carrossel:", carouselErr instanceof Error ? carouselErr.stack : msg);
   }
 
-  // 6. Notify user via WhatsApp
+  // 6. Generate a Reels script from the same news and save immediately
+  let reelsScriptId = 0;
+  let reelsScript: GeneratedReelsScript | null = null;
+  let reelsError = "";
+  try {
+    const reelsSourceContext = [
+      `Fonte: ${newsItem.source}`,
+      summary ? `Resumo do artigo gerado: ${summary}` : "",
+      articleContext.content ? `Conteúdo da fonte:\n${articleContext.content.slice(0, 2500)}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    reelsScript = await generateReelsScript({
+      topic: newsItem.title,
+      tone: "informative",
+      duration: "medium",
+      extraContext: reelsSourceContext,
+    });
+
+    const savedReelsScript = await db.saveReelsScript(userId, {
+      title: reelsScript.title,
+      topic: newsItem.title,
+      tone: "informative",
+      duration: "medium",
+      hook: reelsScript.hook,
+      reward: reelsScript.reward,
+      loopClose: reelsScript.loopClose,
+      caption: reelsScript.caption,
+      hashtags: reelsScript.hashtags,
+      scenes: reelsScript.scenes,
+      contentFormat: "reels",
+    });
+    reelsScriptId = savedReelsScript.id;
+    console.log(`[NewsAutoGen] Roteiro de Reels salvo: id=${reelsScriptId}`);
+  } catch (reelsErr) {
+    const msg = reelsErr instanceof Error ? reelsErr.message : String(reelsErr);
+    reelsError = msg.slice(0, 200);
+    console.error("[NewsAutoGen] ERRO ao gerar roteiro de Reels:", reelsErr instanceof Error ? reelsErr.stack : msg);
+  }
+
+  // 7. Notify user via WhatsApp
   const carouselLine = carouselId
     ? `\n🎠 *Carrossel:* gerado com sucesso`
     : carouselError
       ? `\n⚠️ *Carrossel:* falha — ${carouselError}`
       : "";
+  const reelsLine = reelsScriptId
+    ? `\n🎬 *Roteiro de Reels:* gerado com sucesso (confira a mensagem a seguir)`
+    : reelsError
+      ? `\n⚠️ *Roteiro de Reels:* falha — ${reelsError}`
+      : "";
   const msg =
     `✅ *Artigo gerado!*\n\n` +
     `📰 *${title}*` +
     carouselLine +
+    reelsLine +
     `\n\nAcesse a aba *Artigos* no sistema para visualizar e publicar.`;
 
   await sendWhatsAppText(whatsappNumber, msg).catch((err) => {
     console.error("[NewsAutoGen] Falha ao enviar notificação WA:", err);
   });
 
-  return { articleId: savedArticle.id, carouselId };
+  // 8. Send the full Reels script as its own message so the user can record from it directly
+  if (reelsScript) {
+    const scriptMsg = formatReelsScriptForWhatsApp(reelsScript, newsItem.title);
+    await sendWhatsAppText(whatsappNumber, scriptMsg).catch((err) => {
+      console.error("[NewsAutoGen] Falha ao enviar roteiro de Reels via WA:", err);
+    });
+  }
+
+  return { articleId: savedArticle.id, carouselId, reelsScriptId };
 }

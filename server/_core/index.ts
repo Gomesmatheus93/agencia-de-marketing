@@ -279,6 +279,18 @@ async function startServer() {
     res.send(approvalHtmlPage(result.ok, "rejeitado", result.reason));
   });
 
+  // ── Link curto para notícias do digest (evita URLs longas no template WhatsApp) ──
+  app.get("/n/:id/:idx", async (req, res) => {
+    const id = Number(req.params.id);
+    const idx = Number(req.params.idx);
+    if (!Number.isInteger(id) || !Number.isInteger(idx) || idx < 0) {
+      return res.redirect(302, ENV.appBaseUrl);
+    }
+    const items = await db.getDigestSessionNewsItems(id);
+    const target = items?.[idx]?.url;
+    res.redirect(302, target || ENV.appBaseUrl);
+  });
+
   // ── WhatsApp webhook (Meta Cloud API) ──────────────────────────────────────
   // GET: Meta verification handshake
   app.get("/api/whatsapp/webhook", (req, res) => {
@@ -409,7 +421,7 @@ async function startServer() {
             const { sendWhatsAppText } = await import("./whatsapp");
             await sendWhatsAppText(
               senderNumber,
-              `⚙️ Gerando artigo e carrossel sobre:\n*${newsItem.title}*\n\nAguarde — pode levar até 2 minutos.`
+              `⚙️ Gerando artigo, carrossel e roteiro de Reels sobre:\n*${newsItem.title}*\n\nAguarde — pode levar até 2 minutos.`
             );
             const generated = await autoGenerateFromNews(session.userId, newsItem, senderNumber);
 
@@ -426,6 +438,7 @@ async function startServer() {
                   newsItem: { title: newsItem.title, url: newsItem.url, source: newsItem.source },
                   articleId: generated.articleId,
                   carouselId: generated.carouselId,
+                  reelsScriptId: generated.reelsScriptId,
                 }),
               }).catch((err) => console.error("[Webhook] Falha ao notificar agregador (generated):", err));
             }
