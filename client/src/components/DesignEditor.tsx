@@ -8,7 +8,8 @@ import {
   Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
   Save, X, Minus, Plus, ChevronUp, ChevronDown,
   Image as ImageIcon, Eye, EyeOff, Lock, Layers as LayersIcon, Hand,
-  Upload,
+  Upload, Pipette, ZoomIn, Slash, Triangle as TriangleIcon, ArrowLeftRight,
+  GripVertical,
 } from "lucide-react";
 
 // ── Google Fonts ──────────────────────────────────────────────────────────────
@@ -31,9 +32,62 @@ function injectGoogleFonts() {
   document.head.appendChild(link);
 }
 
+// A tag <link> do Google Fonts só baixa o arquivo da fonte de forma
+// preguiçosa, quando o navegador percebe que precisa dela — e o fabric.js
+// mede o texto (pra calcular a largura da caixa de seleção) no exato
+// instante em que o objeto é criado. Se isso acontecer antes do download
+// terminar, a medição usa a fonte de fallback (mais estreita) e a caixa
+// fica pequena demais; quando a fonte real chega e o texto é redesenhado
+// com glifos mais largos, ele passa por cima da própria caixa de seleção.
+// document.fonts.load força o download e só resolve quando ele termina.
+async function ensureFontLoaded(family: string, weight: string, italic: boolean) {
+  if (typeof document === "undefined" || !(document as any).fonts?.load) return;
+  const spec = `${italic ? "italic " : ""}${weight} 16px "${family}"`;
+  try {
+    await (document as any).fonts.load(spec);
+  } catch {
+    // Sem suporte à Font Loading API ou falha de rede — segue com o fallback.
+  }
+  // O fabric guarda a largura de cada caractere num cache GLOBAL (a página
+  // toda, não por objeto), indexado por família+peso+estilo. Se qualquer
+  // medição rodar antes da fonte carregar — mesmo de um texto diferente,
+  // minutos atrás — o valor errado fica preso nesse cache PARA SEMPRE,
+  // mesmo depois da fonte real já ter carregado. Esperar o load (acima)
+  // sozinho não resolve depois que o cache já foi "envenenado" uma vez;
+  // isso limpa a entrada da família pra forçar uma remedição correta.
+  try {
+    const { cache } = await import("fabric");
+    cache.clearFontCache(family);
+  } catch {
+    // ignore
+  }
+}
+
+// Corrige objetos de texto cuja caixa de seleção ficou desatualizada porque
+// foram medidos antes da fonte real terminar de carregar (ver
+// ensureFontLoaded acima) — limpa o cache de largura das fontes envolvidas,
+// recalcula as dimensões com a fonte já disponível e redesenha.
+async function refreshTextDimensions(canvas: any) {
+  if (!canvas) return;
+  const textObjs = canvas.getObjects().filter((o: any) => isText(o));
+  if (textObjs.length === 0) return;
+  try {
+    const { cache } = await import("fabric");
+    const families = new Set<string>(textObjs.map((o: any) => (o.fontFamily ?? "Montserrat") as string));
+    families.forEach((f) => cache.clearFontCache(f));
+  } catch {
+    // ignore
+  }
+  for (const obj of textObjs) {
+    obj.initDimensions();
+    obj.setCoords();
+  }
+  canvas.requestRenderAll();
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tool = "select" | "text" | "rect" | "circle" | "pan";
+type Tool = "select" | "text" | "rect" | "circle" | "line" | "triangle" | "eyedropper" | "zoom" | "pan";
 
 // Selected object type guard
 function isText(obj: any) {
@@ -44,6 +98,9 @@ function isBg(obj: any) {
 }
 function isImage(obj: any) {
   return obj?.type === "image" && !isBg(obj);
+}
+function isLine(obj: any) {
+  return obj?.type === "line";
 }
 function isShape(obj: any) {
   return obj && !isText(obj) && !isImage(obj) && obj.name !== "__bg__";
@@ -94,6 +151,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   const [zoom, setZoom] = useState(1);
   const [layersTick, setLayersTick] = useState(0);
   const refreshLayers = useCallback(() => setLayersTick((t) => t + 1), []);
+  const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
+  const [dragOverLayerIdx, setDragOverLayerIdx] = useState<number | null>(null);
 
   const spaceDownRef = useRef(false);
   const isPanningRef = useRef(false);
@@ -108,6 +167,13 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   // novo ao soltar o arraste, causando um salto extra.
   const dragMovedRef = useRef(false);
   const toolRef = useRef<Tool>("select");
+  // O atalho de teclado (Delete/Ctrl+Z) é registrado num efeito que roda
+  // antes de deleteSelected/undo serem declarados mais abaixo no componente
+  // — referenciá-los direto ali daria "usado antes de declarado". Refs
+  // evitam essa ordem: são preenchidas depois que as funções existem, e o
+  // handler sempre lê a versão mais atual através delas.
+  const deleteSelectedRef = useRef<() => void>(() => {});
+  const undoRef = useRef<() => void>(() => {});
   // Deslocamento do pan (em px, sempre a partir do centro) — aplicado via
   // transform no wrapper do canvas. Não usamos scroll pra isso: com o
   // canvas em 100% de zoom ele quase sempre cabe inteiro na área de
@@ -174,6 +240,13 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   const [shapeColor, setShapeColor] = useState("#00bcd4");
   const [shapeOpacity, setShapeOpacity] = useState(100);
 
+  // Cor de frente/fundo (como os swatches do Photoshop) — só um atalho
+  // visual: "frente" aplica no elemento selecionado, "fundo" pinta o fundo
+  // da arte. Ficam sincronizados com o conta-gotas e com os seletores já
+  // existentes no painel direito.
+  const [foregroundColor, setForegroundColor] = useState("#000000");
+  const [canvasBgColor, setCanvasBgColor] = useState("#ffffff");
+
   // ── Fabric init ───────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -210,6 +283,14 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
           const bg = canvas.getObjects().find((o: any) => isBg(o));
           if (bg) bg.set(BG_IMAGE_PROPS);
           canvas.renderAll();
+          // As fontes dos textos já salvos podem não ter terminado de
+          // carregar ainda — corrige as caixas de seleção assim que
+          // estiverem prontas (ver ensureFontLoaded/refreshTextDimensions).
+          const textObjs = canvas.getObjects().filter((o: any) => isText(o));
+          await Promise.all(
+            textObjs.map((o: any) => ensureFontLoaded(o.fontFamily ?? "Montserrat", o.fontWeight === "bold" ? "700" : "400", o.fontStyle === "italic"))
+          );
+          if (!disposed) await refreshTextDimensions(canvas);
         } catch (err) {
           console.warn("[DesignEditor] initialCanvasJson failed to load:", err);
         }
@@ -253,12 +334,35 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
         historyRef.current = trimmed.slice(-30);
         historyIdxRef.current = historyRef.current.length - 1;
       };
-      canvas.on("object:added", () => { saveHistory(); refreshLayers(); });
+      canvas.on("object:added", (e: any) => {
+        // Sem isso, o fabric anexa o <textarea> oculto que capta a
+        // digitação (usado pra editar o texto) direto no <body> — fora da
+        // árvore do Dialog. O FocusScope do Radix trava o foco dentro do
+        // diálogo e devolve o foco pra lá sempre que algo fora dele é
+        // focado, então esse textarea nunca fica focado de verdade: dá pra
+        // clicar/selecionar (isso é só desenho no canvas), mas digitar não
+        // faz nada. Isso precisa ser reaplicado a cada objeto adicionado
+        // (não é serializado no JSON, então undo/redo e templates recarregados
+        // perdem o valor de novo).
+        if (isText(e.target)) e.target.hiddenTextareaContainer = workspaceRef.current;
+        saveHistory();
+        refreshLayers();
+      });
       canvas.on("object:modified", saveHistory);
       canvas.on("object:removed", () => { saveHistory(); refreshLayers(); });
 
       refreshLayers();
       canvas.renderAll();
+
+      // Rede de segurança: se alguma fonte ainda estiver carregando por
+      // outro motivo (ex: digitada com uma fonte antes do próprio
+      // documento terminar de processá-la), corrige assim que o browser
+      // sinalizar que todas as fontes pendentes terminaram.
+      if (typeof document !== "undefined" && (document as any).fonts?.ready) {
+        (document as any).fonts.ready.then(() => {
+          if (!disposed) refreshTextDimensions(canvas);
+        });
+      }
     })();
 
     return () => {
@@ -280,6 +384,24 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
       ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0],
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      // Delete/Backspace apaga o objeto selecionado — mas não quando o
+      // usuário está digitando dentro de um texto (aí é apagar caractere,
+      // comportamento nativo do textarea oculto do fabric) nem em nenhum
+      // outro campo de formulário.
+      if ((e.key === "Delete" || e.key === "Backspace") && !isTyping(e.target)) {
+        const obj = fabricRef.current?.getActiveObject();
+        if (obj && !isBg(obj)) {
+          e.preventDefault();
+          deleteSelectedRef.current();
+        }
+        return;
+      }
+      // Ctrl/Cmd+Z desfaz a última alteração.
+      if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey) && !isTyping(e.target)) {
+        e.preventDefault();
+        undoRef.current();
+        return;
+      }
       // Setas movem a visão com a ferramenta "Mão" ativa — alternativa ao
       // clique+arraste, útil quando o drag do mouse não é confiável.
       const arrowStep = arrowSteps[e.key];
@@ -328,9 +450,14 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     const canvas = fabricRef.current;
     if (!canvas) return;
     const panning = tool === "pan";
-    canvas.selection = !panning;
-    canvas.skipTargetFind = panning;
-    canvas.defaultCursor = panning ? "grab" : "default";
+    // Zoom e conta-gotas também não devem selecionar/arrastar elementos ao
+    // clicar no canvas — só a ferramenta "Mão" descarta o objeto ativo
+    // (linha abaixo), as outras duas preservam a seleção pra poder aplicar
+    // a cor coletada ou simplesmente não perder o que estava selecionado.
+    const clickThrough = panning || tool === "zoom" || tool === "eyedropper";
+    canvas.selection = !clickThrough;
+    canvas.skipTargetFind = clickThrough;
+    canvas.defaultCursor = panning ? "grab" : tool === "zoom" ? "zoom-in" : tool === "eyedropper" ? "crosshair" : "default";
     canvas.hoverCursor = panning ? "grab" : "move";
   }, [tool]);
 
@@ -347,7 +474,9 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     } else if (isImage(obj)) {
       setShapeOpacity(Math.round((obj.opacity ?? 1) * 100));
     } else if (isShape(obj)) {
-      setShapeColor(typeof obj.fill === "string" ? obj.fill : "#00bcd4");
+      // Linha não tem preenchimento visível — sua "cor" é o traço (stroke).
+      const colorProp = isLine(obj) ? obj.stroke : obj.fill;
+      setShapeColor(typeof colorProp === "string" ? colorProp : "#00bcd4");
       setShapeOpacity(Math.round((obj.opacity ?? 1) * 100));
     }
   }
@@ -367,6 +496,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     const { IText } = await import("fabric");
     const canvas = fabricRef.current;
     if (!canvas) return;
+    await ensureFontLoaded(fontFamily, bold ? "700" : "400", italic);
     const text = new IText("Seu texto aqui", {
       // 675 é a altura lógica fixa da arte — não usar canvas.height aqui,
       // pois o zoom redimensiona o canvas de verdade (ver applyZoom).
@@ -419,6 +549,38 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     setTool("select");
   }, [shapeColor, shapeOpacity]);
 
+  const addLine = useCallback(async () => {
+    const { Line } = await import("fabric");
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const line = new Line([80, 300, 460, 300], {
+      stroke: shapeColor,
+      strokeWidth: 6,
+      opacity: shapeOpacity / 100,
+    } as any);
+    canvas.add(line);
+    canvas.setActiveObject(line);
+    canvas.renderAll();
+    setTool("select");
+  }, [shapeColor, shapeOpacity]);
+
+  const addTriangle = useCallback(async () => {
+    const { Triangle } = await import("fabric");
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const triangle = new Triangle({
+      left: 180, top: 180,
+      originX: "left", originY: "top",
+      width: 160, height: 140,
+      fill: shapeColor,
+      opacity: shapeOpacity / 100,
+    } as any);
+    canvas.add(triangle);
+    canvas.setActiveObject(triangle);
+    canvas.renderAll();
+    setTool("select");
+  }, [shapeColor, shapeOpacity]);
+
   // Upload de imagem como ELEMENTO solto na arte (diferente de "Trocar
   // fundo": fica por cima, é movível/redimensionável, não trava no lugar).
   const addImageElement = useCallback(async (file: File) => {
@@ -464,6 +626,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     const state = JSON.parse(historyRef.current[historyIdxRef.current]);
     canvas.loadFromJSON(state).then(() => { canvas.renderAll(); refreshLayers(); });
   }, [refreshLayers]);
+  deleteSelectedRef.current = deleteSelected;
+  undoRef.current = undo;
 
   const layerUp = useCallback(() => {
     const canvas = fabricRef.current;
@@ -495,6 +659,31 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     if (!target || isBg(target)) return;
     if (dir === 1) canvas.bringObjectForward(obj);
     else canvas.sendObjectBackwards(obj);
+    canvas.renderAll();
+    refreshLayers();
+  }, [refreshLayers]);
+
+  // Arrastar e soltar uma camada pra reordenar. `fromIdx`/`toIdx` são
+  // índices na lista exibida (invertida: topo = na frente). Move o objeto
+  // pro índice exibido de destino calculando a nova pilha completa e
+  // aplicando com moveObjectTo — mais simples que ficar chamando
+  // bringForward/sendBackwards um passo de cada vez.
+  const reorderLayer = useCallback((fromIdx: number, toIdx: number) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const displayOrder = [...canvas.getObjects()].reverse();
+    const moved = displayOrder[fromIdx];
+    if (!moved || isBg(moved)) return;
+    const bgIdx = displayOrder.findIndex((o: any) => isBg(o));
+    // A imagem de fundo fica sempre travada no fim da lista — nada pode
+    // ser solto depois dela.
+    const maxIdx = bgIdx === -1 ? displayOrder.length - 1 : bgIdx - 1;
+    const to = Math.max(0, Math.min(toIdx, maxIdx));
+    if (to === fromIdx) return;
+    const next = displayOrder.filter((_: any, i: number) => i !== fromIdx);
+    next.splice(to, 0, moved);
+    const newStackOrder = [...next].reverse();
+    canvas.moveObjectTo(moved, newStackOrder.indexOf(moved));
     canvas.renderAll();
     refreshLayers();
   }, [refreshLayers]);
@@ -606,21 +795,56 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     };
   }, [open, workspaceReady]);
 
+  // Amostra a cor do pixel composto (fundo + todos os elementos) sob o
+  // cursor — igual ao conta-gotas do Photoshop, que lê o pixel renderizado
+  // em vez de propriedades do objeto (funciona sobre imagens, gradientes etc).
+  const pickColorAt = useCallback((clientX: number, clientY: number): string | null => {
+    const canvasEl = canvasElRef.current;
+    if (!canvasEl) return null;
+    const rect = canvasEl.getBoundingClientRect();
+    const x = Math.round((clientX - rect.left) * (canvasEl.width / rect.width));
+    const y = Math.round((clientY - rect.top) * (canvasEl.height / rect.height));
+    if (x < 0 || y < 0 || x >= canvasEl.width || y >= canvasEl.height) return null;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return null;
+    const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  }, []);
+
   // Clique único com a ferramenta "Mão" ativa recentraliza a visão no ponto
   // clicado — alternativa que não depende de "segurar e arrastar" continuar
   // pressionado, só de um clique simples (mais robusto em alguns ambientes).
+  // A mesma função também cobre as ferramentas "Zoom" (clique = mais perto,
+  // Alt+clique = mais longe) e "Conta-gotas" (clique = coleta a cor).
   const onWorkspaceClick = useCallback((e: React.MouseEvent) => {
     // O "click" que fecha um mousedown+arraste+mouseup dispara DEPOIS que
     // isPanningRef já voltou a false — por isso o guard real é dragMovedRef,
     // não isPanningRef (que só cobre um clique durante um arraste em curso).
-    if (toolRef.current !== "pan" || isPanningRef.current || dragMovedRef.current) return;
+    if (isPanningRef.current || dragMovedRef.current) return;
+    const t = toolRef.current;
+
+    if (t === "zoom") {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      applyZoom(canvas.getZoom() * (e.altKey ? 1 / 1.25 : 1.25));
+      return;
+    }
+
+    if (t === "eyedropper") {
+      const color = pickColorAt(e.clientX, e.clientY);
+      if (color) { applyColor(color); setForegroundColor(color); }
+      setTool("select");
+      return;
+    }
+
+    if (t !== "pan") return;
     const el = workspaceRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const dx = rect.left + rect.width / 2 - e.clientX;
     const dy = rect.top + rect.height / 2 - e.clientY;
     panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy };
-  }, []);
+  }, [applyZoom, pickColorAt]);
 
   // ── Background image upload ───────────────────────────────────────────────
 
@@ -696,6 +920,7 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
     const obj = fabricRef.current?.getActiveObject();
     if (!obj) return;
     if (isText(obj)) { setTextColor(color); applyProp("fill", color); }
+    else if (isLine(obj)) { setShapeColor(color); applyProp("stroke", color); }
     else if (isShape(obj)) { setShapeColor(color); applyProp("fill", color); }
   }
 
@@ -704,28 +929,33 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   const textSel = isText(selected);
   const shapeSel = isShape(selected);
   const imageSel = isImage(selected);
+  const lineSel = isLine(selected);
   const layers = fabricRef.current ? [...fabricRef.current.getObjects()].reverse() : [];
   void layersTick; // força reler getObjects() acima a cada mudança de camadas
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
-        className="!max-w-[95vw] !w-[95vw] !h-[95vh] p-0 !flex flex-col overflow-hidden !gap-0 [&>button]:hidden"
+        className="!max-w-[95vw] !w-[95vw] !h-[95vh] p-0 !flex flex-col overflow-hidden !gap-0 [&>button]:hidden bg-[#323232] text-[#cccccc] border-[#1b1b1b] select-none"
         style={{ maxWidth: "95vw", width: "95vw", height: "95vh" }}
       >
 
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border/40 bg-background shrink-0">
-          <span className="font-semibold text-sm">Editor de Design</span>
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1b1b1b] bg-[#252525] shrink-0">
+          <span className="font-semibold text-xs text-[#cccccc] tracking-wide">Editor de Design</span>
           <div className="flex items-center gap-2">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgUpload} />
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" onClick={() => fileInputRef.current?.click()}>
+            <Button
+              variant="outline" size="sm"
+              className="gap-1.5 text-xs h-7 bg-[#3f3f3f] border-[#5a5a5a] text-[#cccccc] hover:bg-[#4a4a4a] hover:text-white"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <ImageIcon className="w-3.5 h-3.5" /> Trocar fundo
             </Button>
-            <Button size="sm" className="gap-1.5 text-xs h-8" onClick={handleSave}>
+            <Button size="sm" className="gap-1.5 text-xs h-7 bg-[#0c8ce9] hover:bg-[#0f7ad1] text-white" onClick={handleSave}>
               <Save className="w-3.5 h-3.5" /> Salvar no slide
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-[#999999] hover:text-white hover:bg-[#4a4a4a]" onClick={onClose}>
               <X className="w-4 h-4" />
             </Button>
           </div>
@@ -735,51 +965,87 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
         <div className="flex flex-1 overflow-hidden min-h-0">
 
           {/* Left toolbar */}
-          <div className="w-14 border-r border-border/40 flex flex-col items-center gap-1 py-3 bg-muted/10 shrink-0">
+          <div className="w-12 border-r border-[#1b1b1b] flex flex-col items-center gap-0.5 py-2 bg-[#2b2b2b] shrink-0 overflow-y-auto">
             {([
               { id: "select" as Tool, Icon: MousePointer2, label: "Selecionar", action: () => setTool("select") },
               { id: "pan" as Tool, Icon: Hand, label: "Mover a visão (arraste, segure espaço, ou use as setas do teclado)", action: () => setTool("pan") },
+              { id: "zoom" as Tool, Icon: ZoomIn, label: "Zoom (clique = aproxima, Alt+clique = afasta)", action: () => setTool("zoom") },
+              { id: "eyedropper" as Tool, Icon: Pipette, label: "Conta-gotas (clique em qualquer ponto da arte pra coletar a cor)", action: () => setTool("eyedropper") },
               { id: "text" as Tool, Icon: Type, label: "Texto", action: () => { setTool("text"); addText(); } },
               { id: "rect" as Tool, Icon: Square, label: "Retângulo", action: () => { setTool("rect"); addRect(); } },
               { id: "circle" as Tool, Icon: CircleIcon, label: "Círculo", action: () => { setTool("circle"); addCircle(); } },
+              { id: "triangle" as Tool, Icon: TriangleIcon, label: "Triângulo", action: () => { setTool("triangle"); addTriangle(); } },
+              { id: "line" as Tool, Icon: Slash, label: "Linha", action: () => { setTool("line"); addLine(); } },
             ]).map(({ id, Icon, label, action }) => (
               <button key={id} title={label} onClick={action}
                 className={cn(
-                  "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
-                  tool === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  "w-9 h-9 rounded-[3px] flex items-center justify-center transition-colors shrink-0",
+                  tool === id ? "bg-[#0c8ce9] text-white" : "text-[#999999] hover:bg-[#3f3f3f] hover:text-white"
                 )}>
                 <Icon className="w-4 h-4" />
               </button>
             ))}
 
-            <div className="w-8 border-t border-border/30 my-1" />
+            <div className="w-7 border-t border-[#1b1b1b] my-1 shrink-0" />
 
             <button title="Subir camada" onClick={layerUp} disabled={!selected}
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 transition-colors">
+              className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white disabled:opacity-30 transition-colors shrink-0">
               <ChevronUp className="w-4 h-4" />
             </button>
             <button title="Descer camada" onClick={layerDown} disabled={!selected}
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 transition-colors">
+              className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white disabled:opacity-30 transition-colors shrink-0">
               <ChevronDown className="w-4 h-4" />
             </button>
 
-            <div className="mt-auto">
+            <div className="mt-auto shrink-0 flex flex-col items-center">
               <button title="Desfazer" onClick={undo}
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-[10px] font-bold">
+                className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors text-[10px] font-bold">
                 ↩
               </button>
               <button title="Excluir" onClick={deleteSelected} disabled={!selected || isBg(selected)}
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors">
+                className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 transition-colors">
                 <Trash2 className="w-4 h-4" />
               </button>
+
+              {/* Cor de frente / fundo, como os swatches do Photoshop —
+                  "frente" pinta o elemento selecionado, "fundo" pinta o
+                  fundo da arte; a seta troca as duas. */}
+              <button title="Trocar cor de frente/fundo" onClick={() => {
+                const nextFg = canvasBgColor, nextBg = foregroundColor;
+                setForegroundColor(nextFg); setCanvasBgColor(nextBg);
+                applyColor(nextFg);
+                fabricRef.current?.set("backgroundColor", nextBg);
+                fabricRef.current?.renderAll();
+              }} className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors mt-1">
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+              </button>
+              <div className="relative w-9 h-9 mb-2" title="Cor de frente / cor de fundo">
+                <label className="absolute bottom-0 right-0 w-6 h-6 rounded-sm border border-[#1b1b1b] shadow cursor-pointer block"
+                  style={{ backgroundColor: canvasBgColor }}>
+                  <input type="color" className="opacity-0 w-0 h-0 absolute" value={canvasBgColor}
+                    onChange={(e) => { const c = e.target.value; setCanvasBgColor(c); fabricRef.current?.set("backgroundColor", c); fabricRef.current?.renderAll(); }} />
+                </label>
+                <label className="absolute top-0 left-0 w-6 h-6 rounded-sm border border-[#1b1b1b] shadow cursor-pointer block z-10"
+                  style={{ backgroundColor: foregroundColor }}>
+                  <input type="color" className="opacity-0 w-0 h-0 absolute" value={foregroundColor}
+                    onChange={(e) => { applyColor(e.target.value); setForegroundColor(e.target.value); }} />
+                </label>
+              </div>
             </div>
           </div>
 
           {/* Canvas workspace */}
-          <div className="flex-1 relative bg-muted/20 overflow-hidden">
+          <div
+            className="flex-1 relative overflow-hidden"
+            style={{
+              backgroundColor: "#1e1e1e",
+              backgroundImage: "radial-gradient(#2c2c2c 1px, transparent 1px)",
+              backgroundSize: "22px 22px",
+            }}
+          >
             <div ref={setWorkspaceRef} onClick={onWorkspaceClick} className={cn("w-full h-full overflow-hidden", tool === "pan" && "cursor-grab")}>
               <div ref={panContentRef} className="w-full h-full flex items-center justify-center">
-                <div className="shadow-2xl rounded-lg overflow-hidden bg-white shrink-0">
+                <div className="shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.6)] rounded-sm overflow-hidden bg-white shrink-0">
                   <canvas ref={canvasElRef} />
                 </div>
               </div>
@@ -788,38 +1054,43 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
             {/* Zoom controls — roda do mouse com Ctrl/Cmd também dá zoom (a arte
                 fica maior/menor sem nunca ser cortada); segurar espaço, ou usar
                 a ferramenta "Mão", e arrastar navega pela arte (pan). */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-0.5 bg-background/95 border border-border/40 rounded-lg shadow-lg px-1.5 py-1.5">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-0.5 bg-[#2b2b2b]/95 border border-[#4a4a4a] rounded-md shadow-lg px-1.5 py-1.5">
               <button title="Diminuir zoom" onClick={() => applyZoom(zoom - 0.1)}
-                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                className="h-7 w-7 rounded flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors">
                 <Minus className="w-3.5 h-3.5" />
               </button>
               <button title="Redefinir zoom (100%)" onClick={resetZoom}
-                className="text-[11px] font-medium text-muted-foreground w-11 text-center hover:text-foreground transition-colors">
+                className="text-[11px] font-medium text-[#cccccc] w-11 text-center hover:text-white transition-colors">
                 {Math.round(zoom * 100)}%
               </button>
               <button title="Aumentar zoom" onClick={() => applyZoom(zoom + 0.1)}
-                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                className="h-7 w-7 rounded flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors">
                 <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
           {/* Right properties */}
-          <div className="w-64 border-l border-border/40 bg-background overflow-y-auto shrink-0">
+          <div className="w-64 border-l border-[#1b1b1b] bg-[#2b2b2b] overflow-y-auto shrink-0">
             <div className="p-3 space-y-4">
 
               {/* Text properties */}
               {(textSel || tool === "text") && (
                 <div className="space-y-2.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Texto</p>
+                  <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider border-b border-[#1b1b1b] pb-1.5">Texto</p>
 
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Fonte</label>
+                    <label className="text-[10px] text-[#999999] mb-1 block">Fonte</label>
                     <select
-                      className="w-full h-8 rounded-md border border-border/40 bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      className="w-full h-8 rounded-[3px] border border-[#5a5a5a] bg-[#1e1e1e] text-[#e0e0e0] px-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#0c8ce9]"
                       value={fontFamily}
                       style={{ fontFamily }}
-                      onChange={(e) => { setFontFamily(e.target.value); applyProp("fontFamily", e.target.value); }}
+                      onChange={async (e) => {
+                        const f = e.target.value;
+                        setFontFamily(f);
+                        await ensureFontLoaded(f, bold ? "700" : "400", italic);
+                        applyProp("fontFamily", f);
+                      }}
                     >
                       {DESIGN_FONTS.map((f) => (
                         <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
@@ -828,16 +1099,16 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Tamanho</label>
+                    <label className="text-[10px] text-[#999999] mb-1 block">Tamanho</label>
                     <div className="flex items-center gap-1">
-                      <button className="h-7 w-7 rounded border border-border/40 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                      <button className="h-7 w-7 rounded-[3px] border border-[#5a5a5a] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors"
                         onClick={() => { const s = Math.max(8, fontSize - 2); setFontSize(s); applyProp("fontSize", s); }}>
                         <Minus className="w-3 h-3" />
                       </button>
-                      <input type="number" className="flex-1 h-7 rounded border border-border/40 bg-background text-center text-xs focus:outline-none"
+                      <input type="number" className="flex-1 h-7 rounded-[3px] border border-[#5a5a5a] bg-[#1e1e1e] text-[#e0e0e0] text-center text-xs focus:outline-none"
                         value={fontSize}
                         onChange={(e) => { const s = Number(e.target.value); setFontSize(s); applyProp("fontSize", s); }} />
-                      <button className="h-7 w-7 rounded border border-border/40 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                      <button className="h-7 w-7 rounded-[3px] border border-[#5a5a5a] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white transition-colors"
                         onClick={() => { const s = fontSize + 2; setFontSize(s); applyProp("fontSize", s); }}>
                         <Plus className="w-3 h-3" />
                       </button>
@@ -845,11 +1116,11 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Cor do texto</label>
+                    <label className="text-[10px] text-[#999999] mb-1 block">Cor do texto</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" className="h-8 w-10 rounded border border-border/40 p-0.5 cursor-pointer bg-background"
+                      <input type="color" className="h-8 w-10 rounded-[3px] border border-[#5a5a5a] p-0.5 cursor-pointer bg-[#1e1e1e]"
                         value={textColor} onChange={(e) => { setTextColor(e.target.value); applyProp("fill", e.target.value); }} />
-                      <input className="flex-1 h-8 rounded border border-border/40 bg-background px-2 text-xs uppercase font-mono focus:outline-none"
+                      <input className="flex-1 h-8 rounded-[3px] border border-[#5a5a5a] bg-[#1e1e1e] text-[#e0e0e0] px-2 text-xs uppercase font-mono focus:outline-none"
                         value={textColor} onChange={(e) => { setTextColor(e.target.value); applyProp("fill", e.target.value); }} />
                     </div>
                   </div>
@@ -861,8 +1132,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
                     ] as const).map(({ state, set, icon: Icon, prop, on, off }) => (
                       <button key={prop}
                         onClick={() => { const v = !state; (set as any)(v); applyProp(prop, v ? on : off); }}
-                        className={cn("h-7 w-7 rounded border border-border/40 flex items-center justify-center transition-colors",
-                          state ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:bg-muted")}>
+                        className={cn("h-7 w-7 rounded-[3px] border flex items-center justify-center transition-colors",
+                          state ? "bg-[#0c8ce9] text-white border-[#0c8ce9]" : "border-[#5a5a5a] text-[#999999] hover:bg-[#3f3f3f] hover:text-white")}>
                         <Icon className="w-3.5 h-3.5" />
                       </button>
                     ))}
@@ -871,8 +1142,8 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
                       const Icon = [AlignLeft, AlignCenter, AlignRight][i];
                       return (
                         <button key={a} onClick={() => { setAlign(a); applyProp("textAlign", a); }}
-                          className={cn("h-7 w-7 rounded border border-border/40 flex items-center justify-center transition-colors",
-                            align === a ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:bg-muted")}>
+                          className={cn("h-7 w-7 rounded-[3px] border flex items-center justify-center transition-colors",
+                            align === a ? "bg-[#0c8ce9] text-white border-[#0c8ce9]" : "border-[#5a5a5a] text-[#999999] hover:bg-[#3f3f3f] hover:text-white")}>
                           <Icon className="w-3.5 h-3.5" />
                         </button>
                       );
@@ -884,19 +1155,19 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
               {/* Shape properties */}
               {shapeSel && (
                 <div className="space-y-2.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Forma</p>
+                  <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider border-b border-[#1b1b1b] pb-1.5">Forma</p>
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Cor</label>
+                    <label className="text-[10px] text-[#999999] mb-1 block">Cor</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" className="h-8 w-10 rounded border border-border/40 p-0.5 cursor-pointer bg-background"
-                        value={shapeColor} onChange={(e) => { setShapeColor(e.target.value); applyProp("fill", e.target.value); }} />
-                      <input className="flex-1 h-8 rounded border border-border/40 bg-background px-2 text-xs uppercase font-mono focus:outline-none"
-                        value={shapeColor} onChange={(e) => { setShapeColor(e.target.value); applyProp("fill", e.target.value); }} />
+                      <input type="color" className="h-8 w-10 rounded-[3px] border border-[#5a5a5a] p-0.5 cursor-pointer bg-[#1e1e1e]"
+                        value={shapeColor} onChange={(e) => { setShapeColor(e.target.value); applyProp(lineSel ? "stroke" : "fill", e.target.value); }} />
+                      <input className="flex-1 h-8 rounded-[3px] border border-[#5a5a5a] bg-[#1e1e1e] text-[#e0e0e0] px-2 text-xs uppercase font-mono focus:outline-none"
+                        value={shapeColor} onChange={(e) => { setShapeColor(e.target.value); applyProp(lineSel ? "stroke" : "fill", e.target.value); }} />
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Opacidade: {shapeOpacity}%</label>
-                    <input type="range" min={10} max={100} step={5} className="w-full accent-primary"
+                    <label className="text-[10px] text-[#999999] mb-1 block">Opacidade: {shapeOpacity}%</label>
+                    <input type="range" min={10} max={100} step={5} className="w-full accent-[#0c8ce9]"
                       value={shapeOpacity} onChange={(e) => { const v = Number(e.target.value); setShapeOpacity(v); applyProp("opacity", v / 100); }} />
                   </div>
                 </div>
@@ -905,72 +1176,109 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
               {/* Image element properties */}
               {imageSel && (
                 <div className="space-y-2.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Imagem</p>
+                  <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider border-b border-[#1b1b1b] pb-1.5">Imagem</p>
                   <div>
-                    <label className="text-[10px] text-muted-foreground mb-1 block">Opacidade: {shapeOpacity}%</label>
-                    <input type="range" min={10} max={100} step={5} className="w-full accent-primary"
+                    <label className="text-[10px] text-[#999999] mb-1 block">Opacidade: {shapeOpacity}%</label>
+                    <input type="range" min={10} max={100} step={5} className="w-full accent-[#0c8ce9]"
                       value={shapeOpacity} onChange={(e) => { const v = Number(e.target.value); setShapeOpacity(v); applyProp("opacity", v / 100); }} />
                   </div>
                 </div>
               )}
 
               {!selected && tool === "select" && (
-                <p className="text-[10px] text-muted-foreground/50 text-center py-6 leading-relaxed">
+                <p className="text-[10px] text-[#777777] text-center py-6 leading-relaxed">
                   Clique em um elemento para editar suas propriedades
                 </p>
               )}
 
               {/* Layers */}
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider flex items-center gap-1 border-b border-[#1b1b1b] pb-1.5">
                   <LayersIcon className="w-3 h-3" /> Camadas
                 </p>
-                <div className="space-y-1 max-h-56 overflow-y-auto">
+                <div className="space-y-0.5 max-h-56 overflow-y-auto">
                   {layers.length === 0 && (
-                    <p className="text-[10px] text-muted-foreground/50 text-center py-3">Nenhum elemento ainda</p>
+                    <p className="text-[10px] text-[#777777] text-center py-3">Nenhum elemento ainda</p>
                   )}
                   {layers.map((obj: any, i: number) => {
                     const bg = isBg(obj);
                     const text = isText(obj);
                     const isActive = selected === obj;
                     const isImage = obj.type === "image";
-                    const Icon = bg ? ImageIcon : text ? Type : isImage ? ImageIcon : obj.type === "circle" ? CircleIcon : Square;
+                    const Icon = bg ? ImageIcon : text ? Type : isImage ? ImageIcon
+                      : obj.type === "circle" ? CircleIcon
+                      : obj.type === "line" ? Slash
+                      : obj.type === "triangle" ? TriangleIcon
+                      : Square;
                     const label = bg
                       ? "Imagem de fundo"
                       : text
                       ? (obj.text?.trim()?.slice(0, 22) || "Texto")
                       : isImage ? "Imagem"
-                      : obj.type === "circle" ? "Círculo" : "Retângulo";
+                      : obj.type === "circle" ? "Círculo"
+                      : obj.type === "line" ? "Linha"
+                      : obj.type === "triangle" ? "Triângulo"
+                      : "Retângulo";
                     const hidden = obj.visible === false;
+                    const isDragging = dragLayerIdx === i;
+                    const showDropAbove = dragOverLayerIdx === i && dragLayerIdx !== null && dragLayerIdx !== i;
                     return (
                       <div key={i}
+                        draggable={!bg}
+                        onDragStart={(e) => {
+                          setDragLayerIdx(i);
+                          e.dataTransfer.effectAllowed = "move";
+                          // Firefox só ativa o drag se algum dado for setado.
+                          e.dataTransfer.setData("text/plain", String(i));
+                        }}
+                        onDragOver={(e) => {
+                          if (bg || dragLayerIdx === null) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (dragOverLayerIdx !== i) setDragOverLayerIdx(i);
+                        }}
+                        onDragLeave={() => setDragOverLayerIdx((cur) => (cur === i ? null : cur))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (dragLayerIdx !== null && !bg) reorderLayer(dragLayerIdx, i);
+                          setDragLayerIdx(null);
+                          setDragOverLayerIdx(null);
+                        }}
+                        onDragEnd={() => { setDragLayerIdx(null); setDragOverLayerIdx(null); }}
                         className={cn(
-                          "flex items-center gap-1 px-1.5 py-1 rounded-md border transition-colors",
-                          isActive ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/50"
+                          "flex items-center gap-1 px-1.5 py-1 rounded-[3px] border transition-colors",
+                          isActive ? "border-[#0c8ce9]/60 bg-[#0c8ce9]/10" : "border-transparent hover:bg-[#3a3a3a]",
+                          isDragging && "opacity-40",
+                          showDropAbove && "border-t-2 border-t-[#0c8ce9]"
                         )}
                       >
+                        {bg ? (
+                          <span className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <GripVertical className="w-3.5 h-3.5 shrink-0 text-[#666666] cursor-grab active:cursor-grabbing" />
+                        )}
                         <button onClick={() => selectLayer(obj)} disabled={bg}
                           className="flex-1 flex items-center gap-1.5 min-w-0 text-left disabled:cursor-default">
-                          <Icon className={cn("w-3.5 h-3.5 shrink-0", hidden ? "text-muted-foreground/30" : "text-muted-foreground")} />
-                          <span className={cn("text-[11px] truncate", hidden && "text-muted-foreground/40")}>{label}</span>
-                          {bg && <Lock className="w-3 h-3 shrink-0 text-muted-foreground/40" />}
+                          <Icon className={cn("w-3.5 h-3.5 shrink-0", hidden ? "text-[#555555]" : "text-[#999999]")} />
+                          <span className={cn("text-[11px] truncate text-[#cccccc]", hidden && "text-[#666666]")}>{label}</span>
+                          {bg && <Lock className="w-3 h-3 shrink-0 text-[#666666]" />}
                         </button>
                         <button onClick={() => toggleLayerVisibility(obj)} title={hidden ? "Mostrar" : "Ocultar"}
-                          className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                          className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-[#999999] hover:bg-[#4a4a4a] hover:text-white transition-colors">
                           {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                         </button>
                         {!bg && (
                           <>
                             <button onClick={() => moveLayer(obj, 1)} title="Subir"
-                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-[#999999] hover:bg-[#4a4a4a] hover:text-white transition-colors">
                               <ChevronUp className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => moveLayer(obj, -1)} title="Descer"
-                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-[#999999] hover:bg-[#4a4a4a] hover:text-white transition-colors">
                               <ChevronDown className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => deleteLayer(obj)} title="Excluir"
-                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center text-[#999999] hover:text-red-400 hover:bg-red-500/10 transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </>
@@ -983,13 +1291,13 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
 
               {/* Elementos — upload de imagem solta na arte (logo, foto etc.) */}
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider flex items-center gap-1 border-b border-[#1b1b1b] pb-1.5">
                   <Upload className="w-3 h-3" /> Elementos
                 </p>
                 <input ref={elementImageInputRef} type="file" accept="image/*" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageElement(f); e.target.value = ""; }} />
                 <button onClick={() => elementImageInputRef.current?.click()}
-                  className="w-full h-16 rounded-lg border border-dashed border-border/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:bg-muted/50 hover:border-primary/50 transition-colors">
+                  className="w-full h-16 rounded-[3px] border border-dashed border-[#5a5a5a] flex flex-col items-center justify-center gap-1 text-[#999999] hover:bg-[#3a3a3a] hover:border-[#0c8ce9]/60 hover:text-white transition-colors">
                   <ImageIcon className="w-4 h-4" />
                   <span className="text-[10px]">Enviar imagem</span>
                 </button>
@@ -997,12 +1305,12 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
 
               {/* Color palette */}
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Paleta</p>
+                <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider border-b border-[#1b1b1b] pb-1.5">Paleta</p>
                 <div className="grid grid-cols-5 gap-1.5">
                   {PALETTE.map((c) => (
                     <button key={c} title={c}
                       onClick={() => applyColor(c)}
-                      className="h-9 w-full rounded-md border border-border/20 hover:scale-110 hover:border-primary/50 transition-transform"
+                      className="h-9 w-full rounded-[3px] border border-[#1b1b1b] hover:scale-110 hover:border-[#0c8ce9]/60 transition-transform"
                       style={{ backgroundColor: c }}
                     />
                   ))}
@@ -1011,12 +1319,12 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
 
               {/* Background color */}
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Cor de fundo</p>
+                <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-wider border-b border-[#1b1b1b] pb-1.5">Cor de fundo</p>
                 <div className="grid grid-cols-5 gap-1.5">
                   {["#1a1a2e", "#0d0d0d", "#ffffff", "#f5f5f0", "#0a1628", "#1e3a5f", "#2d1b69", "#4a0e0e", "#0e4a1e", "#2a2a2a"].map((c) => (
                     <button key={c} title={c}
-                      onClick={() => { fabricRef.current?.set("backgroundColor", c); fabricRef.current?.renderAll(); }}
-                      className="h-9 w-full rounded-md border border-border/20 hover:scale-110 hover:border-primary/50 transition-transform"
+                      onClick={() => { setCanvasBgColor(c); fabricRef.current?.set("backgroundColor", c); fabricRef.current?.renderAll(); }}
+                      className="h-9 w-full rounded-[3px] border border-[#1b1b1b] hover:scale-110 hover:border-[#0c8ce9]/60 transition-transform"
                       style={{ backgroundColor: c }}
                     />
                   ))}
