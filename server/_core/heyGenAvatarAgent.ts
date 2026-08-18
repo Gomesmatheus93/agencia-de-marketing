@@ -39,18 +39,34 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = 2): Prom
   }
 }
 
-async function heyGenFetch(url: string, init: RequestInit): Promise<Response> {
+// Códigos que costumam ser blips passageiros do lado da HeyGen (rate limit
+// ou instabilidade momentânea do servidor) — diferente de erros de negócio
+// (400/401/404 etc.) que não se resolvem tentando de novo.
+const TRANSIENT_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
+
+async function heyGenFetch(url: string, init: RequestInit, httpRetries = 2): Promise<Response> {
   const apiKey = getApiKey();
   const headers: Record<string, string> = { "X-Api-Key": apiKey };
   if (init.headers) Object.assign(headers, init.headers);
-  const res = await fetchWithRetry(url, { ...init, headers });
-  if (!res.ok) {
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchWithRetry(url, { ...init, headers });
+    if (res.ok) return res;
+
+    if (TRANSIENT_HTTP_STATUS.has(res.status) && attempt < httpRetries) {
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : NaN;
+      const backoffMs = Number.isFinite(retryAfterMs) ? retryAfterMs : 1000 * 2 ** attempt;
+      console.warn(`[HeyGen] HTTP ${res.status} em ${url} — tentativa ${attempt + 1}/${httpRetries + 1}, esperando ${backoffMs}ms`);
+      await sleep(backoffMs);
+      continue;
+    }
+
     const body = await res.text();
     const isHtml = body.includes("<html") || body.includes("<!DOCTYPE");
     const msg = isHtml ? `HTTP ${res.status}` : body.slice(0, 300);
     throw new Error(`HeyGen HTTP ${res.status}: ${msg}`);
   }
-  return res;
 }
 
 // Normaliza para JPEG baseline sRGB — elimina CMYK, progressive JPEG, HEIC, etc.
@@ -138,6 +154,13 @@ async function createPhotoAvatar(name: string, assetId: string): Promise<{ avata
 async function waitForAvatarReady(avatarId: string, maxWaitMs = 180_000): Promise<void> {
   const pollInterval = 8_000;
   const maxAttempts = Math.ceil(maxWaitMs / pollInterval);
+  // Guarda o último erro real (não só loga e ignora) pra não esconder a
+  // causa verdadeira atrás da mensagem genérica de timeout no final — e
+  // desiste antes dos 3 minutos se o erro persistir, já que um problema
+  // como chave inválida ou erro de rede constante não vai se resolver só
+  // de esperar mais.
+  let lastCheckError: unknown = null;
+  let consecutiveErrors = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -168,15 +191,26 @@ async function waitForAvatarReady(avatarId: string, maxWaitMs = 180_000): Promis
       } else {
         console.log(`[HeyGen] Avatar ${avatarId} ainda não aparece na lista (tentativa ${attempt}/${maxAttempts})`);
       }
+      consecutiveErrors = 0;
+      lastCheckError = null;
     } catch (err) {
       if (String(err).includes("falhou")) throw err;
-      console.warn(`[HeyGen] Erro ao verificar avatar status: ${err}`);
+      lastCheckError = err;
+      consecutiveErrors++;
+      console.warn(`[HeyGen] Erro ao verificar avatar status (falha ${consecutiveErrors}ª consecutiva): ${err}`);
+      if (consecutiveErrors >= 3) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`HeyGen: não foi possível confirmar o status do avatar após ${consecutiveErrors} tentativas seguidas — ${msg}`);
+      }
     }
 
     if (attempt < maxAttempts) await sleep(pollInterval);
   }
 
-  throw new Error("HeyGen avatar demorou mais do que 3 minutos para ficar pronto. Tente novamente.");
+  const causeMsg = lastCheckError
+    ? ` Último erro registrado: ${lastCheckError instanceof Error ? lastCheckError.message : String(lastCheckError)}`
+    : "";
+  throw new Error(`HeyGen avatar demorou mais do que 3 minutos para ficar pronto. Tente novamente.${causeMsg}`);
 }
 
 // ─── Digital Twin (avatar treinado a partir de um vídeo real — corpo inteiro,
@@ -673,6 +707,45 @@ export async function createHeyGenAvatarVideo(
   });
 
   return { videoId, talkingPhotoId, provider: "v2" };
+}
+
+// ─── Limite de concorrência ──────────────────────────────────────────────
+// A conta HeyGen (compartilhada por todos os usuários do app, uma única
+// API key) aceita só um número limitado de vídeos processando ao mesmo
+// tempo. Sem isso, vários usuários gerando vídeo na mesma hora estourariam
+// esse teto e receberiam erro em vez de simplesmente esperar a vez —
+// requisições além do limite ficam numa fila (em memória, por processo) e
+// são atendidas em ordem de chegada.
+const MAX_CONCURRENT_HEYGEN_VIDEOS = 6;
+let activeHeyGenVideos = 0;
+const heyGenVideoQueue: Array<() => void> = [];
+
+async function acquireHeyGenVideoSlot(): Promise<void> {
+  if (activeHeyGenVideos < MAX_CONCURRENT_HEYGEN_VIDEOS) {
+    activeHeyGenVideos++;
+    return;
+  }
+  await new Promise<void>((resolve) => heyGenVideoQueue.push(resolve));
+  activeHeyGenVideos++;
+}
+
+function releaseHeyGenVideoSlot(): void {
+  activeHeyGenVideos--;
+  heyGenVideoQueue.shift()?.();
+}
+
+// Envolve a criação + espera de um vídeo HeyGen numa "vaga" de concorrência.
+// Conservador de propósito: no caminho do Photo Avatar isso também cobre o
+// treino do avatar (que tem seu próprio limite de conta, tratado em
+// cleanupAllAvatars) — prefere segurar a vaga um pouco mais do que o
+// estritamente necessário a arriscar estourar o teto real da conta.
+export async function withHeyGenVideoSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireHeyGenVideoSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseHeyGenVideoSlot();
+  }
 }
 
 export async function waitForHeyGenCompletion(

@@ -534,7 +534,17 @@ export default function Videos() {
     } catch { /* ignore */ }
   }, []);
 
-  const { data: videos = [], isLoading } = trpc.videos.getAll.useQuery();
+  // Sem isso, um vídeo "Gerando..." só atualizava depois de recarregar a
+  // página manualmente — a geração pode levar minutos e, se o usuário saiu
+  // da tela de Vídeos e voltou (ou está em outra aba/dispositivo), o card
+  // ficava travado no status antigo. Mesmo padrão já usado em Carrossel/
+  // Artigos: só entra em polling enquanto existir algo de fato processando.
+  const { data: videos = [], isLoading } = trpc.videos.getAll.useQuery(undefined, {
+    refetchInterval: (query) => {
+      const data = query.state.data as { status?: string }[] | undefined;
+      return data?.some((v) => v.status === "processing") ? 10000 : false;
+    },
+  });
 
   const [voiceLanguageFilter, setVoiceLanguageFilter] = useState("pt");
 

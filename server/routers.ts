@@ -1,5 +1,6 @@
 ﻿import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { getHolidaysForYear } from "@shared/holidays";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
@@ -43,6 +44,7 @@ import {
   checkDigitalTwinStatus,
   generateDigitalTwinVideo,
   requestDigitalTwinConsentUrl,
+  withHeyGenVideoSlot,
 } from "./_core/heyGenAvatarAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 import {
@@ -540,6 +542,13 @@ const videosRouter = router({
             message: "Seu Avatar 3D ainda nao esta pronto. Crie ou aguarde o treinamento terminar em Videos.",
           });
         }
+        // Captura em variáveis locais pra manter o estreitamento de tipo
+        // (twin.avatarId/input.voiceId como string, não string|null|undefined)
+        // dentro do closure de withHeyGenVideoSlot abaixo — o TypeScript não
+        // preserva o estreitamento de campos de objeto através de uma nova
+        // função.
+        const avatarId = twin.avatarId;
+        const voiceId = input.voiceId;
 
         const fallbackTitleTwin = (
           input.topic?.trim() ||
@@ -559,16 +568,21 @@ const videosRouter = router({
         });
 
         try {
-          const videoId = await generateDigitalTwinVideo({
-            avatarId: twin.avatarId,
-            script: normalizedScript,
-            voiceId: input.voiceId,
-            emotion: input.emotion,
+          // A conta HeyGen só processa um número limitado de vídeos ao mesmo
+          // tempo — isso enfileira em vez de estourar o limite quando vários
+          // usuários geram vídeo na mesma hora (ver withHeyGenVideoSlot).
+          const completed = await withHeyGenVideoSlot(async () => {
+            const videoId = await generateDigitalTwinVideo({
+              avatarId,
+              script: normalizedScript,
+              voiceId,
+              emotion: input.emotion,
+            });
+
+            await db.updateAvatarVideo(savedTwin.id, ctx.user.id, { providerJobId: videoId, errorMessage: null });
+
+            return waitForHeyGenCompletion(videoId, { provider: "v3" });
           });
-
-          await db.updateAvatarVideo(savedTwin.id, ctx.user.id, { providerJobId: videoId, errorMessage: null });
-
-          const completed = await waitForHeyGenCompletion(videoId, { provider: "v3" });
           const stored = await downloadAndStoreHeyGenVideo({
             userId: ctx.user.id,
             videoId: savedTwin.id,
@@ -643,23 +657,35 @@ const videosRouter = router({
         let videoUrl: string;
 
         if (input.provider === "heygen") {
-          const { videoId, talkingPhotoId, provider: heygenProvider } = await createHeyGenAvatarVideo({
-            userId: ctx.user.id,
-            imageBuffer: preparedSourceImage.imageBuffer,
-            contentType: preparedSourceImage.contentType,
-            script: normalizedScript,
-            voiceId: input.voiceId ?? "",
-            emotion: input.emotion,
-            talkingStyle: input.talkingStyle ?? "expressive",
-          });
-
-          await db.updateAvatarVideo(saved.id, ctx.user.id, {
-            providerJobId: videoId,
-            errorMessage: null,
-          });
+          let talkingPhotoId = "";
+          let heygenProvider: "v3" | "v2" = "v3";
 
           try {
-            const completed = await waitForHeyGenCompletion(videoId, { provider: heygenProvider });
+            // A conta HeyGen só processa um número limitado de vídeos ao
+            // mesmo tempo — isso enfileira em vez de estourar o limite
+            // quando vários usuários geram vídeo na mesma hora (ver
+            // withHeyGenVideoSlot). Cobre desde a criação/treino do avatar
+            // até o vídeo terminar de processar.
+            const completed = await withHeyGenVideoSlot(async () => {
+              const created = await createHeyGenAvatarVideo({
+                userId: ctx.user.id,
+                imageBuffer: preparedSourceImage.imageBuffer,
+                contentType: preparedSourceImage.contentType,
+                script: normalizedScript,
+                voiceId: input.voiceId ?? "",
+                emotion: input.emotion,
+                talkingStyle: input.talkingStyle ?? "expressive",
+              });
+              talkingPhotoId = created.talkingPhotoId;
+              heygenProvider = created.provider;
+
+              await db.updateAvatarVideo(saved.id, ctx.user.id, {
+                providerJobId: created.videoId,
+                errorMessage: null,
+              });
+
+              return waitForHeyGenCompletion(created.videoId, { provider: created.provider });
+            });
             const stored = await downloadAndStoreHeyGenVideo({
               userId: ctx.user.id,
               videoId: saved.id,
@@ -667,8 +693,9 @@ const videosRouter = router({
             });
             videoUrl = stored.videoUrl;
           } finally {
-            // Deleta o avatar após o uso para não acumular e atingir o limite
-            if (heygenProvider === "v3") {
+            if (!talkingPhotoId) {
+              // createHeyGenAvatarVideo falhou antes de retornar — nada pra limpar.
+            } else if (heygenProvider === "v3") {
               await deleteHeyGenAvatar(talkingPhotoId);
             } else {
               await deleteHeyGenTalkingPhoto(talkingPhotoId);
@@ -4610,6 +4637,64 @@ const performanceRouter = router({
 
 // ─── Editorial Plan Router (Module 2.1) ──────────────────────────────────────
 
+// Quais dias da semana recebem post pra cada cadência (0=Dom … 6=Sáb) —
+// calculado no servidor em vez de deixar a IA decidir. Ela tende a preferir
+// dias úteis mesmo quando o pedido é "todo dia" e erra a contagem num mês
+// de 28-31 dias (ver computeTargetDates). Os padrões espalham os posts ao
+// longo da semana em vez de empilhar em dias consecutivos.
+const WEEKLY_POSTING_PATTERNS: Record<number, number[]> = {
+  1: [3],                    // Qua
+  2: [2, 4],                 // Ter, Qui
+  3: [1, 3, 5],              // Seg, Qua, Sex
+  4: [1, 2, 4, 5],           // Seg, Ter, Qui, Sex
+  5: [1, 2, 3, 4, 5],        // Seg a Sex
+  6: [1, 2, 3, 4, 5, 6],     // Seg a Sáb
+  7: [0, 1, 2, 3, 4, 5, 6],  // Todos os dias, sem exceção
+};
+
+// Retorna a lista EXATA de datas (YYYY-MM-DD) que devem receber um post no
+// mês, dado quantos posts por semana foram pedidos. A IA só decide O QUE
+// postar em cada data — não decide mais quantos dias preencher, então
+// "preencher todos os dias" (postsPerWeek=7) sempre resulta em 1 item por
+// dia do mês, sem exceção.
+function computeTargetDates(year: number, month: number, postsPerWeek: number): string[] {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  // O seletor da UI vai de 2 a 7 (Calendar.tsx) — 7 já é "todo dia". Não há
+  // suporte a mais de um post no mesmo dia, então valores acima de 7
+  // (permitidos pelo schema por flexibilidade futura) caem pra 7.
+  const clamped = Math.min(7, Math.max(1, postsPerWeek));
+  const allowedWeekdays = new Set(WEEKLY_POSTING_PATTERNS[clamped]);
+
+  const dates: string[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const weekday = new Date(year, month - 1, day).getDay();
+    if (allowedWeekdays.has(weekday)) {
+      dates.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+    }
+  }
+  return dates;
+}
+
+// Datas comemorativas reais do mês (calculadas dinamicamente por ano —
+// Páscoa, Carnaval, Dia das Mães etc. — não hardcoded), pra ancorar os temas
+// sugeridos em datas de verdade em vez de só pautas genéricas perenes.
+function buildHolidaysBlock(year: number, month: number): string | null {
+  const holidaysByDate = getHolidaysForYear(year);
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
+  const entries: string[] = [];
+  for (const [dateKey, holidays] of holidaysByDate) {
+    if (!dateKey.startsWith(monthPrefix)) continue;
+    const day = dateKey.slice(8, 10);
+    for (const h of holidays) entries.push(`- ${day}/${String(month).padStart(2, "0")}: ${h.name} — ${h.marketingTip}`);
+  }
+  if (entries.length === 0) return null;
+  entries.sort();
+  return [
+    `DATAS COMEMORATIVAS REAIS NESTE MÊS (use como gancho quando fizer sentido pro nicho da marca — não precisa forçar em todas):`,
+    ...entries,
+  ].join("\n");
+}
+
 const editorialPlanRouter = router({
   generatePlan: protectedProcedure
     .input(z.object({
@@ -4633,7 +4718,9 @@ const editorialPlanRouter = router({
       const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
       const monthName = monthNames[input.month - 1];
 
-      const totalPosts = Math.round(input.postsPerWeek * 4.3);
+      const targetDates = computeTargetDates(input.year, input.month, input.postsPerWeek);
+      const totalPosts = targetDates.length;
+      const holidaysBlock = buildHolidaysBlock(input.year, input.month);
 
       const formatDistribution = input.formats
         .filter(f => f.weight > 0)
@@ -4686,7 +4773,7 @@ const editorialPlanRouter = router({
             role: "user",
             content: [
               `Crie um planejamento editorial para ${monthName} de ${input.year}.`,
-              `Total de posts: ~${totalPosts} (${input.postsPerWeek} por semana)`,
+              `Total de posts: ${totalPosts} (cadência de ${input.postsPerWeek} por semana)`,
               ``,
               `DISTRIBUIÇÃO DE FORMATOS:`,
               formatDistribution,
@@ -4695,14 +4782,17 @@ const editorialPlanRouter = router({
               input.categories.join(", "),
               brandContext ? `\nINFO DA MARCA:\n${brandContext}` : "",
               radarBlock ? `\n${radarBlock}` : "",
+              holidaysBlock ? `\n${holidaysBlock}` : "",
+              ``,
+              `DATAS OBRIGATÓRIAS — use CADA uma destas ${totalPosts} datas exatamente UMA vez em scheduledDate, nesta lista, sem pular nenhuma e sem usar nenhuma outra data:`,
+              targetDates.join(", "),
               ``,
               `REGRAS:`,
-              `- Distribua os posts ao longo do mês (prefira dias úteis: seg-sex)`,
+              `- Um item para cada data da lista acima — a lista já reflete a cadência pedida, não decida por conta própria quais dias preencher`,
               `- Varie as categorias de forma equilibrada`,
               `- Cada post deve ter um ângulo único e específico`,
               `- suggestedTitle deve ser um gancho impactante de até 80 caracteres`,
               `- pauta deve ter 2-3 frases: o que cobrir, ângulo, por que vai performar`,
-              `- scheduledDate no formato YYYY-MM-DD, dentro de ${input.year}-${String(input.month).padStart(2,"0")}-01 a ${input.year}-${String(input.month).padStart(2,"0")}-${new Date(input.year, input.month, 0).getDate()}`,
               ``,
               `Retorne APENAS JSON válido:`,
               `{`,
@@ -4732,7 +4822,7 @@ const editorialPlanRouter = router({
                   items: {
                     type: "object",
                     properties: {
-                      scheduledDate: { type: "string" },
+                      scheduledDate: { type: "string", enum: targetDates },
                       format: { type: "string" },
                       category: { type: "string" },
                       suggestedTitle: { type: "string" },
@@ -4748,7 +4838,9 @@ const editorialPlanRouter = router({
             },
           },
         },
-        max_tokens: 3500,
+        // Escala com o total de posts (até 31 num mês "todo dia") — 3500 fixos
+        // cortava a resposta no meio antes de cobrir o mês inteiro.
+        max_tokens: Math.min(6000, 1200 + totalPosts * 130),
       });
 
       const raw = response.choices[0]?.message?.content;
@@ -4756,7 +4848,38 @@ const editorialPlanRouter = router({
         items: Array<{ scheduledDate: string; format: string; category: string; suggestedTitle: string; pauta: string }>;
       };
 
-      return { items: parsed.items ?? [] };
+      // Rede de segurança: mesmo com a lista de datas obrigatórias no prompt e
+      // o enum no schema, um LLM pode ainda assim pular alguma data ou
+      // truncar a resposta. Sem isso, o usuário voltava a ver dias vazios
+      // mesmo pedindo "todo dia" — aqui garantimos 1 item por data-alvo,
+      // completando qualquer lacuna com um rascunho genérico e sinalizado
+      // pra revisão, em vez de simplesmente devolver menos itens.
+      const targetDatesSet = new Set(targetDates);
+      const byDate = new Map<string, (typeof parsed.items)[number]>();
+      for (const item of parsed.items ?? []) {
+        if (targetDatesSet.has(item.scheduledDate) && !byDate.has(item.scheduledDate)) {
+          byDate.set(item.scheduledDate, item);
+        }
+      }
+
+      const missingDates = targetDates.filter((d) => !byDate.has(d));
+      if (missingDates.length > 0) {
+        console.warn(`[editorialPlan] IA cobriu ${byDate.size}/${targetDates.length} dia(s) — preenchendo lacuna com rascunho: ${missingDates.join(", ")}`);
+        const activeFormats = input.formats.filter((f) => f.weight > 0);
+        missingDates.forEach((date, i) => {
+          const category = input.categories[i % input.categories.length];
+          const format = activeFormats[i % Math.max(1, activeFormats.length)]?.format ?? "instagram";
+          byDate.set(date, {
+            scheduledDate: date,
+            format,
+            category,
+            suggestedTitle: `Conteúdo sobre ${category}`,
+            pauta: `Rascunho gerado automaticamente pra preencher a cadência do mês — revise e personalize antes de aprovar.`,
+          });
+        });
+      }
+
+      return { items: targetDates.map((d) => byDate.get(d)!) };
     }),
 
   savePlan: protectedProcedure

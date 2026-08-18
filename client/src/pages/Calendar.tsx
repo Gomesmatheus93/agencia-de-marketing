@@ -59,7 +59,7 @@ import {
   getHolidaysForYear,
   HOLIDAY_TYPE_LABELS,
   HOLIDAY_TYPE_COLORS,
-} from "@/lib/holidays";
+} from "@shared/holidays";
 import type { SocialPost } from "@shared/types";
 import { toSchedulerDatetimeLocalValue } from "@/lib/scheduling";
 import { SafeImage } from "@/components/SafeImage";
