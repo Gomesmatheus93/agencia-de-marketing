@@ -12,6 +12,7 @@
 
 import type { Request, Response } from "express";
 import * as db from "../db";
+import { ENV } from "./env";
 import { sendWhatsAppText } from "./whatsapp";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
 
@@ -83,6 +84,35 @@ const MORE_NEWS_TRIGGER = /^(0|mais|outra[s]?|outro[s]?|mais not[ií]cias?|outra
 
 export function wantsMoreNews(text: string): boolean {
   return MORE_NEWS_TRIGGER.test(text.trim());
+}
+
+// Busca notícias novas (excluindo as já enviadas), salva a nova sessão com
+// links curtos (/n/:id/:idx) e envia o resumo — no mesmo formato (título +
+// fonte + link) do digest original em template. Compartilhado pelos dois
+// webhooks (agregador e Meta direto) para não duplicar/dessincronizar a lógica.
+export async function sendMoreNewsDigest(
+  userId: number,
+  phone: string,
+  excludedUrls: Set<string>
+): Promise<{ sent: boolean; text: string }> {
+  const { fetchMoreNews } = await import("./newsDigestScheduler");
+  const moreItems = await fetchMoreNews(excludedUrls);
+
+  if (moreItems.length === 0) {
+    const text = "😔 Não encontrei outras notícias no momento. Tente novamente mais tarde.";
+    await sendWhatsAppText(phone, text);
+    return { sent: false, text };
+  }
+
+  const session = await db.saveDigestSession(userId, phone, moreItems);
+  const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
+  const shortLinkedItems = session.id
+    ? moreItems.map((item, idx) => ({ ...item, url: `${baseUrl}/n/${session.id}/${idx}` }))
+    : moreItems;
+
+  const text = buildDigestTextMessage(shortLinkedItems, "🔄 *Outras Notícias*");
+  await sendWhatsAppText(phone, text);
+  return { sent: true, text };
 }
 
 function extractPhone(body: RawAggregatorPayload): string | null {
@@ -172,38 +202,30 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
       return;
     }
 
-    const { fetchMoreNews } = await import("./newsDigestScheduler");
     const excludedUrls = new Set(activeSession.newsItems.map((i) => i.url));
-    const moreItems = await fetchMoreNews(excludedUrls);
 
-    if (moreItems.length === 0) {
-      const replyText = "😔 Não encontrei outras notícias no momento. Tente novamente mais tarde.";
+    try {
+      const { sent, text } = await sendMoreNewsDigest(activeSession.userId, phone, excludedUrls);
+      res.status(200).json({
+        resposta_texto: text,
+        telefone: phone,
+        resposta_usuario: rawMessage,
+        noticia_selecionada: null,
+        erro: sent ? undefined : "Nenhuma notícia nova disponível.",
+      } satisfies AggregatorReply);
+      if (sent) console.log(`[AggregatorWebhook] Mais notícias enviadas para ${phone}`);
+    } catch (err) {
+      console.error("[AggregatorWebhook] Erro ao buscar/enviar mais notícias:", err);
+      const replyText = "❌ Erro ao buscar novas notícias. Tente novamente em instantes.";
       res.status(200).json({
         resposta_texto: replyText,
         telefone: phone,
         resposta_usuario: rawMessage,
         noticia_selecionada: null,
-        erro: "Nenhuma notícia nova disponível.",
+        erro: "Falha ao buscar/enviar novas notícias.",
       } satisfies AggregatorReply);
-      await sendWhatsAppText(phone, replyText).catch((err) => {
-        console.error("[AggregatorWebhook] Falha ao enviar resposta (sem notícias novas) via WA direto:", err);
-      });
-      return;
+      await sendWhatsAppText(phone, replyText).catch(() => {});
     }
-
-    const digestText = buildDigestTextMessage(moreItems, "🔄 *Outras Notícias*");
-    await db.saveDigestSession(activeSession.userId, phone, moreItems, undefined, digestText);
-
-    res.status(200).json({
-      resposta_texto: digestText,
-      telefone: phone,
-      resposta_usuario: rawMessage,
-      noticia_selecionada: null,
-    } satisfies AggregatorReply);
-    await sendWhatsAppText(phone, digestText).catch((err) => {
-      console.error("[AggregatorWebhook] Falha ao enviar novo digest via WA direto:", err);
-    });
-    console.log(`[AggregatorWebhook] Mais notícias enviadas para ${phone} (${moreItems.length} itens)`);
     return;
   }
 
@@ -305,7 +327,12 @@ export function buildDigestTextMessage(
 ): string {
   const lines = items
     .slice(0, 5)
-    .map((item, i) => `${EMOJIS[i]} ${item.title}`)
+    .map((item, i) => {
+      const parts = [`${EMOJIS[i]} ${item.title}`];
+      if (item.source) parts.push(item.source);
+      if (item.url) parts.push(item.url);
+      return parts.join("\n");
+    })
     .join("\n\n");
 
   return (

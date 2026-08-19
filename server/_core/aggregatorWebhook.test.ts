@@ -20,6 +20,10 @@ vi.mock("./newsAutoGenerator", () => ({
   autoGenerateFromNews: vi.fn(),
 }));
 
+vi.mock("./env", () => ({
+  ENV: { appBaseUrl: "https://krythoslab.com" },
+}));
+
 import * as db from "../db";
 import { sendWhatsAppText } from "./whatsapp";
 import { fetchMoreNews } from "./newsDigestScheduler";
@@ -89,18 +93,18 @@ describe("handleAggregatorWebhook — more news trigger", () => {
     expect(excludedArg.has("https://example.com/a")).toBe(true);
     expect(excludedArg.has("https://example.com/b")).toBe(true);
 
-    expect(db.saveDigestSession).toHaveBeenCalledWith(
-      42,
-      "5511999998888",
-      MORE_NEWS,
-      undefined,
-      expect.stringContaining("Outras Notícias")
-    );
+    expect(db.saveDigestSession).toHaveBeenCalledWith(42, "5511999998888", MORE_NEWS);
 
+    // Sent text must match the original template format: title + fonte + link (short link built from the new session id)
     expect(sendWhatsAppText).toHaveBeenCalledWith(
       "5511999998888",
       expect.stringContaining("Notícia C nova")
     );
+    const sentText = vi.mocked(sendWhatsAppText).mock.calls[0][1];
+    expect(sentText).toContain("Eixos");
+    expect(sentText).toContain("https://krythoslab.com/n/99/0");
+    expect(sentText).toContain("PV Magazine");
+    expect(sentText).toContain("https://krythoslab.com/n/99/1");
 
     expect(statusMock).toHaveBeenCalledWith(200);
     expect(jsonMock).toHaveBeenCalledWith(
@@ -205,5 +209,20 @@ describe("buildDigestTextMessage", () => {
     expect(text).toContain("🔄 *Outras Notícias*");
     expect(text).toContain("1️⃣ Notícia C nova");
     expect(text).toContain("2️⃣ Notícia D nova");
+  });
+
+  it("includes source and link per item, like the original template", () => {
+    const text = buildDigestTextMessage([
+      { title: "Título X", source: "Canal Solar", url: "https://krythoslab.com/n/1/0" },
+    ]);
+    expect(text).toContain("1️⃣ Título X");
+    expect(text).toContain("Canal Solar");
+    expect(text).toContain("https://krythoslab.com/n/1/0");
+  });
+
+  it("omits source/link lines when not provided", () => {
+    const text = buildDigestTextMessage([{ title: "Só título" }]);
+    const itemBlock = text.split("\n\n")[1];
+    expect(itemBlock).toBe("1️⃣ Só título");
   });
 });
