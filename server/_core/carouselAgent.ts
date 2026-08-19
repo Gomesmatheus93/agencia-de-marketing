@@ -219,54 +219,78 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 6
   }
 }
 
-async function researchTopicContext(topic: string): Promise<string | null> {
+export type TopicResearchResult = { text: string; sourceCount: number };
+
+// Uma tentativa de busca — extraída pra poder ser chamada de novo em
+// researchTopicContext sem duplicar a lógica de parse.
+async function fetchTopicResearch(topic: string, timeoutMs: number): Promise<TopicResearchResult | null> {
+  const res = await fetchWithTimeout(
+    "https://google.serper.dev/search",
+    {
+      method: "POST",
+      headers: {
+        "X-API-KEY": ENV.serperApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: topic, gl: "br", hl: "pt", num: 6 }),
+    },
+    timeoutMs
+  );
+  if (!res.ok) throw new Error(`Serper respondeu HTTP ${res.status}`);
+
+  const data = (await res.json()) as SerperResponse;
+  const parts: string[] = [];
+  let sourceCount = 0;
+
+  // Answer box ou Knowledge Graph têm o melhor resumo direto
+  const directAnswer =
+    data.answerBox?.answer ||
+    data.answerBox?.snippet ||
+    data.knowledgeGraph?.description;
+  if (directAnswer) {
+    parts.push(`Resumo: ${directAnswer.replace(/\n/g, " ").trim()}`);
+    sourceCount++;
+  }
+
+  // Top resultados orgânicos
+  const organic = (data.organic ?? []).slice(0, 5);
+  for (const r of organic) {
+    const title = r.title?.trim() ?? "";
+    const snippet = r.snippet?.replace(/\n/g, " ").trim() ?? "";
+    const line = title && snippet ? `• ${title}: ${snippet}` : snippet || title;
+    if (line) {
+      parts.push(line);
+      sourceCount++;
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  return { text: `[Google — "${topic}"]\n${parts.join("\n")}`, sourceCount };
+}
+
+// Busca contexto real sobre o tema (via Google/Serper) pra embasar o
+// carrossel em fatos, não só no conhecimento geral do LLM. Timeout curto
+// demais (era 3s, sem retry) fazia isso falhar silenciosamente com muito
+// mais frequência do que o necessário, gerando carrosséis "vazios" sem
+// nenhum aviso — agora tenta 2 vezes com um prazo mais realista, e loga o
+// motivo real da falha em vez de engolir o erro.
+async function researchTopicContext(topic: string): Promise<TopicResearchResult | null> {
   if (!ENV.serperApiKey) return null;
 
-  try {
-    const res = await fetchWithTimeout(
-      "https://google.serper.dev/search",
-      {
-        method: "POST",
-        headers: {
-          "X-API-KEY": ENV.serperApiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ q: topic, gl: "br", hl: "pt", num: 6 }),
-      },
-      3000
-    );
-    if (!res.ok) return null;
-
-    const data = (await res.json()) as SerperResponse;
-    const parts: string[] = [];
-
-    // Answer box ou Knowledge Graph têm o melhor resumo direto
-    const directAnswer =
-      data.answerBox?.answer ||
-      data.answerBox?.snippet ||
-      data.knowledgeGraph?.description;
-    if (directAnswer) {
-      parts.push(`Resumo: ${directAnswer.replace(/\n/g, " ").trim()}`);
+  const attempts = [8000, 6000];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      return await fetchTopicResearch(topic, attempts[i]);
+    } catch (err) {
+      const isLastAttempt = i === attempts.length - 1;
+      console.warn(
+        `[carouselAgent] Pesquisa de tema falhou (tentativa ${i + 1}/${attempts.length}) para "${topic}": ${err instanceof Error ? err.message : err}`
+      );
+      if (isLastAttempt) return null;
     }
-
-    // Top resultados orgânicos
-    const organic = (data.organic ?? [])
-      .slice(0, 5)
-      .map((r) => {
-        const title = r.title?.trim() ?? "";
-        const snippet = r.snippet?.replace(/\n/g, " ").trim() ?? "";
-        return title && snippet ? `• ${title}: ${snippet}` : snippet || title;
-      })
-      .filter(Boolean);
-
-    parts.push(...organic);
-
-    if (parts.length === 0) return null;
-
-    return `[Google — "${topic}"]\n${parts.join("\n")}`;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 async function searchSerperImages(query: string): Promise<string | undefined> {
@@ -482,6 +506,11 @@ export type CarouselAgentResult = {
   finalCta: string;
   hashtags?: string[];
   profileId?: string;
+  // Quantas fontes reais (busca no Google, quando o carrossel não veio de
+  // uma notícia colada pelo usuário) embasaram o conteúdo — 0 significa que
+  // a pesquisa não encontrou nada ou falhou, e o carrossel foi gerado só
+  // com o conhecimento geral do modelo.
+  researchSourceCount?: number;
 };
 
 type CarouselAgentPayload = {
@@ -1027,12 +1056,14 @@ export async function generateCarouselWithAgent(
     : STYLE_GUIDE[input.style] || `Estilo visual: ${input.style}.`;
 
   // Use article content when provided; otherwise fall back to Google search
-  const topicResearch = input.articleContext
-    ? `[Notícia]\n${input.articleContext}`
+  const topicResearch: TopicResearchResult | null = input.articleContext
+    ? { text: `[Notícia]\n${input.articleContext}`, sourceCount: 1 }
     : await researchTopicContext(input.topic).catch(() => null);
 
   if (topicResearch) {
-    console.log(`[CarouselAgent] Research context ready for topic: "${input.topic}" (source: ${input.articleContext ? "article" : "google"})`);
+    console.log(`[CarouselAgent] Research context ready for topic: "${input.topic}" (source: ${input.articleContext ? "article" : "google"}, ${topicResearch.sourceCount} fonte(s))`);
+  } else {
+    console.warn(`[CarouselAgent] Sem contexto de pesquisa para "${input.topic}" — carrossel será gerado só com o conhecimento geral do modelo.`);
   }
 
   const lastSlideIndex = input.slideCount;
@@ -1074,7 +1105,7 @@ export async function generateCarouselWithAgent(
     "Nao use consultas abstratas como transformation, growth, future ou innovation sem objeto concreto do tema.",
     captionBlueprint ? `Legenda: ${captionBlueprint}` : undefined,
     topicResearch
-      ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch}`
+      ? `\n=== Pesquisa sobre o tema ===\nUse os fatos, dados e conceitos abaixo para enriquecer os slides de desenvolvimento. Incorpore-os naturalmente — nao cite a fonte:\n\n${topicResearch.text}`
       : undefined,
     input.calibrationBlock ? `\n${input.calibrationBlock}` : undefined,
   ]
@@ -1203,6 +1234,7 @@ export async function generateCarouselWithAgent(
     finalCta,
     hashtags: contentPayload.hashtags ?? [],
     profileId: input.profileId,
+    researchSourceCount: topicResearch?.sourceCount ?? 0,
   };
 }
 

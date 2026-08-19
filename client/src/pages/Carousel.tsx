@@ -3695,12 +3695,25 @@ export default function Carousels() {
       utils.carousel.getStats.invalidate();
       setSelectedCarouselId(carousel.id);
       setModalSlide(0);
+      // Guarda ANTES de limpar o estado abaixo — é o único jeito de saber,
+      // neste callback, se a geração veio da aba "Tema livre" (pesquisa no
+      // Google) ou "A partir de notícia" (a fonte já é o próprio artigo, que
+      // o usuário já viu na tela antes de gerar — não precisa avisar de novo).
+      const cameFromFreeTopic = !articleContext;
       setTopic("");
       setNewsUrl("");
       setArticleContext(undefined);
       setArticlePreview(null);
       setCoverImageUrl("");
       toast.success("Carrossel gerado com sucesso!");
+      if (cameFromFreeTopic) {
+        const sourceCount = carousel.researchSourceCount ?? 0;
+        if (sourceCount > 0) {
+          toast.info(`Baseado em pesquisa na web (${sourceCount} fonte${sourceCount > 1 ? "s" : ""} encontrada${sourceCount > 1 ? "s" : ""}).`);
+        } else {
+          toast.warning("Não encontrei fontes atualizadas sobre esse tema — revise os fatos antes de publicar.");
+        }
+      }
       void ensureCarouselDesignAssets(carousel as CarouselItem).catch((error) => {
         console.warn("[Carousel] Nao foi possivel enviar a imagem renderizada para AWS:", error);
       });

@@ -2410,7 +2410,7 @@ const carouselRouter = router({
           designStyleBrief: selectedTemplate?.styleBrief ?? undefined,
         }));
 
-        return await db.saveCarousel(ctx.user.id, {
+        const savedCarousel = await db.saveCarousel(ctx.user.id, {
           topic: input.topic,
           style: selectedStyle,
           hook: generatedCarousel.hook,
@@ -2423,6 +2423,11 @@ const carouselRouter = router({
           contentFormat: "carousel",
           templateId: input.templateId,
         });
+
+        // Não é uma coluna do banco — é só um sinal efêmero pra tela avisar
+        // se a geração encontrou fontes reais na web ou ficou só com o
+        // conhecimento geral do modelo (ver researchTopicContext).
+        return { ...savedCarousel, researchSourceCount: generatedCarousel.researchSourceCount ?? 0 };
       } catch (err) {
         if (err instanceof TRPCError) throw err;
         throw new TRPCError({
