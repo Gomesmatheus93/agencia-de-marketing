@@ -352,9 +352,9 @@ async function startServer() {
 
         const senderNumber = msg.from;
         const text = msg.text.body.trim();
-        // User can request more news by sending "0", "mais", "outras", etc.
-        const wantsMoreNews = /^(0|mais|outra[s]?|outro[s]?|mais not[ií]cias?|outras not[ií]cias?|n[aã]o|nao|refresh|trocar|mudar)$/i.test(text);
-        if (wantsMoreNews) {
+        // User can request more news by sending "0", "mais", "outras", "não gostei", etc.
+        const { wantsMoreNews, buildDigestTextMessage } = await import("./aggregatorWebhook");
+        if (wantsMoreNews(text)) {
           const session = await db.getActiveDigestSession(senderNumber);
           if (!session) {
             console.log(`[MetaWebhook] "mais notícias" de ${senderNumber} mas sem sessão ativa`);
@@ -364,7 +364,6 @@ async function startServer() {
             try {
               const { sendWhatsAppText } = await import("./whatsapp");
               const { fetchMoreNews } = await import("./newsDigestScheduler");
-              const { buildDigestTextMessage } = await import("./aggregatorWebhook");
               const excludedUrls = new Set(session.newsItems.map((i) => i.url));
               const moreItems = await fetchMoreNews(excludedUrls);
               if (moreItems.length === 0) {

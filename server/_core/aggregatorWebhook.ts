@@ -76,6 +76,15 @@ function normalizePhone(raw: string): string {
   return raw.replace(/[\s+\-().]/g, "");
 }
 
+// Palavras que o usuário pode responder quando nenhuma das 5 notícias do
+// digest lhe interessa — dispara uma nova busca e reenvia outro resumo.
+// Mesmo gatilho usado no webhook direto do WhatsApp (Meta) em index.ts.
+const MORE_NEWS_TRIGGER = /^(0|mais|outra[s]?|outro[s]?|mais not[ií]cias?|outras not[ií]cias?|n[aã]o gostei( de nenhuma)?|nenhuma( dessas)?|n[aã]o|nao|refresh|trocar|mudar)$/i;
+
+export function wantsMoreNews(text: string): boolean {
+  return MORE_NEWS_TRIGGER.test(text.trim());
+}
+
 function extractPhone(body: RawAggregatorPayload): string | null {
   if (body.entry) {
     const metaMsg = body.entry
@@ -144,6 +153,59 @@ export async function handleAggregatorWebhook(req: Request, res: Response): Prom
 
   const rawMessage = extractMessage(payload);
   console.log(`[AggregatorWebhook] Telefone: "${phone}" | Mensagem: "${rawMessage}"`);
+
+  // ── Usuário não gostou de nenhuma notícia — busca outras e reenvia ──
+  if (wantsMoreNews(rawMessage)) {
+    const activeSession = await db.getActiveDigestSession(phone);
+    if (!activeSession) {
+      const replyText = "Não encontramos um envio recente para este número. Aguarde o próximo resumo diário. 📰";
+      res.status(200).json({
+        resposta_texto: replyText,
+        telefone: phone,
+        resposta_usuario: rawMessage,
+        noticia_selecionada: null,
+        erro: "Nenhuma sessão ativa para buscar outras notícias.",
+      } satisfies AggregatorReply);
+      await sendWhatsAppText(phone, replyText).catch((err) => {
+        console.error("[AggregatorWebhook] Falha ao enviar resposta (sem sessão p/ mais notícias) via WA direto:", err);
+      });
+      return;
+    }
+
+    const { fetchMoreNews } = await import("./newsDigestScheduler");
+    const excludedUrls = new Set(activeSession.newsItems.map((i) => i.url));
+    const moreItems = await fetchMoreNews(excludedUrls);
+
+    if (moreItems.length === 0) {
+      const replyText = "😔 Não encontrei outras notícias no momento. Tente novamente mais tarde.";
+      res.status(200).json({
+        resposta_texto: replyText,
+        telefone: phone,
+        resposta_usuario: rawMessage,
+        noticia_selecionada: null,
+        erro: "Nenhuma notícia nova disponível.",
+      } satisfies AggregatorReply);
+      await sendWhatsAppText(phone, replyText).catch((err) => {
+        console.error("[AggregatorWebhook] Falha ao enviar resposta (sem notícias novas) via WA direto:", err);
+      });
+      return;
+    }
+
+    const digestText = buildDigestTextMessage(moreItems, "🔄 *Outras Notícias*");
+    await db.saveDigestSession(activeSession.userId, phone, moreItems, undefined, digestText);
+
+    res.status(200).json({
+      resposta_texto: digestText,
+      telefone: phone,
+      resposta_usuario: rawMessage,
+      noticia_selecionada: null,
+    } satisfies AggregatorReply);
+    await sendWhatsAppText(phone, digestText).catch((err) => {
+      console.error("[AggregatorWebhook] Falha ao enviar novo digest via WA direto:", err);
+    });
+    console.log(`[AggregatorWebhook] Mais notícias enviadas para ${phone} (${moreItems.length} itens)`);
+    return;
+  }
 
   // ── Resposta inválida (não é 1-5) ──
   const choiceMatch = rawMessage.match(/^[1-5]$/);
