@@ -89,6 +89,11 @@ export const protectedProcedure = t.procedure.use(requireUser).use(standardRateL
 export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
 // 5 attempts per 15 minutes per IP — for login/register (must stay IP-based)
 export const publicRateLimitedProcedure = t.procedure.use(withIpRateLimit(5, 15 * 60_000));
+// 30 requests per 15 minutes per IP — for the client-facing approval page
+// (view + respond). Much more lenient than login: a real client opening the
+// link, reading the content and clicking approve/comment easily needs more
+// than 5 requests, and several clients can share an office IP.
+export const publicContentProcedure = t.procedure.use(withIpRateLimit(30, 15 * 60_000));
 
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {

@@ -68,6 +68,8 @@ import {
   type CompanyDomain,
   type ArtTemplate,
   type Artwork,
+  contentApprovals,
+  type ContentApproval,
 } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -4110,4 +4112,73 @@ export async function deleteArtwork(id: number, userId: number): Promise<void> {
   if (!db) return;
   await ensureArtStudioTables();
   await db.delete(artworks).where(and(eq(artworks.id, id), eq(artworks.userId, userId)));
+}
+
+// ─── Content Approvals (link de aprovação pra cliente final) ─────────────────
+
+export async function createContentApproval(
+  userId: number,
+  contentType: "article" | "carousel",
+  contentId: number,
+  clientName?: string
+): Promise<{ id: number; token: string }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { nanoid } = await import("nanoid");
+  const token = nanoid(48);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  const [result] = await db.insert(contentApprovals).values({
+    token,
+    userId,
+    contentType,
+    contentId,
+    clientName: clientName || null,
+    expiresAt,
+  });
+  return { id: insertId(result), token };
+}
+
+export async function getContentApprovalByToken(token: string): Promise<ContentApproval | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(contentApprovals)
+    .where(and(eq(contentApprovals.token, token), sql`expiresAt > NOW()`))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getLatestContentApproval(
+  userId: number,
+  contentType: "article" | "carousel",
+  contentId: number
+): Promise<ContentApproval | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(contentApprovals)
+    .where(and(
+      eq(contentApprovals.userId, userId),
+      eq(contentApprovals.contentType, contentType),
+      eq(contentApprovals.contentId, contentId)
+    ))
+    .orderBy(desc(contentApprovals.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function respondToContentApproval(
+  token: string,
+  status: "approved" | "changes_requested",
+  comment?: string
+): Promise<ContentApproval | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const existing = await getContentApprovalByToken(token);
+  if (!existing) return null;
+
+  await db.update(contentApprovals)
+    .set({ status, clientComment: comment || null, respondedAt: new Date() })
+    .where(eq(contentApprovals.token, token));
+
+  return getContentApprovalByToken(token);
 }

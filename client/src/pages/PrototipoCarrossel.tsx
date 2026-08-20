@@ -132,6 +132,90 @@ const DEFAULT_DESIGN: DesignSettings = {
 
 const DESIGN_STORAGE_KEY = "proto_default_design";
 
+const approvalStatusConfig = {
+  pending: { label: "Aguardando aprovação", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  approved: { label: "Aprovado", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  changes_requested: { label: "Alterações solicitadas", color: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+};
+
+function ShareApprovalButton({ contentType, contentId }: { contentType: "article" | "carousel"; contentId: number }) {
+  const [open, setOpen] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [link, setLink] = useState("");
+
+  const { data: status, refetch: refetchStatus } = trpc.contentApproval.getStatus.useQuery({ contentType, contentId });
+
+  const createMutation = trpc.contentApproval.create.useMutation({
+    onSuccess: (result) => {
+      setLink(result.url);
+      refetchStatus();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function handleCopy() {
+    navigator.clipboard.writeText(link);
+    toast.success("Link copiado!");
+  }
+
+  const statusMeta = status ? approvalStatusConfig[status.status as keyof typeof approvalStatusConfig] : null;
+
+  return (
+    <div className="flex items-center gap-2">
+      {statusMeta && (
+        <span
+          className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap", statusMeta.color)}
+          title={status?.clientComment ?? undefined}
+        >
+          {statusMeta.label}
+        </span>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1.5 text-xs"
+        onClick={() => { setOpen(true); setLink(""); setClientName(""); }}
+      >
+        <Link2 className="w-3.5 h-3.5" /> Compartilhar
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="w-[min(92vw,420px)] border-border/50 bg-background">
+          <DialogTitle>Compartilhar para aprovação</DialogTitle>
+          <DialogDescription>
+            Gera um link público — sem login — pra um cliente revisar e aprovar.
+          </DialogDescription>
+          {!link ? (
+            <div className="space-y-3 pt-2">
+              <Input
+                placeholder="Nome do cliente (opcional)"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+              />
+              <Button
+                className="w-full"
+                disabled={createMutation.isPending}
+                onClick={() => createMutation.mutate({ contentType, contentId, clientName: clientName || undefined })}
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gerar link"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-2">
+                <Input readOnly value={link} className="text-xs" onFocus={(e) => e.target.select()} />
+                <Button size="sm" onClick={handleCopy}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">O link expira em 30 dias.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function loadSavedDesign(): DesignSettings {
   try {
     const raw = localStorage.getItem(DESIGN_STORAGE_KEY);
@@ -3472,6 +3556,9 @@ export default function PrototipoCarrossel() {
               <h2 className="text-sm font-semibold truncate max-w-sm">{result.topic}</h2>
               <span className="text-[11px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full shrink-0">{result.slides.length} slides</span>
               <span className="text-[11px] text-muted-foreground shrink-0">· clique para editar</span>
+              <div className="ml-auto">
+                <ShareApprovalButton contentType="carousel" contentId={result.id} />
+              </div>
             </div>
             <div className="flex flex-wrap gap-5">
               {result.slides.map((slide, i) => (

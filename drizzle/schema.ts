@@ -708,3 +708,28 @@ export const artworks = mysqlTable(
 
 export type Artwork = typeof artworks.$inferSelect;
 export type InsertArtwork = typeof artworks.$inferInsert;
+
+// ─── Content Approvals (link de aprovação pra cliente final) ─────────────────
+export const contentApprovals = mysqlTable(
+  "content_approvals",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    userId: int("userId").notNull(),
+    contentType: mysqlEnum("contentType", ["article", "carousel"]).notNull(),
+    contentId: int("contentId").notNull(),
+    clientName: varchar("clientName", { length: 255 }),
+    status: mysqlEnum("status", ["pending", "approved", "changes_requested"]).default("pending").notNull(),
+    clientComment: text("clientComment"),
+    respondedAt: timestamp("respondedAt"),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_content_approvals_userId").on(t.userId),
+    index("idx_content_approvals_content").on(t.contentType, t.contentId),
+  ]
+);
+
+export type ContentApproval = typeof contentApprovals.$inferSelect;
+export type InsertContentApproval = typeof contentApprovals.$inferInsert;

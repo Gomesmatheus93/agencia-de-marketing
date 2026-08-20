@@ -39,6 +39,7 @@ import {
   Mail,
   Bell,
   Phone,
+  Share2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -102,6 +103,90 @@ const statusConfig = {
   published: { label: "Publicado", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400" },
   archived: { label: "Arquivado", color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
 };
+
+const approvalStatusConfig = {
+  pending: { label: "Aguardando aprovação", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  approved: { label: "Aprovado", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  changes_requested: { label: "Alterações solicitadas", color: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+};
+
+function ShareApprovalButton({ contentType, contentId }: { contentType: "article" | "carousel"; contentId: number }) {
+  const [open, setOpen] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [link, setLink] = useState("");
+
+  const { data: status, refetch: refetchStatus } = trpc.contentApproval.getStatus.useQuery({ contentType, contentId });
+
+  const createMutation = trpc.contentApproval.create.useMutation({
+    onSuccess: (result) => {
+      setLink(result.url);
+      refetchStatus();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function handleCopy() {
+    navigator.clipboard.writeText(link);
+    toast.success("Link copiado!");
+  }
+
+  const statusMeta = status ? approvalStatusConfig[status.status as keyof typeof approvalStatusConfig] : null;
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => { setOpen(true); setLink(""); setClientName(""); }}
+        className="h-8 gap-1.5 text-xs"
+      >
+        <Share2 className="w-3.5 h-3.5" /> Compartilhar
+      </Button>
+      {statusMeta && (
+        <span
+          className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap", statusMeta.color)}
+          title={status?.clientComment ?? undefined}
+        >
+          {statusMeta.label}
+        </span>
+      )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Compartilhar para aprovação</DialogTitle>
+            <DialogDescription>Gera um link público — sem login — pra um cliente revisar e aprovar.</DialogDescription>
+          </DialogHeader>
+          {!link ? (
+            <div className="space-y-3">
+              <Input
+                placeholder="Nome do cliente (opcional)"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+              />
+              <Button
+                className="w-full"
+                disabled={createMutation.isPending}
+                onClick={() => createMutation.mutate({ contentType, contentId, clientName: clientName || undefined })}
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gerar link"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Input readOnly value={link} className="text-xs" onFocus={(e) => e.target.select()} />
+                <Button size="sm" onClick={handleCopy}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">O link expira em 30 dias.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 export default function Articles() {
   const { t } = useLanguage();
@@ -535,6 +620,7 @@ export default function Articles() {
                   </>
                 ) : (
                   <>
+                    <ShareApprovalButton contentType="article" contentId={selectedArticle.id} />
                     <Button
                       size="sm"
                       variant="ghost"

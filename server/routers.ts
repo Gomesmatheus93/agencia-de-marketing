@@ -5,7 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
 import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
-import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, router } from "./_core/trpc";
+import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { buildNewsletterHtml } from "./_core/newsletterTemplate";
@@ -3492,6 +3492,148 @@ Responda em JSON:
     }),
 });
 
+// ─── Content Approvals (link de aprovação pra cliente final) ────────────────
+
+async function resolveContentApprovalPayload(row: {
+  userId: number;
+  contentType: "article" | "carousel";
+  contentId: number;
+  status: string;
+  clientComment: string | null;
+  respondedAt: Date | null;
+}) {
+  const { getMetaFetchableStorageUrl } = await import("./storage");
+  const brand = await db.getActiveBrandKit(row.userId);
+
+  const brandPayload = brand
+    ? { companyName: brand.companyName, logoUrl: brand.logoUrl, primaryColor: brand.primaryColor }
+    : null;
+
+  if (row.contentType === "article") {
+    const article = await db.getArticle(row.contentId, row.userId);
+    if (!article) return null;
+    const coverImageUrl = article.coverImageUrl
+      ? await getMetaFetchableStorageUrl(article.coverImageUrl).catch(() => article.coverImageUrl)
+      : null;
+    return {
+      contentType: "article" as const,
+      status: row.status,
+      clientComment: row.clientComment,
+      respondedAt: row.respondedAt,
+      brand: brandPayload,
+      article: { title: article.title, coverImageUrl, content: article.content, summary: article.summary },
+    };
+  }
+
+  const carousels = await db.getCarousels(row.userId);
+  const carousel = carousels.find((c) => c.id === row.contentId);
+  if (!carousel) return null;
+  const slides = await Promise.all(
+    carousel.slides.map(async (slide) => ({
+      title: slide.title,
+      body: slide.body,
+      imageUrl: slide.imageUrl
+        ? await getMetaFetchableStorageUrl(slide.imageUrl).catch(() => slide.imageUrl)
+        : undefined,
+      renderedImageUrl: slide.renderedImageUrl
+        ? await getMetaFetchableStorageUrl(slide.renderedImageUrl).catch(() => slide.renderedImageUrl)
+        : undefined,
+    }))
+  );
+  return {
+    contentType: "carousel" as const,
+    status: row.status,
+    clientComment: row.clientComment,
+    respondedAt: row.respondedAt,
+    brand: brandPayload,
+    carousel: { hook: carousel.hook, caption: carousel.caption, finalCta: carousel.finalCta, slides },
+  };
+}
+
+const contentApprovalRouter = router({
+  create: protectedProcedure
+    .input(z.object({
+      contentType: z.enum(["article", "carousel"]),
+      contentId: z.number().int().positive(),
+      clientName: z.string().max(255).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Confirma posse antes de gerar o link — nunca gerar um link pra
+      // conteúdo de outro usuário.
+      if (input.contentType === "article") {
+        const article = await db.getArticle(input.contentId, ctx.user.id);
+        if (!article) throw new TRPCError({ code: "NOT_FOUND", message: "Artigo não encontrado." });
+      } else {
+        const carousels = await db.getCarousels(ctx.user.id);
+        if (!carousels.some((c) => c.id === input.contentId)) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Carrossel não encontrado." });
+        }
+      }
+
+      const { token } = await db.createContentApproval(
+        ctx.user.id, input.contentType, input.contentId, input.clientName
+      );
+      const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
+      return { token, url: `${baseUrl}/app/aprovar/${token}` };
+    }),
+
+  getStatus: protectedProcedure
+    .input(z.object({
+      contentType: z.enum(["article", "carousel"]),
+      contentId: z.number().int().positive(),
+    }))
+    .query(async ({ ctx, input }) => {
+      return db.getLatestContentApproval(ctx.user.id, input.contentType, input.contentId);
+    }),
+
+  getByToken: publicContentProcedure
+    .input(z.object({ token: z.string().min(1).max(64) }))
+    .query(async ({ input }) => {
+      const row = await db.getContentApprovalByToken(input.token);
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Link inválido ou expirado." });
+      }
+      const payload = await resolveContentApprovalPayload(row);
+      if (!payload) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Conteúdo não encontrado." });
+      }
+      return payload;
+    }),
+
+  respond: publicContentProcedure
+    .input(z.object({
+      token: z.string().min(1).max(64),
+      decision: z.enum(["approved", "changes_requested"]),
+      comment: z.string().max(2000).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const row = await db.getContentApprovalByToken(input.token);
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Link inválido ou expirado." });
+      }
+      await db.respondToContentApproval(input.token, input.decision, input.comment);
+
+      // Avisa o dono do conteúdo via WhatsApp, se ele tiver número configurado.
+      try {
+        const { isWhatsAppConfigured, sendWhatsAppText } = await import("./_core/whatsapp");
+        const settings = await db.getUserDigestSettings(row.userId);
+        if (settings?.whatsappNumber && isWhatsAppConfigured()) {
+          const label = input.decision === "approved" ? "✅ Aprovou" : "💬 Pediu alterações";
+          const clientLabel = row.clientName ? ` (${row.clientName})` : "";
+          const commentLine = input.comment ? `\n\nComentário: ${input.comment}` : "";
+          await sendWhatsAppText(
+            settings.whatsappNumber,
+            `${label} um conteúdo${clientLabel}${commentLine}`
+          );
+        }
+      } catch (err) {
+        console.error("[ContentApproval] Falha ao notificar dono via WhatsApp:", err);
+      }
+
+      return { success: true };
+    }),
+});
+
 // ─── Brand Kit Router ─────────────────────────────────────────────────────────
 
 const brandKitFieldsSchema = {
@@ -5509,6 +5651,7 @@ export const appRouter = router({
   admin: adminRouter,
   features: featuresRouter,
   brandKit: brandKitRouter,
+  contentApproval: contentApprovalRouter,
   reels: reelsRouter,
   artStudio: artStudioRouter,
   commentAlerts: commentAlertsRouter,
