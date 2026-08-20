@@ -1858,21 +1858,89 @@ async function ensureBrandKitTable(db: Awaited<ReturnType<typeof getDb>>) {
   await _brandKitTableReady;
 }
 
-export async function getBrandKit(userId: number): Promise<BrandKit | null> {
+// Uma conta pode ter várias marcas (agência gerenciando vários clientes);
+// users.activeBrandKitId aponta pra qual delas preenche automaticamente os
+// módulos de geração. Drop do UNIQUE em brand_kits.userId + a coluna nova em
+// users seguem o mesmo padrão "auto-cura em runtime" das outras migrações
+// de brand_kits — nunca passou por drizzle-kit, então mantemos o padrão.
+let _brandKitMultiReady: Promise<void> | null = null;
+
+async function ensureBrandKitMultiSupport() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_brandKitMultiReady) {
+    _brandKitMultiReady = (async () => {
+      await db.execute(sql`ALTER TABLE brand_kits DROP INDEX userId`).catch(() => {});
+      await db.execute(sql`ALTER TABLE users ADD COLUMN activeBrandKitId INT`).catch(() => {});
+      // Backfill: contas que já tinham uma marca antes desta migração não
+      // têm activeBrandKitId setado — sem isso, getUsersWithNiches/getUserNiche
+      // (que juntam direto por activeBrandKitId) enxergariam nicho nulo pra
+      // todo mundo até alguém abrir o Brand Kit e salvar de novo.
+      // userId era UNIQUE em brand_kits até esta migração — nenhuma conta
+      // existente tem mais de uma linha ainda, então o JOIN casa no máximo 1.
+      await db.execute(sql`
+        UPDATE users u
+        JOIN brand_kits bk ON bk.userId = u.id
+        SET u.activeBrandKitId = bk.id
+        WHERE u.activeBrandKitId IS NULL
+      `).catch((e) => console.error("[BrandKit] Backfill de activeBrandKitId falhou:", e));
+    })().catch((e) => { _brandKitMultiReady = null; throw e; });
+  }
+  await _brandKitMultiReady;
+}
+
+async function ensureBrandKitReady(db: Awaited<ReturnType<typeof getDb>>) {
+  await ensureBrandKitTable(db);
+  await ensureBrandKitNicheColumns();
+  await ensureBrandKitMultiSupport();
+}
+
+export async function listBrandKits(userId: number): Promise<BrandKit[]> {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureBrandKitReady(db);
+  const [rows] = await db.execute(
+    sql`SELECT * FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC`
+  ) as unknown as [Array<Record<string, unknown>>, unknown];
+  return rows as unknown as BrandKit[];
+}
+
+export async function getActiveBrandKit(userId: number): Promise<BrandKit | null> {
   const db = await getDb();
   if (!db) return null;
   try {
-    await ensureBrandKitTable(db);
-    await ensureBrandKitNicheColumns();
+    await ensureBrandKitReady(db);
+
+    const [userRows] = await db.execute(
+      sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
+    ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
+    const activeBrandKitId = userRows[0]?.activeBrandKitId;
+
+    if (activeBrandKitId) {
+      const [rows] = await db.execute(
+        sql`SELECT * FROM brand_kits WHERE id = ${activeBrandKitId} AND userId = ${userId} LIMIT 1`
+      ) as unknown as [Array<Record<string, unknown>>, unknown];
+      if (rows[0]) return rows[0] as unknown as BrandKit;
+    }
+
+    // Sem marca ativa definida (conta nova ou nunca migrada) — cai pra
+    // primeira marca da conta, preservando o comportamento de antes do
+    // multi-brand pra quem só tem uma.
     const [rows] = await db.execute(
-      sql`SELECT * FROM brand_kits WHERE userId = ${userId} LIMIT 1`
+      sql`SELECT * FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC LIMIT 1`
     ) as unknown as [Array<Record<string, unknown>>, unknown];
-    const row = (rows as Array<Record<string, unknown>>)[0];
-    return row ? (row as unknown as BrandKit) : null;
+    return rows[0] ? (rows[0] as unknown as BrandKit) : null;
   } catch (e) {
-    console.error("[BrandKit] getBrandKit error:", e);
+    console.error("[BrandKit] getActiveBrandKit error:", e);
     return null;
   }
+}
+
+// Alias — todo o resto da plataforma (geração de imagem, SEO, stories, plano
+// editorial etc.) já lê "a marca do usuário" e passa a ler "a marca ativa"
+// automaticamente, sem precisar tocar em cada call site.
+export async function getBrandKit(userId: number): Promise<BrandKit | null> {
+  return getActiveBrandKit(userId);
 }
 
 export type BrandKitData = Omit<BrandKit, "id" | "userId" | "createdAt" | "updatedAt"> & {
@@ -1880,53 +1948,119 @@ export type BrandKitData = Omit<BrandKit, "id" | "userId" | "createdAt" | "updat
   subNicheId?: string | null;
 };
 
-export async function saveBrandKit(userId: number, data: Partial<BrandKitData>): Promise<BrandKit> {
+// Coerce empty strings to null so MySQL doesn't reject them
+function normalizeBrandKitField(v: string | null | undefined): string | null {
+  return v === "" || v == null ? null : v;
+}
+
+export async function createBrandKit(userId: number, data: Partial<BrandKitData>): Promise<BrandKit> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureBrandKitTable(db);
-  await ensureBrandKitNicheColumns();
+  await ensureBrandKitReady(db);
 
-  // Coerce empty strings to null so MySQL doesn't reject them
-  const n = (v: string | null | undefined) => (v === "" || v == null ? null : v);
+  const n = normalizeBrandKitField;
+  const insertResult = await db.execute(sql`
+    INSERT INTO brand_kits (
+      userId, companyName, tagline, logoUrl, industry, targetAudience, brandValues,
+      toneOfVoice, primaryColor, secondaryColor, accentColor, instagramHandle, linkedinUrl,
+      nicheId, subNicheId
+    ) VALUES (
+      ${userId}, ${n(data.companyName)}, ${n(data.tagline)}, ${n(data.logoUrl)}, ${n(data.industry)},
+      ${n(data.targetAudience)}, ${n(data.brandValues)}, ${n(data.toneOfVoice) ?? "professional"},
+      ${n(data.primaryColor) ?? "#6366f1"}, ${n(data.secondaryColor) ?? "#8b5cf6"}, ${n(data.accentColor) ?? "#06b6d4"},
+      ${n(data.instagramHandle)}, ${n(data.linkedinUrl)},
+      ${n((data as { nicheId?: string | null }).nicheId)}, ${n((data as { subNicheId?: string | null }).subNicheId)}
+    )
+  `);
+  const newId = insertId(insertResult[0]);
 
-  const cn  = n(data.companyName);
-  const tl  = n(data.tagline);
-  const lo  = n(data.logoUrl);
-  const ind = n(data.industry);
-  const ta  = n(data.targetAudience);
-  const bv  = n(data.brandValues);
-  const tv  = n(data.toneOfVoice) ?? "professional";
-  const pc  = n(data.primaryColor)   ?? "#6366f1";
-  const sc  = n(data.secondaryColor) ?? "#8b5cf6";
-  const ac  = n(data.accentColor)    ?? "#06b6d4";
-  const ig  = n(data.instagramHandle);
-  const li  = n(data.linkedinUrl);
+  // Primeira marca da conta vira a ativa automaticamente.
+  const [userRows] = await db.execute(
+    sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
+  ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
+  if (!userRows[0]?.activeBrandKitId) {
+    await db.execute(sql`UPDATE users SET activeBrandKitId = ${newId} WHERE id = ${userId}`);
+  }
+
+  const [rows] = await db.execute(
+    sql`SELECT * FROM brand_kits WHERE id = ${newId} LIMIT 1`
+  ) as unknown as [Array<Record<string, unknown>>, unknown];
+  return rows[0] as unknown as BrandKit;
+}
+
+export async function updateBrandKit(
+  userId: number,
+  brandKitId: number,
+  data: Partial<BrandKitData>
+): Promise<BrandKit> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureBrandKitReady(db);
+
+  const n = normalizeBrandKitField;
   const ni  = n((data as { nicheId?: string | null }).nicheId);
   const sni = n((data as { subNicheId?: string | null }).subNicheId);
 
-  await db.execute(sql`INSERT IGNORE INTO brand_kits (userId) VALUES (${userId})`);
   await db.execute(sql`
     UPDATE brand_kits SET
-      companyName     = ${cn},
-      tagline         = ${tl},
-      logoUrl         = ${lo},
-      industry        = ${ind},
-      targetAudience  = ${ta},
-      brandValues     = ${bv},
-      toneOfVoice     = ${tv},
-      primaryColor    = ${pc},
-      secondaryColor  = ${sc},
-      accentColor     = ${ac},
-      instagramHandle = ${ig},
-      linkedinUrl     = ${li},
+      companyName     = ${n(data.companyName)},
+      tagline         = ${n(data.tagline)},
+      logoUrl         = ${n(data.logoUrl)},
+      industry        = ${n(data.industry)},
+      targetAudience  = ${n(data.targetAudience)},
+      brandValues     = ${n(data.brandValues)},
+      toneOfVoice     = ${n(data.toneOfVoice) ?? "professional"},
+      primaryColor    = ${n(data.primaryColor)   ?? "#6366f1"},
+      secondaryColor  = ${n(data.secondaryColor) ?? "#8b5cf6"},
+      accentColor     = ${n(data.accentColor)    ?? "#06b6d4"},
+      instagramHandle = ${n(data.instagramHandle)},
+      linkedinUrl     = ${n(data.linkedinUrl)},
       nicheId         = COALESCE(${ni}, nicheId),
       subNicheId      = COALESCE(${sni}, subNicheId)
-    WHERE userId = ${userId}
+    WHERE id = ${brandKitId} AND userId = ${userId}
   `);
 
-  const result = await getBrandKit(userId);
+  const [rows] = await db.execute(
+    sql`SELECT * FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId} LIMIT 1`
+  ) as unknown as [Array<Record<string, unknown>>, unknown];
+  const result = rows[0];
   if (!result) throw new Error("Failed to save brand kit");
-  return result;
+  return result as unknown as BrandKit;
+}
+
+export async function setActiveBrandKit(userId: number, brandKitId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureBrandKitReady(db);
+
+  const [rows] = await db.execute(
+    sql`SELECT id FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId} LIMIT 1`
+  ) as unknown as [Array<{ id: number }>, unknown];
+  if (!rows[0]) throw new Error("Marca não encontrada.");
+
+  await db.execute(sql`UPDATE users SET activeBrandKitId = ${brandKitId} WHERE id = ${userId}`);
+}
+
+export async function deleteBrandKit(userId: number, brandKitId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await ensureBrandKitReady(db);
+
+  const [userRows] = await db.execute(
+    sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
+  ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
+  const wasActive = userRows[0]?.activeBrandKitId === brandKitId;
+
+  await db.execute(sql`DELETE FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId}`);
+
+  if (wasActive) {
+    const [remaining] = await db.execute(
+      sql`SELECT id FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC LIMIT 1`
+    ) as unknown as [Array<{ id: number }>, unknown];
+    await db.execute(
+      sql`UPDATE users SET activeBrandKitId = ${remaining[0]?.id ?? null} WHERE id = ${userId}`
+    );
+  }
 }
 
 // ─── WhatsApp Digest ───────────────────────────────────────────────────────────
@@ -3178,13 +3312,16 @@ export async function getActiveTopics(): Promise<TrendingTopic[]> {
     .limit(50);
 }
 
+// Junta pela marca ATIVA de cada usuário (users.activeBrandKitId), não por
+// users.id = brandKits.userId — com múltiplas marcas por conta, esse join
+// duplicaria uma linha por marca.
 export async function getUsersWithNiches(): Promise<Array<{ id: number; nicheId: string | null; subNicheId: string | null }>> {
   const db = await getDb();
   if (!db) return [];
   const rows = await db
     .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
     .from(users)
-    .leftJoin(brandKits, eq(users.id, brandKits.userId))
+    .leftJoin(brandKits, eq(users.activeBrandKitId, brandKits.id))
     .where(sql`users.isActive = 1`);
   return rows;
 }
@@ -3195,7 +3332,7 @@ export async function getUserNiche(userId: number): Promise<{ id: number; nicheI
   const rows = await db
     .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
     .from(users)
-    .leftJoin(brandKits, eq(users.id, brandKits.userId))
+    .leftJoin(brandKits, eq(users.activeBrandKitId, brandKits.id))
     .where(eq(users.id, userId))
     .limit(1);
   return rows[0] ?? null;

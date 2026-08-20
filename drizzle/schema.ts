@@ -27,6 +27,7 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
   trialExpiresAt: timestamp("trialExpiresAt"),
+  activeBrandKitId: int("activeBrandKitId"),
 });
 
 export type User = typeof users.$inferSelect;
@@ -436,7 +437,7 @@ export type NicheProfile = typeof nicheProfiles.$inferSelect;
 // ─── Brand Kits ───────────────────────────────────────────────────────────────
 export const brandKits = mysqlTable("brand_kits", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().unique(),
+  userId: int("userId").notNull(),
   companyName: varchar("companyName", { length: 255 }),
   tagline: varchar("tagline", { length: 512 }),
   logoUrl: text("logoUrl"),

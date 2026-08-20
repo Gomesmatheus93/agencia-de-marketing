@@ -3494,34 +3494,82 @@ Responda em JSON:
 
 // ─── Brand Kit Router ─────────────────────────────────────────────────────────
 
+const brandKitFieldsSchema = {
+  companyName: z.string().max(255).optional(),
+  tagline: z.string().max(512).optional(),
+  logoUrl: z.string().optional(),
+  industry: z.string().max(128).optional(),
+  targetAudience: z.string().max(2000).optional(),
+  brandValues: z.string().max(2000).optional(),
+  toneOfVoice: z.enum(["professional", "casual", "inspiring", "educational"]).optional(),
+  primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  instagramHandle: z.string().max(128).optional(),
+  linkedinUrl: z.string().max(255).optional(),
+  nicheId: z.string().max(64).optional(),
+  subNicheId: z.string().max(64).optional(),
+};
+
 const brandKitRouter = router({
+  // Alias mantido por compatibilidade — mesma coisa que getActive.
   get: protectedProcedure.query(async ({ ctx }) => {
-    return db.getBrandKit(ctx.user.id);
+    return db.getActiveBrandKit(ctx.user.id);
+  }),
+
+  getActive: protectedProcedure.query(async ({ ctx }) => {
+    return db.getActiveBrandKit(ctx.user.id);
+  }),
+
+  list: protectedProcedure.query(async ({ ctx }) => {
+    return db.listBrandKits(ctx.user.id);
   }),
 
   listNiches: protectedProcedure.query(async () => {
     return db.listNicheProfiles();
   }),
 
-  save: protectedProcedure
-    .input(z.object({
-      companyName: z.string().max(255).optional(),
-      tagline: z.string().max(512).optional(),
-      logoUrl: z.string().optional(),
-      industry: z.string().max(128).optional(),
-      targetAudience: z.string().max(2000).optional(),
-      brandValues: z.string().max(2000).optional(),
-      toneOfVoice: z.enum(["professional", "casual", "inspiring", "educational"]).optional(),
-      primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      instagramHandle: z.string().max(128).optional(),
-      linkedinUrl: z.string().max(255).optional(),
-      nicheId: z.string().max(64).optional(),
-      subNicheId: z.string().max(64).optional(),
-    }))
+  create: protectedProcedure
+    .input(z.object(brandKitFieldsSchema))
     .mutation(async ({ ctx, input }) => {
-      return db.saveBrandKit(ctx.user.id, input);
+      // A 1ª marca da conta é livre em qualquer plano (comportamento de
+      // sempre); a 2ª em diante é o que desbloqueia gerenciar vários
+      // clientes, então exige o plano Agency.
+      const existing = await db.listBrandKits(ctx.user.id);
+      if (existing.length >= 1) {
+        requireAgencyPlan(ctx.user as PlanUser);
+      }
+      return db.createBrandKit(ctx.user.id, input);
+    }),
+
+  update: protectedProcedure
+    .input(z.object({ id: z.number(), ...brandKitFieldsSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      return db.updateBrandKit(ctx.user.id, id, data);
+    }),
+
+  setActive: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.setActiveBrandKit(ctx.user.id, input.id);
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteBrandKit(ctx.user.id, input.id);
+      return { success: true };
+    }),
+
+  // Mantido pra compatibilidade — upsert direto por userId, sem id.
+  save: protectedProcedure
+    .input(z.object(brandKitFieldsSchema))
+    .mutation(async ({ ctx, input }) => {
+      const active = await db.getActiveBrandKit(ctx.user.id);
+      if (active) return db.updateBrandKit(ctx.user.id, active.id, input);
+      return db.createBrandKit(ctx.user.id, input);
     }),
 
   importFromAnalysis: protectedProcedure
@@ -3536,7 +3584,9 @@ const brandKitRouter = router({
       nicheId: z.string().max(64).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return db.saveBrandKit(ctx.user.id, input);
+      const active = await db.getActiveBrandKit(ctx.user.id);
+      if (active) return db.updateBrandKit(ctx.user.id, active.id, input);
+      return db.createBrandKit(ctx.user.id, input);
     }),
 });
 

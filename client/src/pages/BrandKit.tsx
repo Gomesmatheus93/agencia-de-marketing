@@ -5,10 +5,14 @@ import { SafeImage } from "@/components/SafeImage";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { usePlan } from "@/_core/hooks/usePlan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Plus,
+  Trash2,
+  Star,
   Palette,
   Building2,
   Megaphone,
@@ -220,7 +224,15 @@ function ColorPreview({ primary, secondary, accent, companyName }: { primary: st
 export default function BrandKitPage() {
   const { t } = useLanguage();
   const utils = trpc.useUtils();
-  const { data: saved, isLoading } = trpc.brandKit.get.useQuery();
+  const { plan } = usePlan();
+  const { data: kits = [], isLoading } = trpc.brandKit.list.useQuery();
+  const { data: active } = trpc.brandKit.getActive.useQuery();
+
+  // A marca selecionada pra edição: um id existente, "new" (rascunho ainda
+  // não salvo) ou null (ainda não escolhida — cai no default abaixo).
+  const [selectedId, setSelectedId] = useState<number | "new" | null>(null);
+  const selectedKit = typeof selectedId === "number" ? kits.find((k) => k.id === selectedId) : null;
+  const isNewDraft = selectedId === "new";
 
   const [companyName,    setCompanyName]    = useState("");
   const [tagline,        setTagline]        = useState("");
@@ -236,35 +248,91 @@ export default function BrandKitPage() {
   const [linkedin,       setLinkedin]       = useState("");
   const [saved_ok, setSavedOk] = useState(false);
 
-  // Populate from DB on load
+  // Escolhe a marca ativa (ou a primeira disponível) assim que a lista carrega.
   useEffect(() => {
-    if (!saved) return;
-    if (saved.companyName)    setCompanyName(saved.companyName);
-    if (saved.tagline)        setTagline(saved.tagline);
-    if (saved.logoUrl)        setLogoUrl(saved.logoUrl);
-    if (saved.industry)       setIndustry(saved.industry);
-    if (saved.targetAudience) setTargetAudience(saved.targetAudience);
-    if (saved.brandValues)    setBrandValues(saved.brandValues);
-    if (saved.toneOfVoice)    setTone(saved.toneOfVoice as Tone);
-    if (saved.primaryColor)   setPrimaryColor(saved.primaryColor);
-    if (saved.secondaryColor) setSecondaryColor(saved.secondaryColor);
-    if (saved.accentColor)    setAccentColor(saved.accentColor);
-    if (saved.instagramHandle) setInstagram(saved.instagramHandle);
-    if (saved.linkedinUrl)    setLinkedin(saved.linkedinUrl);
-  }, [saved]);
+    if (isLoading || selectedId !== null) return;
+    if (active) { setSelectedId(active.id); return; }
+    if (kits.length > 0) { setSelectedId(kits[0].id); return; }
+    // Conta sem nenhuma marca ainda (primeiro uso) — abre direto um
+    // rascunho editável, igual ao comportamento de antes do multi-brand.
+    setSelectedId("new");
+  }, [kits, active, selectedId, isLoading]);
 
-  const saveMutation = trpc.brandKit.save.useMutation({
-    onSuccess: () => {
-      toast.success("Brand Kit salvo!");
-      utils.brandKit.get.invalidate();
+  // Repopula o formulário sempre que a marca selecionada muda (reset
+  // completo, não só "se tiver valor" — senão campo de uma marca vaza pra
+  // outra ao trocar).
+  useEffect(() => {
+    if (isNewDraft) {
+      setCompanyName(""); setTagline(""); setLogoUrl(""); setIndustry("");
+      setTargetAudience(""); setBrandValues(""); setTone("professional");
+      setPrimaryColor("#6366f1"); setSecondaryColor("#8b5cf6"); setAccentColor("#06b6d4");
+      setInstagram(""); setLinkedin("");
+      return;
+    }
+    if (!selectedKit) return;
+    setCompanyName(selectedKit.companyName ?? "");
+    setTagline(selectedKit.tagline ?? "");
+    setLogoUrl(selectedKit.logoUrl ?? "");
+    setIndustry(selectedKit.industry ?? "");
+    setTargetAudience(selectedKit.targetAudience ?? "");
+    setBrandValues(selectedKit.brandValues ?? "");
+    setTone((selectedKit.toneOfVoice as Tone) ?? "professional");
+    setPrimaryColor(selectedKit.primaryColor ?? "#6366f1");
+    setSecondaryColor(selectedKit.secondaryColor ?? "#8b5cf6");
+    setAccentColor(selectedKit.accentColor ?? "#06b6d4");
+    setInstagram(selectedKit.instagramHandle ?? "");
+    setLinkedin(selectedKit.linkedinUrl ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKit?.id, isNewDraft]);
+
+  function invalidateBrandKits() {
+    utils.brandKit.list.invalidate();
+    utils.brandKit.getActive.invalidate();
+    utils.brandKit.get.invalidate();
+  }
+
+  const createMutation = trpc.brandKit.create.useMutation({
+    onSuccess: (created) => {
+      toast.success("Marca criada!");
+      invalidateBrandKits();
+      setSelectedId(created.id);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
     },
     onError: (e) => toast.error(e.message),
   });
 
+  const updateMutation = trpc.brandKit.update.useMutation({
+    onSuccess: () => {
+      toast.success("Brand Kit salvo!");
+      invalidateBrandKits();
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2500);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const setActiveMutation = trpc.brandKit.setActive.useMutation({
+    onSuccess: () => {
+      toast.success("Marca ativa atualizada.");
+      invalidateBrandKits();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = trpc.brandKit.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Marca removida.");
+      invalidateBrandKits();
+      setSelectedId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const saveMutation = isNewDraft ? createMutation : updateMutation;
+
   function handleSave() {
-    saveMutation.mutate({
+    const payload = {
       companyName:    companyName  || undefined,
       tagline:        tagline      || undefined,
       logoUrl:        logoUrl      || undefined,
@@ -277,7 +345,20 @@ export default function BrandKitPage() {
       accentColor:    /^#[0-9a-fA-F]{6}$/.test(accentColor)    ? accentColor    : "#06b6d4",
       instagramHandle: instagram || undefined,
       linkedinUrl:    linkedin   || undefined,
-    });
+    };
+    if (isNewDraft) {
+      createMutation.mutate(payload);
+    } else if (typeof selectedId === "number") {
+      updateMutation.mutate({ id: selectedId, ...payload });
+    }
+  }
+
+  function handleNewBrand() {
+    if (kits.length >= 1 && plan !== "agency") {
+      toast.error("Gerenciar várias marcas é um recurso do plano Agency. Fale com o time pra fazer upgrade.");
+      return;
+    }
+    setSelectedId("new");
   }
 
   if (isLoading) {
@@ -307,15 +388,79 @@ export default function BrandKitPage() {
               </p>
             </div>
           </div>
-          <Button className="gap-2 font-medium" onClick={handleSave} disabled={saveMutation.isPending}>
-            {saveMutation.isPending
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : saved_ok
-              ? <Check className="w-4 h-4" />
-              : <Save className="w-4 h-4" />}
-            {saved_ok ? t("brandSaved") : t("brandSaveBtn")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isNewDraft && selectedKit && active?.id !== selectedKit.id && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setActiveMutation.mutate({ id: selectedKit.id })}
+                disabled={setActiveMutation.isPending}
+              >
+                <Star className="w-4 h-4" />
+                Definir como ativa
+              </Button>
+            )}
+            <Button className="gap-2 font-medium" onClick={handleSave} disabled={saveMutation.isPending}>
+              {saveMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : saved_ok
+                ? <Check className="w-4 h-4" />
+                : <Save className="w-4 h-4" />}
+              {saved_ok ? t("brandSaved") : t("brandSaveBtn")}
+            </Button>
+          </div>
         </div>
+
+        {/* Brand switcher — só aparece depois que já existe pelo menos 1 marca */}
+        {(kits.length > 0 || isNewDraft) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {kits.map((kit) => (
+              <button
+                key={kit.id}
+                onClick={() => setSelectedId(kit.id)}
+                className={cn(
+                  "flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                  selectedId === kit.id
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/40 text-muted-foreground border-border/50 hover:bg-muted"
+                )}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                  style={{ backgroundColor: kit.primaryColor ?? "#6366f1" }}
+                />
+                {kit.companyName || "Sem nome"}
+                {active?.id === kit.id && <Star className="w-3 h-3 fill-current flex-shrink-0" />}
+              </button>
+            ))}
+            {isNewDraft && (
+              <span className="flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-full text-sm font-medium border border-primary bg-primary/10 text-primary">
+                Nova marca (rascunho)
+              </span>
+            )}
+            <button
+              onClick={handleNewBrand}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nova marca
+            </button>
+            {!isNewDraft && selectedKit && kits.length > 1 && (
+              <button
+                onClick={() => {
+                  if (confirm(`Excluir a marca "${selectedKit.companyName || "sem nome"}"? Essa ação não pode ser desfeita.`)) {
+                    deleteMutation.mutate({ id: selectedKit.id });
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm text-muted-foreground hover:text-destructive transition-colors"
+                title="Excluir marca"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">
 
