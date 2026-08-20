@@ -1,5 +1,5 @@
-import { ENV } from "./env";
 import { invokeLLM } from "./llm";
+import { serperSearch } from "./serperClient";
 
 const SEO_AGENT_PROMPT = `Voce e um Estrategista de SEO Senior com mais de 10 anos de experiencia em pesquisa de palavras-chave e estrategia de conteudo para agencias de marketing digital no Brasil.
 
@@ -52,55 +52,23 @@ export type SeoKeywordAgentResult = {
   contentIdeas: SeoContentIdea[];
 };
 
-interface SerperOrganicResult {
-  title?: string;
-  snippet?: string;
-  link?: string;
-}
-
-interface SerperSearchResponse {
-  organic?: SerperOrganicResult[];
-  peopleAlsoAsk?: Array<{ question?: string }>;
-  relatedSearches?: Array<{ query?: string }>;
-}
-
 async function fetchSerperSearchData(seedKeyword: string): Promise<{
-  organic: SerperOrganicResult[];
+  organic: Array<{ title?: string; snippet?: string; link?: string }>;
   peopleAlsoAsk: string[];
   relatedSearches: string[];
 } | null> {
-  if (!ENV.serperApiKey) return null;
+  const data = await serperSearch({ q: seedKeyword, hl: "pt-br" });
+  if (!data) return null;
 
-  try {
-    const resp = await fetch("https://google.serper.dev/search", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": ENV.serperApiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: seedKeyword, gl: "br", hl: "pt-br", num: 10 }),
-    });
-
-    if (!resp.ok) {
-      console.warn(`[SeoKeywordAgent] Serper retornou ${resp.status} para "${seedKeyword}"`);
-      return null;
-    }
-
-    const data = (await resp.json()) as SerperSearchResponse;
-
-    return {
-      organic: (data.organic ?? []).slice(0, 10),
-      peopleAlsoAsk: (data.peopleAlsoAsk ?? [])
-        .map((p) => p.question?.trim())
-        .filter((q): q is string => Boolean(q)),
-      relatedSearches: (data.relatedSearches ?? [])
-        .map((r) => r.query?.trim())
-        .filter((q): q is string => Boolean(q)),
-    };
-  } catch (err) {
-    console.error(`[SeoKeywordAgent] Erro ao consultar Serper para "${seedKeyword}":`, err);
-    return null;
-  }
+  return {
+    organic: (data.organic ?? []).slice(0, 10),
+    peopleAlsoAsk: (data.peopleAlsoAsk ?? [])
+      .map((p) => p.question?.trim())
+      .filter((q): q is string => Boolean(q)),
+    relatedSearches: (data.relatedSearches ?? [])
+      .map((r) => r.query?.trim())
+      .filter((q): q is string => Boolean(q)),
+  };
 }
 
 const KEYWORD_STRATEGY_SCHEMA = {

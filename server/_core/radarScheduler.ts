@@ -14,6 +14,7 @@ import {
   dedupeNewsItems,
   rankNewsItems,
 } from "../routers";
+import { serperNews } from "./serperClient";
 
 const POLL_INTERVAL_MS = 60_000;
 const TIME_ZONE = "America/Fortaleza";
@@ -38,13 +39,6 @@ function getNow(): { mins: number; today: string } {
 
 // ─── Step 1a: Collect trending news via Serper ────────────────────────────────
 
-interface SerperResult {
-  title: string;
-  snippet?: string;
-  link?: string;
-  date?: string;
-}
-
 async function collectViaSerper(): Promise<boolean> {
   const year = new Date().getFullYear();
   const queries = [
@@ -57,22 +51,8 @@ async function collectViaSerper(): Promise<boolean> {
   let inserted = 0;
   for (const q of queries) {
     try {
-      const resp = await fetch("https://google.serper.dev/news", {
-        method: "POST",
-        headers: {
-          "X-API-KEY": ENV.serperApiKey!,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ q, gl: "br", hl: "pt-br", num: 10 }),
-      });
-
-      if (!resp.ok) {
-        console.warn(`[Radar] Serper retornou ${resp.status} para query "${q}"`);
-        continue;
-      }
-
-      const data = (await resp.json()) as { news?: SerperResult[] };
-      const items = data.news ?? [];
+      const data = await serperNews({ q });
+      const items = data?.news ?? [];
 
       for (const item of items) {
         if (!item.title || item.title.length < 10) continue;
@@ -235,22 +215,8 @@ async function collectViaEnergyNewsAgent(query: string): Promise<number[]> {
 async function collectViaSerperForQuery(query: string): Promise<number[]> {
   const ids: number[] = [];
   try {
-    const resp = await fetch("https://google.serper.dev/news", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": ENV.serperApiKey!,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: 10 }),
-    });
-
-    if (!resp.ok) {
-      console.warn(`[Radar] Serper (busca "${query}") retornou ${resp.status}`);
-      return ids;
-    }
-
-    const data = (await resp.json()) as { news?: SerperResult[] };
-    const items = data.news ?? [];
+    const data = await serperNews({ q: query });
+    const items = data?.news ?? [];
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
     for (const item of items) {

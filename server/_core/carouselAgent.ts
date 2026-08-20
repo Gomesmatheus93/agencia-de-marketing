@@ -8,6 +8,7 @@ import {
 } from "./anthropicClient";
 import { ENV } from "./env";
 import { storagePut } from "../storage";
+import { serperSearch, serperImages, isSerperConfigured } from "./serperClient";
 import {
   type CarouselContentPayload,
   resolveBlockBody,
@@ -185,30 +186,6 @@ Retorne APENAS o JSON abaixo, sem texto antes ou depois:
 
 // ─── Topic Research (Serper — Google Search) ─────────────────────────────────
 
-type SerperOrganicResult = {
-  title?: string;
-  snippet?: string;
-};
-
-type SerperResponse = {
-  organic?: SerperOrganicResult[];
-  answerBox?: { answer?: string; snippet?: string; title?: string };
-  knowledgeGraph?: { description?: string; title?: string };
-};
-
-type SerperImageResult = {
-  title?: string;
-  imageUrl?: string;
-  imageWidth?: number;
-  imageHeight?: number;
-  thumbnailUrl?: string;
-  source?: string;
-};
-
-type SerperImagesResponse = {
-  images?: SerperImageResult[];
-};
-
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 6000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -224,21 +201,9 @@ export type TopicResearchResult = { text: string; sourceCount: number };
 // Uma tentativa de busca — extraída pra poder ser chamada de novo em
 // researchTopicContext sem duplicar a lógica de parse.
 async function fetchTopicResearch(topic: string, timeoutMs: number): Promise<TopicResearchResult | null> {
-  const res = await fetchWithTimeout(
-    "https://google.serper.dev/search",
-    {
-      method: "POST",
-      headers: {
-        "X-API-KEY": ENV.serperApiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: topic, gl: "br", hl: "pt", num: 6 }),
-    },
-    timeoutMs
-  );
-  if (!res.ok) throw new Error(`Serper respondeu HTTP ${res.status}`);
+  const data = await serperSearch({ q: topic, num: 6, timeoutMs });
+  if (!data) return null;
 
-  const data = (await res.json()) as SerperResponse;
   const parts: string[] = [];
   let sourceCount = 0;
 
@@ -273,58 +238,41 @@ async function fetchTopicResearch(topic: string, timeoutMs: number): Promise<Top
 // carrossel em fatos, não só no conhecimento geral do LLM. Timeout curto
 // demais (era 3s, sem retry) fazia isso falhar silenciosamente com muito
 // mais frequência do que o necessário, gerando carrosséis "vazios" sem
-// nenhum aviso — agora tenta 2 vezes com um prazo mais realista, e loga o
-// motivo real da falha em vez de engolir o erro.
+// nenhum aviso — agora tenta 2 vezes com um prazo mais realista, e loga
+// quando uma tentativa não traz resultado.
 async function researchTopicContext(topic: string): Promise<TopicResearchResult | null> {
-  if (!ENV.serperApiKey) return null;
+  if (!isSerperConfigured()) return null;
 
   const attempts = [8000, 6000];
   for (let i = 0; i < attempts.length; i++) {
-    try {
-      return await fetchTopicResearch(topic, attempts[i]);
-    } catch (err) {
-      const isLastAttempt = i === attempts.length - 1;
-      console.warn(
-        `[carouselAgent] Pesquisa de tema falhou (tentativa ${i + 1}/${attempts.length}) para "${topic}": ${err instanceof Error ? err.message : err}`
-      );
-      if (isLastAttempt) return null;
-    }
+    const result = await fetchTopicResearch(topic, attempts[i]);
+    if (result) return result;
+    console.warn(
+      `[carouselAgent] Pesquisa de tema sem resultado (tentativa ${i + 1}/${attempts.length}) para "${topic}"`
+    );
   }
   return null;
 }
 
 async function searchSerperImages(query: string): Promise<string | undefined> {
-  if (!ENV.serperApiKey) return undefined;
+  if (!isSerperConfigured()) return undefined;
   // Try up to 2 query variants: original, then a shorter fallback
   const queries = [query, query.split(" ").slice(0, 3).join(" ")].filter(Boolean);
   for (const q of queries) {
-    try {
-      const res = await fetchWithTimeout(
-        "https://google.serper.dev/images",
-        {
-          method: "POST",
-          headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ q, num: 20 }),
-        },
-        7000
-      );
-      if (!res.ok) continue;
-      const data = (await res.json()) as SerperImagesResponse;
-      const images = (data.images ?? []).filter((img) => {
-        if (!img.imageUrl) return false;
-        // Skip strongly landscape images (bad for portrait carousel)
-        if (img.imageWidth && img.imageHeight && img.imageWidth > img.imageHeight * 1.4) return false;
-        return true;
-      });
-      const portrait = images.filter(
-        (img) => !img.imageWidth || !img.imageHeight || img.imageHeight >= img.imageWidth
-      );
-      const pool = portrait.length > 0 ? portrait : images;
-      const result = pickRandom(pool, 8)?.imageUrl;
-      if (result) return result;
-    } catch {
-      continue;
-    }
+    const data = await serperImages({ q });
+    if (!data) continue;
+    const images = (data.images ?? []).filter((img) => {
+      if (!img.imageUrl) return false;
+      // Skip strongly landscape images (bad for portrait carousel)
+      if (img.imageWidth && img.imageHeight && img.imageWidth > img.imageHeight * 1.4) return false;
+      return true;
+    });
+    const portrait = images.filter(
+      (img) => !img.imageWidth || !img.imageHeight || img.imageHeight >= img.imageWidth
+    );
+    const pool = portrait.length > 0 ? portrait : images;
+    const result = pickRandom(pool, 8)?.imageUrl;
+    if (result) return result;
   }
   return undefined;
 }

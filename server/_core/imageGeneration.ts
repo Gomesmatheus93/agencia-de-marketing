@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { ENV } from "./env";
 import { storagePut } from "../storage";
+import { serperSearch, serperImages, isSerperConfigured } from "./serperClient";
 
 export type ImageStyle = "commercial" | "produto" | "banner" | "social" | "logo" | "lifestyle";
 export type ImageSize = "1:1" | "4:5" | "16:9";
@@ -157,38 +158,23 @@ async function searchUnsplashReferences(topic: string): Promise<string> {
 }
 
 async function searchSerperReferences(topic: string): Promise<string> {
-  if (!ENV.serperApiKey) return "";
+  if (!isSerperConfigured()) return "";
   const parts: string[] = [];
-  try {
-    const [webRes, imgRes] = await Promise.all([
-      fetch("https://google.serper.dev/search", {
-        method: "POST",
-        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ q: `${topic} design criativo poster profissional`, gl: "br", hl: "pt", num: 5 }),
-        signal: AbortSignal.timeout(4000),
-      }),
-      fetch("https://google.serper.dev/images", {
-        method: "POST",
-        headers: { "X-API-KEY": ENV.serperApiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ q: `${topic} design aesthetic visual`, num: 8 }),
-        signal: AbortSignal.timeout(4000),
-      }),
-    ]);
-    if (webRes.ok) {
-      const data = (await webRes.json()) as {
-        organic?: Array<{ title?: string; snippet?: string }>;
-        answerBox?: { snippet?: string };
-      };
-      const snippets = (data.organic ?? []).slice(0, 4).map((r) => r.snippet?.replace(/\n/g, " ").trim()).filter(Boolean);
-      if (data.answerBox?.snippet) parts.push(`Context: ${data.answerBox.snippet}`);
-      if (snippets.length) parts.push(`Web references:\n${snippets.map((s) => `• ${s}`).join("\n")}`);
-    }
-    if (imgRes.ok) {
-      const data = (await imgRes.json()) as { images?: Array<{ title?: string }> };
-      const titles = (data.images ?? []).slice(0, 6).map((i) => i.title?.trim()).filter(Boolean);
-      if (titles.length) parts.push(`Google Images references:\n${titles.map((t) => `• ${t}`).join("\n")}`);
-    }
-  } catch { /* ignore */ }
+
+  const [webData, imgData] = await Promise.all([
+    serperSearch({ q: `${topic} design criativo poster profissional`, num: 5, timeoutMs: 4000 }),
+    serperImages({ q: `${topic} design aesthetic visual`, num: 8, timeoutMs: 4000 }),
+  ]);
+
+  if (webData) {
+    const snippets = (webData.organic ?? []).slice(0, 4).map((r) => r.snippet?.replace(/\n/g, " ").trim()).filter(Boolean);
+    if (webData.answerBox?.snippet) parts.push(`Context: ${webData.answerBox.snippet}`);
+    if (snippets.length) parts.push(`Web references:\n${snippets.map((s) => `• ${s}`).join("\n")}`);
+  }
+  if (imgData) {
+    const titles = (imgData.images ?? []).slice(0, 6).map((i) => i.title?.trim()).filter(Boolean);
+    if (titles.length) parts.push(`Google Images references:\n${titles.map((t) => `• ${t}`).join("\n")}`);
+  }
   return parts.join("\n\n");
 }
 
