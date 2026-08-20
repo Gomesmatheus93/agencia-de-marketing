@@ -452,8 +452,8 @@ export default function Stories() {
                 </p>
                 <Textarea
                   placeholder={language === "pt"
-                    ? "Ex: Como crescer no Instagram em 2025, dicas de produtividade para empreendedores…"
-                    : "E.g. How to grow on Instagram in 2025…"}
+                    ? "Ex: Como funciona o financiamento de energia solar em 2026, bastidores de uma instalação…"
+                    : "E.g. How solar energy financing works in 2026…"}
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   rows={3}

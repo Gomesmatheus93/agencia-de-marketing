@@ -1,4 +1,4 @@
-﻿import { eq, desc, asc, and, or, isNull, lte, sql, count } from "drizzle-orm";
+﻿import { eq, desc, asc, and, or, isNull, lte, sql, count, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { ResultSetHeader } from "mysql2";
 
@@ -3187,6 +3187,29 @@ export async function getUsersWithNiches(): Promise<Array<{ id: number; nicheId:
     .leftJoin(brandKits, eq(users.id, brandKits.userId))
     .where(sql`users.isActive = 1`);
   return rows;
+}
+
+export async function getUserNiche(userId: number): Promise<{ id: number; nicheId: string | null; subNicheId: string | null } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
+    .from(users)
+    .leftJoin(brandKits, eq(users.id, brandKits.userId))
+    .where(eq(users.id, userId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getTopicsByIds(ids: number[]): Promise<TrendingTopic[]> {
+  if (ids.length === 0) return [];
+  await ensureRadarTables();
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(trendingTopics)
+    .where(inArray(trendingTopics.id, ids));
 }
 
 export async function upsertUserTopicAngle(data: {

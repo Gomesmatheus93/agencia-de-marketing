@@ -119,7 +119,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">© 2025 KrythosLab. Todos os direitos reservados.</p>
+        <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} KrythosLab. Todos os direitos reservados.</p>
       </div>
 
       {/* Right panel */}

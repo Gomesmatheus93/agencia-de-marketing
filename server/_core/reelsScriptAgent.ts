@@ -39,6 +39,14 @@ PRINCÍPIOS DE RETENÇÃO OBRIGATÓRIOS:
 2. RECOMPENSA ANTECIPADA (meio do vídeo): entregue valor antes que o usuário abandone. Uma descoberta, dado, técnica ou insight concreto que justifique continuar assistindo.
 3. LOOP DE FECHAMENTO: o vídeo termina referenciando o gancho inicial. Isso cria loop mental — o usuário tem vontade de rever. Pode ser repetindo a pergunta e respondendo, mostrando a "prova", ou resolvendo o conflito aberto no hook.
 
+FIDELIDADE AOS FATOS (OBRIGATÓRIO):
+- Se um "Contexto adicional" com fonte real for fornecido, TODO número, dado, comparação, nome ou declaração usado no roteiro deve vir EXATAMENTE desse contexto. NÃO invente estatísticas, percentuais, prazos, valores ou comparações (ex: "isso equivale a X usinas de Y") que não estejam explicitamente no material fornecido — mesmo que pareçam plausíveis ou dêem um gancho melhor. Uma comparação inventada e factualmente errada é pior para a credibilidade da marca do que um gancho mais simples e correto.
+- Se precisar de uma analogia para tornar um número mais tangível, só use uma comparação cujo cálculo você tenha certeza (e mesmo assim, prefira reformular o dado da fonte a inventar equivalências arriscadas). Na dúvida, não compare — apenas apresente o número da fonte com clareza.
+- Sem contexto adicional (tema livre, sem fonte), você pode ser mais criativo, mas não apresente números específicos inventados como se fossem fatos verificados — mantenha o discurso em nível de estratégia/dica, não de estatística fabricada.
+
+DURAÇÃO REALISTA DAS CENAS:
+- Calcule "duration" a partir da contagem real de palavras do "audio", usando ritmo de fala natural (~2,5 a 3 palavras por segundo). Uma frase de 12-15 palavras dura de 4 a 6 segundos, não 2-3. Não arredonde para baixo só para parecer mais dinâmico — cena curta demais para o texto gera roteiro impossível de gravar no ritmo indicado.
+
 TIPOS DE CENA:
 - "hook": 1-3 segundos. Gancho de entrada. O mais importante. SEMPRE a primeira cena.
 - "context": 3-8 segundos. Contexto mínimo para a promessa fazer sentido. Não enrole.
@@ -106,11 +114,14 @@ export async function generateReelsScript(
   const userPrompt = `Tema do Reel: "${input.topic}"
 Tom: ${TONE_MAP[tone] ?? "educativo"}
 Duração alvo: ${DURATION_MAP[duration] ?? "30-45 segundos"}${
-    input.extraContext ? `\nContexto adicional: ${input.extraContext}` : ""
+    input.extraContext
+      ? `\n\nFonte real (use apenas os fatos, números e declarações abaixo — não invente nada além disso):\n${input.extraContext}`
+      : ""
   }
 
 Gere o roteiro completo com no mínimo 5 cenas e no máximo 8, respeitando todos os princípios de retenção.
-Garanta: gancho nos primeiros 3s, recompensa antes de 60% do tempo, loop de fechamento no final.`;
+Garanta: gancho nos primeiros 3s, recompensa antes de 60% do tempo, loop de fechamento no final.
+Calcule a duração de cada cena pelo tempo real de fala do texto em "audio".`;
 
   const raw = await invokeAnthropicLLM({
     system: REELS_AGENT_SYSTEM,

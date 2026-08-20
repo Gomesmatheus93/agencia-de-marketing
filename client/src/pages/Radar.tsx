@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   TrendingUp,
@@ -17,10 +17,13 @@ import {
   ExternalLink,
   Layers,
   ImageIcon,
+  Search,
+  X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
 import { usePlan } from "@/_core/hooks/usePlan";
@@ -266,6 +269,7 @@ type FilterType = "todos" | "sugerido" | "usado" | "descartado";
 export default function Radar() {
   const { isPaid } = usePlan();
   const [filter, setFilter] = useState<FilterType>("todos");
+  const [search, setSearch] = useState("");
   const [, navigate] = useLocation();
 
   function handleGenerate(type: "carousel" | "reels" | "article" | "stories" | "image", prefill: RadarPrefill) {
@@ -301,19 +305,57 @@ export default function Radar() {
     onError: (err) => toast.error(`Erro ao gerar temas: ${err.message}`),
   });
 
+  const searchTopics = trpc.radar.searchTopics.useMutation({
+    onSuccess: (data, variables) => {
+      void refetch();
+      if (data.inserted > 0) {
+        toast.success(`${data.inserted} temas sobre "${variables.query}" encontrados!`);
+      } else {
+        toast.info(`Nenhum tema encontrado para "${variables.query}".`);
+      }
+    },
+    onError: (err) => toast.error(`Erro ao buscar temas: ${err.message}`),
+  });
+
   function handleStatusChange(topicId: number, status: TopicStatus) {
     updateStatus.mutate({ trendingTopicId: topicId, status });
   }
 
+  const query = search.trim().toLowerCase();
+  const searchScoped = query
+    ? topics.filter((t) =>
+        t.title.toLowerCase().includes(query) ||
+        (t.description?.toLowerCase().includes(query) ?? false) ||
+        (t.angle?.suggestedTitle?.toLowerCase().includes(query) ?? false)
+      )
+    : topics;
+
+  // Nothing matched locally — search (or generate) topics for this term on demand.
+  const searchedQueriesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isPaid || isLoading) return;
+    if (!query || query.length < 2) return;
+    if (searchScoped.length > 0) return;
+    if (searchedQueriesRef.current.has(query)) return;
+
+    const timer = setTimeout(() => {
+      searchedQueriesRef.current.add(query);
+      searchTopics.mutate({ query: search.trim() });
+    }, 700);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, searchScoped.length, isPaid, isLoading]);
+
   const filtered = filter === "todos"
-    ? topics
-    : topics.filter((t) => (t.angle?.status ?? "sugerido") === filter);
+    ? searchScoped
+    : searchScoped.filter((t) => (t.angle?.status ?? "sugerido") === filter);
 
   const counts = {
-    todos: topics.length,
-    sugerido: topics.filter((t) => (t.angle?.status ?? "sugerido") === "sugerido").length,
-    usado: topics.filter((t) => t.angle?.status === "usado").length,
-    descartado: topics.filter((t) => t.angle?.status === "descartado").length,
+    todos: searchScoped.length,
+    sugerido: searchScoped.filter((t) => (t.angle?.status ?? "sugerido") === "sugerido").length,
+    usado: searchScoped.filter((t) => t.angle?.status === "usado").length,
+    descartado: searchScoped.filter((t) => t.angle?.status === "descartado").length,
   };
 
   const filterTabs: { key: FilterType; label: string }[] = [
@@ -364,6 +406,37 @@ export default function Radar() {
           </div>
         </div>
 
+        {/* Search */}
+        <div>
+          <div className="relative max-w-sm">
+            {searchTopics.isPending ? (
+              <RefreshCw className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            )}
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Pesquisar temas..."
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                title="Limpar pesquisa"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {searchTopics.isPending && (
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Buscando temas sobre "{search.trim()}"...
+            </p>
+          )}
+        </div>
+
         {/* Filter tabs */}
         <div className="flex gap-2 flex-wrap">
           {filterTabs.map((tab) => (
@@ -401,9 +474,15 @@ export default function Radar() {
             <div>
               <p className="font-semibold text-muted-foreground">Nenhum tema encontrado</p>
               <p className="text-sm text-muted-foreground/70 mt-1">
-                {topics.length === 0
-                  ? "Os temas em alta serão coletados às 08:00 e 14:00. Volte mais tarde ou peça ao admin para forçar o pipeline."
-                  : "Não há temas com este filtro. Tente mudar o filtro acima."}
+                {query
+                  ? searchTopics.isPending
+                    ? `Buscando temas sobre "${search.trim()}"...`
+                    : isPaid
+                      ? `Nenhum tema encontrado para "${search.trim()}", mesmo buscando novos.`
+                      : `Nenhum tema local corresponde a "${search.trim()}". Assine um plano pago para buscar temas novos sob demanda.`
+                  : topics.length === 0
+                    ? "Os temas em alta serão coletados às 08:00 e 14:00. Volte mais tarde ou peça ao admin para forçar o pipeline."
+                    : "Não há temas com este filtro. Tente mudar o filtro acima."}
               </p>
             </div>
           </div>

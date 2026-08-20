@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -152,7 +153,7 @@ export default function Reels() {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Tema do Reel *</label>
                 <Input
-                  placeholder="Ex: 3 erros fatais em finanças pessoais"
+                  placeholder="Ex: 3 erros que fazem sua conta de luz não baixar mesmo com energia solar"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
@@ -162,27 +163,29 @@ export default function Reels() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Tom</label>
-                  <select
-                    className="w-full text-sm border border-border rounded-md px-2 py-1.5 bg-background"
-                    value={tone}
-                    onChange={(e) => setTone(e.target.value as typeof tone)}
-                  >
-                    {TONE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <Select value={tone} onValueChange={(v) => setTone(v as typeof tone)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TONE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Duração</label>
-                  <select
-                    className="w-full text-sm border border-border rounded-md px-2 py-1.5 bg-background"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value as typeof duration)}
-                  >
-                    {DURATION_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <Select value={duration} onValueChange={(v) => setDuration(v as typeof duration)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATION_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -220,8 +223,8 @@ export default function Reels() {
           {/* Script list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
             {scripts.length === 0 && !generateMut.isPending && (
-              <p className="text-xs text-muted-foreground text-center py-6">
-                Nenhum roteiro ainda. Gere o primeiro!
+              <p className="text-xs text-muted-foreground/60 text-center py-3">
+                Nenhum roteiro ainda
               </p>
             )}
             {(scripts as unknown as ReelsScript[]).map((s) => (

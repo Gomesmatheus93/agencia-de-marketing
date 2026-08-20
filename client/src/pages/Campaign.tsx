@@ -693,7 +693,7 @@ export default function Campaign() {
             <div>
               <FieldLabel>Assunto da campanha *</FieldLabel>
               <Textarea
-                placeholder="Ex: Promoção de Dia das Mães com 30% de desconto em todos os produtos"
+                placeholder="Ex: Campanha de fim de ano para instalação de energia solar residencial com condições especiais de financiamento"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 rows={3}
@@ -706,7 +706,7 @@ export default function Campaign() {
             <div>
               <FieldLabel>Nome do cliente (opcional)</FieldLabel>
               <Input
-                placeholder="Ex: Boutique Elegance"
+                placeholder="Ex: Canal Solar Energia"
                 value={client}
                 onChange={(e) => setClient(e.target.value)}
                 className="text-sm border-border/60"
@@ -717,7 +717,7 @@ export default function Campaign() {
             <div>
               <FieldLabel>Público-alvo / segmento (opcional)</FieldLabel>
               <Input
-                placeholder="Ex: Mulheres 25–45 anos, classe B/C"
+                placeholder="Ex: Proprietários de imóveis residenciais, classe A/B, 30-55 anos"
                 value={segment}
                 onChange={(e) => setSegment(e.target.value)}
                 className="text-sm border-border/60"
@@ -728,7 +728,7 @@ export default function Campaign() {
             <div>
               <FieldLabel>Objetivo da campanha (opcional)</FieldLabel>
               <Input
-                placeholder="Ex: Aumentar vendas online em 20%"
+                placeholder="Ex: Aumentar orçamentos de instalação solar em 20%"
                 value={objective}
                 onChange={(e) => setObjective(e.target.value)}
                 className="text-sm border-border/60"
@@ -753,7 +753,7 @@ export default function Campaign() {
             <div>
               <FieldLabel>Data / período da campanha (opcional)</FieldLabel>
               <Input
-                placeholder="Ex: 05/05 a 12/05/2025"
+                placeholder="Ex: 05/05 a 12/05/2026"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="text-sm border-border/60"

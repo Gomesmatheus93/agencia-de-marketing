@@ -36,7 +36,8 @@ export default function Report() {
   const followers      = Number((profile as unknown as { followersCount?: number })?.followersCount ?? 0);
 
   const now = new Date();
-  const monthName = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const rawMonthName = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthName = rawMonthName.charAt(0).toUpperCase() + rawMonthName.slice(1);
 
   function handlePrint() {
     window.print();
@@ -79,7 +80,7 @@ export default function Report() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-violet-200 text-sm font-medium mb-1">Relatório Mensal de Marketing</p>
-                <h2 className="text-3xl font-bold mb-1 capitalize">{monthName}</h2>
+                <h2 className="text-3xl font-bold mb-1">{monthName}</h2>
                 {profile && (profile as unknown as { username?: string }).username && (
                   <p className="text-violet-200">@{(profile as unknown as { username?: string }).username}</p>
                 )}

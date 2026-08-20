@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ENV } from "./env";
 import { invokeLLM } from "./llm";
 import {
@@ -7,6 +8,12 @@ import {
   getUsersWithNiches,
   upsertUserTopicAngle,
 } from "../db";
+import {
+  DEFAULT_NEWS_SITES,
+  fetchNewsFromSite,
+  dedupeNewsItems,
+  rankNewsItems,
+} from "../routers";
 
 const POLL_INTERVAL_MS = 60_000;
 const TIME_ZONE = "America/Fortaleza";
@@ -39,10 +46,11 @@ interface SerperResult {
 }
 
 async function collectViaSerper(): Promise<boolean> {
+  const year = new Date().getFullYear();
   const queries = [
-    "tendências marketing digital 2025",
-    "viral redes sociais brasil",
-    "novidades Instagram TikTok negócios",
+    `tendências marketing digital ${year}`,
+    "viral redes sociais brasil hoje",
+    "novidades Instagram TikTok IA negócios",
     "empreendedorismo tendência semana",
   ];
 
@@ -93,6 +101,7 @@ async function collectViaSerper(): Promise<boolean> {
 
 async function collectViaLLM(): Promise<number> {
   const today = new Date().toLocaleDateString("pt-BR", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" });
+  const year = new Date().getFullYear();
 
   const result = await invokeLLM({
     messages: [
@@ -102,7 +111,12 @@ async function collectViaLLM(): Promise<number> {
       },
       {
         role: "user",
-        content: `Hoje é ${today}. Gere exatamente 12 temas em alta para marketing digital, redes sociais e empreendedorismo no Brasil.
+        content: `Hoje é ${today} de ${year}. Gere exatamente 12 temas REALMENTE em alta agora para marketing digital, redes sociais e empreendedorismo no Brasil.
+
+Regras importantes:
+- Foque nos assuntos que estão bombando NESTA semana/mês de ${year}, considerando o que já é conhecido até essa data (novas features de IA generativa, atualizações de algoritmo de Instagram/TikTok/LinkedIn, novos formatos de conteúdo, mudanças de comportamento do consumidor, datas comemorativas próximas etc.).
+- NÃO use temas genéricos, batidos ou de anos anteriores — nada de "dicas atemporais de marketing" a menos que realmente conectado com o momento atual.
+- Sempre que citar um ano, use ${year}, nunca um ano passado.
 
 Retorne um objeto JSON com a chave "topics" contendo um array de 12 objetos, cada um com:
 - title: string (título chamativo, máx 100 chars)
@@ -112,8 +126,8 @@ Retorne um objeto JSON com a chave "topics" contendo um array de 12 objetos, cad
 - relevanceWindow: "ephemeral" | "weekly" | "evergreen"
 - niches: string[] (2-5 nichos: "marketing", "ecommerce", "fitness", "educacao", "financas", "tecnologia", "moda", etc.)
 
-Exemplo de formato:
-{"topics":[{"title":"Como o algoritmo do Instagram mudou em 2025","description":"Nova atualização prioriza conteúdo original e reduz alcance de reposts","viralScore":85,"emotionalAngle":"curiosidade","relevanceWindow":"weekly","niches":["marketing","ecommerce"]}]}`,
+Exemplo de formato (adapte o conteúdo ao momento atual, não copie o tema do exemplo):
+{"topics":[{"title":"Novo recurso de IA do Instagram muda o jogo do conteúdo","description":"Atualização recente prioriza vídeos gerados/editados com IA e reduz alcance de reposts","viralScore":85,"emotionalAngle":"curiosidade","relevanceWindow":"weekly","niches":["marketing","ecommerce"]}]}`,
       },
     ],
     response_format: { type: "json_object" },
@@ -178,6 +192,189 @@ async function collectTrendingTopics(): Promise<number> {
   return collectViaLLM();
 }
 
+// ─── Step 1c: On-demand collection scoped to a user search term ───────────────
+
+// Reuses the same web-research agent that powers the Articles module (scrapes
+// real RSS/HTML from the energy-sector news sites this agency covers) instead
+// of relying on a generic news API or an LLM guessing headlines.
+async function collectViaEnergyNewsAgent(query: string): Promise<number[]> {
+  const ids: number[] = [];
+  try {
+    const results = await Promise.allSettled(DEFAULT_NEWS_SITES.map((site) => fetchNewsFromSite(site)));
+    const items = dedupeNewsItems(
+      results.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    );
+    if (items.length === 0) return ids;
+
+    const ranked = rankNewsItems(items, query).slice(0, 15);
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    for (const item of ranked) {
+      if (!item.title || item.title.length < 10) continue;
+      try {
+        const externalId = `energy-${createHash("sha1").update(item.url).digest("base64url")}`;
+        const id = await upsertTrendingTopic({
+          externalId,
+          title: item.title.slice(0, 512),
+          description: item.excerpt?.slice(0, 500) ?? undefined,
+          source: "energy-news",
+          sourceUrl: item.url,
+          expiresAt,
+        });
+        if (id) ids.push(id);
+      } catch (itemErr) {
+        console.error(`[Radar] Falha ao salvar notícia "${item.title.slice(0, 60)}":`, itemErr);
+      }
+    }
+  } catch (err) {
+    console.error(`[Radar] Erro no agente de pesquisa de notícias de energia para "${query}":`, err);
+  }
+  return ids;
+}
+
+async function collectViaSerperForQuery(query: string): Promise<number[]> {
+  const ids: number[] = [];
+  try {
+    const resp = await fetch("https://google.serper.dev/news", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": ENV.serperApiKey!,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: query, gl: "br", hl: "pt-br", num: 10 }),
+    });
+
+    if (!resp.ok) {
+      console.warn(`[Radar] Serper (busca "${query}") retornou ${resp.status}`);
+      return ids;
+    }
+
+    const data = (await resp.json()) as { news?: SerperResult[] };
+    const items = data.news ?? [];
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    for (const item of items) {
+      if (!item.title || item.title.length < 10) continue;
+      const externalId = Buffer.from(item.title.slice(0, 64)).toString("base64url");
+      const id = await upsertTrendingTopic({
+        externalId,
+        title: item.title,
+        description: item.snippet,
+        source: "serper",
+        sourceUrl: item.link,
+        expiresAt,
+      });
+      if (id) ids.push(id);
+    }
+  } catch (err) {
+    console.error(`[Radar] Erro na busca Serper por "${query}":`, err);
+  }
+  return ids;
+}
+
+async function collectViaLLMForQuery(query: string): Promise<number[]> {
+  const ids: number[] = [];
+  const today = new Date().toLocaleDateString("pt-BR", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" });
+  const year = new Date().getFullYear();
+
+  try {
+    const result = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: "Você é um especialista em marketing digital no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+        },
+        {
+          role: "user",
+          content: `Hoje é ${today} de ${year}. Gere exatamente 6 temas em alta REALMENTE atuais e específicos sobre "${query}" para marketing digital, redes sociais e empreendedorismo no Brasil.
+
+Regras:
+- Os temas devem estar diretamente relacionados a "${query}" (não genéricos).
+- Use fatos e ângulos plausíveis para ${year}, nunca de anos anteriores.
+- Se "${query}" for um nicho de negócio (ex: um setor, produto ou serviço), gere temas de conteúdo para quem atua nesse nicho.
+
+Retorne um objeto JSON com a chave "topics" contendo um array de objetos, cada um com:
+- title: string (título chamativo, máx 100 chars)
+- description: string (frase de contexto, máx 200 chars)
+- viralScore: number (0-100)
+- emotionalAngle: "curiosidade" | "medo" | "aspiracao" | "polemica"
+- relevanceWindow: "ephemeral" | "weekly" | "evergreen"
+- niches: string[] (2-5 nichos relevantes, incluindo algo próximo de "${query}")`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1200,
+    });
+
+    const rawContent = typeof result.choices[0]?.message?.content === "string"
+      ? result.choices[0].message.content
+      : "{}";
+
+    const parsed = JSON.parse(rawContent) as {
+      topics?: Array<{
+        title: string; description: string; viralScore: number;
+        emotionalAngle: string; relevanceWindow: string; niches: string[];
+      }>;
+    };
+    const topics = Array.isArray(parsed.topics) ? parsed.topics : [];
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    for (const t of topics) {
+      if (!t.title || t.title.length < 5) continue;
+      const externalId = `llm-q-${Buffer.from((query + t.title).slice(0, 60)).toString("base64url")}`;
+      const id = await upsertTrendingTopic({
+        externalId,
+        title: t.title.slice(0, 512),
+        description: t.description?.slice(0, 500),
+        source: "llm",
+        expiresAt,
+      });
+      if (id) {
+        await updateTopicClassification(id, {
+          viralScore: Math.max(0, Math.min(100, Number(t.viralScore) || 50)),
+          emotionalAngle: ["curiosidade", "medo", "aspiracao", "polemica"].includes(t.emotionalAngle) ? t.emotionalAngle : "curiosidade",
+          relevanceWindow: ["ephemeral", "weekly", "evergreen"].includes(t.relevanceWindow) ? t.relevanceWindow : "weekly",
+          niches: (Array.isArray(t.niches) ? t.niches : []).slice(0, 8),
+        });
+        ids.push(id);
+      }
+    }
+  } catch (err) {
+    console.error(`[Radar] Erro ao gerar temas via LLM para "${query}":`, err);
+  }
+  return ids;
+}
+
+// Triggered from the Radar search box when nothing matches locally — searches
+// (or generates) topics specifically about the query and personalizes them
+// for the requesting user right away.
+export async function searchTopicsByQuery(query: string, userId: number): Promise<{ inserted: number }> {
+  const trimmed = query.trim();
+  if (!trimmed) return { inserted: 0 };
+
+  // Prefer the same real-article research agent used by the Articles module —
+  // it scrapes actual energy-sector news sites, so results are real and reliable
+  // (no LLM guessing involved). Only fall back to Serper/LLM if it finds nothing.
+  let ids: number[] = await collectViaEnergyNewsAgent(trimmed);
+  if (ids.length === 0 && ENV.serperApiKey) {
+    ids = await collectViaSerperForQuery(trimmed);
+  }
+  if (ids.length === 0) {
+    ids = await collectViaLLMForQuery(trimmed);
+  }
+  if (ids.length === 0) return { inserted: 0 };
+
+  await classifyPendingTopics();
+
+  const { getTopicsByIds, getUserNiche } = await import("../db");
+  const [topics, user] = await Promise.all([getTopicsByIds(ids), getUserNiche(userId)]);
+  if (user) {
+    await personalizeAnglesForUser(user, topics.slice(0, 6));
+  }
+
+  return { inserted: ids.length };
+}
+
 // ─── Step 2: Classify topics via LLM (batch) ─────────────────────────────────
 
 interface ClassificationResult {
@@ -195,52 +392,114 @@ async function classifyPendingTopics(): Promise<void> {
     .map((t) => `ID ${t.id}: "${t.title}"${t.description ? ` — ${t.description.slice(0, 120)}` : ""}`)
     .join("\n");
 
-  try {
-    const result = await invokeLLM({
-      messages: [
-        {
-          role: "system",
-          content: "Você é especialista em marketing digital e análise de tendências no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
-        },
-        {
-          role: "user",
-          content: `Classifique cada tema abaixo para uso em conteúdo de redes sociais.
+  const MAX_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: "Você é especialista em marketing digital e análise de tendências no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+          },
+          {
+            role: "user",
+            content: `Classifique cada tema abaixo para uso em conteúdo de redes sociais.
 
 Para cada tema retorne:
 - id: o ID numérico do tema (exatamente como fornecido)
 - viralScore: potencial viral de 0 a 100
 - emotionalAngle: "curiosidade", "medo", "aspiracao" ou "polemica"
 - relevanceWindow: "ephemeral" (< 24h), "weekly" (< 7 dias), "evergreen" (atemporal)
-- niches: lista de nichos relevantes (ex: "marketing", "ecommerce", "saude", "fitness", "educacao", "financas", "tecnologia", "moda")
+- niches: lista de nichos relevantes (ex: "energia", "marketing", "ecommerce", "saude", "fitness", "educacao", "financas", "tecnologia", "moda")
 
 Retorne um objeto JSON com a chave "topics" contendo um array com as classificações.
 Exemplo: {"topics":[{"id":1,"viralScore":75,"emotionalAngle":"curiosidade","relevanceWindow":"weekly","niches":["marketing","ecommerce"]}]}
 
 Temas:
 ${topicList}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 800,
-    });
-
-    const rawContent = result.choices[0]?.message?.content;
-    const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { topics: Array<{ id: number } & ClassificationResult> };
-    for (const item of parsed.topics ?? []) {
-      if (!item.id || !item.niches?.length) continue;
-      await updateTopicClassification(item.id, {
-        viralScore: Math.max(0, Math.min(100, item.viralScore ?? 50)),
-        emotionalAngle: item.emotionalAngle ?? "curiosidade",
-        relevanceWindow: item.relevanceWindow ?? "weekly",
-        niches: item.niches.slice(0, 8),
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 3000,
       });
+
+      const rawContent = result.choices[0]?.message?.content;
+      const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { topics: Array<{ id: number } & ClassificationResult> };
+      for (const item of parsed.topics ?? []) {
+        if (!item.id || !item.niches?.length) continue;
+        await updateTopicClassification(item.id, {
+          viralScore: Math.max(0, Math.min(100, item.viralScore ?? 50)),
+          emotionalAngle: item.emotionalAngle ?? "curiosidade",
+          relevanceWindow: item.relevanceWindow ?? "weekly",
+          niches: item.niches.slice(0, 8),
+        });
+      }
+      return;
+    } catch (err) {
+      console.error(`[Radar] Erro ao classificar tópicos (tentativa ${attempt}/${MAX_ATTEMPTS}):`, err);
     }
-  } catch (err) {
-    console.error("[Radar] Erro ao classificar tópicos:", err);
   }
 }
 
 // ─── Step 3: Personalize angles per user ─────────────────────────────────────
+
+async function personalizeAnglesForUser(
+  user: { id: number; nicheId: string | null; subNicheId: string | null },
+  candidates: Array<{ id: number; title: string }>
+): Promise<void> {
+  if (candidates.length === 0) return;
+  const userNiche = user.nicheId ?? user.subNicheId;
+
+  const topicList = candidates
+    .map((t) => `ID ${t.id}: "${t.title}"`)
+    .join("\n");
+
+  const nicheContext = userNiche
+    ? `O usuário atua no nicho: "${userNiche}".`
+    : "O usuário não definiu nicho — use uma abordagem genérica de marketing digital.";
+
+  try {
+    const result = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: "Você é um estrategista de conteúdo para redes sociais no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
+        },
+        {
+          role: "user",
+          content: `${nicheContext}
+
+Para cada tema abaixo, crie um ângulo de conteúdo personalizado para este usuário:
+- topicId: o ID numérico do tema (exatamente como fornecido)
+- suggestedTitle: título chamativo (máx 80 caracteres) para post no Instagram/LinkedIn
+- suggestedHook: gancho de abertura (máx 150 caracteres) que prende a atenção
+
+Retorne um objeto JSON com a chave "angles" contendo um array.
+Exemplo: {"angles":[{"topicId":1,"suggestedTitle":"Título aqui","suggestedHook":"Gancho aqui"}]}
+
+Temas:
+${topicList}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 600,
+    });
+
+    const rawContent = result.choices[0]?.message?.content;
+    const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { angles: Array<{ topicId: number; suggestedTitle: string; suggestedHook: string }> };
+    for (const angle of parsed.angles ?? []) {
+      if (!angle.topicId || !angle.suggestedTitle) continue;
+      await upsertUserTopicAngle({
+        userId: user.id,
+        trendingTopicId: angle.topicId,
+        suggestedTitle: angle.suggestedTitle.slice(0, 512),
+        suggestedHook: angle.suggestedHook?.slice(0, 500) ?? "",
+      });
+    }
+  } catch (err) {
+    console.error(`[Radar] Erro ao personalizar ângulos para userId=${user.id}:`, err);
+  }
+}
 
 async function personalizeForUsers(): Promise<void> {
   const { getActiveTopics } = await import("../db");
@@ -265,57 +524,7 @@ async function personalizeForUsers(): Promise<void> {
       : activeTopics;
 
     const candidates = (relevant.length > 0 ? relevant : activeTopics).slice(0, 5);
-    if (candidates.length === 0) continue;
-
-    const topicList = candidates
-      .map((t) => `ID ${t.id}: "${t.title}"`)
-      .join("\n");
-
-    const nicheContext = userNiche
-      ? `O usuário atua no nicho: "${userNiche}".`
-      : "O usuário não definiu nicho — use uma abordagem genérica de marketing digital.";
-
-    try {
-      const result = await invokeLLM({
-        messages: [
-          {
-            role: "system",
-            content: "Você é um estrategista de conteúdo para redes sociais no Brasil. Responda APENAS com JSON válido, sem texto adicional.",
-          },
-          {
-            role: "user",
-            content: `${nicheContext}
-
-Para cada tema abaixo, crie um ângulo de conteúdo personalizado para este usuário:
-- topicId: o ID numérico do tema (exatamente como fornecido)
-- suggestedTitle: título chamativo (máx 80 caracteres) para post no Instagram/LinkedIn
-- suggestedHook: gancho de abertura (máx 150 caracteres) que prende a atenção
-
-Retorne um objeto JSON com a chave "angles" contendo um array.
-Exemplo: {"angles":[{"topicId":1,"suggestedTitle":"Título aqui","suggestedHook":"Gancho aqui"}]}
-
-Temas:
-${topicList}`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 600,
-      });
-
-      const rawContent = result.choices[0]?.message?.content;
-      const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : "{}") as { angles: Array<{ topicId: number; suggestedTitle: string; suggestedHook: string }> };
-      for (const angle of parsed.angles ?? []) {
-        if (!angle.topicId || !angle.suggestedTitle) continue;
-        await upsertUserTopicAngle({
-          userId: user.id,
-          trendingTopicId: angle.topicId,
-          suggestedTitle: angle.suggestedTitle.slice(0, 512),
-          suggestedHook: angle.suggestedHook?.slice(0, 500) ?? "",
-        });
-      }
-    } catch (err) {
-      console.error(`[Radar] Erro ao personalizar ângulos para userId=${user.id}:`, err);
-    }
+    await personalizeAnglesForUser(user, candidates);
   }
 }
 

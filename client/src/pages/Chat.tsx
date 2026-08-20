@@ -312,9 +312,9 @@ export default function Chat() {
                 <div className="grid grid-cols-2 gap-2 w-full">
                   {[
                     "Qual e o valor atual do dolar?",
-                    "Explique esse assunto para um cliente leigo",
-                    "Crie uma resposta comercial para um lead",
-                    "Compare duas estrategias e recomende a melhor",
+                    "Explique o financiamento de energia solar para um cliente leigo",
+                    "Crie uma resposta comercial para um lead interessado em energia solar",
+                    "Compare dois sistemas de energia solar e recomende o melhor",
                   ].map((suggestion) => (
                     <button
                       key={suggestion}

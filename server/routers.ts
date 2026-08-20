@@ -2757,20 +2757,22 @@ const carouselRouter = router({
     .input(z.object({ niche: z.string().max(100).optional() }))
     .query(async ({ input }) => {
       const today = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+      const year = new Date().getFullYear();
       const llmResponse = await invokeLLM({
         messages: [
           {
             role: "user",
             content: `Você é um especialista em marketing digital e tendências do Instagram Brasil. Data: ${today}.
 
-Gere 8 temas virais para carrosséis no Instagram. ${input.niche ? `Nicho: ${input.niche}.` : "Foque em negócios, marketing, empreendedorismo, finanças pessoais e produtividade para o público brasileiro."}
+Gere 8 temas virais REALMENTE atuais para carrosséis no Instagram. ${input.niche ? `Nicho: ${input.niche}.` : "Foque no setor de energia (energia solar, eficiência energética, financiamento de sistemas fotovoltaicos, mercado livre de energia) para o público brasileiro."}
 
 Critérios:
 - Alto potencial de salvamento (conteúdo prático e aplicável)
 - Gancho que para o scroll em menos de 1 segundo
 - Baseado em dores reais do público brasileiro atual
 - Formato de revelação ou lista numerada (ideal para carrossel)
-- Alinhado com o algoritmo do Instagram 2025 (maximize saves e shares)
+- Alinhado com o algoritmo do Instagram em ${year} (maximize saves e shares)
+- Nunca cite um ano diferente de ${year}
 
 Retorne APENAS JSON válido:
 {
@@ -4453,6 +4455,15 @@ const radarRouter = router({
     const result = await runRadarPipeline();
     return { inserted: result.inserted };
   }),
+
+  searchTopics: protectedProcedure
+    .input(z.object({ query: z.string().min(2).max(80) }))
+    .mutation(async ({ ctx, input }) => {
+      requirePaidPlan(ctx.user as PlanUser);
+      const { searchTopicsByQuery } = await import("./_core/radarScheduler");
+      const result = await searchTopicsByQuery(input.query, ctx.user.id);
+      return { inserted: result.inserted };
+    }),
 });
 
 const styleAnalyzerRouter = router({

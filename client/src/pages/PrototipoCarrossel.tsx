@@ -2325,7 +2325,7 @@ export default function PrototipoCarrossel() {
                 <Wand2 className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-black text-foreground tracking-tight">Protótipo Carrossel</h1>
+                <h1 className="text-xl font-black text-foreground tracking-tight">Carrossel</h1>
                 <p className="text-xs text-muted-foreground">
                   {protoCarousels.length} carrossel{protoCarousels.length !== 1 ? "s" : ""} gerado{protoCarousels.length !== 1 ? "s" : ""}
                 </p>

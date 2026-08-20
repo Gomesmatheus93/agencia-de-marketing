@@ -450,10 +450,8 @@ export default function Articles() {
                 {[1, 2, 3].map((i) => <div key={i} className="h-20 shimmer rounded-xl" />)}
               </div>
             ) : articles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center px-4">
-                <FileText className="w-8 h-8 text-muted-foreground/40 mb-2" />
-                <p className="text-xs text-muted-foreground">Nenhum artigo ainda</p>
-                <p className="text-xs text-muted-foreground/60">Clique em "Novo" para gerar</p>
+              <div className="flex flex-col items-center justify-center h-32 text-center px-4">
+                <FileText className="w-6 h-6 text-muted-foreground/30" />
               </div>
             ) : (
               articles.map((article) => (
