@@ -9,6 +9,11 @@ import "./index.css";
 
 const queryClient = new QueryClient();
 
+// Páginas públicas onde um 401 é esperado (ex: auth.me antes de logar) —
+// redirecionar aqui causaria um loop de reload em vez de deixar o usuário
+// enviar o formulário.
+const PUBLIC_PATHS = ["/app/login", "/app/register"];
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
@@ -16,6 +21,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 
   if (!isUnauthorized) return;
+  if (PUBLIC_PATHS.includes(window.location.pathname)) return;
 
   window.location.href = "/app/login";
 };
