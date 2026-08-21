@@ -133,7 +133,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   };
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {
-      window.location.href = "/";
+      window.location.href = "/app/login";
     },
   });
 

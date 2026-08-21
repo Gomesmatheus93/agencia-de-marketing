@@ -182,7 +182,7 @@ export default function AdminPanel() {
 
   const detailQ = trpc.admin.listUsersDetailed.useQuery(undefined, { enabled: isAdmin });
   const flagsQ  = trpc.admin.getFeatureFlags.useQuery(undefined, { enabled: isAdmin });
-  const logout  = trpc.auth.logout.useMutation({ onSuccess: () => { window.location.href = "/login"; } });
+  const logout  = trpc.auth.logout.useMutation({ onSuccess: () => { window.location.href = "/app/login"; } });
   const toggleFlag = trpc.admin.toggleFeatureFlag.useMutation({ onSuccess: () => flagsQ.refetch(), onError: e => toast.error(e.message) });
   const deleteFlag = trpc.admin.deleteFeatureFlag.useMutation({ onSuccess: () => { toast.success("Removida"); flagsQ.refetch(); }, onError: e => toast.error(e.message) });
 
