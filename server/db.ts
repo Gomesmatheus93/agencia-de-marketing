@@ -97,7 +97,11 @@ let _artStudioTablesReady: Promise<void> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      // Sem connectionLimit explícito, o driver cai no padrão do mysql2 (10),
+      // baixo demais pra várias agências gerando conteúdo ao mesmo tempo.
+      _db = drizzle({
+        connection: { uri: process.env.DATABASE_URL, connectionLimit: 20 },
+      });
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;

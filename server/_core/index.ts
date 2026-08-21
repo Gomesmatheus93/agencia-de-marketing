@@ -1,5 +1,6 @@
 import "dotenv/config";
 import dns from "node:dns";
+import { sql } from "drizzle-orm";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -117,6 +118,19 @@ async function startServer() {
   });
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
+
+  // Health check pro orquestrador (Portainer/Traefik) saber se o container
+  // está saudável — inclui uma checagem real de banco, não só "processo vivo".
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const database = await db.getDb();
+      if (!database) throw new Error("DB não configurado");
+      await database.execute(sql`SELECT 1`);
+      res.status(200).json({ status: "ok" });
+    } catch (error) {
+      res.status(503).json({ status: "error", message: (error as Error).message });
+    }
+  });
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
   // Blocks private/link-local IPs to prevent SSRF via proxy endpoints
@@ -685,6 +699,11 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
   });
 
+  // ATENÇÃO: estes schedulers rodam via setInterval dentro deste processo,
+  // sem lock distribuído. Subir mais de 1 réplica deste container hoje
+  // dispara cada um deles em duplicidade (WhatsApp/Instagram enviados 2x,
+  // Radar coletado 2x). Não escale horizontalmente até isso ser resolvido
+  // (mover pra um processo worker único ou adicionar lock via Redis).
   startInstagramPostScheduler();
   startNewsDigestScheduler();
   startCommentAlertScheduler();
