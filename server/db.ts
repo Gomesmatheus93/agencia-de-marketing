@@ -1,6 +1,8 @@
 ﻿import { eq, desc, asc, and, or, isNull, lte, sql, count, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { ResultSetHeader } from "mysql2";
+import { nanoid } from "nanoid";
+import { hashPassword } from "./_core/password";
 
 function insertId(result: unknown): number {
   return (result as ResultSetHeader).insertId;
@@ -567,6 +569,13 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -624,6 +633,55 @@ export async function deleteUserById(id: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(users).where(eq(users.id, id));
+}
+
+// ─── Equipe (funcionários de uma conta principal) ─────────────────────────────
+// Conteúdo nunca fica preso ao id do funcionário — sempre é gravado com o id
+// da conta principal (ver server/_core/context.ts, resolução de ctx.user).
+// Essas funções só tocam a própria linha de login do funcionário.
+
+export async function getTeamMembers(ownerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(users).where(eq(users.companyOwnerId, ownerId)).orderBy(asc(users.createdAt));
+}
+
+export async function createTeamMember(
+  ownerId: number,
+  data: { name: string; email: string; password: string }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const passwordHash = await hashPassword(data.password);
+  const openId = `local_${nanoid()}`;
+  await db.insert(users).values({
+    openId,
+    name: data.name,
+    email: data.email,
+    loginMethod: "email",
+    passwordHash,
+    companyOwnerId: ownerId,
+  });
+  const [member] = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  if (!member) throw new Error("Falha ao criar membro da equipe");
+  return member;
+}
+
+async function assertOwnsTeamMember(ownerId: number, memberId: number): Promise<void> {
+  const member = await getUserById(memberId);
+  if (!member || member.companyOwnerId !== ownerId) {
+    throw new Error("Membro da equipe não encontrado para esta conta.");
+  }
+}
+
+export async function setTeamMemberActive(ownerId: number, memberId: number, isActive: boolean) {
+  await assertOwnsTeamMember(ownerId, memberId);
+  await setUserActive(memberId, isActive);
+}
+
+export async function removeTeamMember(ownerId: number, memberId: number) {
+  await assertOwnsTeamMember(ownerId, memberId);
+  await deleteUserById(memberId);
 }
 
 export async function listAllUsers() {

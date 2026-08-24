@@ -38,6 +38,7 @@ import {
   LayoutGrid,
   ChevronsUpDown,
   Check,
+  Users,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -92,6 +93,10 @@ const ART_STUDIO_CONFIG = {
   id: "artStudio", icon: LayoutGrid, path: "/dashboard/artes", color: "from-indigo-500 to-blue-600", labelKey: "artStudio" as const, descKey: "artStudioDesc" as const,
 };
 
+const TEAM_CONFIG = {
+  id: "team", icon: Users, path: "/dashboard/team", color: "from-slate-600 to-slate-800", labelKey: "team" as const, descKey: "teamDesc" as const,
+};
+
 interface AppLayoutProps {
   children: React.ReactNode;
   activeModule?: string;
@@ -126,6 +131,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   }));
   const settingsItem = { ...SETTINGS_CONFIG, label: t(SETTINGS_CONFIG.labelKey), description: t(SETTINGS_CONFIG.descKey) };
   const artStudioItem = { ...ART_STUDIO_CONFIG, label: t(ART_STUDIO_CONFIG.labelKey), description: t(ART_STUDIO_CONFIG.descKey) };
+  const teamItem = { ...TEAM_CONFIG, label: t(TEAM_CONFIG.labelKey), description: t(TEAM_CONFIG.descKey) };
   const { hasCompanyAccess } = useCompanyAccess();
   const handleThemeToggle = () => {
     if (!switchable || !toggleTheme) return;
@@ -335,6 +341,15 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               {t("company")}
             </div>
             <NavButton item={artStudioItem} />
+          </>
+        )}
+
+        {user?.canManageTeam && (
+          <>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
+              {t("teamSection")}
+            </div>
+            <NavButton item={teamItem} />
           </>
         )}
       </nav>

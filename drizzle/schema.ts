@@ -28,6 +28,9 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
   trialExpiresAt: timestamp("trialExpiresAt"),
   activeBrandKitId: int("activeBrandKitId"),
+  // null = conta principal (dona da empresa); preenchido = funcionário,
+  // aponta pro id da conta principal. Um único nível (sem sub-sub-usuário).
+  companyOwnerId: int("companyOwnerId"),
 });
 
 export type User = typeof users.$inferSelect;

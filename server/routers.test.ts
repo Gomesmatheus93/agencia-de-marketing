@@ -300,6 +300,7 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: Array<{ name: 
 
   const ctx: TrpcContext = {
     user,
+    actualUser: user,
     req: { protocol: "https", headers: {}, ip: `test-${Math.random()}` } as TrpcContext["req"],
     res: {
       clearCookie: (name: string, options: Record<string, unknown>) => {

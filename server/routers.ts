@@ -3732,6 +3732,61 @@ const brandKitRouter = router({
     }),
 });
 
+// ─── Equipe (funcionários de uma conta principal) ──────────────────────────────
+// Só a conta principal (actualUser.companyOwnerId === null) gerencia a
+// equipe — um funcionário nunca opera esses endpoints, mesmo que ctx.user
+// (dono efetivo do conteúdo) resolva pra conta principal.
+function requireTeamOwner(companyOwnerId: number | null): void {
+  if (companyOwnerId !== null) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Apenas a conta principal pode gerenciar a equipe.",
+    });
+  }
+}
+
+const teamRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    requireTeamOwner(ctx.actualUser.companyOwnerId);
+    const members = await db.getTeamMembers(ctx.actualUser.id);
+    return members.map(({ passwordHash: _ph, ...safe }) => safe);
+  }),
+
+  create: protectedProcedure
+    .input(z.object({
+      name: z.string().min(2).max(100),
+      email: z.string().email(),
+      password: z.string().min(6),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireTeamOwner(ctx.actualUser.companyOwnerId);
+      requireAgencyPlan(ctx.user as PlanUser);
+      const existing = await db.getUserByEmail(input.email);
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: "Já existe uma conta com esse email." });
+      }
+      const member = await db.createTeamMember(ctx.actualUser.id, input);
+      const { passwordHash: _ph, ...safe } = member;
+      return safe;
+    }),
+
+  setActive: protectedProcedure
+    .input(z.object({ memberId: z.number(), isActive: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      requireTeamOwner(ctx.actualUser.companyOwnerId);
+      await db.setTeamMemberActive(ctx.actualUser.id, input.memberId, input.isActive);
+      return { success: true };
+    }),
+
+  remove: protectedProcedure
+    .input(z.object({ memberId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      requireTeamOwner(ctx.actualUser.companyOwnerId);
+      await db.removeTeamMember(ctx.actualUser.id, input.memberId);
+      return { success: true };
+    }),
+});
+
 // ─── Canva Router ─────────────────────────────────────────────────────────────
 const canvaRouter = router({
   getClientId: publicProcedure.query(() => ({ clientId: ENV.canvaClientId })),
@@ -5504,18 +5559,22 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(async (opts) => {
-      if (!opts.ctx.user) return null;
+      // Identidade de quem de fato logou — não o dono efetivo do conteúdo
+      // (ctx.user), senão um funcionário veria o nome/email da conta
+      // principal como se fosse o dele.
+      const actualUser = opts.ctx.actualUser;
+      if (!actualUser) return null;
       const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail && opts.ctx.user.email === adminEmail && opts.ctx.user.role !== "admin") {
-        await db.setUserRole(opts.ctx.user.id, "admin");
-        const fresh = await db.getUserByOpenId(opts.ctx.user.openId);
+      if (adminEmail && actualUser.email === adminEmail && actualUser.role !== "admin") {
+        await db.setUserRole(actualUser.id, "admin");
+        const fresh = await db.getUserByOpenId(actualUser.openId);
         if (fresh) {
           const { passwordHash: _ph, ...safeUser } = fresh;
-          return safeUser;
+          return { ...safeUser, canManageTeam: fresh.companyOwnerId === null };
         }
       }
-      const { passwordHash: _ph, ...safeUser } = opts.ctx.user;
-      return safeUser;
+      const { passwordHash: _ph, ...safeUser } = actualUser;
+      return { ...safeUser, canManageTeam: actualUser.companyOwnerId === null };
     }),
 
     register: publicRateLimitedProcedure
@@ -5651,6 +5710,7 @@ export const appRouter = router({
   admin: adminRouter,
   features: featuresRouter,
   brandKit: brandKitRouter,
+  team: teamRouter,
   contentApproval: contentApprovalRouter,
   reels: reelsRouter,
   artStudio: artStudioRouter,

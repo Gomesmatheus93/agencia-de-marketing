@@ -71,7 +71,7 @@ const withIpRateLimit = (limit: number, windowMs: number) =>
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
-  if (!ctx.user) {
+  if (!ctx.user || !ctx.actualUser) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
@@ -79,6 +79,7 @@ const requireUser = t.middleware(async opts => {
     ctx: {
       ...ctx,
       user: ctx.user,
+      actualUser: ctx.actualUser,
     },
   });
 });
