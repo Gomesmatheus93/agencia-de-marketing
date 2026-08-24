@@ -4510,9 +4510,15 @@ const reelsRouter = router({
 
 const artStudioRouter = router({
   // Não lança erro — usado pelo client só pra decidir se mostra a aba.
+  // ctx.user já é o dono efetivo do conteúdo (a conta principal, se quem
+  // logou for funcionário) — então tanto o domínio de email quanto o admin
+  // bypass abaixo são resolvidos uma vez só e herdados automaticamente por
+  // toda a equipe daquela conta.
   myAccess: protectedProcedure.query(async ({ ctx }) => {
     const company = await getUserCompany(ctx.user as { email: string | null; role?: string | null });
-    return company ? { companyId: company.id, companyName: company.name } : null;
+    if (company) return { companyId: company.id, companyName: company.name };
+    if (ctx.user.role === "admin") return { companyId: null, companyName: "Admin" };
+    return null;
   }),
 
   templates: router({

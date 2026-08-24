@@ -335,7 +335,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           </>
         )}
 
-        {(hasCompanyAccess || user?.role === "admin") && (
+        {hasCompanyAccess && (
           <>
             <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2 mt-3">
               {t("company")}
