@@ -699,11 +699,11 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
   });
 
-  // ATENÇÃO: estes schedulers rodam via setInterval dentro deste processo,
-  // sem lock distribuído. Subir mais de 1 réplica deste container hoje
-  // dispara cada um deles em duplicidade (WhatsApp/Instagram enviados 2x,
-  // Radar coletado 2x). Não escale horizontalmente até isso ser resolvido
-  // (mover pra um processo worker único ou adicionar lock via Redis).
+  // Cada scheduler abaixo usa acquireSchedulerLock (server/_core/redis.ts)
+  // antes de rodar o ciclo — com REDIS_URL configurado, só uma réplica
+  // executa por vez, seguro pra múltiplas réplicas. SEM REDIS_URL, o lock
+  // vira um no-op (sempre "ganha") e cada réplica roda por conta própria —
+  // ou seja, ainda não escale horizontalmente sem o Redis configurado.
   startInstagramPostScheduler();
   startNewsDigestScheduler();
   startCommentAlertScheduler();

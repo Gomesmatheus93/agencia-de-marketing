@@ -8,6 +8,7 @@ import {
 } from "../db";
 import { sendWhatsAppText } from "./whatsapp";
 import { ENV } from "./env";
+import { acquireSchedulerLock } from "./redis";
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const RECENT_POSTS_DAYS = 7;
@@ -121,6 +122,7 @@ export function startCommentAlertScheduler(): void {
 
   setInterval(async () => {
     try {
+      if (!(await acquireSchedulerLock("comment-alert", Math.floor(POLL_INTERVAL_MS * 0.9)))) return;
       const connections = await getAllInstagramConnections();
       if (!connections.length) return;
 

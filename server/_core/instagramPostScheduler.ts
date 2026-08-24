@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import * as db from "../db";
 import { publishInstagramSocialPost } from "./instagramSocialPostPublisher";
 import { getPostSchedulerTimeZone } from "./postScheduling";
+import { acquireSchedulerLock } from "./redis";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 
@@ -67,6 +68,7 @@ export function startInstagramPostScheduler() {
     if (isRunning) return;
     isRunning = true;
     try {
+      if (!(await acquireSchedulerLock("instagram-post", Math.floor(pollIntervalMs * 0.9)))) return;
       await publishDueInstagramPosts();
     } catch (error) {
       console.warn("[InstagramScheduler] Scheduler tick failed:", error);

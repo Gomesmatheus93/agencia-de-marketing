@@ -15,6 +15,7 @@ import {
   rankNewsItems,
 } from "../routers";
 import { serperNews } from "./serperClient";
+import { acquireSchedulerLock } from "./redis";
 
 const POLL_INTERVAL_MS = 60_000;
 const TIME_ZONE = "America/Fortaleza";
@@ -521,7 +522,9 @@ export function startRadarScheduler(): void {
             const [first] = ranToday;
             ranToday.delete(first);
           }
-          void runRadarPipeline();
+          if (await acquireSchedulerLock(`radar:${key}`, 30 * 60_000)) {
+            void runRadarPipeline();
+          }
         }
       }
     }

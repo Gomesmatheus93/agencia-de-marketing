@@ -9,6 +9,7 @@ import {
 } from "../db";
 import { ENV } from "./env";
 import type { InstagramDemographicsBreakdown } from "../../drizzle/schema";
+import { acquireSchedulerLock } from "./redis";
 
 function graphBaseUrl(): string {
   const base = (ENV.metaGraphApiBaseUrl || "https://graph.facebook.com").replace(/\/+$/, "");
@@ -330,9 +331,11 @@ export function startMetricsScheduler(): void {
     if (hour === RUN_HOUR && minute < 2 && !ranToday.has(runKey)) {
       ranToday.add(runKey);
       ranToday.forEach((k) => { if (!k.startsWith(dateKey)) ranToday.delete(k); });
-      console.log(`[MetricsScheduler] Collecting Instagram metrics at ${dateKey} ${hour}:${String(minute).padStart(2, "0")}...`);
-      collectMetrics().catch((e) => console.error("[MetricsScheduler] Pipeline error:", e));
-      collectAccountInsights().catch((e) => console.error("[MetricsScheduler] Account insights pipeline error:", e));
+      if (await acquireSchedulerLock(`metrics:${runKey}`, 30 * 60_000)) {
+        console.log(`[MetricsScheduler] Collecting Instagram metrics at ${dateKey} ${hour}:${String(minute).padStart(2, "0")}...`);
+        collectMetrics().catch((e) => console.error("[MetricsScheduler] Pipeline error:", e));
+        collectAccountInsights().catch((e) => console.error("[MetricsScheduler] Account insights pipeline error:", e));
+      }
     }
   }, 60_000).unref();
 }

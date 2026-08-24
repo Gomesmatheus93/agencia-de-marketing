@@ -4,6 +4,7 @@ import { sendNewsDigest } from "./whatsapp";
 import { buildDigestTextMessage } from "./aggregatorWebhook";
 import { getAllEnabledDigestSettings, saveDigestSession, markDigestLastSent, getRecentSentNewsUrls } from "../db";
 import { ENV } from "./env";
+import { acquireSchedulerLock } from "./redis";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -130,6 +131,8 @@ async function runDigestForUser(
 const pad = (n: number) => String(n).padStart(2, "0");
 
 async function runDigestTick() {
+  if (!(await acquireSchedulerLock("news-digest", Math.floor(POLL_INTERVAL_MS * 0.9)))) return;
+
   const timeZone = getPostSchedulerTimeZone();
   const { mins: currentMins, today } = getCurrentMinutesFromMidnight(timeZone);
   const nowStr = `${pad(Math.floor(currentMins / 60))}:${pad(currentMins % 60)}`;

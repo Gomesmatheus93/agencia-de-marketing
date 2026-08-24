@@ -2,6 +2,7 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { redisIncrWithTtl } from "./redis";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -11,17 +12,18 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
-// Simple in-process sliding-window rate limiter per IP.
-// For multi-instance deploys, replace with a Redis-backed store.
+// Janela fixa por chave. Usa Redis quando REDIS_URL está configurado (contagem
+// compartilhada entre réplicas); sem isso, cai pro Map em memória do processo
+// (comportamento de instância única, igual antes).
 
 const rateLimitWindows = new Map<string, { count: number; resetAt: number }>();
 
-function checkRateLimit(ip: string, limit: number, windowMs: number): void {
+function checkRateLimitInMemory(key: string, limit: number, windowMs: number): void {
   const now = Date.now();
-  const entry = rateLimitWindows.get(ip);
+  const entry = rateLimitWindows.get(key);
 
   if (!entry || now > entry.resetAt) {
-    rateLimitWindows.set(ip, { count: 1, resetAt: now + windowMs });
+    rateLimitWindows.set(key, { count: 1, resetAt: now + windowMs });
     return;
   }
 
@@ -34,6 +36,20 @@ function checkRateLimit(ip: string, limit: number, windowMs: number): void {
   }
 }
 
+async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<void> {
+  const redisCount = await redisIncrWithTtl(`ratelimit:${key}`, windowMs);
+  if (redisCount !== null) {
+    if (redisCount > limit) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: "Muitas requisições. Tente novamente em alguns instantes.",
+      });
+    }
+    return;
+  }
+  checkRateLimitInMemory(key, limit, windowMs);
+}
+
 // Cleans up expired entries every 5 minutes to prevent memory leaks.
 setInterval(() => {
   const now = Date.now();
@@ -44,9 +60,9 @@ setInterval(() => {
 
 // IP-based limiter — only for unauthenticated routes (login/register)
 const withIpRateLimit = (limit: number, windowMs: number) =>
-  t.middleware(({ ctx, next }) => {
+  t.middleware(async ({ ctx, next }) => {
     const ip = ctx.req.ip ?? ctx.req.socket?.remoteAddress ?? "unknown";
-    checkRateLimit(`ip:${ip}`, limit, windowMs);
+    await checkRateLimit(`ip:${ip}`, limit, windowMs);
     return next();
   });
 
@@ -70,18 +86,18 @@ const requireUser = t.middleware(async opts => {
 // Per-user rate limits — uses userId so users behind the same proxy/NAT
 // (Traefik, load balancers) each get their own independent bucket.
 // 200 requests per minute for standard authenticated routes
-const standardRateLimit = t.middleware(({ ctx, next }) => {
+const standardRateLimit = t.middleware(async ({ ctx, next }) => {
   const key = `std:${ctx.user?.id ?? ctx.req.ip ?? "unknown"}`;
-  checkRateLimit(key, 200, 60_000);
+  await checkRateLimit(key, 200, 60_000);
   return next();
 });
 
 // 40 AI-generation requests per minute per user
 // A single carousel (5 slides + images) triggers ~1 tRPC call, so 40/min
 // gives comfortable room for testing and iterating on individual slides.
-const aiRateLimit = t.middleware(({ ctx, next }) => {
+const aiRateLimit = t.middleware(async ({ ctx, next }) => {
   const key = `ai:${ctx.user?.id ?? ctx.req.ip ?? "unknown"}`;
-  checkRateLimit(key, 40, 60_000);
+  await checkRateLimit(key, 40, 60_000);
   return next();
 });
 
