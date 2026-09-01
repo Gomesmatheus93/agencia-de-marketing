@@ -99,7 +99,7 @@ type DesignSettings = {
   coverAccentColor?: string;
   coverTitleAlign?: "left" | "center";
   // Visual template
-  template?: "dark" | "editorial";
+  template?: "dark" | "editorial" | "minimal" | "impact" | "centered" | "magazine";
 };
 
 type NamedDesignPreset = DesignSettings & { presetName: string };
@@ -130,6 +130,16 @@ const DEFAULT_DESIGN: DesignSettings = {
   titleAlign: "left",
   titleSize: 1,
 };
+
+function resolveTemplateVariant(design: DesignSettings): DesignSettings {
+  switch (design.template) {
+    case "minimal": return { ...design, template: "editorial", fontFamily: "Inter, Arial, sans-serif", titleSize: Math.min(design.titleSize, 0.92), titleAlign: "left" };
+    case "impact": return { ...design, template: "dark", fontFamily: "Impact, Arial Black, sans-serif", titleSize: Math.max(design.titleSize, 1.16), titleAlign: "left" };
+    case "centered": return { ...design, template: "dark", fontFamily: "Poppins, Arial, sans-serif", titleSize: Math.max(design.titleSize, 1.04), titleAlign: "center", coverTitleAlign: "center" };
+    case "magazine": return { ...design, template: "editorial", fontFamily: "Playfair Display, Georgia, serif", titleSize: Math.max(design.titleSize, 1.06), titleAlign: "left" };
+    default: return design;
+  }
+}
 
 const DESIGN_STORAGE_KEY = "proto_default_design";
 
@@ -817,6 +827,7 @@ function SlideGridItem({
   onClick: () => void; onUpdate: (field: "title" | "body", value: string) => void;
 }) {
   const SCALE = 0.55;
+  const effectiveDesign = resolveTemplateVariant(design);
   return (
     <div
       className="relative flex-shrink-0 cursor-pointer transition-all duration-150"
@@ -830,16 +841,16 @@ function SlideGridItem({
       onClick={onClick}
     >
       <div style={{ transform: `scale(${SCALE})`, transformOrigin: "top left", width: 400, height: 500, pointerEvents: active ? "all" : "none" }}>
-        {design.template === "editorial" ? (
+        {effectiveDesign.template === "editorial" ? (
           <EditorialSlideCard
             key={active ? `${index}-active` : String(index)}
-            slide={slide} index={index} total={total} design={design}
+            slide={slide} index={index} total={total} design={effectiveDesign}
             editable={active} onUpdate={onUpdate}
           />
         ) : (
           <ProtoSlideCard
             key={active ? `${index}-active` : String(index)}
-            slide={slide} index={index} total={total} design={design}
+            slide={slide} index={index} total={total} design={effectiveDesign}
             editable={active} onUpdate={onUpdate}
           />
         )}
@@ -1349,8 +1360,9 @@ async function renderSlidesToDataUrlsForTemplate(
   slides: ProtoSlide[],
   design: DesignSettings
 ): Promise<string[]> {
-  if (design.template === "editorial") return renderEditorialSlidesToDataUrls(slides, design);
-  return renderSlidesToDataUrls(slides, design);
+  const effectiveDesign = resolveTemplateVariant(design);
+  if (effectiveDesign.template === "editorial") return renderEditorialSlidesToDataUrls(slides, effectiveDesign);
+  return renderSlidesToDataUrls(slides, effectiveDesign);
 }
 
 async function renderEditorialSlidesToDataUrls(
@@ -3204,6 +3216,10 @@ export default function PrototipoCarrossel() {
                 {([
                   { id: "dark", label: "Dark", desc: "Foto full-bleed, texto sobre imagem" },
                   { id: "editorial", label: "Editorial", desc: "Capa dark + slides brancos estilo revista" },
+                  { id: "minimal", label: "Minimal", desc: "Leve, limpo e com bastante respiro" },
+                  { id: "impact", label: "Impacto", desc: "Títulos grandes e contraste forte" },
+                  { id: "centered", label: "Centralizado", desc: "Composição simétrica para frases curtas" },
+                  { id: "magazine", label: "Magazine", desc: "Tipografia editorial sofisticada" },
                 ] as const).map((t) => {
                   const active = (design.template ?? "dark") === t.id;
                   return (
