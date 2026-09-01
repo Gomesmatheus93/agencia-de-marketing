@@ -329,7 +329,7 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
 }
 
 type AvatarVideoStatus = "processing" | "completed" | "failed";
-type Provider = "did" | "heygen";
+type Provider = "heygen";
 type Emotion = "Excited" | "Friendly" | "Serious" | "Soothing" | "Broadcaster";
 
 type AvatarVideo = {
@@ -407,13 +407,6 @@ async function createPortraitAvatarDataUrl(file: File) {
   context.drawImage(image, foregroundX, foregroundY, foregroundWidth, foregroundHeight);
   return canvas.toDataURL("image/png");
 }
-
-const DID_VOICES = [
-  { value: "pt-BR-FranciscaNeural", label: "Francisca (PT-BR Feminino)" },
-  { value: "pt-BR-AntonioNeural", label: "Antonio (PT-BR Masculino)" },
-  { value: "en-US-JennyNeural", label: "Jenny (EN-US Feminino)" },
-  { value: "en-US-GuyNeural", label: "Guy (EN-US Masculino)" },
-];
 
 const EMOTION_OPTIONS: { value: Emotion; label: string }[] = [
   { value: "Friendly", label: "Amigável" },
@@ -516,8 +509,8 @@ export default function Videos() {
   const [topic, setTopic] = useState("");
   const [script, setScript] = useState("");
   const [tone, setTone] = useState<(typeof toneOptions)[number]["value"]>("professional");
-  const [provider, setProvider] = useState<Provider>("did");
-  const [voiceId, setVoiceId] = useState("pt-BR-FranciscaNeural");
+  const provider: Provider = "heygen";
+  const [voiceId, setVoiceId] = useState("");
   const [emotion, setEmotion] = useState<Emotion>("Friendly");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState("");
   const [selectedVideo, setSelectedVideo] = useState<AvatarVideo | null>(null);
@@ -550,7 +543,7 @@ export default function Videos() {
 
   const { data: heyGenVoicesRaw = [], isLoading: loadingVoices } = trpc.videos.getVoices.useQuery(
     { provider: "heygen" },
-    { enabled: provider === "heygen" }
+    { enabled: true }
   );
 
   const generateScriptMutation = trpc.videos.generateScript.useMutation({
@@ -648,7 +641,7 @@ export default function Videos() {
     (v) => ({ value: v.voice_id, label: `${v.name} — ${v.language} ${v.gender}` })
   );
 
-  const voiceOptions = provider === "heygen" ? heyGenVoiceOptions : DID_VOICES;
+  const voiceOptions = heyGenVoiceOptions;
 
   if (locked) {
     return (
@@ -684,52 +677,21 @@ export default function Videos() {
           </p>
         </div>
 
-        {/* Provider selector */}
-        <div className="grid gap-3 sm:grid-cols-2 animate-fade-in-up">
-          <button
-            type="button"
-            onClick={() => { setProvider("did"); setVoiceId("pt-BR-FranciscaNeural"); }}
-            className={cn(
-              "relative flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-all duration-200",
-              provider === "did"
-                ? "border-primary bg-primary/5"
-                : "border-border/40 hover:border-border/70 bg-background/60"
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-700">
-                <Mic2 className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-sm font-semibold text-foreground">D-ID</span>
-              {provider === "did" && <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-white">Selecionado</span>}
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Motor rápido com lip sync natural. Bom para narração direta e conteúdo rápido.
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setProvider("heygen"); setVoiceId(""); }}
-            className={cn(
-              "relative flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-all duration-200",
-              provider === "heygen"
-                ? "border-fuchsia-500 bg-fuchsia-500/5"
-                : "border-border/40 hover:border-border/70 bg-background/60"
-            )}
-          >
+        {/* HeyGen é o único motor de vídeo disponível na plataforma. */}
+        <div className="animate-fade-in-up">
+          <div className="relative flex flex-col gap-2 rounded-2xl border-2 border-fuchsia-500 bg-fuchsia-500/5 p-4 text-left">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-400 to-rose-400">
                 <Zap className="w-4 h-4 text-white" />
               </div>
               <span className="text-sm font-semibold text-foreground">HeyGen</span>
               <span className="ml-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-rose-500 px-2 py-0.5 text-[10px] font-medium text-white">Alta qualidade</span>
-              {provider === "heygen" && <span className="ml-auto rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-medium text-white">Selecionado</span>}
+              <span className="ml-auto rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-medium text-white">Motor ativo</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
               Expressões faciais naturais, movimentos realistas e lip sync de alta fidelidade.
             </p>
-          </button>
+          </div>
         </div>
 
         {provider === "heygen" && (

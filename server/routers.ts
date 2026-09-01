@@ -503,7 +503,7 @@ const videosRouter = router({
     }),
 
   getVoices: protectedProcedure
-    .input(z.object({ provider: z.enum(["heygen", "did"]), language: z.string().optional() }))
+    .input(z.object({ provider: z.literal("heygen"), language: z.string().optional() }))
     .query(async ({ input }) => {
       if (input.provider === "heygen") {
         return listHeyGenVoices(); // filtro de idioma feito no cliente
@@ -525,7 +525,7 @@ const videosRouter = router({
         sourceImageUrl: z.string().optional(),
         sourceImageDataUrl: z.string().optional(),
         voiceId: z.string().min(1).max(256).optional(),
-        provider: z.enum(["did", "heygen"]).default("did"),
+        provider: z.literal("heygen").default("heygen"),
         emotion: z.enum(["Excited", "Friendly", "Serious", "Soothing", "Broadcaster"]).optional(),
         talkingStyle: z.enum(["expressive", "stable"]).optional(),
         // Usa o Digital Twin (avatar treinado a partir de um video real do usuario,
