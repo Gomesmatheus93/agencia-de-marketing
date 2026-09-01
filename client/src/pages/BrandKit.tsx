@@ -9,6 +9,7 @@ import { usePlan } from "@/_core/hooks/usePlan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import {
   Plus,
   Trash2,
@@ -23,6 +24,10 @@ import {
   AtSign,
   Globe,
   Check,
+  Type,
+  Target,
+  Users,
+  MessageSquareText,
 } from "lucide-react";
 
 // Routes any image URL through the server proxy to avoid S3/CORS issues
@@ -63,6 +68,14 @@ const INDUSTRY_OPTIONS = [
   "Turismo e Hospitalidade",
   "Outro",
 ];
+
+const FONT_OPTIONS = ["Inter", "Montserrat", "Poppins", "Roboto", "Lato", "Playfair Display", "Merriweather", "Oswald", "Raleway", "Nunito"];
+type BrandPersona = { name: string; profile: string; pains: string; goals: string; objections: string };
+const emptyPersona = (): BrandPersona => ({ name: "", profile: "", pains: "", goals: "", objections: "" });
+
+function parseWordList(value: string) {
+  return value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 30);
+}
 
 // ── Color Picker ──────────────────────────────────────────────────────────────
 
@@ -187,7 +200,7 @@ function LogoUpload({ value, onChange }: { value: string; onChange: (url: string
 
 // ── Color Preview Strip ───────────────────────────────────────────────────────
 
-function ColorPreview({ primary, secondary, accent, companyName }: { primary: string; secondary: string; accent: string; companyName: string }) {
+function ColorPreview({ primary, secondary, accent, companyName, headingFont, bodyFont, cta }: { primary: string; secondary: string; accent: string; companyName: string; headingFont: string; bodyFont: string; cta: string }) {
   return (
     <div className="rounded-xl border border-border overflow-hidden">
       {/* Header bar */}
@@ -200,13 +213,14 @@ function ColorPreview({ primary, secondary, accent, companyName }: { primary: st
       </div>
       {/* Content area */}
       <div className="p-4 bg-background space-y-2.5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ fontFamily: bodyFont }}>
           <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ backgroundColor: primary }} />
           <div>
-            <div className="text-xs font-bold">{companyName || "Nome da Empresa"}</div>
+            <div className="text-xs font-bold" style={{ fontFamily: headingFont }}>{companyName || "Nome da Empresa"}</div>
             <div className="text-[10px] text-muted-foreground">Identidade visual da marca</div>
           </div>
         </div>
+        <div className="rounded-lg p-3 text-white" style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})`, fontFamily: bodyFont }}><p className="text-sm font-bold" style={{ fontFamily: headingFont }}>{companyName || "Sua marca"}</p><p className="mt-1 text-[9px] text-white/75">Uma mensagem consistente para o público certo.</p><span className="mt-2 inline-flex rounded px-2 py-1 text-[8px] font-semibold" style={{ backgroundColor: accent }}>{cta || "Saiba mais"}</span></div>
         <div className="flex gap-2">
           {[primary, secondary, accent].map((c, i) => (
             <div key={i} className="flex-1 h-6 rounded-md text-[9px] font-mono text-white flex items-center justify-center shadow-sm" style={{ backgroundColor: c }}>
@@ -240,7 +254,17 @@ export default function BrandKitPage() {
   const [industry,       setIndustry]       = useState("");
   const [targetAudience, setTargetAudience] = useState("");
   const [brandValues,    setBrandValues]    = useState("");
+  const [valueProposition, setValueProposition] = useState("");
+  const [productsServices, setProductsServices] = useState("");
+  const [differentiators, setDifferentiators] = useState("");
+  const [brandPromise, setBrandPromise] = useState("");
+  const [defaultCta, setDefaultCta] = useState("");
   const [tone,           setTone]           = useState<Tone>("professional");
+  const [headingFont, setHeadingFont] = useState("Montserrat");
+  const [bodyFont, setBodyFont] = useState("Inter");
+  const [preferredWords, setPreferredWords] = useState("");
+  const [forbiddenWords, setForbiddenWords] = useState("");
+  const [personas, setPersonas] = useState<BrandPersona[]>([]);
   const [primaryColor,   setPrimaryColor]   = useState("#6366f1");
   const [secondaryColor, setSecondaryColor] = useState("#8b5cf6");
   const [accentColor,    setAccentColor]    = useState("#06b6d4");
@@ -265,6 +289,8 @@ export default function BrandKitPage() {
     if (isNewDraft) {
       setCompanyName(""); setTagline(""); setLogoUrl(""); setIndustry("");
       setTargetAudience(""); setBrandValues(""); setTone("professional");
+      setValueProposition(""); setProductsServices(""); setDifferentiators(""); setBrandPromise(""); setDefaultCta("");
+      setHeadingFont("Montserrat"); setBodyFont("Inter"); setPreferredWords(""); setForbiddenWords(""); setPersonas([]);
       setPrimaryColor("#6366f1"); setSecondaryColor("#8b5cf6"); setAccentColor("#06b6d4");
       setInstagram(""); setLinkedin("");
       return;
@@ -276,7 +302,17 @@ export default function BrandKitPage() {
     setIndustry(selectedKit.industry ?? "");
     setTargetAudience(selectedKit.targetAudience ?? "");
     setBrandValues(selectedKit.brandValues ?? "");
+    setValueProposition(selectedKit.valueProposition ?? "");
+    setProductsServices(selectedKit.productsServices ?? "");
+    setDifferentiators(selectedKit.differentiators ?? "");
+    setBrandPromise(selectedKit.brandPromise ?? "");
+    setDefaultCta(selectedKit.defaultCta ?? "");
     setTone((selectedKit.toneOfVoice as Tone) ?? "professional");
+    setHeadingFont(selectedKit.headingFont ?? "Montserrat");
+    setBodyFont(selectedKit.bodyFont ?? "Inter");
+    setPreferredWords((selectedKit.preferredWords ?? []).join(", "));
+    setForbiddenWords((selectedKit.forbiddenWords ?? []).join(", "));
+    setPersonas((selectedKit.personas ?? []) as BrandPersona[]);
     setPrimaryColor(selectedKit.primaryColor ?? "#6366f1");
     setSecondaryColor(selectedKit.secondaryColor ?? "#8b5cf6");
     setAccentColor(selectedKit.accentColor ?? "#06b6d4");
@@ -339,7 +375,17 @@ export default function BrandKitPage() {
       industry:       industry     || undefined,
       targetAudience: targetAudience || undefined,
       brandValues:    brandValues  || undefined,
+      valueProposition: valueProposition || undefined,
+      productsServices: productsServices || undefined,
+      differentiators: differentiators || undefined,
+      brandPromise: brandPromise || undefined,
+      defaultCta: defaultCta || undefined,
       toneOfVoice:    tone,
+      headingFont,
+      bodyFont,
+      preferredWords: parseWordList(preferredWords),
+      forbiddenWords: parseWordList(forbiddenWords),
+      personas: personas.filter((persona) => persona.name.trim()),
       primaryColor:   /^#[0-9a-fA-F]{6}$/.test(primaryColor)   ? primaryColor   : "#6366f1",
       secondaryColor: /^#[0-9a-fA-F]{6}$/.test(secondaryColor) ? secondaryColor : "#8b5cf6",
       accentColor:    /^#[0-9a-fA-F]{6}$/.test(accentColor)    ? accentColor    : "#06b6d4",
@@ -360,6 +406,9 @@ export default function BrandKitPage() {
     }
     setSelectedId("new");
   }
+
+  const completionFields = [companyName, logoUrl, industry, tagline, primaryColor, targetAudience, brandValues, valueProposition, productsServices, differentiators, defaultCta, headingFont, bodyFont, preferredWords, personas.length ? "personas" : ""];
+  const completion = Math.round(completionFields.filter((value) => String(value).trim()).length / completionFields.length * 100);
 
   if (isLoading) {
     return (
@@ -409,6 +458,12 @@ export default function BrandKitPage() {
               {saved_ok ? t("brandSaved") : t("brandSaveBtn")}
             </Button>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/[.07] to-violet-500/[.04] p-4">
+          <div className="mb-2 flex items-center justify-between gap-4"><div><p className="text-sm font-semibold">Qualidade do perfil da marca</p><p className="mt-0.5 text-xs text-muted-foreground">Quanto mais completo, mais consistentes serão as campanhas e os conteúdos.</p></div><span className="text-xl font-bold text-primary">{completion}%</span></div>
+          <Progress value={completion} className="h-2" />
+          {completion < 70 && <p className="mt-2 text-[11px] text-muted-foreground">Próximo passo recomendado: {!valueProposition ? "defina a proposta de valor" : !targetAudience ? "detalhe o público-alvo" : !personas.length ? "adicione ao menos uma persona" : "complete as diretrizes de linguagem"}.</p>}
         </div>
 
         {/* Brand switcher — só aparece depois que já existe pelo menos 1 marca */}
@@ -516,6 +571,12 @@ export default function BrandKitPage() {
               </div>
             </div>
 
+            <div className="glass-card rounded-2xl p-5 space-y-4">
+              <h2 className="text-sm font-semibold flex items-center gap-2"><Type className="w-4 h-4 text-muted-foreground" />Tipografia</h2>
+              <p className="text-xs text-muted-foreground -mt-2">Define a aparência dos títulos e textos nas aplicações da marca.</p>
+              <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Fonte de títulos</label><select value={headingFont} onChange={(e) => setHeadingFont(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">{FONT_OPTIONS.map((font) => <option key={font}>{font}</option>)}</select><p className="rounded-lg border p-3 text-lg font-bold" style={{ fontFamily: headingFont }}>{companyName || "Título da marca"}</p></div><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Fonte de textos</label><select value={bodyFont} onChange={(e) => setBodyFont(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">{FONT_OPTIONS.map((font) => <option key={font}>{font}</option>)}</select><p className="rounded-lg border p-3 text-xs leading-relaxed" style={{ fontFamily: bodyFont }}>Uma comunicação clara, consistente e reconhecível em todos os canais.</p></div></div>
+            </div>
+
             {/* 3. Voz e Comunicação */}
             <div className="glass-card rounded-2xl p-5 space-y-4">
               <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -572,6 +633,23 @@ export default function BrandKitPage() {
               </div>
             </div>
 
+            <div className="glass-card rounded-2xl p-5 space-y-4">
+              <h2 className="text-sm font-semibold flex items-center gap-2"><Target className="w-4 h-4 text-muted-foreground" />Posicionamento comercial</h2>
+              <div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Proposta de valor</label><Textarea value={valueProposition} onChange={(e) => setValueProposition(e.target.value)} rows={3} placeholder="Por que o cliente deve escolher esta marca?" /></div>
+              <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Produtos e serviços principais</label><Textarea value={productsServices} onChange={(e) => setProductsServices(e.target.value)} rows={3} placeholder="Liste as principais ofertas" /></div><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Diferenciais competitivos</label><Textarea value={differentiators} onChange={(e) => setDifferentiators(e.target.value)} rows={3} placeholder="O que a marca faz melhor?" /></div></div>
+              <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Promessa da marca</label><Input value={brandPromise} onChange={(e) => setBrandPromise(e.target.value)} placeholder="Resultado que a marca promete" /></div><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">CTA padrão</label><Input value={defaultCta} onChange={(e) => setDefaultCta(e.target.value)} placeholder="Ex: Fale com um especialista" /></div></div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 space-y-4">
+              <h2 className="text-sm font-semibold flex items-center gap-2"><MessageSquareText className="w-4 h-4 text-muted-foreground" />Diretrizes de linguagem</h2>
+              <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Palavras preferidas</label><Textarea value={preferredWords} onChange={(e) => setPreferredWords(e.target.value)} rows={3} placeholder="inovação, proximidade, resultado..." /><p className="text-[10px] text-muted-foreground">Separe por vírgulas ou linhas.</p></div><div className="space-y-1.5"><label className="text-xs font-medium text-muted-foreground">Palavras proibidas</label><Textarea value={forbiddenWords} onChange={(e) => setForbiddenWords(e.target.value)} rows={3} placeholder="barato, imperdível, garantido..." /><p className="text-[10px] text-muted-foreground">A IA deverá evitar estes termos.</p></div></div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground" />Personas</h2><p className="mt-1 text-xs text-muted-foreground">Perfis usados para direcionar campanhas e conteúdos.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setPersonas((current) => [...current, emptyPersona()])} disabled={personas.length >= 8}><Plus className="mr-1.5 h-3.5 w-3.5" />Adicionar</Button></div>
+              {personas.length === 0 ? <button type="button" onClick={() => setPersonas([emptyPersona()])} className="w-full rounded-xl border border-dashed p-5 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground">Adicione uma persona para tornar as gerações menos genéricas.</button> : <div className="space-y-3">{personas.map((persona, index) => <div key={index} className="rounded-xl border p-4 space-y-3"><div className="flex items-center gap-2"><Input value={persona.name} onChange={(e) => setPersonas((current) => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} placeholder="Nome da persona, ex: Gestora Ana" className="font-medium" /><Button type="button" variant="ghost" size="icon" onClick={() => setPersonas((current) => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4 text-destructive" /></Button></div><div className="grid gap-3 sm:grid-cols-2"><Textarea value={persona.profile} onChange={(e) => setPersonas((current) => current.map((item, i) => i === index ? { ...item, profile: e.target.value } : item))} rows={2} placeholder="Perfil, idade, cargo e contexto" /><Textarea value={persona.pains} onChange={(e) => setPersonas((current) => current.map((item, i) => i === index ? { ...item, pains: e.target.value } : item))} rows={2} placeholder="Principais dores" /><Textarea value={persona.goals} onChange={(e) => setPersonas((current) => current.map((item, i) => i === index ? { ...item, goals: e.target.value } : item))} rows={2} placeholder="Objetivos e desejos" /><Textarea value={persona.objections} onChange={(e) => setPersonas((current) => current.map((item, i) => i === index ? { ...item, objections: e.target.value } : item))} rows={2} placeholder="Objeções de compra" /></div></div>)}</div>}
+            </div>
+
             {/* 4. Redes Sociais */}
             <div className="glass-card rounded-2xl p-5 space-y-4">
               <h2 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
@@ -615,6 +693,9 @@ export default function BrandKitPage() {
                 secondary={secondaryColor}
                 accent={accentColor}
                 companyName={companyName}
+                headingFont={headingFont}
+                bodyFont={bodyFont}
+                cta={defaultCta}
               />
 
               {/* Brand summary */}

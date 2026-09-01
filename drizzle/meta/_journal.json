@@ -176,6 +176,13 @@
       "when": 1788249600000,
       "tag": "0025_marketing_campaign_hub",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1788336000000,
+      "tag": "0026_brand_kit_strategy",
+      "breakpoints": true
     }
   ]
 }
