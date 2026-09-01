@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { SafeImage } from "@/components/SafeImage";
 import { toast } from "sonner";
 import {
   Sparkles,
@@ -887,6 +888,7 @@ function resolveImgUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (url.startsWith("data:")) return url;
   if (/^https?:\/\//i.test(url)) return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  if (url.startsWith("/uploads/") && typeof window !== "undefined") return `/api/image-proxy?url=${encodeURIComponent(window.location.origin + url)}`;
   if (typeof window !== "undefined") return new URL(url, window.location.origin).toString();
   return url;
 }
@@ -1946,6 +1948,7 @@ export default function PrototipoCarrossel() {
   const [highlightInput, setHighlightInput] = useState("");
   const [namedPresets, setNamedPresets] = useState<NamedDesignPreset[]>(loadNamedPresets);
   const [newPresetName, setNewPresetName] = useState("");
+  const [selectedBrandPreset, setSelectedBrandPreset] = useState("");
 
   // ── Instagram style agent ──────────────────────────────────────────────────
   const [igStyleOpen, setIgStyleOpen] = useState(false);
@@ -3217,21 +3220,23 @@ export default function PrototipoCarrossel() {
                 })}
               </div>
 
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Perfis de design</p>
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Marca do carrossel</p>
+                {brandKitPresets.length > 0 ? <select value={selectedBrandPreset} onChange={(e) => { const value = e.target.value; setSelectedBrandPreset(value); const preset = brandKitPresets.find((item) => item.presetName === value); if (preset) { const next = { ...DEFAULT_DESIGN, ...preset }; setDesign(next); saveDesignAsDefault(next); } }} className="h-9 w-full rounded-lg border border-border/50 bg-background px-3 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="">Selecionar um Brand Kit...</option>{brandKitPresets.map((preset) => <option key={preset.presetName} value={preset.presetName}>{preset.presetName.replace(" · Brand Kit", "")}</option>)}</select> : <div className="rounded-lg border border-dashed p-3 text-center text-[11px] text-muted-foreground">Nenhum Brand Kit salvo.</div>}
+                {selectedBrandPreset && (() => { const preset = brandKitPresets.find((item) => item.presetName === selectedBrandPreset); if (!preset) return null; return <div className="flex items-center gap-2 rounded-xl border border-primary/15 bg-primary/[.04] p-2.5">{preset.profileImageUrl ? <SafeImage src={resolveImgUrl(preset.profileImageUrl)} alt={preset.profileName || "Marca"} className="h-9 w-9 rounded-lg border bg-white object-contain p-0.5" /> : <div className="flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold text-white" style={{ backgroundColor: preset.accentColor }}>{(preset.profileName || "M").slice(0, 1)}</div>}<div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{preset.profileName || "Marca"}</p><p className="truncate text-[10px] text-muted-foreground">{preset.profileHandle || "Sem Instagram informado"}</p></div><div className="flex gap-1"><span className="h-3 w-3 rounded-full border" style={{ backgroundColor: preset.accentColor }} /><span className="h-3 w-3 rounded-full border" style={{ backgroundColor: preset.bgColor }} /></div></div>; })()}
+              </div>
 
-              {/* Named presets */}
-              <div className="flex flex-wrap gap-1.5">
-                {[...brandKitPresets, ...BUILTIN_PRESETS, ...namedPresets].map((p) => {
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Modelo visual</p>
+                <div className="flex flex-wrap gap-1.5">
+                {[...BUILTIN_PRESETS, ...namedPresets].map((p) => {
                   const isActive = design.accentColor === p.accentColor && design.bgColor === p.bgColor && design.profileName === p.profileName;
                   const isUserPreset = namedPresets.some((np) => np.presetName === p.presetName);
                   return (
                     <div key={p.presetName} className="flex items-center gap-0.5">
                       <button
-                        onClick={() => { setDesign({ ...DEFAULT_DESIGN, ...p }); saveDesignAsDefault({ ...DEFAULT_DESIGN, ...p }); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all border"
-                        style={isActive
-                          ? { background: p.accentColor, color: p.bgColor, borderColor: p.accentColor }
-                          : { background: p.accentColor + "15", color: p.accentColor, borderColor: p.accentColor + "40" }}>
+                        onClick={() => { setSelectedBrandPreset(""); setDesign({ ...DEFAULT_DESIGN, ...p }); saveDesignAsDefault({ ...DEFAULT_DESIGN, ...p }); }}
+                        className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all", isActive ? "border-primary bg-primary text-primary-foreground" : "border-border/50 bg-background text-foreground hover:border-primary/40 hover:bg-muted/50")}>
                         {p.profileImageUrl ? (
                           <img src={resolveImgUrl(p.profileImageUrl)} className="w-3.5 h-3.5 rounded-full object-cover" />
                         ) : (
@@ -3248,6 +3253,7 @@ export default function PrototipoCarrossel() {
                     </div>
                   );
                 })}
+                </div>
               </div>
 
               {/* Save as new preset */}
@@ -3313,7 +3319,7 @@ export default function PrototipoCarrossel() {
 
                 {design.profileImageUrl && (
                   <div className="flex items-center gap-2">
-                    <img src={design.profileImageUrl.startsWith("data:") ? design.profileImageUrl : resolveImgUrl(design.profileImageUrl)} className="w-10 h-10 rounded-full object-cover border-2" style={{ borderColor: design.accentColor }} />
+                    <SafeImage src={design.profileImageUrl.startsWith("data:") ? design.profileImageUrl : resolveImgUrl(design.profileImageUrl)} alt={design.profileName || "Perfil"} className="w-10 h-10 rounded-full object-contain bg-white border-2 p-0.5" style={{ borderColor: design.accentColor }} />
                     <div>
                       <p className="text-[10px] text-foreground font-medium">{design.profileName || "—"}</p>
                       <p className="text-[10px] text-muted-foreground">{design.profileHandle || ""}</p>
