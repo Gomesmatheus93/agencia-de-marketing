@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart3, CircleDollarSign, MousePointerClick, Plus, Target, Trash2, TrendingUp, Users } from "lucide-react";
+import { BarChart3, CircleDollarSign, Link2, MousePointerClick, Plus, Target, Trash2, TrendingUp, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -55,6 +55,7 @@ const emptyForm = {
   postId: "",
   objective: "",
   audience: "",
+  hubCampaignId: "",
 };
 
 function readCampaigns(): TrafficCampaign[] {
@@ -71,6 +72,16 @@ export default function PaidTraffic() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [adAccountId, setAdAccountId] = useState("");
+  const [hubCampaignId, setHubCampaignId] = useState("");
+  const utils = trpc.useUtils();
+  const hubCampaignsQuery = trpc.campaignHub.list.useQuery();
+  const attachAssetMutation = trpc.campaignHub.attachAsset.useMutation({
+    onSuccess: async () => {
+      await utils.campaignHub.list.invalidate();
+      toast.success("Campanha de mídia vinculada ao hub.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   const connectionQuery = trpc.paidTraffic.connection.useQuery();
   const postsQuery = trpc.posts.getAll.useQuery({ channel: "instagram" });
   const accountsQuery = trpc.paidTraffic.metaAdAccounts.useQuery(undefined, { enabled: connectionQuery.data?.connected === true, retry: false });
@@ -78,6 +89,7 @@ export default function PaidTraffic() {
     { adAccountId },
     { enabled: /^act_\d+$/.test(adAccountId), retry: false }
   );
+  const selectedHubCampaign = (hubCampaignsQuery.data ?? []).find((item) => String(item.id) === hubCampaignId);
 
   useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(campaigns)), [campaigns]);
 
@@ -116,6 +128,13 @@ export default function PaidTraffic() {
       audience: form.audience.trim() || undefined,
     };
     setCampaigns((current) => [campaign, ...current]);
+    if (form.hubCampaignId) {
+      attachAssetMutation.mutate({
+        campaignId: Number(form.hubCampaignId), assetType: "ad", externalId: campaign.id,
+        label: campaign.name, status: "published",
+        metadata: { platform: campaign.platform, budget, spent: campaign.spent, revenue: campaign.revenue, postId: campaign.postId },
+      });
+    }
     setForm(emptyForm);
     setShowForm(false);
     toast.success("Campanha adicionada ao controle de tráfego.");
@@ -181,14 +200,18 @@ export default function PaidTraffic() {
 
         {adAccountId && (
           <Card>
-            <CardHeader><CardTitle className="text-base">Campanhas importadas do Meta Ads</CardTitle></CardHeader>
+            <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div><CardTitle className="text-base">Campanhas importadas do Meta Ads</CardTitle><p className="mt-1 text-xs text-muted-foreground">Vincule mídia, conteúdo e resultados em uma campanha central.</p></div>
+              <Select value={hubCampaignId} onValueChange={setHubCampaignId}><SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Vincular ao hub..." /></SelectTrigger><SelectContent>{(hubCampaignsQuery.data ?? []).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select>
+            </CardHeader>
             <CardContent className="space-y-3">
               {metaCampaignsQuery.isLoading && <p className="text-sm text-muted-foreground">Carregando campanhas e métricas...</p>}
               {metaCampaignsQuery.error && <p className="text-sm text-destructive">{metaCampaignsQuery.error.message}</p>}
               {(metaCampaignsQuery.data ?? []).map((raw) => {
                 const campaign = raw as { id: string; name: string; effective_status?: string; objective?: string; insights?: { data?: Array<{ spend?: string; impressions?: string; reach?: string; clicks?: string }> } };
                 const insight = campaign.insights?.data?.[0];
-                return <div key={campaign.id} className="rounded-xl border p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">{campaign.name}</p><p className="text-xs text-muted-foreground">{campaign.objective ?? "Sem objetivo informado"} · ID {campaign.id}</p></div><Badge variant="outline">{campaign.effective_status ?? "UNKNOWN"}</Badge></div><div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3"><Metric label="Investido" value={money.format(Number(insight?.spend ?? 0))} /><Metric label="Impressões" value={number.format(Number(insight?.impressions ?? 0))} /><Metric label="Alcance" value={number.format(Number(insight?.reach ?? 0))} /><Metric label="Cliques" value={number.format(Number(insight?.clicks ?? 0))} /></div></div>;
+                const linked = selectedHubCampaign?.assets.some((asset) => asset.assetType === "ad" && asset.externalId === campaign.id);
+                return <div key={campaign.id} className="rounded-xl border p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">{campaign.name}</p><p className="text-xs text-muted-foreground">{campaign.objective ?? "Sem objetivo informado"} · ID {campaign.id}</p></div><div className="flex items-center gap-2"><Badge variant="outline">{campaign.effective_status ?? "UNKNOWN"}</Badge><Button size="sm" variant="outline" disabled={!hubCampaignId || attachAssetMutation.isPending || linked} onClick={() => attachAssetMutation.mutate({ campaignId: Number(hubCampaignId), assetType: "ad", externalId: campaign.id, label: campaign.name, status: campaign.effective_status === "ACTIVE" ? "published" : "draft", metadata: { platform: "Meta Ads", objective: campaign.objective, adAccountId, spend: Number(insight?.spend ?? 0), impressions: Number(insight?.impressions ?? 0), reach: Number(insight?.reach ?? 0), clicks: Number(insight?.clicks ?? 0) } })}><Link2 className="mr-1.5 h-3.5 w-3.5" />{linked ? "Vinculada" : "Vincular"}</Button></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3"><Metric label="Investido" value={money.format(Number(insight?.spend ?? 0))} /><Metric label="Impressões" value={number.format(Number(insight?.impressions ?? 0))} /><Metric label="Alcance" value={number.format(Number(insight?.reach ?? 0))} /><Metric label="Cliques" value={number.format(Number(insight?.clicks ?? 0))} /></div></div>;
               })}
               {!metaCampaignsQuery.isLoading && metaCampaignsQuery.data?.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Nenhuma campanha encontrada nessa conta.</p>}
             </CardContent>
@@ -205,6 +228,7 @@ export default function PaidTraffic() {
                 <Field label="Post promovido"><Select value={form.postId} onValueChange={(value) => setForm({ ...form, postId: value })}><SelectTrigger><SelectValue placeholder="Selecionar post da plataforma" /></SelectTrigger><SelectContent>{(postsQuery.data ?? []).map((post) => <SelectItem key={post.id} value={String(post.id)}>{post.title || post.content.slice(0, 55)}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="Objetivo"><Input value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="Ex: Geração de leads" /></Field>
                 <Field label="Público / segmentação"><Input value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ex: Empresários, 25-45, SP" /></Field>
+                <Field label="Campanha central"><Select value={form.hubCampaignId} onValueChange={(value) => setForm({ ...form, hubCampaignId: value })}><SelectTrigger><SelectValue placeholder="Opcional: vincular ao hub" /></SelectTrigger><SelectContent>{(hubCampaignsQuery.data ?? []).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="Orçamento (R$)"><Input type="number" min="0" step="0.01" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></Field>
                 <Field label="Valor investido (R$)"><Input type="number" min="0" step="0.01" value={form.spent} onChange={(e) => setForm({ ...form, spent: e.target.value })} /></Field>
                 <Field label="Receita atribuída (R$)"><Input type="number" min="0" step="0.01" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /></Field>

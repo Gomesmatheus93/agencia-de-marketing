@@ -26,6 +26,7 @@ import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
 import Resize from "./pages/Resize";
 import Campaign from "./pages/Campaign";
+import CampaignHub from "./pages/CampaignHub";
 import Report from "./pages/Report";
 import EmailMarketing from "./pages/EmailMarketing";
 import Onboarding from "./pages/Onboarding";
@@ -68,7 +69,8 @@ function AppRoutes() {
       <Route path="/dashboard/seo" component={Seo} />
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
-      <Route path="/dashboard/campaign" component={Campaign} />
+      <Route path="/dashboard/campaign" component={CampaignHub} />
+      <Route path="/dashboard/campaign/create" component={Campaign} />
       <Route path="/dashboard/paid-traffic" component={PaidTraffic} />
       <Route path="/dashboard/report" component={Report} />
       <Route path="/dashboard/email-marketing" component={EmailMarketing} />

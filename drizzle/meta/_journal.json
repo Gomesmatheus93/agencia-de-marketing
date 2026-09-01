@@ -169,6 +169,13 @@
       "when": 1787788800000,
       "tag": "0023_email_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1788249600000,
+      "tag": "0025_marketing_campaign_hub",
+      "breakpoints": true
     }
   ]
 }

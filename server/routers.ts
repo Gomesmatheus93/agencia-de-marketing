@@ -5664,6 +5664,109 @@ const paidTrafficRouter = router({
     }),
 });
 
+const campaignHubStatusSchema = z.enum(["draft", "planning", "production", "approval", "active", "completed", "archived"]);
+const campaignAssetTypeSchema = z.enum(["article", "carousel", "post", "image", "reel", "story", "ad", "report"]);
+const campaignAssetStatusSchema = z.enum(["draft", "ready", "pending_approval", "approved", "published", "failed"]);
+
+const campaignHubRouter = router({
+  list: protectedProcedure.query(({ ctx }) => db.listMarketingCampaigns(ctx.user.id)),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const campaign = await db.getMarketingCampaign(ctx.user.id, input.id);
+      if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada." });
+      return campaign;
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      name: z.string().trim().min(3).max(255),
+      clientName: z.string().trim().max(255).optional(),
+      objective: z.string().trim().max(500).optional(),
+      audience: z.string().trim().max(3000).optional(),
+      offer: z.string().trim().max(3000).optional(),
+      description: z.string().trim().max(5000).optional(),
+      channels: z.array(z.enum(["instagram", "facebook", "linkedin", "email", "google_ads", "meta_ads", "blog", "whatsapp"])).min(1),
+      budgetCents: z.number().int().min(0).default(0),
+      startDate: z.string().datetime().optional(),
+      endDate: z.string().datetime().optional(),
+    }))
+    .mutation(({ ctx, input }) => db.createMarketingCampaign({
+      userId: ctx.user.id,
+      ...input,
+      clientName: input.clientName || null,
+      objective: input.objective || null,
+      audience: input.audience || null,
+      offer: input.offer || null,
+      description: input.description || null,
+      startDate: input.startDate ? new Date(input.startDate) : null,
+      endDate: input.endDate ? new Date(input.endDate) : null,
+      status: "planning",
+    })),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      name: z.string().trim().min(3).max(255).optional(),
+      clientName: z.string().trim().max(255).nullable().optional(),
+      objective: z.string().trim().max(500).nullable().optional(),
+      audience: z.string().trim().max(3000).nullable().optional(),
+      offer: z.string().trim().max(3000).nullable().optional(),
+      description: z.string().trim().max(5000).nullable().optional(),
+      channels: z.array(z.string().max(50)).min(1).optional(),
+      status: campaignHubStatusSchema.optional(),
+      budgetCents: z.number().int().min(0).optional(),
+      spentCents: z.number().int().min(0).optional(),
+      revenueCents: z.number().int().min(0).optional(),
+      startDate: z.string().datetime().nullable().optional(),
+      endDate: z.string().datetime().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, startDate, endDate, ...data } = input;
+      const campaign = await db.updateMarketingCampaign(ctx.user.id, id, {
+        ...data,
+        ...(startDate !== undefined ? { startDate: startDate ? new Date(startDate) : null } : {}),
+        ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
+      });
+      if (!campaign) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada." });
+      return campaign;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.deleteMarketingCampaign(ctx.user.id, input.id);
+      return { success: true };
+    }),
+
+  attachAsset: protectedProcedure
+    .input(z.object({
+      campaignId: z.number().int().positive(),
+      assetType: campaignAssetTypeSchema,
+      assetId: z.number().int().positive().optional(),
+      externalId: z.string().max(255).optional(),
+      label: z.string().max(500).optional(),
+      status: campaignAssetStatusSchema.default("draft"),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }))
+    .mutation(({ ctx, input }) => db.attachCampaignAsset({
+      ...input,
+      userId: ctx.user.id,
+      assetId: input.assetId ?? null,
+      externalId: input.externalId ?? null,
+      label: input.label ?? null,
+      metadata: input.metadata ?? null,
+    })),
+
+  removeAsset: protectedProcedure
+    .input(z.object({ campaignId: z.number().int().positive(), assetId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      await db.removeCampaignAsset(ctx.user.id, input.campaignId, input.assetId);
+      return { success: true };
+    }),
+});
+
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const TWOFA_TTL_MS = 10 * 60 * 1000;
@@ -6039,6 +6142,7 @@ export const appRouter = router({
   articles: articlesRouter,
   carousel: carouselRouter,
   campaign: campaignRouter,
+  campaignHub: campaignHubRouter,
   paidTraffic: paidTrafficRouter,
   canva: canvaRouter,
   posts: postsRouter,

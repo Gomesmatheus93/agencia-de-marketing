@@ -28,7 +28,9 @@ import {
   Sparkles,
   Hash,
   Image,
+  ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -616,6 +618,8 @@ const SOCIAL_NETWORKS = [
 ];
 
 export default function Campaign() {
+  const campaignIdParam = new URLSearchParams(window.location.search).get("campaignId");
+  const campaignId = campaignIdParam && /^\d+$/.test(campaignIdParam) ? Number(campaignIdParam) : null;
   // Form state
   const [subject,       setSubject]       = useState("");
   const [client,        setClient]        = useState("");
@@ -630,8 +634,9 @@ export default function Campaign() {
   const [history,  setHistory]  = useState<HistoryEntry[]>([]);
   const [selected, setSelected] = useState<HistoryEntry | null>(null);
 
+  const attachAssetMut = trpc.campaignHub.attachAsset.useMutation();
   const generateMut = trpc.campaign.generate.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       const campaign = data as unknown as CampaignResult;
       const entry: HistoryEntry = {
         subject: subject.trim(),
@@ -641,6 +646,15 @@ export default function Campaign() {
       setResult(campaign);
       setHistory((prev) => [entry, ...prev].slice(0, 10));
       setSelected(entry);
+      if (campaignId) {
+        await attachAssetMut.mutateAsync({
+          campaignId,
+          assetType: "report",
+          label: `Brief criativo — ${subject.trim()}`,
+          status: "ready",
+          metadata: campaign as unknown as Record<string, unknown>,
+        });
+      }
       toast.success("Campanha gerada com sucesso!");
     },
     onError: (e) => {
@@ -676,6 +690,7 @@ export default function Campaign() {
 
           {/* Header */}
           <div className="p-5 border-b border-border/40 shrink-0">
+            {campaignId && <Link href="/dashboard/campaign" className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" />Voltar ao hub da campanha</Link>}
             <div className="flex items-center gap-2.5 mb-1">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-md">
                 <Target className="h-4 w-4 text-white" />

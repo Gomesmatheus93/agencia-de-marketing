@@ -806,3 +806,54 @@ export const contentApprovals = mysqlTable(
 
 export type ContentApproval = typeof contentApprovals.$inferSelect;
 export type InsertContentApproval = typeof contentApprovals.$inferInsert;
+
+// ─── Marketing Campaign Hub ──────────────────────────────────────────────────
+export const marketingCampaigns = mysqlTable(
+  "marketing_campaigns",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    clientName: varchar("clientName", { length: 255 }),
+    objective: varchar("objective", { length: 500 }),
+    audience: text("audience"),
+    offer: text("offer"),
+    description: text("description"),
+    channels: json("channels").$type<string[]>().notNull(),
+    status: mysqlEnum("status", ["draft", "planning", "production", "approval", "active", "completed", "archived"]).default("draft").notNull(),
+    budgetCents: int("budgetCents").default(0).notNull(),
+    spentCents: int("spentCents").default(0).notNull(),
+    revenueCents: int("revenueCents").default(0).notNull(),
+    startDate: timestamp("startDate"),
+    endDate: timestamp("endDate"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [index("idx_marketing_campaigns_user_status").on(t.userId, t.status)]
+);
+
+export const campaignAssets = mysqlTable(
+  "campaign_assets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    campaignId: int("campaignId").notNull(),
+    userId: int("userId").notNull(),
+    assetType: mysqlEnum("assetType", ["article", "carousel", "post", "image", "reel", "story", "ad", "report"]).notNull(),
+    assetId: int("assetId"),
+    externalId: varchar("externalId", { length: 255 }),
+    label: varchar("label", { length: 500 }),
+    status: mysqlEnum("status", ["draft", "ready", "pending_approval", "approved", "published", "failed"]).default("draft").notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (t) => [
+    index("idx_campaign_assets_campaign").on(t.campaignId),
+    index("idx_campaign_assets_user").on(t.userId),
+  ]
+);
+
+export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
+export type InsertMarketingCampaign = typeof marketingCampaigns.$inferInsert;
+export type CampaignAsset = typeof campaignAssets.$inferSelect;
+export type InsertCampaignAsset = typeof campaignAssets.$inferInsert;
