@@ -16,10 +16,22 @@ import {
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
+  // name e email guardam ciphertext ("enc:v1:...") — ver server/_core/crypto.ts.
   name: text("name"),
-  email: varchar("email", { length: 320 }),
+  email: text("email"),
+  // Blind index (HMAC-SHA256 do e-mail normalizado) para busca sem decifrar.
+  emailHash: varchar("emailHash", { length: 64 }),
+  // Domínio do e-mail em texto puro — usado pelo match de empresa (companyAccess.ts).
+  emailDomain: varchar("emailDomain", { length: 255 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: text("passwordHash"),
+  // Incrementado a cada "sair de todos os dispositivos" / troca de senha / mudança
+  // de role — sessões com tokenVersion diferente do atual são rejeitadas.
+  tokenVersion: int("tokenVersion").default(0).notNull(),
+  // Verificação de e-mail (null = não verificado). Contas OAuth já entram verificadas.
+  emailVerifiedAt: timestamp("emailVerifiedAt"),
+  // 2FA por código de e-mail.
+  twoFactorEnabled: boolean("twoFactorEnabled").default(false).notNull(),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   plan: mysqlEnum("plan", ["free", "pro", "agency"]).default("free").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
@@ -31,10 +43,64 @@ export const users = mysqlTable("users", {
   // null = conta principal (dona da empresa); preenchido = funcionário,
   // aponta pro id da conta principal. Um único nível (sem sub-sub-usuário).
   companyOwnerId: int("companyOwnerId"),
-});
+}, (t) => [
+  uniqueIndex("uq_users_emailHash").on(t.emailHash),
+  index("idx_users_emailDomain").on(t.emailDomain),
+  index("idx_users_companyOwnerId").on(t.companyOwnerId),
+]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+// ─── Email Tokens (verificação de conta, reset de senha, código 2FA) ─────────
+export const emailTokens = mysqlTable(
+  "email_tokens",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    type: mysqlEnum("type", ["verify", "reset", "2fa"]).notNull(),
+    // SHA-256 do token cru (o token cru só existe no e-mail / no link).
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    consumedAt: timestamp("consumedAt"),
+    // Tentativas de código erradas (2fa/reset) — para lockout.
+    attempts: int("attempts").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_email_tokens_user_type").on(t.userId, t.type),
+    index("idx_email_tokens_hash").on(t.tokenHash),
+  ]
+);
+
+export type EmailToken = typeof emailTokens.$inferSelect;
+export type InsertEmailToken = typeof emailTokens.$inferInsert;
+
+// ─── Audit Log (ações sensíveis) ─────────────────────────────────────────────
+export const auditLog = mysqlTable(
+  "audit_log",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    // Quem executou a ação (null = sistema / não autenticado).
+    actorUserId: int("actorUserId"),
+    // Sobre quem/o quê a ação foi feita.
+    targetUserId: int("targetUserId"),
+    action: varchar("action", { length: 64 }).notNull(),
+    targetType: varchar("targetType", { length: 32 }),
+    targetId: varchar("targetId", { length: 64 }),
+    ip: varchar("ip", { length: 64 }),
+    userAgent: varchar("userAgent", { length: 255 }),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_audit_log_actor").on(t.actorUserId),
+    index("idx_audit_log_action").on(t.action),
+  ]
+);
+
+export type AuditLog = typeof auditLog.$inferSelect;
+export type InsertAuditLog = typeof auditLog.$inferInsert;
 
 // ─── Daily Usage (trial limits) ───────────────────────────────────────────────
 export const dailyUsage = mysqlTable(
@@ -279,6 +345,7 @@ export const socialPosts = mysqlTable(
     contentType: varchar("contentType", { length: 20 }),
     contentId: int("contentId"),
     storyData: text("storyData"),
+    retryCount: int("retryCount").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -303,6 +370,9 @@ export const instagramConnections = mysqlTable(
     name: varchar("name", { length: 255 }),
     profilePictureUrl: text("profilePictureUrl"),
     accessToken: text("accessToken").notNull(),
+    // Long-lived user token used by the Marketing API. Kept separate from the
+    // Page token above, which is required by Instagram publishing.
+    userAccessToken: text("userAccessToken"),
     tokenExpiresAt: timestamp("tokenExpiresAt"),
     // "facebook" = token via Facebook Login (needs graph.facebook.com)
     // "instagram" = token via Instagram Login (needs graph.instagram.com)

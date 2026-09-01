@@ -1,12 +1,12 @@
 ﻿import { z } from "zod";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { getHolidaysForYear } from "@shared/holidays";
-import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
 import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
-import { aiProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
+import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
+import { assertPublicHttpUrl } from "./_core/ssrfGuard";
 import { invokeLLM } from "./_core/llm";
 import { buildNewsletterHtml } from "./_core/newsletterTemplate";
 import { generateImage, reformatImageToTarget, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
@@ -70,7 +70,20 @@ import {
 import * as db from "./db";
 import { getCalibrationBlock } from "./_core/calibration";
 import { sdk } from "./_core/sdk";
-import { hashPassword, verifyPassword } from "./_core/password";
+import { hashPassword, needsRehash, verifyPassword } from "./_core/password";
+import { blindIndex } from "./_core/crypto";
+import {
+  passwordResetEmail,
+  sendEmail,
+  twoFactorCodeEmail,
+  verificationEmail,
+} from "./_core/email";
+import {
+  clearLoginFailures,
+  isLoginLocked,
+  LOGIN_LOCK_MESSAGE,
+  registerLoginFailure,
+} from "./_core/loginGuard";
 import { nanoid } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import axios from "axios";
@@ -3019,13 +3032,15 @@ Retorne APENAS JSON válido:
             return slide;
           }
           try {
+            assertPublicHttpUrl(url);
             const res = await fetch(url, {
               headers: { "User-Agent": "KrythosLab/1.0 carousel-persist" },
               signal: AbortSignal.timeout(12_000),
             });
             if (!res.ok) return slide;
-            const buffer = Buffer.from(await res.arrayBuffer());
             const contentType = res.headers.get("content-type") ?? "image/jpeg";
+            if (!contentType.startsWith("image/")) return slide;
+            const buffer = Buffer.from(await res.arrayBuffer());
             const ext = contentType.split("/")[1]?.split(";")[0] ?? "jpg";
             const key = `proto/${ctx.user.id}/${input.carouselId}/slide-${String(i + 1).padStart(2, "0")}.${ext}`;
             const { url: s3Url } = await storagePut(key, buffer, contentType);
@@ -3957,6 +3972,28 @@ async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T>
   return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
+// Confirms the caller actually controls `accessToken` for `instagramAccountId`
+// before we ever trust that pairing — without this, anyone could register
+// someone else's real Instagram account id with a bogus token and hijack
+// their comment automations (n8n matches purely on instagramAccountId).
+async function verifyInstagramTokenOwnership(instagramAccountId: string, accessToken: string): Promise<boolean> {
+  const version = (ENV.metaGraphApiVersion || "v25.0").replace(/^\/+/, "");
+  const endpoints = [
+    `https://graph.facebook.com/${version}/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
+    `https://graph.instagram.com/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      const data = (await res.json()) as { id?: string };
+      if (res.ok && data.id === instagramAccountId) return true;
+    } catch {
+      // try next endpoint
+    }
+  }
+  return false;
+}
+
 const analyticsRouter = router({
   saveInstagramCredentials: protectedProcedure
     .input(z.object({
@@ -3965,6 +4002,13 @@ const analyticsRouter = router({
       username: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const verified = await verifyInstagramTokenOwnership(input.instagramAccountId, input.accessToken);
+      if (!verified) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Não foi possível verificar que este token pertence à conta Instagram informada.",
+        });
+      }
       await db.upsertInstagramConnection({
         userId: ctx.user.id,
         instagramAccountId: input.instagramAccountId,
@@ -4515,7 +4559,7 @@ const artStudioRouter = router({
   // bypass abaixo são resolvidos uma vez só e herdados automaticamente por
   // toda a equipe daquela conta.
   myAccess: protectedProcedure.query(async ({ ctx }) => {
-    const company = await getUserCompany(ctx.user as { email: string | null; role?: string | null });
+    const company = await getUserCompany(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
     if (company) return { companyId: company.id, companyName: company.name };
     if (ctx.user.role === "admin") return { companyId: null, companyName: "Admin" };
     return null;
@@ -4526,7 +4570,7 @@ const artStudioRouter = router({
       if (ctx.user.role === "admin") {
         return db.listArtTemplates();
       }
-      const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null });
+      const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
       return db.listArtTemplates(company ? company.id : null);
     }),
   }),
@@ -4547,7 +4591,7 @@ const artStudioRouter = router({
         if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Arte não encontrada." });
 
         if (ctx.user.role !== "admin") {
-          const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null });
+          const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
           const visible = template.companyId === null || template.companyId === company?.id;
           if (!visible) throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a essa arte." });
         }
@@ -4569,6 +4613,21 @@ const artStudioRouter = router({
       .mutation(async ({ ctx, input }) => {
         await db.deleteArtwork(input.id, ctx.user.id);
         return { success: true };
+      }),
+  }),
+
+  // Camadas Mágicas: a IA analisa a imagem achatada de uma arte e devolve os
+  // elementos (textos, logo, foto, gráficos) com caixas normalizadas, pro editor
+  // recriar como camadas editáveis. Mesmo gate de acesso de artworks.save.
+  magicLayers: router({
+    analyze: aiProcedure
+      .input(z.object({ imageDataUrl: z.string().min(1).max(8_000_000) }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
+        }
+        const { analyzeMagicLayers } = await import("./_core/magicLayersAgent");
+        return analyzeMagicLayers(input.imageDataUrl);
       }),
   }),
 });
@@ -5561,6 +5620,86 @@ const storiesRouter = router({
     }),
 });
 
+// ─── Helpers de conta (verificação de e-mail, reset de senha, 2FA) ───────────
+
+const paidTrafficRouter = router({
+  connection: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getInstagramConnection(ctx.user.id);
+    return {
+      connected: Boolean(connection?.userAccessToken),
+      instagramUsername: connection?.username ?? null,
+      reconnectRequired: Boolean(connection && !connection.userAccessToken),
+    };
+  }),
+
+  metaAdAccounts: protectedProcedure.query(async ({ ctx }) => {
+    const connection = await db.getInstagramConnection(ctx.user.id);
+    if (!connection?.userAccessToken) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Reconecte sua conta Meta para autorizar o acesso aos anúncios." });
+    }
+    const result = await graphGet<{ data?: Array<{ id: string; name: string; currency?: string; account_status?: number }> }>(
+      "me/adaccounts",
+      { fields: "id,name,currency,account_status", limit: "100" },
+      connection.userAccessToken
+    );
+    return result.data ?? [];
+  }),
+
+  metaCampaigns: protectedProcedure
+    .input(z.object({ adAccountId: z.string().regex(/^act_\d+$/) }))
+    .query(async ({ ctx, input }) => {
+      const connection = await db.getInstagramConnection(ctx.user.id);
+      if (!connection?.userAccessToken) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conta Meta Ads não conectada." });
+      }
+      const result = await graphGet<{ data?: Array<Record<string, unknown>> }>(
+        `${input.adAccountId}/campaigns`,
+        {
+          fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(maximum){spend,impressions,reach,clicks,actions,action_values}",
+          limit: "100",
+        },
+        connection.userAccessToken
+      );
+      return result.data ?? [];
+    }),
+});
+
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TTL_MS = 30 * 60 * 1000;
+const TWOFA_TTL_MS = 10 * 60 * 1000;
+const TWOFA_MAX_ATTEMPTS = 5;
+
+async function sendVerificationEmail(userId: number, email: string, name: string): Promise<void> {
+  const raw = db.generateRawToken();
+  await db.createEmailToken(userId, "verify", raw, VERIFY_TTL_MS);
+  const link = `${ENV.appBaseUrl.replace(/\/$/, "")}/app/verify-email?token=${encodeURIComponent(raw)}`;
+  const tpl = verificationEmail(name || "usuário", link);
+  await sendEmail({ ...tpl, to: email });
+}
+
+async function sendPasswordResetEmail(userId: number, email: string, name: string): Promise<void> {
+  const raw = db.generateRawToken();
+  await db.createEmailToken(userId, "reset", raw, RESET_TTL_MS);
+  const link = `${ENV.appBaseUrl.replace(/\/$/, "")}/app/reset-password?token=${encodeURIComponent(raw)}`;
+  const tpl = passwordResetEmail(name || "usuário", link);
+  await sendEmail({ ...tpl, to: email });
+}
+
+// Cria o desafio 2FA (código por e-mail) e retorna o id do token (challengeId).
+async function startTwoFactorChallenge(user: { id: number; email: string | null; name: string | null }): Promise<number> {
+  const code = db.generateNumericCode(6);
+  await db.createEmailToken(user.id, "2fa", code, TWOFA_TTL_MS);
+  const token = await db.getActiveEmailTokenForUser(user.id, "2fa");
+  if (user.email) {
+    const tpl = twoFactorCodeEmail(user.name || "usuário", code);
+    await sendEmail({ ...tpl, to: user.email }).catch((e) =>
+      console.warn("[2fa] falha ao enviar código:", String(e))
+    );
+  }
+  if (!token) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Falha ao criar desafio 2FA." });
+  return token.id;
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -5605,9 +5744,14 @@ export const appRouter = router({
         await db.upsertUser({ openId, name: input.name, email: input.email, loginMethod: "email", passwordHash, ...(trialExpiresAt && { trialExpiresAt }) } as Parameters<typeof db.upsertUser>[0]);
         const user = await db.getUserByOpenId(openId);
         if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar usuário" });
-        const sessionToken = await sdk.createSessionToken(openId, { name: input.name, expiresInMs: ONE_YEAR_MS });
-        const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        await sdk.issueSessionCookies(ctx.req, ctx.res, user);
+        const ip = ctx.req.ip ?? null;
+        const userAgent = ctx.req.headers["user-agent"] ?? null;
+        await db.recordAudit({ action: "register", actorUserId: user.id, ip, userAgent });
+        // Envia o e-mail de verificação (novos cadastros por e-mail/senha).
+        void sendVerificationEmail(user.id, input.email, input.name).catch((e) =>
+          console.warn("[auth.register] falha ao enviar verificação:", String(e))
+        );
         const { passwordHash: _rph, ...safeRegUser } = user;
         return safeRegUser;
       }),
@@ -5618,37 +5762,222 @@ export const appRouter = router({
         password: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const user = await db.getUserByEmail(input.email);
-        if (!user || !user.passwordHash) {
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha incorretos" });
+        const ip = ctx.req.ip ?? ctx.req.socket?.remoteAddress ?? "unknown";
+        const userAgent = ctx.req.headers["user-agent"] ?? null;
+        const emailHash = blindIndex(input.email);
+
+        if (await isLoginLocked(emailHash, ip)) {
+          await db.recordAudit({ action: "login.locked", ip, userAgent, metadata: { emailHash } });
+          throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: LOGIN_LOCK_MESSAGE });
         }
-        const valid = await verifyPassword(input.password, user.passwordHash);
-        if (!valid) {
+
+        const fail = async () => {
+          await registerLoginFailure(emailHash, ip);
+          await db.recordAudit({ action: "login.failed", ip, userAgent, metadata: { emailHash } });
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha incorretos" });
+        };
+
+        const user = await db.getUserByEmail(input.email);
+        if (!user || !user.passwordHash) await fail();
+        const valid = await verifyPassword(input.password, user!.passwordHash!);
+        if (!valid) await fail();
+
+        // Re-hash transparente quando o formato/parâmetros do hash estão defasados.
+        if (needsRehash(user!.passwordHash!)) {
+          try {
+            await db.updateUserPassword(user!.id, await hashPassword(input.password));
+          } catch (e) {
+            console.warn("[auth.login] falha ao re-hashear senha:", String(e));
+          }
         }
         // Block inactive users
         const isActive = (user as unknown as { isActive?: number | boolean }).isActive;
         if (isActive === 0 || isActive === false) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está desativada. Entre em contato com o administrador." });
         }
+
+        await clearLoginFailures(emailHash, ip);
+
         // Auto-grant admin role to the designated admin email on every login
         const adminEmail = process.env.ADMIN_EMAIL;
-        if (adminEmail && user.email === adminEmail && user.role !== 'admin') {
-          await db.setUserRole(user.id, 'admin');
+        if (adminEmail && user!.email === adminEmail && user!.role !== 'admin') {
+          await db.setUserRole(user!.id, 'admin');
         }
-        await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
-        const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || "", expiresInMs: ONE_YEAR_MS });
-        const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        const freshUser = await db.getUserByOpenId(user.openId);
-        const { passwordHash: _lph, ...safeLoginUser } = freshUser ?? user;
-        return safeLoginUser;
+
+        // 2FA por código de e-mail — não emite sessão ainda, devolve um desafio.
+        if ((user as unknown as { twoFactorEnabled?: boolean | number }).twoFactorEnabled) {
+          const challengeId = await startTwoFactorChallenge(user!);
+          await db.recordAudit({ action: "login.2fa_challenge", actorUserId: user!.id, ip, userAgent });
+          return { needs2fa: true as const, challengeId, user: null };
+        }
+
+        await db.upsertUser({ openId: user!.openId, lastSignedIn: new Date() });
+        const freshUser = await db.getUserByOpenId(user!.openId);
+        await sdk.issueSessionCookies(ctx.req, ctx.res, freshUser ?? user!);
+        await db.recordAudit({ action: "login.success", actorUserId: user!.id, ip, userAgent });
+        const { passwordHash: _lph, ...safeLoginUser } = freshUser ?? user!;
+        return { needs2fa: false as const, challengeId: null, user: safeLoginUser };
       }),
 
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+    // Renova o access token a partir do refresh token (chamado de forma
+    // transparente pelo cliente quando uma request recebe 401).
+    refresh: publicProcedure.mutation(async ({ ctx }) => {
+      const user = await sdk.userFromRefreshToken(ctx.req);
+      if (!user) {
+        sdk.clearSessionCookies(ctx.req, ctx.res);
+        throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+      }
+      // Rotaciona: emite novo par access+refresh.
+      await sdk.issueSessionCookies(ctx.req, ctx.res, user);
       return { success: true } as const;
+    }),
+
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.actualUser) {
+        await db.recordAudit({ action: "logout", actorUserId: ctx.actualUser.id, ip: ctx.req.ip ?? null });
+      }
+      sdk.clearSessionCookies(ctx.req, ctx.res);
+      return { success: true } as const;
+    }),
+
+    // Invalida TODAS as sessões (inclusive a atual, mas reemite pra este device).
+    logoutAllDevices: protectedProcedure.mutation(async ({ ctx }) => {
+      await db.bumpUserTokenVersion(ctx.actualUser.id);
+      const fresh = await db.getUserByOpenId(ctx.actualUser.openId);
+      if (fresh) await sdk.issueSessionCookies(ctx.req, ctx.res, fresh);
+      await db.recordAudit({ action: "logout.all_devices", actorUserId: ctx.actualUser.id, ip: ctx.req.ip ?? null });
+      return { success: true } as const;
+    }),
+
+    // ── Verificação de e-mail ──────────────────────────────────────────────
+    verifyEmail: publicRateLimitedProcedure
+      .input(z.object({ token: z.string().min(10) }))
+      .mutation(async ({ ctx, input }) => {
+        const token = await db.peekEmailToken("verify", input.token);
+        if (!token) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Link inválido ou expirado. Solicite um novo." });
+        }
+        await db.consumeEmailTokenById(token.id);
+        await db.markEmailVerified(token.userId);
+        await db.recordAudit({ action: "email.verified", actorUserId: token.userId, ip: ctx.req.ip ?? null });
+        return { success: true } as const;
+      }),
+
+    resendVerification: authedProcedure.mutation(async ({ ctx }) => {
+      const u = ctx.actualUser;
+      if ((u as unknown as { emailVerifiedAt?: Date | null }).emailVerifiedAt) {
+        return { success: true, alreadyVerified: true } as const;
+      }
+      if (!u.email) throw new TRPCError({ code: "BAD_REQUEST", message: "Conta sem e-mail." });
+      await sendVerificationEmail(u.id, u.email, u.name ?? "");
+      return { success: true, alreadyVerified: false } as const;
+    }),
+
+    // ── Recuperação de senha ───────────────────────────────────────────────
+    requestPasswordReset: publicRateLimitedProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        // Sempre responde ok (sem enumeração de usuários).
+        const user = await db.getUserByEmail(input.email);
+        if (user && user.email && (user.loginMethod === "email" || user.passwordHash)) {
+          await sendPasswordResetEmail(user.id, user.email, user.name ?? "");
+          await db.recordAudit({ action: "password.reset_requested", actorUserId: user.id, ip: ctx.req.ip ?? null });
+        }
+        return { success: true } as const;
+      }),
+
+    resetPassword: publicRateLimitedProcedure
+      .input(z.object({ token: z.string().min(10), newPassword: z.string().min(6).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        const token = await db.peekEmailToken("reset", input.token);
+        if (!token) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Link inválido ou expirado. Solicite um novo." });
+        }
+        await db.consumeEmailTokenById(token.id);
+        await db.updateUserPassword(token.userId, await hashPassword(input.newPassword));
+        await db.bumpUserTokenVersion(token.userId); // derruba sessões antigas
+        await db.markEmailVerified(token.userId); // recuperar senha via e-mail prova posse
+        await db.recordAudit({ action: "password.reset", actorUserId: token.userId, ip: ctx.req.ip ?? null });
+        return { success: true } as const;
+      }),
+
+    // ── 2FA (código por e-mail) ────────────────────────────────────────────
+    verify2fa: publicRateLimitedProcedure
+      .input(z.object({ challengeId: z.number().int(), code: z.string().min(4).max(10) }))
+      .mutation(async ({ ctx, input }) => {
+        const ip = ctx.req.ip ?? null;
+        const userAgent = ctx.req.headers["user-agent"] ?? null;
+
+        const token = await db.getEmailTokenById(input.challengeId);
+        if (!token || token.type !== "2fa" || token.consumedAt || token.expiresAt.getTime() < Date.now()) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Desafio inválido ou expirado. Faça login de novo." });
+        }
+
+        if (db.hashToken(input.code) !== token.tokenHash) {
+          const attempts = await db.incrementEmailTokenAttempts(token.id);
+          if (attempts >= TWOFA_MAX_ATTEMPTS) {
+            await db.consumeEmailTokenById(token.id);
+            await db.recordAudit({ action: "login.2fa_locked", actorUserId: token.userId, ip, userAgent });
+            throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Faça login de novo." });
+          }
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Código inválido." });
+        }
+
+        await db.consumeEmailTokenById(token.id);
+        const user = await db.getUserById(token.userId);
+        if (!user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Usuário não encontrado." });
+        await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
+        await sdk.issueSessionCookies(ctx.req, ctx.res, user);
+        await db.recordAudit({ action: "login.2fa_success", actorUserId: user.id, ip, userAgent });
+        const { passwordHash: _p, ...safe } = user;
+        return { user: safe };
+      }),
+
+    twoFactor: router({
+      status: protectedProcedure.query(({ ctx }) => ({
+        enabled: Boolean((ctx.actualUser as unknown as { twoFactorEnabled?: boolean | number }).twoFactorEnabled),
+      })),
+
+      requestSetup: protectedProcedure.mutation(async ({ ctx }) => {
+        const u = ctx.actualUser;
+        if (!u.email) throw new TRPCError({ code: "BAD_REQUEST", message: "Conta sem e-mail — 2FA por e-mail indisponível." });
+        const code = db.generateNumericCode(6);
+        await db.createEmailToken(u.id, "2fa", code, TWOFA_TTL_MS);
+        const tpl = twoFactorCodeEmail(u.name ?? "usuário", code);
+        await sendEmail({ ...tpl, to: u.email });
+        return { success: true } as const;
+      }),
+
+      confirmSetup: protectedProcedure
+        .input(z.object({ code: z.string().min(4).max(10) }))
+        .mutation(async ({ ctx, input }) => {
+          const token = await db.getActiveEmailTokenForUser(ctx.actualUser.id, "2fa");
+          if (!token || db.hashToken(input.code) !== token.tokenHash) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: "Código inválido ou expirado." });
+          }
+          await db.consumeEmailTokenById(token.id);
+          await db.setTwoFactorEnabled(ctx.actualUser.id, true);
+          await db.bumpUserTokenVersion(ctx.actualUser.id);
+          const fresh = await db.getUserByOpenId(ctx.actualUser.openId);
+          if (fresh) await sdk.issueSessionCookies(ctx.req, ctx.res, fresh);
+          await db.recordAudit({ action: "2fa.enabled", actorUserId: ctx.actualUser.id, ip: ctx.req.ip ?? null });
+          return { success: true } as const;
+        }),
+
+      disable: protectedProcedure
+        .input(z.object({ password: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+          const u = ctx.actualUser;
+          if (!u.passwordHash || !(await verifyPassword(input.password, u.passwordHash))) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha incorreta." });
+          }
+          await db.setTwoFactorEnabled(u.id, false);
+          await db.bumpUserTokenVersion(u.id);
+          const fresh = await db.getUserByOpenId(u.openId);
+          if (fresh) await sdk.issueSessionCookies(ctx.req, ctx.res, fresh);
+          await db.recordAudit({ action: "2fa.disabled", actorUserId: u.id, ip: ctx.req.ip ?? null });
+          return { success: true } as const;
+        }),
     }),
 
     trialStatus: protectedProcedure.query(async ({ ctx }) => {
@@ -5710,6 +6039,7 @@ export const appRouter = router({
   articles: articlesRouter,
   carousel: carouselRouter,
   campaign: campaignRouter,
+  paidTraffic: paidTrafficRouter,
   canva: canvaRouter,
   posts: postsRouter,
   analytics: analyticsRouter,

@@ -2,7 +2,12 @@ import { TRPCError } from "@trpc/server";
 import * as db from "../db";
 import type { Company } from "../../drizzle/schema";
 
-type CompanyAccessUser = { email: string | null; role?: string | null };
+type CompanyAccessUser = {
+  email: string | null;
+  emailDomain?: string | null;
+  role?: string | null;
+  loginMethod?: string | null;
+};
 
 export function domainFromEmail(email: string | null | undefined): string | null {
   if (!email) return null;
@@ -11,8 +16,20 @@ export function domainFromEmail(email: string | null | undefined): string | null
   return email.slice(at + 1).trim().toLowerCase();
 }
 
+// Company-domain matching only means anything if we know the user actually
+// owns that mailbox. Self-service email/password registration never proves
+// that (no confirmation step) — so an account created that way can't be
+// trusted to unlock a company's private templates just by typing an
+// @empresa.com address. OAuth logins (Instagram/Facebook) only hand back an
+// email the provider itself has already verified, so those are trusted.
+function hasVerifiedEmail(user: CompanyAccessUser): boolean {
+  return !!user.loginMethod && user.loginMethod !== "email";
+}
+
 export async function getUserCompany(user: CompanyAccessUser): Promise<Company | null> {
-  const domain = domainFromEmail(user.email);
+  if (!hasVerifiedEmail(user)) return null;
+  // Prefere a coluna emailDomain (texto puro) — o email agora é ciphertext.
+  const domain = user.emailDomain?.trim().toLowerCase() || domainFromEmail(user.email);
   if (!domain) return null;
   return db.getCompanyByDomain(domain);
 }

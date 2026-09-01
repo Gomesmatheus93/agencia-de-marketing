@@ -1,8 +1,9 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Sparkles, Zap, Image, FileText, Share2, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 function InstagramIcon({ className }: { className?: string }) {
   return (
@@ -19,6 +20,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  // 2FA (código por e-mail)
+  const [twoFa, setTwoFa] = useState<{ challengeId: number } | null>(null);
+  const [otp, setOtp] = useState("");
 
   // Show OAuth errors from redirect params
   useEffect(() => {
@@ -46,7 +50,18 @@ export default function Login() {
   const justRegisteredRef = useRef(false);
 
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => { refresh(); },
+    onSuccess: (data) => {
+      if (data.needs2fa && data.challengeId != null) {
+        setTwoFa({ challengeId: data.challengeId });
+        return;
+      }
+      refresh();
+    },
+    onError: (e) => setError(e.message),
+  });
+
+  const verify2faMutation = trpc.auth.verify2fa.useMutation({
+    onSuccess: () => { setTwoFa(null); refresh(); },
     onError: (e) => setError(e.message),
   });
 
@@ -71,7 +86,7 @@ export default function Login() {
     }
   };
 
-  const isPending = loginMutation.isPending || registerMutation.isPending;
+  const isPending = loginMutation.isPending || registerMutation.isPending || verify2faMutation.isPending;
 
   const features = [
     { icon: Zap, label: "Chat com IA", color: "from-violet-500 to-purple-600" },
@@ -142,6 +157,46 @@ export default function Login() {
               </p>
             </div>
 
+            {twoFa ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setError("");
+                  verify2faMutation.mutate({ challengeId: twoFa.challengeId, code: otp });
+                }}
+                className="space-y-4"
+              >
+                <p className="text-sm text-muted-foreground text-center">
+                  Enviamos um código de 6 dígitos para o seu e-mail.
+                </p>
+                <div className="flex justify-center">
+                  <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+                    <InputOTPGroup>
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <InputOTPSlot key={i} index={i} />
+                      ))}
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                {error && (
+                  <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={isPending || otp.length < 6}
+                  className="w-full py-3 px-4 rounded-xl font-medium text-sm gradient-primary text-white disabled:opacity-60"
+                >
+                  {isPending ? "Verificando..." : "Confirmar código"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTwoFa(null); setOtp(""); setError(""); }}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground"
+                >
+                  Voltar
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {mode === "register" && (
                 <div>
@@ -204,7 +259,16 @@ export default function Login() {
                 <Sparkles className="w-4 h-4" />
                 {isPending ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
               </button>
+
+              {mode === "login" && (
+                <div className="text-center">
+                  <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+                    Esqueceu a senha?
+                  </Link>
+                </div>
+              )}
             </form>
+            )}
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">

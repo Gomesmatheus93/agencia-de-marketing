@@ -9,8 +9,9 @@ import {
   Save, X, Minus, Plus, ChevronUp, ChevronDown,
   Image as ImageIcon, Eye, EyeOff, Lock, Layers as LayersIcon, Hand,
   Upload, Pipette, ZoomIn, Slash, Triangle as TriangleIcon, ArrowLeftRight,
-  GripVertical,
+  GripVertical, Wand2, Loader2,
 } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 // ── Google Fonts ──────────────────────────────────────────────────────────────
 
@@ -246,6 +247,9 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   // existentes no painel direito.
   const [foregroundColor, setForegroundColor] = useState("#000000");
   const [canvasBgColor, setCanvasBgColor] = useState("#ffffff");
+
+  // ── Camadas Mágicas (IA separa os elementos da arte em camadas) ────────────
+  const magicLayers = trpc.artStudio.magicLayers.analyze.useMutation();
 
   // ── Fabric init ───────────────────────────────────────────────────────────
 
@@ -629,6 +633,144 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
   deleteSelectedRef.current = deleteSelected;
   undoRef.current = undo;
 
+  // ── Camadas Mágicas ───────────────────────────────────────────────────────
+  // Manda a imagem de fundo (o raster achatado da arte) pra IA, que devolve os
+  // elementos com caixas normalizadas. Cada texto vira um Textbox editável; logo,
+  // foto e gráficos são recortados do próprio fundo e viram camadas de imagem.
+  // O fundo original NÃO é alterado — as camadas ficam exatamente por cima.
+
+  const runMagicLayers = useCallback(async () => {
+    const canvas = fabricRef.current;
+    if (!canvas || magicLayers.isPending) return;
+    const bg = canvas.getObjects().find((o: any) => isBg(o));
+    if (!bg) {
+      toast.error("Essa arte não tem imagem de fundo pra analisar.");
+      return;
+    }
+
+    const nonBg = canvas.getObjects().filter((o: any) => !isBg(o));
+    if (nonBg.length > 0 && !confirm("A arte já tem camadas. Rodar as Camadas Mágicas vai adicionar mais camadas por cima. Continuar?")) {
+      return;
+    }
+
+    // 1. Exporta a imagem de fundo em tamanho natural (limitado), sem o letterbox
+    //    do canvas — assim as caixas da IA batem 1:1 com o retângulo do fundo.
+    const el: HTMLImageElement = bg.getElement();
+    const natW = el.naturalWidth || el.width;
+    const natH = el.naturalHeight || el.height;
+    if (!natW || !natH) {
+      toast.error("Não consegui ler a imagem de fundo.");
+      return;
+    }
+    const MAX_DIM = 1600;
+    const expScale = Math.min(1, MAX_DIM / Math.max(natW, natH));
+    let imageDataUrl: string;
+    try {
+      const off = document.createElement("canvas");
+      off.width = Math.round(natW * expScale);
+      off.height = Math.round(natH * expScale);
+      const octx = off.getContext("2d");
+      if (!octx) throw new Error("no 2d context");
+      octx.drawImage(el, 0, 0, off.width, off.height);
+      imageDataUrl = off.toDataURL("image/jpeg", 0.9);
+    } catch (err) {
+      console.error("[MagicLayers] export bg failed:", err);
+      toast.error("Não consegui exportar a arte pra análise.");
+      return;
+    }
+
+    let result: { elements: any[] };
+    try {
+      result = await magicLayers.mutateAsync({ imageDataUrl });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Falha ao analisar a arte.");
+      return;
+    }
+
+    const elements = result?.elements ?? [];
+    if (elements.length === 0) {
+      toast.info("A IA não identificou elementos separáveis nessa arte.");
+      return;
+    }
+
+    // 2. Retângulo que o fundo ocupa no canvas lógico (540×675).
+    const bgRect = {
+      left: bg.left ?? 0,
+      top: bg.top ?? 0,
+      w: (bg.width ?? 0) * (bg.scaleX ?? 1),
+      h: (bg.height ?? 0) * (bg.scaleY ?? 1),
+    };
+
+    const { Textbox, FabricImage } = await import("fabric");
+    let firstCreated: any = null;
+
+    for (const elm of elements) {
+      const bb = elm.bbox;
+      if (!bb) continue;
+      const left = bgRect.left + bb.x * bgRect.w;
+      const top = bgRect.top + bb.y * bgRect.h;
+      const boxW = Math.max(4, bb.w * bgRect.w);
+      const boxH = Math.max(4, bb.h * bgRect.h);
+
+      if (elm.kind === "text") {
+        const raw = String(elm.text ?? "").trim();
+        if (!raw) continue;
+        const lines = raw.split(/\r?\n/).length || 1;
+        const fontSize = elm.fontRatio
+          ? Math.round(elm.fontRatio * bgRect.h)
+          : Math.max(10, Math.round((boxH / lines) * 0.82));
+        const isBold = !!elm.bold;
+        await ensureFontLoaded("Montserrat", isBold ? "700" : "400", false);
+        const tb = new Textbox(elm.uppercase ? raw.toUpperCase() : raw, {
+          left, top,
+          width: Math.max(24, boxW),
+          originX: "left", originY: "top",
+          fontFamily: "Montserrat",
+          fontSize,
+          fill: typeof elm.color === "string" ? elm.color : "#ffffff",
+          fontWeight: isBold ? "bold" : "normal",
+          textAlign: elm.align === "left" || elm.align === "right" ? elm.align : "center",
+          name: elm.label || "Texto",
+        } as any);
+        canvas.add(tb);
+        firstCreated ??= tb;
+        continue;
+      }
+
+      // Recorte raster do próprio fundo (logo/foto/gráfico/ícone/forma).
+      try {
+        const cropW = Math.max(1, Math.round(bb.w * natW));
+        const cropH = Math.max(1, Math.round(bb.h * natH));
+        const sx = Math.round(bb.x * natW);
+        const sy = Math.round(bb.y * natH);
+        const crop = document.createElement("canvas");
+        crop.width = cropW;
+        crop.height = cropH;
+        const cctx = crop.getContext("2d");
+        if (!cctx) throw new Error("no 2d context");
+        cctx.drawImage(el, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+        const cropUrl = crop.toDataURL("image/png");
+        const img = await FabricImage.fromURL(cropUrl);
+        img.set({
+          left, top,
+          scaleX: boxW / cropW,
+          scaleY: boxH / cropH,
+          originX: "left", originY: "top",
+          name: elm.label || "Elemento",
+        } as any);
+        canvas.add(img);
+        firstCreated ??= img;
+      } catch (err) {
+        console.warn("[MagicLayers] crop failed for element:", elm.label, err);
+      }
+    }
+
+    canvas.renderAll();
+    refreshLayers();
+    if (firstCreated) { canvas.setActiveObject(firstCreated); syncSelected(firstCreated); canvas.renderAll(); }
+    toast.success(`${elements.length} camada(s) criada(s). Ajuste posição e tamanho se precisar.`);
+  }, [magicLayers, refreshLayers]);
+
   const layerUp = useCallback(() => {
     const canvas = fabricRef.current;
     const obj = canvas?.getActiveObject();
@@ -988,6 +1130,20 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
 
             <div className="w-7 border-t border-[#1b1b1b] my-1 shrink-0" />
 
+            <button
+              title="Camadas Mágicas — a IA separa os elementos da arte (textos, logo, foto) em camadas editáveis"
+              onClick={runMagicLayers}
+              disabled={magicLayers.isPending}
+              className={cn(
+                "w-9 h-9 rounded-[3px] flex items-center justify-center transition-colors shrink-0 disabled:opacity-40",
+                magicLayers.isPending ? "bg-[#0c8ce9] text-white" : "text-[#c084fc] hover:bg-[#3f3f3f] hover:text-white"
+              )}
+            >
+              {magicLayers.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+            </button>
+
+            <div className="w-7 border-t border-[#1b1b1b] my-1 shrink-0" />
+
             <button title="Subir camada" onClick={layerUp} disabled={!selected}
               className="w-9 h-9 rounded-[3px] flex items-center justify-center text-[#999999] hover:bg-[#3f3f3f] hover:text-white disabled:opacity-30 transition-colors shrink-0">
               <ChevronUp className="w-4 h-4" />
@@ -1210,8 +1366,13 @@ export function DesignEditor({ open, onClose, initialImageUrl, initialCanvasJson
                       : obj.type === "line" ? Slash
                       : obj.type === "triangle" ? TriangleIcon
                       : Square;
+                    const customName = typeof obj.name === "string" && obj.name && obj.name !== "__bg__"
+                      ? obj.name.slice(0, 24)
+                      : null;
                     const label = bg
                       ? "Imagem de fundo"
+                      : customName
+                      ? customName
                       : text
                       ? (obj.text?.trim()?.slice(0, 22) || "Texto")
                       : isImage ? "Imagem"

@@ -60,6 +60,7 @@
     "express": "^4.21.2",
     "fabric": "^7.3.1",
     "framer-motion": "^12.23.22",
+    "helmet": "^8.3.0",
     "html-to-image": "^1.11.13",
     "input-otp": "^1.4.2",
     "ioredis": "^6.0.0",

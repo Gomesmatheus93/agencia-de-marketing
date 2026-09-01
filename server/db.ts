@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import type { ResultSetHeader } from "mysql2";
 import { nanoid } from "nanoid";
 import { hashPassword } from "./_core/password";
+import { blindIndex, decryptField, encryptField } from "./_core/crypto";
 
 function insertId(result: unknown): number {
   return (result as ResultSetHeader).insertId;
@@ -72,7 +73,13 @@ import {
   type Artwork,
   contentApprovals,
   type ContentApproval,
+  auditLog,
+  type AuditLog,
+  type InsertAuditLog,
+  emailTokens,
+  type EmailToken,
 } from "../drizzle/schema";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _dailyUsageTableReady: Promise<void> | null = null;
@@ -450,7 +457,7 @@ async function ensureSocialPostsMetadataColumn() {
         FROM information_schema.columns
         WHERE table_schema = DATABASE()
           AND table_name = 'social_posts'
-          AND column_name IN ('metadata', 'errorMessage', 'igMediaId', 'contentType', 'contentId', 'storyData')
+          AND column_name IN ('metadata', 'errorMessage', 'igMediaId', 'contentType', 'contentId', 'storyData', 'retryCount')
       `)) as unknown as [Array<{ column_name: string }>, unknown];
 
       const existing = new Set((columnRows as Array<{ column_name: string }>).map((r) => r.column_name));
@@ -462,6 +469,7 @@ async function ensureSocialPostsMetadataColumn() {
         ["contentType", sql`ALTER TABLE social_posts ADD COLUMN contentType varchar(20)`],
         ["contentId", sql`ALTER TABLE social_posts ADD COLUMN contentId int`],
         ["storyData", sql`ALTER TABLE social_posts ADD COLUMN storyData text`],
+        ["retryCount", sql`ALTER TABLE social_posts ADD COLUMN retryCount int NOT NULL DEFAULT 0`],
       ] as const) {
         if (!existing.has(col)) {
           try {
@@ -523,12 +531,114 @@ async function ensureUserExtraColumns() {
   await _userExtraColumnsReady;
 }
 
+// ─── Users — colunas de segurança (criptografia / sessão / verificação / 2FA) ──
+// A migration formal 0020+ faz o trabalho estrutural (widen de email, índices).
+// Este guard só garante os ADD COLUMN idempotentes em ambientes onde a migration
+// ficou pra trás, seguindo o padrão dos outros ensure*Columns() do arquivo.
+
+let _userSecurityColumnsReady: Promise<void> | null = null;
+
+async function ensureUserSecurityColumns() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_userSecurityColumnsReady) {
+    _userSecurityColumnsReady = (async () => {
+      const [cols] = (await db.execute(sql`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'users'
+          AND column_name IN ('emailHash','emailDomain','tokenVersion','emailVerifiedAt','twoFactorEnabled')
+      `)) as unknown as [Array<{ column_name: string }>, unknown];
+      const existing = new Set((cols as Array<{ column_name: string }>).map((r) => r.column_name));
+
+      for (const [col, ddl] of [
+        ["emailHash", sql`ALTER TABLE users ADD COLUMN emailHash varchar(64)`],
+        ["emailDomain", sql`ALTER TABLE users ADD COLUMN emailDomain varchar(255)`],
+        ["tokenVersion", sql`ALTER TABLE users ADD COLUMN tokenVersion int NOT NULL DEFAULT 0`],
+        ["emailVerifiedAt", sql`ALTER TABLE users ADD COLUMN emailVerifiedAt timestamp NULL`],
+        ["twoFactorEnabled", sql`ALTER TABLE users ADD COLUMN twoFactorEnabled tinyint(1) NOT NULL DEFAULT 0`],
+      ] as const) {
+        if (!existing.has(col)) {
+          try { await db.execute(ddl); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
+        }
+      }
+      if (!existing.has("emailHash")) {
+        try { await db.execute(sql`ALTER TABLE users ADD UNIQUE INDEX uq_users_emailHash (emailHash)`); } catch { /* já existe */ }
+      }
+      // Contas que já existiam quando a coluna foi criada entram como verificadas.
+      if (!existing.has("emailVerifiedAt")) {
+        try { await db.execute(sql`UPDATE users SET emailVerifiedAt = NOW() WHERE emailVerifiedAt IS NULL`); } catch { /* ignore */ }
+      }
+    })().catch((e) => { _userSecurityColumnsReady = null; throw e; });
+  }
+  await _userSecurityColumnsReady;
+}
+
+// ─── Users — helpers de criptografia de campos ───────────────────────────────
+
+function emailDomainOf(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const at = email.lastIndexOf("@");
+  if (at < 0) return null;
+  return email.slice(at + 1).trim().toLowerCase() || null;
+}
+
+/** Decifra name/email de uma linha de user vinda do banco (in-place num clone). */
+function decryptUserRow<T extends Record<string, unknown> | undefined | null>(row: T): T {
+  if (!row) return row;
+  return {
+    ...row,
+    name: decryptField((row as Record<string, unknown>).name as string | null),
+    email: decryptField((row as Record<string, unknown>).email as string | null),
+  } as T;
+}
+
+/**
+ * Aplica cifra em name/email e deriva emailHash + emailDomain num objeto de
+ * escrita (insert/update). Não toca em campos ausentes.
+ */
+function encryptUserWrite<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  if ("email" in out) {
+    const plain = out.email == null ? null : String(out.email);
+    out.email = encryptField(plain);
+    out.emailHash = plain ? blindIndex(plain) : null;
+    out.emailDomain = emailDomainOf(plain);
+  }
+  if ("name" in out && out.name != null) {
+    out.name = encryptField(String(out.name));
+  }
+  return out as T;
+}
+
+// ─── Tokens OAuth — cifra em repouso ────────────────────────────────────────
+// accessToken / refreshToken das tabelas *_connections passam a guardar
+// ciphertext. Leitura retrocompatível (valores sem prefixo passam direto).
+
+function decryptTokenRow<T extends Record<string, unknown> | null | undefined>(row: T): T {
+  if (!row) return row;
+  const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+  if ("accessToken" in out) out.accessToken = decryptField(out.accessToken as string | null);
+  if ("userAccessToken" in out) out.userAccessToken = decryptField(out.userAccessToken as string | null);
+  if ("refreshToken" in out) out.refreshToken = decryptField(out.refreshToken as string | null);
+  return out as T;
+}
+
+function encryptTokenWrite<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  if ("accessToken" in out) out.accessToken = encryptField(out.accessToken as string | null | undefined);
+  if ("userAccessToken" in out) out.userAccessToken = encryptField(out.userAccessToken as string | null | undefined);
+  if ("refreshToken" in out) out.refreshToken = encryptField(out.refreshToken as string | null | undefined);
+  return out as T;
+}
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) { console.warn("[Database] Cannot upsert user: database not available"); return; }
+
+  await ensureUserSecurityColumns();
 
   try {
     const values: InsertUser = { openId: user.openId };
@@ -539,8 +649,20 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     const assignNullable = (field: TextField) => {
       const value = user[field];
       if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
+      let normalized: string | null = (value ?? null) as string | null;
+      if (field === "email") {
+        const plainEmail = normalized;
+        const emailHash = plainEmail ? blindIndex(plainEmail) : null;
+        const emailDomain = emailDomainOf(plainEmail);
+        normalized = encryptField(plainEmail);
+        (values as Record<string, unknown>).emailHash = emailHash;
+        updateSet.emailHash = emailHash;
+        (values as Record<string, unknown>).emailDomain = emailDomain;
+        updateSet.emailDomain = emailDomain;
+      } else if (field === "name") {
+        normalized = encryptField(normalized);
+      }
+      (values as Record<string, unknown>)[field] = normalized;
       updateSet[field] = normalized;
     };
     textFields.forEach(assignNullable);
@@ -566,22 +688,28 @@ export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result.length > 0 ? decryptUserRow(result[0]) : undefined;
 }
 
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result.length > 0 ? decryptUserRow(result[0]) : undefined;
 }
 
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
   await ensureUserExtraColumns();
-  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  await ensureUserSecurityColumns();
+  // Busca pelo blind index. Fallback pro e-mail em texto puro cobre a janela
+  // entre o deploy do código e o backfill (scripts/encrypt-existing-data.mjs).
+  let result = await db.select().from(users).where(eq(users.emailHash, blindIndex(email))).limit(1);
+  if (result.length === 0) {
+    result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  }
+  return result.length > 0 ? decryptUserRow(result[0]) : undefined;
 }
 
 export async function getUserByOpenIdWithActiveCheck(openId: string) {
@@ -594,13 +722,209 @@ export async function getUserByOpenIdWithActiveCheck(openId: string) {
   // isActive defaults to true for rows that pre-date the column
   const isActive = (user as unknown as { isActive?: number | boolean }).isActive;
   if (isActive === 0 || isActive === false) return null; // null = found but inactive
-  return user;
+  return decryptUserRow(user);
 }
 
 export async function setUserRole(id: number, role: "user" | "admin") {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ role }).where(eq(users.id, id));
+}
+
+export async function updateUserPassword(id: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ passwordHash }).where(eq(users.id, id));
+}
+
+// Invalida todas as sessões emitidas até agora para este usuário.
+export async function bumpUserTokenVersion(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserSecurityColumns();
+  await db.execute(sql`UPDATE users SET tokenVersion = tokenVersion + 1 WHERE id = ${id}`);
+}
+
+export async function markEmailVerified(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserSecurityColumns();
+  await db.execute(sql`UPDATE users SET emailVerifiedAt = NOW() WHERE id = ${id} AND emailVerifiedAt IS NULL`);
+}
+
+export async function setTwoFactorEnabled(id: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await ensureUserSecurityColumns();
+  await db.execute(sql`UPDATE users SET twoFactorEnabled = ${enabled ? 1 : 0} WHERE id = ${id}`);
+}
+
+// ─── Audit log ───────────────────────────────────────────────────────────────
+
+let _auditLogTableReady: Promise<void> | null = null;
+async function ensureAuditLogTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_auditLogTableReady) {
+    _auditLogTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`audit_log\` (
+          \`id\`           int AUTO_INCREMENT PRIMARY KEY,
+          \`actorUserId\`  int,
+          \`targetUserId\` int,
+          \`action\`       varchar(64) NOT NULL,
+          \`targetType\`   varchar(32),
+          \`targetId\`     varchar(64),
+          \`ip\`           varchar(64),
+          \`userAgent\`    varchar(255),
+          \`metadata\`     json,
+          \`createdAt\`    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX \`idx_audit_log_actor\` (\`actorUserId\`),
+          INDEX \`idx_audit_log_action\` (\`action\`)
+        )
+      `);
+    })().catch((e) => { _auditLogTableReady = null; throw e; });
+  }
+  await _auditLogTableReady;
+}
+
+/** Registra uma ação sensível. Best-effort: nunca lança. */
+export async function recordAudit(entry: Omit<InsertAuditLog, "id" | "createdAt">): Promise<void> {
+  try {
+    await ensureAuditLogTable();
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(auditLog).values({
+      ...entry,
+      userAgent: entry.userAgent ? String(entry.userAgent).slice(0, 255) : null,
+    });
+  } catch (e) {
+    console.warn("[audit] falha ao registrar:", String(e).slice(0, 200));
+  }
+}
+
+export async function getAuditLog(limit = 200): Promise<AuditLog[]> {
+  await ensureAuditLogTable();
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit);
+}
+
+// ─── Email tokens (verify / reset / 2fa) ─────────────────────────────────────
+
+let _emailTokensTableReady: Promise<void> | null = null;
+async function ensureEmailTokensTable() {
+  const db = await getDb();
+  if (!db) return;
+  if (!_emailTokensTableReady) {
+    _emailTokensTableReady = (async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS \`email_tokens\` (
+          \`id\`         int AUTO_INCREMENT PRIMARY KEY,
+          \`userId\`     int NOT NULL,
+          \`type\`       enum('verify','reset','2fa') NOT NULL,
+          \`tokenHash\`  varchar(64) NOT NULL,
+          \`expiresAt\`  timestamp NOT NULL,
+          \`consumedAt\` timestamp NULL,
+          \`attempts\`   int NOT NULL DEFAULT 0,
+          \`createdAt\`  timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX \`idx_email_tokens_user_type\` (\`userId\`, \`type\`),
+          INDEX \`idx_email_tokens_hash\` (\`tokenHash\`)
+        )
+      `);
+    })().catch((e) => { _emailTokensTableReady = null; throw e; });
+  }
+  await _emailTokensTableReady;
+}
+
+export function hashToken(raw: string): string {
+  return createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+type EmailTokenType = "verify" | "reset" | "2fa";
+
+/**
+ * Cria um token de e-mail. `raw` é o valor cru (link ou código); só o hash é
+ * guardado. Invalida tokens anteriores não consumidos do mesmo tipo.
+ */
+export async function createEmailToken(
+  userId: number,
+  type: EmailTokenType,
+  raw: string,
+  ttlMs: number
+): Promise<void> {
+  await ensureEmailTokensTable();
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(emailTokens)
+    .set({ consumedAt: new Date() })
+    .where(and(eq(emailTokens.userId, userId), eq(emailTokens.type, type), isNull(emailTokens.consumedAt)));
+  await db.insert(emailTokens).values({
+    userId,
+    type,
+    tokenHash: hashToken(raw),
+    expiresAt: new Date(Date.now() + ttlMs),
+  });
+}
+
+/** Retorna o token válido (não consumido, não expirado) sem consumi-lo. */
+export async function peekEmailToken(type: EmailTokenType, raw: string): Promise<EmailToken | null> {
+  await ensureEmailTokensTable();
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(emailTokens)
+    .where(and(
+      eq(emailTokens.type, type),
+      eq(emailTokens.tokenHash, hashToken(raw)),
+      isNull(emailTokens.consumedAt),
+    ))
+    .limit(1);
+  if (!row) return null;
+  if (row.expiresAt.getTime() < Date.now()) return null;
+  return row;
+}
+
+export async function consumeEmailTokenById(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailTokens).set({ consumedAt: new Date() }).where(eq(emailTokens.id, id));
+}
+
+export async function getEmailTokenById(id: number): Promise<EmailToken | null> {
+  await ensureEmailTokensTable();
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(emailTokens).where(eq(emailTokens.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function incrementEmailTokenAttempts(id: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await db.execute(sql`UPDATE email_tokens SET attempts = attempts + 1 WHERE id = ${id}`);
+  const [row] = await db.select({ attempts: emailTokens.attempts }).from(emailTokens).where(eq(emailTokens.id, id)).limit(1);
+  return row?.attempts ?? 0;
+}
+
+/** Busca um token 2fa/reset ativo pelo id do usuário (fluxo por código). */
+export async function getActiveEmailTokenForUser(userId: number, type: EmailTokenType): Promise<EmailToken | null> {
+  await ensureEmailTokensTable();
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(emailTokens)
+    .where(and(eq(emailTokens.userId, userId), eq(emailTokens.type, type), isNull(emailTokens.consumedAt)))
+    .orderBy(desc(emailTokens.createdAt))
+    .limit(1);
+  if (!row || row.expiresAt.getTime() < Date.now()) return null;
+  return row;
+}
+
+export function generateRawToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function generateNumericCode(digits = 6): string {
+  return String(randomInt(0, 10 ** digits)).padStart(digits, "0");
 }
 
 // Backfill legacy accounts (trialExpiresAt IS NULL, plan='free', not admin) with a 7-day trial from now.
@@ -643,7 +967,8 @@ export async function deleteUserById(id: number) {
 export async function getTeamMembers(ownerId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).where(eq(users.companyOwnerId, ownerId)).orderBy(asc(users.createdAt));
+  const rows = await db.select().from(users).where(eq(users.companyOwnerId, ownerId)).orderBy(asc(users.createdAt));
+  return rows.map((r) => decryptUserRow(r));
 }
 
 export async function createTeamMember(
@@ -652,19 +977,20 @@ export async function createTeamMember(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await ensureUserSecurityColumns();
   const passwordHash = await hashPassword(data.password);
   const openId = `local_${nanoid()}`;
-  await db.insert(users).values({
+  await db.insert(users).values(encryptUserWrite({
     openId,
     name: data.name,
     email: data.email,
     loginMethod: "email",
     passwordHash,
     companyOwnerId: ownerId,
-  });
+  }));
   const [member] = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   if (!member) throw new Error("Falha ao criar membro da equipe");
-  return member;
+  return decryptUserRow(member);
 }
 
 async function assertOwnsTeamMember(ownerId: number, memberId: number): Promise<void> {
@@ -689,7 +1015,7 @@ export async function listAllUsers() {
   if (!db) return [];
   await ensureUserExtraColumns();
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
-  return rows.map((u) => ({
+  return rows.map((u) => decryptUserRow(u)).map((u) => ({
     ...u,
     plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
     isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
@@ -729,7 +1055,7 @@ export async function listUsersWithStats() {
   const posts = toMap(postCounts as unknown as CountRow[]);
   const chats = toMap(chatCounts as unknown as CountRow[]);
 
-  return rows.map((u) => ({
+  return rows.map((u) => decryptUserRow(u)).map((u) => ({
     ...u,
     plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
     isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
@@ -778,7 +1104,9 @@ export async function updateConversationTitle(id: number, userId: number, title:
 export async function deleteConversation(id: number, userId: number) {
   const db = await getDb();
   if (!db) return;
-  await db.delete(chatMessages).where(eq(chatMessages.conversationId, id));
+  await db.delete(chatMessages).where(
+    and(eq(chatMessages.conversationId, id), eq(chatMessages.userId, userId))
+  );
   await db.delete(chatConversations).where(
     and(eq(chatConversations.id, id), eq(chatConversations.userId, userId))
   );
@@ -787,9 +1115,10 @@ export async function deleteConversation(id: number, userId: number) {
 export async function getMessages(conversationId: number, userId: number): Promise<ChatMessage[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(chatMessages)
+  const rows = await db.select().from(chatMessages)
     .where(and(eq(chatMessages.conversationId, conversationId), eq(chatMessages.userId, userId)))
     .orderBy(chatMessages.createdAt);
+  return rows.map((m) => ({ ...m, content: decryptField(m.content) ?? "" }));
 }
 
 export async function addMessage(
@@ -800,13 +1129,17 @@ export async function addMessage(
 ): Promise<ChatMessage> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(chatMessages).values({ conversationId, userId, role, content });
+  const [owned] = await db.select({ id: chatConversations.id }).from(chatConversations)
+    .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.userId, userId)))
+    .limit(1);
+  if (!owned) throw new Error("Conversation not found");
+  const [result] = await db.insert(chatMessages).values({ conversationId, userId, role, content: encryptField(content) });
   // Update conversation updatedAt
   await db.update(chatConversations).set({ updatedAt: new Date() })
-    .where(eq(chatConversations.id, conversationId));
+    .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.userId, userId)));
   const created = await db.select().from(chatMessages)
     .where(eq(chatMessages.id, insertId(result))).limit(1);
-  return created[0];
+  return { ...created[0], content: decryptField(created[0].content) ?? "" };
 }
 
 export async function getChatCount(userId: number): Promise<number> {
@@ -920,13 +1253,32 @@ async function ensureArticlesTable() {
   await _articlesTableReady;
 }
 
+// Campos de texto longo de artigos guardam ciphertext ("enc:v1:..."). Decifra
+// in-place (a linha vem fresca do drizzle, mutação é segura).
+function decryptArticleRow<T extends Record<string, unknown> | undefined>(row: T): T {
+  if (!row) return row;
+  const r = row as Record<string, unknown>;
+  r.content = decryptField(r.content as string | null) ?? "";
+  r.summary = decryptField(r.summary as string | null);
+  r.topic = decryptField(r.topic as string | null);
+  return row;
+}
+function encryptArticleWrite<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  if ("content" in out) out.content = encryptField(out.content as string | null | undefined);
+  if ("summary" in out) out.summary = encryptField(out.summary as string | null | undefined);
+  if ("topic" in out) out.topic = encryptField(out.topic as string | null | undefined);
+  return out as T;
+}
+
 export async function getArticles(userId: number): Promise<Article[]> {
   await ensureArticlesTable();
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(articles)
+  const rows = await db.select().from(articles)
     .where(eq(articles.userId, userId))
     .orderBy(desc(articles.createdAt));
+  return rows.map((r) => decryptArticleRow(r));
 }
 
 export async function getArticle(id: number, userId: number): Promise<Article | undefined> {
@@ -935,7 +1287,7 @@ export async function getArticle(id: number, userId: number): Promise<Article | 
   if (!db) return undefined;
   const result = await db.select().from(articles)
     .where(and(eq(articles.id, id), eq(articles.userId, userId))).limit(1);
-  return result[0];
+  return decryptArticleRow(result[0]);
 }
 
 export async function saveArticle(
@@ -955,10 +1307,10 @@ export async function saveArticle(
   await ensureArticlesTable();
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(articles).values({ userId, ...data });
+  const [result] = await db.insert(articles).values(encryptArticleWrite({ userId, ...data }));
   const created = await db.select().from(articles)
     .where(eq(articles.id, insertId(result))).limit(1);
-  return created[0];
+  return decryptArticleRow(created[0])!;
 }
 
 export async function updateArticle(
@@ -973,7 +1325,7 @@ export async function updateArticle(
 ) {
   const db = await getDb();
   if (!db) return;
-  await db.update(articles).set(data).where(
+  await db.update(articles).set(encryptArticleWrite(data)).where(
     and(eq(articles.id, id), eq(articles.userId, userId))
   );
 }
@@ -1342,6 +1694,7 @@ export async function updateSocialPost(
     contentType: string | null;
     contentId: number | null;
     storyData: string | null;
+    retryCount: number;
   }>
 ) {
   const db = await getDb();
@@ -1443,6 +1796,10 @@ async function ensureInstagramConnectionsColumns(): Promise<void> {
         `);
         console.log("[DB] Added tokenSource column to instagram_connections");
       }
+      if (!existing.has("userAccessToken")) {
+        await db.execute(sql`ALTER TABLE \`instagram_connections\` ADD COLUMN \`userAccessToken\` text`);
+        console.log("[DB] Added userAccessToken column to instagram_connections");
+      }
     })();
   }
   return _igConnectionsReady;
@@ -1453,7 +1810,7 @@ export async function getInstagramConnection(userId: number): Promise<InstagramC
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.userId, userId));
-  return row ?? null;
+  return row ? decryptTokenRow(row) : null;
 }
 
 export async function getInstagramConnectionByIgId(igAccountId: string): Promise<InstagramConnection | null> {
@@ -1461,7 +1818,7 @@ export async function getInstagramConnectionByIgId(igAccountId: string): Promise
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.instagramAccountId, igAccountId));
-  return row ?? null;
+  return row ? decryptTokenRow(row) : null;
 }
 
 export async function upsertInstagramConnection(data: InsertInstagramConnection): Promise<void> {
@@ -1471,22 +1828,23 @@ export async function upsertInstagramConnection(data: InsertInstagramConnection)
   const existing = await getInstagramConnection(data.userId);
   if (existing) {
     await db.update(instagramConnections)
-      .set({
+      .set(encryptTokenWrite({
         instagramAccountId: data.instagramAccountId,
         facebookPageId: data.facebookPageId ?? null,
         username: data.username,
         name: data.name,
         profilePictureUrl: data.profilePictureUrl,
         accessToken: data.accessToken,
+        userAccessToken: data.userAccessToken,
         tokenExpiresAt: data.tokenExpiresAt,
         tokenSource: data.tokenSource ?? "facebook",
-      })
+      }))
       .where(eq(instagramConnections.userId, data.userId));
   } else {
-    await db.insert(instagramConnections).values({
+    await db.insert(instagramConnections).values(encryptTokenWrite({
       ...data,
       tokenSource: data.tokenSource ?? "facebook",
-    });
+    }));
   }
 }
 
@@ -1531,7 +1889,7 @@ export async function getCanvaConnection(userId: number): Promise<CanvaConnectio
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(canvaConnections).where(eq(canvaConnections.userId, userId));
-    return row ?? null;
+    return row ? decryptTokenRow(row) : null;
   } catch {
     return null;
   }
@@ -1544,7 +1902,7 @@ export async function upsertCanvaConnection(data: InsertCanvaConnection): Promis
   const existing = await getCanvaConnection(data.userId);
   if (existing) {
     await db.update(canvaConnections)
-      .set({
+      .set(encryptTokenWrite({
         canvaUserId: data.canvaUserId,
         displayName: data.displayName,
         email: data.email,
@@ -1552,10 +1910,10 @@ export async function upsertCanvaConnection(data: InsertCanvaConnection): Promis
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         tokenExpiresAt: data.tokenExpiresAt,
-      })
+      }))
       .where(eq(canvaConnections.userId, data.userId));
   } else {
-    await db.insert(canvaConnections).values(data);
+    await db.insert(canvaConnections).values(encryptTokenWrite({ ...data }));
   }
 }
 
@@ -1606,7 +1964,7 @@ export async function getLinkedInConnection(userId: number): Promise<LinkedInCon
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(linkedinConnections).where(eq(linkedinConnections.userId, userId));
-    return row ?? null;
+    return row ? decryptTokenRow(row) : null;
   } catch {
     return null;
   }
@@ -1619,7 +1977,7 @@ export async function upsertLinkedInConnection(data: InsertLinkedInConnection): 
   const existing = await getLinkedInConnection(data.userId);
   if (existing) {
     await db.update(linkedinConnections)
-      .set({
+      .set(encryptTokenWrite({
         linkedinMemberId: data.linkedinMemberId,
         authorUrn: data.authorUrn,
         name: data.name,
@@ -1628,10 +1986,10 @@ export async function upsertLinkedInConnection(data: InsertLinkedInConnection): 
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         tokenExpiresAt: data.tokenExpiresAt,
-      })
+      }))
       .where(eq(linkedinConnections.userId, data.userId));
   } else {
-    await db.insert(linkedinConnections).values(data);
+    await db.insert(linkedinConnections).values(encryptTokenWrite({ ...data }));
   }
 }
 
@@ -1749,7 +2107,7 @@ export async function getSearchConsoleConnection(userId: number): Promise<Search
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(searchConsoleConnections).where(eq(searchConsoleConnections.userId, userId));
-    return row ?? null;
+    return row ? decryptTokenRow(row) : null;
   } catch {
     return null;
   }
@@ -1762,16 +2120,16 @@ export async function upsertSearchConsoleConnection(data: InsertSearchConsoleCon
   const existing = await getSearchConsoleConnection(data.userId);
   if (existing) {
     await db.update(searchConsoleConnections)
-      .set({
+      .set(encryptTokenWrite({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken ?? existing.refreshToken,
         tokenExpiresAt: data.tokenExpiresAt,
         selectedSiteUrl: data.selectedSiteUrl ?? existing.selectedSiteUrl,
         availableSites: data.availableSites ?? existing.availableSites,
-      })
+      }))
       .where(eq(searchConsoleConnections.userId, data.userId));
   } else {
-    await db.insert(searchConsoleConnections).values(data);
+    await db.insert(searchConsoleConnections).values(encryptTokenWrite({ ...data }));
   }
 }
 
@@ -1792,7 +2150,7 @@ export async function updateSearchConsoleTokens(
   const db = await getDb();
   if (!db) return;
   await db.update(searchConsoleConnections)
-    .set({ accessToken: data.accessToken, tokenExpiresAt: data.tokenExpiresAt })
+    .set({ accessToken: encryptField(data.accessToken), tokenExpiresAt: data.tokenExpiresAt })
     .where(eq(searchConsoleConnections.userId, userId));
 }
 
@@ -2221,6 +2579,8 @@ async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_name\` VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario'`).catch(() => {});
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_language\` VARCHAR(20) NOT NULL DEFAULT 'pt_BR'`).catch(() => {});
       await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`reply_webhook_url\` VARCHAR(500) NULL`).catch(() => {});
+      // Guarda ciphertext ("enc:v1:...") — precisa de mais espaço que a URL crua.
+      await db.execute(sql`ALTER TABLE \`user_digest_settings\` MODIFY COLUMN \`reply_webhook_url\` TEXT NULL`).catch(() => {});
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
           \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
@@ -2279,7 +2639,7 @@ export async function getUserDigestSettings(userId: number): Promise<DigestSetti
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
     templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
     templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
-    replyWebhookUrl: row.reply_webhook_url ? String(row.reply_webhook_url) : null,
+    replyWebhookUrl: row.reply_webhook_url ? decryptField(String(row.reply_webhook_url)) : null,
   };
 }
 
@@ -2292,7 +2652,7 @@ export async function upsertDigestSettings(
   await ensureDigestTables(db);
   const tplName = data.templateName ?? "envio_de_noticias_diario";
   const tplLang = data.templateLanguage ?? "pt_BR";
-  const webhookUrl = data.replyWebhookUrl ?? null;
+  const webhookUrl = encryptField(data.replyWebhookUrl ?? null);
   await db.execute(sql`
     INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled, template_name, template_language, reply_webhook_url)
     VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0}, ${tplName}, ${tplLang}, ${webhookUrl})
@@ -2336,7 +2696,7 @@ export async function getAllEnabledDigestSettings(): Promise<DigestSettings[]> {
     lastSentDate: row.last_sent_date ? String(row.last_sent_date) : null,
     templateName: row.template_name ? String(row.template_name) : "envio_de_noticias_diario",
     templateLanguage: row.template_language ? String(row.template_language) : "pt_BR",
-    replyWebhookUrl: row.reply_webhook_url ? String(row.reply_webhook_url) : null,
+    replyWebhookUrl: row.reply_webhook_url ? decryptField(String(row.reply_webhook_url)) : null,
   }));
 }
 
@@ -2829,8 +3189,41 @@ export async function getAllInstagramConnections(): Promise<Array<{ userId: numb
   return (rows[0] as unknown as Array<Record<string, unknown>>).map((r) => ({
     userId: Number(r.userId),
     instagramAccountId: String(r.instagramAccountId),
-    accessToken: String(r.accessToken),
+    accessToken: decryptField(String(r.accessToken)) ?? "",
   }));
+}
+
+export async function getInstagramConnectionsExpiringBefore(
+  cutoff: Date
+): Promise<Array<{ userId: number; username: string | null; accessToken: string; tokenSource: string; tokenExpiresAt: Date | null }>> {
+  await ensureInstagramConnectionsColumns();
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    userId: instagramConnections.userId,
+    username: instagramConnections.username,
+    accessToken: instagramConnections.accessToken,
+    tokenSource: instagramConnections.tokenSource,
+    tokenExpiresAt: instagramConnections.tokenExpiresAt,
+  }).from(instagramConnections)
+    .where(lte(instagramConnections.tokenExpiresAt, cutoff));
+  return rows.map((r) => ({
+    ...r,
+    accessToken: decryptField(r.accessToken) ?? "",
+    tokenSource: r.tokenSource ?? "facebook",
+  }));
+}
+
+export async function updateInstagramConnectionToken(
+  userId: number,
+  accessToken: string,
+  tokenExpiresAt: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(instagramConnections)
+    .set({ accessToken: encryptField(accessToken), tokenExpiresAt })
+    .where(eq(instagramConnections.userId, userId));
 }
 
 // ─── Comment Automations (Comment-to-DM) ─────────────────────────────────────

@@ -23,6 +23,8 @@ export function useAuth(options?: UseAuthOptions) {
     },
   });
 
+  const logoutAllDevicesMutation = trpc.auth.logoutAllDevices.useMutation();
+
   const logout = useCallback(async () => {
     try {
       await logoutMutation.mutateAsync();
@@ -75,9 +77,15 @@ export function useAuth(options?: UseAuthOptions) {
     state.user,
   ]);
 
+  const logoutAllDevices = useCallback(
+    () => logoutAllDevicesMutation.mutateAsync(),
+    [logoutAllDevicesMutation]
+  );
+
   return {
     ...state,
     refresh: () => meQuery.refetch(),
     logout,
+    logoutAllDevices,
   };
 }

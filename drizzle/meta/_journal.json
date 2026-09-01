@@ -141,6 +141,34 @@
       "when": 1787443200000,
       "tag": "0019_team_members",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1787529600000,
+      "tag": "0020_security_encryption",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1787616000000,
+      "tag": "0021_session_and_account_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1787702400000,
+      "tag": "0022_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1787788800000,
+      "tag": "0023_email_tokens",
+      "breakpoints": true
     }
   ]
 }

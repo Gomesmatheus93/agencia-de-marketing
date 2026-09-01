@@ -32,6 +32,12 @@ import Onboarding from "./pages/Onboarding";
 import ArtStudio from "./pages/ArtStudio";
 import Approve from "./pages/Approve";
 import Team from "./pages/Team";
+import VerifyEmail from "./pages/VerifyEmail";
+import VerifyEmailPending from "./pages/VerifyEmailPending";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import AccountSecurity from "./pages/AccountSecurity";
+import PaidTraffic from "./pages/PaidTraffic";
 
 function AppRoutes() {
   return (
@@ -39,6 +45,10 @@ function AppRoutes() {
       <Route path="/" component={Login} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Login} />
+      <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/verify-email-pending" component={VerifyEmailPending} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/dashboard/chat" component={Chat} />
       <Route path="/dashboard/images" component={Images} />
@@ -59,11 +69,13 @@ function AppRoutes() {
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
       <Route path="/dashboard/campaign" component={Campaign} />
+      <Route path="/dashboard/paid-traffic" component={PaidTraffic} />
       <Route path="/dashboard/report" component={Report} />
       <Route path="/dashboard/email-marketing" component={EmailMarketing} />
       <Route path="/dashboard/onboarding" component={Onboarding} />
       <Route path="/dashboard/artes" component={ArtStudio} />
       <Route path="/dashboard/team" component={Team} />
+      <Route path="/dashboard/security" component={AccountSecurity} />
       <Route path="/aprovar/:token" component={Approve} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/404" component={NotFound} />

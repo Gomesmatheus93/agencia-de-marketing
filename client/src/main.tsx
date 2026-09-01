@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { UNAUTHED_ERR_MSG } from '@shared/const';
+import { EMAIL_UNVERIFIED_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -17,6 +17,14 @@ const PUBLIC_PATHS = ["/app/login", "/app/register"];
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
+
+  // E-mail não confirmado → tela de "confirme seu e-mail".
+  if (error.message === EMAIL_UNVERIFIED_ERR_MSG) {
+    if (window.location.pathname !== "/app/verify-email-pending") {
+      window.location.href = "/app/verify-email-pending";
+    }
+    return;
+  }
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 
@@ -42,16 +50,54 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+function readCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)app_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+// Renova o access token (via refresh cookie) no máximo uma vez por rajada de 401s.
+let refreshPromise: Promise<boolean> | null = null;
+
+function tryRefreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = globalThis
+      .fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": readCsrfToken() },
+        credentials: "include",
+        body: "{}",
+      })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        // Deixa a promise disponível por um instante para deduplicar a rajada,
+        // depois limpa para permitir um novo refresh no futuro.
+        setTimeout(() => { refreshPromise = null; }, 500);
+      });
+  }
+  return refreshPromise;
+}
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
+      async fetch(input, init) {
+        const doFetch = () =>
+          globalThis.fetch(input, {
+            ...(init ?? {}),
+            credentials: "include",
+            headers: { ...(init?.headers ?? {}), "x-csrf-token": readCsrfToken() },
+          });
+
+        let res = await doFetch();
+        // 401 numa rota autenticada → tenta renovar a sessão e repetir 1x.
+        if (res.status === 401) {
+          const refreshed = await tryRefreshSession();
+          if (refreshed) res = await doFetch();
+        }
+        return res;
       },
     }),
   ],

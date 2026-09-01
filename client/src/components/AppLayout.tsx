@@ -39,6 +39,7 @@ import {
   ChevronsUpDown,
   Check,
   Users,
+  MousePointerClick,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -75,6 +76,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const, group: "growth" as const },
   { id: "seo", icon: Search, path: "/dashboard/seo", color: "from-cyan-500 to-blue-600", labelKey: "seo" as const, descKey: "seoDesc" as const, group: "growth" as const },
   { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-orange-500 to-red-500", labelKey: "campaign" as const, descKey: "campaignDesc" as const, group: "growth" as const },
+  { id: "paidTraffic", icon: MousePointerClick, path: "/dashboard/paid-traffic", color: "from-blue-500 to-indigo-600", labelKey: "paidTraffic" as const, descKey: "paidTrafficDesc" as const, group: "growth" as const },
   { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const, group: "growth" as const },
 ];
 
@@ -512,6 +514,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="gap-2">
               <Settings className="w-4 h-4" />
               {t("settings")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/dashboard/security")} className="gap-2">
+              <Lock className="w-4 h-4" />
+              Segurança
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

@@ -1,4 +1,4 @@
-import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
+import { EMAIL_UNVERIFIED_ERR_MSG, NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
@@ -102,10 +102,30 @@ const aiRateLimit = t.middleware(async ({ ctx, next }) => {
   return next();
 });
 
-export const protectedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
-export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
-// 5 attempts per 15 minutes per IP — for login/register (must stay IP-based)
-export const publicRateLimitedProcedure = t.procedure.use(withIpRateLimit(5, 15 * 60_000));
+// Bloqueia contas de e-mail/senha que ainda não confirmaram o e-mail.
+// Contas existentes antes do rollout foram marcadas como verificadas (backfill),
+// e logins OAuth (Instagram) entram já verificados. O cliente reconhece o
+// `code: "FORBIDDEN"` + a flag `emailUnverified` para mostrar a tela de verificação.
+const requireVerifiedEmail = t.middleware(async ({ ctx, next }) => {
+  const u = ctx.actualUser as (typeof ctx.actualUser & { emailVerifiedAt?: Date | null }) | null;
+  const isEmailAccount = !!u && (u.loginMethod === "email" || !!u.passwordHash);
+  if (isEmailAccount && !u!.emailVerifiedAt) {
+    throw new TRPCError({ code: "FORBIDDEN", message: EMAIL_UNVERIFIED_ERR_MSG });
+  }
+  return next();
+});
+
+// requireUser + rate limit, SEM o gate de verificação de e-mail — para os
+// endpoints de gestão de conta (reenviar verificação, etc).
+export const authedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
+
+export const protectedProcedure = authedProcedure.use(requireVerifiedEmail);
+export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit).use(requireVerifiedEmail);
+// 10 requests per 15 minutes per IP — para login/registro/verificação/reset/2FA.
+// O brute-force de senha em si tem proteção dedicada (server/_core/loginGuard.ts:
+// 5 falhas por e-mail+IP), então este limite de IP pode ser um pouco mais folgado
+// para não travar um fluxo legítimo de login + código 2FA.
+export const publicRateLimitedProcedure = t.procedure.use(withIpRateLimit(10, 15 * 60_000));
 // 30 requests per 15 minutes per IP — for the client-facing approval page
 // (view + respond). Much more lenient than login: a real client opening the
 // link, reading the content and clicking approve/comment easily needs more
@@ -116,7 +136,11 @@ export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || ctx.user.role !== 'admin') {
+    // Admin authority must come from the identity that actually logged in,
+    // never from ctx.user (which resolves to the company owner for an
+    // employee sub-account) — otherwise any employee added under an admin
+    // account would silently inherit full platform-admin rights.
+    if (!ctx.user || !ctx.actualUser || ctx.actualUser.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 

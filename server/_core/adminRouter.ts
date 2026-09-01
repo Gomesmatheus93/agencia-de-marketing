@@ -61,6 +61,10 @@ export const adminRouter = router({
     return rows.map(({ passwordHash: _ph, ...u }) => u);
   }),
 
+  auditLog: ownerProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(500).optional() }).optional())
+    .query(async ({ input }) => db.getAuditLog(input?.limit ?? 200)),
+
   setUserRole: ownerProcedure
     .input(z.object({ id: z.number(), role: z.enum(["user", "admin"]) }))
     .mutation(async ({ input, ctx }) => {
@@ -68,13 +72,16 @@ export const adminRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Você não pode alterar sua própria função." });
       }
       await db.setUserRole(input.id, input.role);
+      await db.bumpUserTokenVersion(input.id); // troca de permissão derruba sessões antigas
+      await db.recordAudit({ action: "admin.set_role", actorUserId: ctx.user.id, targetUserId: input.id, ip: ctx.req.ip ?? null, metadata: { role: input.role } });
       return { success: true };
     }),
 
   setUserPlan: ownerProcedure
     .input(z.object({ id: z.number(), plan: z.enum(["free", "pro", "agency"]) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       await db.setUserPlan(input.id, input.plan);
+      await db.recordAudit({ action: "admin.set_plan", actorUserId: ctx.user.id, targetUserId: input.id, ip: ctx.req.ip ?? null, metadata: { plan: input.plan } });
       return { success: true };
     }),
 
@@ -85,6 +92,7 @@ export const adminRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Você não pode desativar sua própria conta." });
       }
       await db.setUserActive(input.id, input.isActive);
+      await db.recordAudit({ action: input.isActive ? "admin.reactivate" : "admin.deactivate", actorUserId: ctx.user.id, targetUserId: input.id, ip: ctx.req.ip ?? null });
       return { success: true };
     }),
 
@@ -95,6 +103,7 @@ export const adminRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Você não pode excluir sua própria conta." });
       }
       await db.deleteUserById(input.id);
+      await db.recordAudit({ action: "admin.delete_user", actorUserId: ctx.user.id, targetUserId: input.id, ip: ctx.req.ip ?? null });
       return { success: true };
     }),
 

@@ -4,6 +4,15 @@ export const ENV = {
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",
   isProduction: process.env.NODE_ENV === "production",
+  // Segurança — criptografia de campos em repouso e hash de senha.
+  // Gerar 32 bytes: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  encryptionKey: process.env.ENCRYPTION_KEY ?? "",
+  blindIndexKey: process.env.BLIND_INDEX_KEY ?? "",
+  passwordPepper: process.env.PASSWORD_PEPPER ?? "",
+  // Envio de e-mail (verificação, recuperação de senha, códigos 2FA) via webhook do n8n.
+  n8nEmailWebhookUrl: process.env.N8N_EMAIL_WEBHOOK_URL ?? "",
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
+  emailFrom: process.env.EMAIL_FROM ?? "KrythosLab <no-reply@krythoslab.com>",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiApiBaseUrl: process.env.OPENAI_API_BASE_URL ?? "https://api.openai.com/v1",
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
@@ -85,6 +94,8 @@ const REQUIRED_VARS: Array<{ key: keyof typeof process.env; label: string }> = [
   { key: "DATABASE_URL", label: "DATABASE_URL" },
   { key: "JWT_SECRET", label: "JWT_SECRET" },
   { key: "OPENAI_API_KEY", label: "OPENAI_API_KEY" },
+  { key: "ENCRYPTION_KEY", label: "ENCRYPTION_KEY" },
+  { key: "BLIND_INDEX_KEY", label: "BLIND_INDEX_KEY" },
 ];
 
 export function validateRequiredEnv(): void {
@@ -92,7 +103,14 @@ export function validateRequiredEnv(): void {
   if (missing.length > 0) {
     throw new Error(
       `Variáveis de ambiente obrigatórias ausentes: ${missing.join(", ")}\n` +
-        "Copie o arquivo .env.example para .env e preencha os valores."
+        "Copie o arquivo .env.example para .env e preencha os valores.\n" +
+        'Gere ENCRYPTION_KEY/BLIND_INDEX_KEY com: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"'
     );
+  }
+  if (!process.env.PASSWORD_PEPPER) {
+    console.warn("[env] PASSWORD_PEPPER não configurada — senhas serão hasheadas sem pepper.");
+  }
+  if (!process.env.RESEND_API_KEY && !process.env.N8N_EMAIL_WEBHOOK_URL) {
+    console.warn("[env] RESEND_API_KEY/N8N_EMAIL_WEBHOOK_URL não configurados — e-mails serão apenas logados no console.");
   }
 }

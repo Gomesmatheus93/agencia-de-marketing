@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
-import { COOKIE_NAME } from "../shared/const";
+import { COOKIE_NAME, REFRESH_COOKIE_NAME } from "../shared/const";
 import type { TrpcContext } from "./_core/context";
 import * as db from "./db";
 import { generateCarouselWithAgent } from "./_core/carouselAgent";
@@ -142,6 +142,29 @@ vi.mock("./db", () => ({
   }),
   upsertLinkedInConnection: vi.fn().mockResolvedValue(undefined),
   deleteLinkedInConnection: vi.fn().mockResolvedValue(undefined),
+  recordAudit: vi.fn().mockResolvedValue(undefined),
+  bumpUserTokenVersion: vi.fn().mockResolvedValue(undefined),
+  updateUserPassword: vi.fn().mockResolvedValue(undefined),
+  markEmailVerified: vi.fn().mockResolvedValue(undefined),
+  getUserByEmail: vi.fn().mockResolvedValue(undefined),
+  getUserById: vi.fn().mockResolvedValue({ id: 1, openId: "test-user" }),
+  createEmailToken: vi.fn().mockResolvedValue(undefined),
+  peekEmailToken: vi.fn().mockResolvedValue(null),
+  getEmailTokenById: vi.fn().mockResolvedValue(null),
+  consumeEmailTokenById: vi.fn().mockResolvedValue(undefined),
+  incrementEmailTokenAttempts: vi.fn().mockResolvedValue(1),
+  getActiveEmailTokenForUser: vi.fn().mockResolvedValue(null),
+  setTwoFactorEnabled: vi.fn().mockResolvedValue(undefined),
+  generateRawToken: vi.fn().mockReturnValue("raw-token"),
+  generateNumericCode: vi.fn().mockReturnValue("123456"),
+  hashToken: vi.fn().mockReturnValue("hash"),
+}));
+
+vi.mock("./_core/email", () => ({
+  sendEmail: vi.fn().mockResolvedValue(undefined),
+  verificationEmail: vi.fn().mockReturnValue({ to: "", subject: "s", html: "h" }),
+  passwordResetEmail: vi.fn().mockReturnValue({ to: "", subject: "s", html: "h" }),
+  twoFactorCodeEmail: vi.fn().mockReturnValue({ to: "", subject: "s", html: "h" }),
 }));
 
 // Mock LLM
@@ -319,8 +342,10 @@ describe("auth.logout", () => {
     const caller = appRouter.createCaller(ctx);
     const result = await caller.auth.logout();
     expect(result).toEqual({ success: true });
-    expect(clearedCookies).toHaveLength(1);
-    expect(clearedCookies[0]?.name).toBe(COOKIE_NAME);
+    expect(clearedCookies).toHaveLength(2);
+    expect(clearedCookies.map((c) => c.name)).toEqual(
+      expect.arrayContaining([COOKIE_NAME, REFRESH_COOKIE_NAME])
+    );
     expect(clearedCookies[0]?.options).toMatchObject({ maxAge: -1 });
   });
 

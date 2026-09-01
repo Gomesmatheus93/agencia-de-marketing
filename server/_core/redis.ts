@@ -48,6 +48,40 @@ export async function redisIncrWithTtl(key: string, ttlMs: number): Promise<numb
   }
 }
 
+// INCR sem mexer no TTL — para contadores cuja janela é setada à parte.
+export async function redisIncr(key: string): Promise<number | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  try {
+    return await redis.incr(key);
+  } catch {
+    return null;
+  }
+}
+
+export async function redisGetInt(key: string): Promise<number | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  try {
+    const v = await redis.get(key);
+    return v === null ? null : Number(v);
+  } catch {
+    return null;
+  }
+}
+
+export async function redisPexpire(key: string, ttlMs: number): Promise<void> {
+  const redis = getRedis();
+  if (!redis) return;
+  try { await redis.pexpire(key, ttlMs); } catch { /* ignore */ }
+}
+
+export async function redisDel(...keys: string[]): Promise<void> {
+  const redis = getRedis();
+  if (!redis || keys.length === 0) return;
+  try { await redis.del(...keys); } catch { /* ignore */ }
+}
+
 // Trava distribuída pros schedulers: só a réplica que conseguir o lock roda o
 // ciclo. Sem Redis configurado (ou se o Redis falhar), sempre retorna true —
 // fail-open, porque rodar em duplicidade uma vez é bem menos grave do que

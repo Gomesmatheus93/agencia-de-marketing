@@ -5,10 +5,20 @@ import { getPostSchedulerTimeZone } from "./postScheduling";
 import { acquireSchedulerLock } from "./redis";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MINUTES = [5, 15, 45]; // by retry attempt (0-indexed)
 
 function getPollIntervalMs() {
   const configured = Number(process.env.INSTAGRAM_SCHEDULER_INTERVAL_MS || DEFAULT_POLL_INTERVAL_MS);
   return Number.isFinite(configured) && configured >= 5_000 ? configured : DEFAULT_POLL_INTERVAL_MS;
+}
+
+// Token/permission errors need a manual reconnect (see instagramPostingAgent's
+// TOKEN_EXPIRED_MSG) — retrying those automatically would just fail the same
+// way every time, so only transient errors (rate limits, upload hiccups,
+// container-not-ready) get retried.
+function isAuthError(message: string): boolean {
+  return message.includes("Token do Instagram expirado ou inválido");
 }
 
 async function publishDueInstagramPosts() {
@@ -45,11 +55,26 @@ async function publishDueInstagramPosts() {
       console.error(`${tag} FAILED. ${logMessage}`);
       if (stack) console.error(`${tag} stack: ${stack}`);
 
+      const retryCount = post.retryCount ?? 0;
+      const canRetry = !isAuthError(message) && retryCount < MAX_RETRIES;
+
       try {
-        await db.updateSocialPost(post.id, post.userId, {
-          status: "failed",
-          errorMessage: logMessage.slice(0, 1000),
-        });
+        if (canRetry) {
+          const backoffMinutes = RETRY_BACKOFF_MINUTES[retryCount] ?? RETRY_BACKOFF_MINUTES[RETRY_BACKOFF_MINUTES.length - 1];
+          const nextAttemptAt = new Date(Date.now() + backoffMinutes * 60_000);
+          console.warn(`${tag} Will retry (attempt ${retryCount + 1}/${MAX_RETRIES}) at ${nextAttemptAt.toISOString()}.`);
+          await db.updateSocialPost(post.id, post.userId, {
+            status: "scheduled",
+            scheduledAt: nextAttemptAt,
+            retryCount: retryCount + 1,
+            errorMessage: logMessage.slice(0, 1000),
+          });
+        } else {
+          await db.updateSocialPost(post.id, post.userId, {
+            status: "failed",
+            errorMessage: logMessage.slice(0, 1000),
+          });
+        }
       } catch (dbErr) {
         console.error(`${tag} Also failed to save error to DB:`, dbErr);
       }

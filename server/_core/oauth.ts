@@ -2,8 +2,7 @@ import type { Express } from "express";
 import { nanoid } from "nanoid";
 import { ENV } from "./env";
 import { sdk } from "./sdk";
-import { getSessionCookieOptions } from "./cookies";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME } from "@shared/const";
 import * as db from "../db";
 import {
   buildCanvaAuthUrl,
@@ -41,6 +40,9 @@ const SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_messaging",
+  "ads_read",
+  "ads_management",
+  "business_management",
 ].join(",");
 
 // In-memory CSRF state store (nonce → timestamp)
@@ -259,14 +261,10 @@ export function registerOAuthRoutes(app: Express) {
         const newUser = await db.getUserByOpenId(openId);
         if (!newUser) throw new Error("Falha ao criar usuário Instagram.");
         targetUserId = newUser.id;
+        await db.markEmailVerified(newUser.id).catch(() => {});
 
-        // Create session cookie
-        const sessionToken = await sdk.createSessionToken(openId, {
-          name: displayName,
-          expiresInMs: ONE_YEAR_MS,
-        });
-        const cookieOptions = getSessionCookieOptions(req);
-        res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        // Create session cookies (access + refresh)
+        await sdk.issueSessionCookies(req, res, newUser);
         console.log(`[OAuth/IGLogin] Novo usuário criado: @${userData.username} (userId=${targetUserId})`);
       }
 
@@ -459,6 +457,7 @@ export function registerOAuthRoutes(app: Express) {
 
       const user = await db.getUserByOpenId(openId);
       if (!user) throw new Error("Falha ao criar usuário após OAuth.");
+      await db.markEmailVerified(user.id).catch(() => {});
 
       // 6. Save Instagram connection if found (never crash the login if this fails)
       let igConnectStatus = "no_account";
@@ -472,6 +471,7 @@ export function registerOAuthRoutes(app: Express) {
             name: resolvedIg.name || userName,
             profilePictureUrl: resolvedIg.profile_picture_url,
             accessToken: resolvedToken,
+            userAccessToken: accessToken,
             tokenExpiresAt,
             connectedAt: new Date(),
           });
@@ -500,14 +500,8 @@ export function registerOAuthRoutes(app: Express) {
         console.warn(`[OAuth/Instagram] Nenhuma conta Instagram encontrada para userId=${user.id} (fbUserId=${fbUserId}).`);
       }
 
-      // 7. Create session cookie and redirect
-      const sessionToken = await sdk.createSessionToken(openId, {
-        name: userName,
-        expiresInMs: ONE_YEAR_MS,
-      });
-
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      // 7. Create session cookies (access + refresh) and redirect
+      await sdk.issueSessionCookies(req, res, user);
 
       if (igConnectStatus === "success") {
         res.redirect("/app/dashboard/analytics?ig_connect=success");
@@ -532,7 +526,7 @@ export function registerOAuthRoutes(app: Express) {
   // Similar to Canva: requires an active session, links the IG account to the
   // current user without creating a new session.
 
-  const pendingConnectStates = new Map<string, { userId: number; ts: number }>();
+  const pendingConnectStates = new Map<string, { userId: number; ts: number; returnTo: "analytics" | "paid-traffic" }>();
 
   function buildConnectCallbackUrl(req: Express["request"]) {
     if (ENV.isProduction) {
@@ -576,7 +570,8 @@ export function registerOAuthRoutes(app: Express) {
     });
 
     const state = nanoid(32);
-    pendingConnectStates.set(state, { userId, ts: Date.now() });
+    const returnTo = req.query.returnTo === "paid-traffic" ? "paid-traffic" : "analytics";
+    pendingConnectStates.set(state, { userId, ts: Date.now(), returnTo });
 
     const callbackUrl = buildConnectCallbackUrl(req);
     const authUrl = new URL(`${OAUTH_DIALOG_BASE}/dialog/oauth`);
@@ -661,6 +656,7 @@ export function registerOAuthRoutes(app: Express) {
         name: resolvedIg.name,
         profilePictureUrl: resolvedIg.profile_picture_url,
         accessToken: resolvedToken,
+        userAccessToken: accessToken,
         tokenExpiresAt,
         connectedAt: new Date(),
       });
@@ -681,11 +677,11 @@ export function registerOAuthRoutes(app: Express) {
       } catch (e) {
         console.warn(`[OAuth/Instagram/Connect] Erro ao subscrever webhook de comments:`, e);
       }
-      res.redirect("/app/dashboard/analytics?ig_connect=success");
+      res.redirect(`/app/dashboard/${pending.returnTo}?meta_connect=success`);
     } catch (err) {
       console.error("[OAuth/Instagram/Connect] Erro:", err);
       const msg = encodeURIComponent(err instanceof Error ? err.message : String(err));
-      res.redirect(`/app/dashboard/analytics?ig_connect=error&detail=${msg}`);
+      res.redirect(`/app/dashboard/${pending.returnTo}?meta_connect=error&detail=${msg}`);
     }
   });
 

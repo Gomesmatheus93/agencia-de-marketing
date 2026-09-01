@@ -15,13 +15,17 @@ import { startNewsDigestScheduler } from "./newsDigestScheduler";
 import { startCommentAlertScheduler } from "./commentAlertScheduler";
 import { startRadarScheduler } from "./radarScheduler";
 import { startMetricsScheduler } from "./metricsScheduler";
+import { startInstagramTokenRefreshScheduler } from "./instagramTokenRefreshScheduler";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
 import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWebhook";
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
+import { assertCryptoKeys } from "./crypto";
+import { securityHeaders, csrfCookieSetter, csrfGuard } from "./httpSecurity";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
+import { isPrivateOrLinkLocalHost } from "./ssrfGuard";
 
 // Comparação em tempo constante do X-Api-Key contra N8N_SECRET, evitando
 // timing attacks que uma comparação `!==` simples permitiria.
@@ -103,19 +107,23 @@ dns.setDefaultResultOrder("ipv4first");
 
 async function startServer() {
   validateRequiredEnv();
+  assertCryptoKeys();
 
   const app = express();
   const server = createServer(app);
   // Trust the first proxy so req.protocol reflects x-forwarded-proto (needed for cookies and OAuth in production)
   app.set("trust proxy", 1);
-  // Basic security headers
-  app.use((_req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    next();
+  // Security headers (helmet) + CSP/HSTS em produção.
+  app.use(securityHeaders());
+  // Cookie CSRF legível pelo cliente (double-submit).
+  app.use(csrfCookieSetter());
+
+  // Recebe relatórios de violação de CSP (report-only) para ajuste antes do enforce.
+  app.post("/api/csp-report", express.json({ type: ["application/csp-report", "application/json"], limit: "64kb" }), (req, res) => {
+    console.warn("[CSP] violação:", JSON.stringify(req.body).slice(0, 800));
+    res.sendStatus(204);
   });
+
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
@@ -133,21 +141,6 @@ async function startServer() {
   });
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-  // Blocks private/link-local IPs to prevent SSRF via proxy endpoints
-  function isPrivateOrLinkLocalHost(hostname: string): boolean {
-    if (hostname === "localhost" || hostname === "::1") return true;
-    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-    if (ipv4) {
-      const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-      if (a === 10) return true;
-      if (a === 127) return true;
-      if (a === 172 && b >= 16 && b <= 31) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 169 && b === 254) return true; // AWS metadata / link-local
-      if (a === 0) return true;
-    }
-    return false;
-  }
 
   // Image proxy — allows canvas to load cross-origin images without CORS taint
   app.get("/api/image-proxy", async (req, res) => {
@@ -205,6 +198,9 @@ async function startServer() {
         res.status(upstream.status).send("Upstream error"); return;
       }
       const ct = upstream.headers.get("content-type") ?? "video/mp4";
+      if (!ct.startsWith("video/") && !ct.startsWith("application/octet-stream")) {
+        res.status(400).send("Not a video"); return;
+      }
       res.set("Content-Type", ct);
       res.set("Accept-Ranges", "bytes");
       res.set("Cache-Control", "public, max-age=86400");
@@ -673,9 +669,23 @@ async function startServer() {
       if (err) res.redirect("/app");
     });
   });
-  // tRPC API
+  // Renovação de sessão — rota dedicada (o cliente chama ao receber 401).
+  // Fora do tRPC para não depender do formato de batch; ainda exige o header CSRF.
+  app.post("/api/auth/refresh", csrfGuard(), async (req, res) => {
+    const user = await sdk.userFromRefreshToken(req);
+    if (!user) {
+      sdk.clearSessionCookies(req, res);
+      res.status(401).json({ error: "Sessão expirada" });
+      return;
+    }
+    await sdk.issueSessionCookies(req, res, user);
+    res.json({ success: true });
+  });
+
+  // tRPC API — protegida por CSRF double-submit (todas as mutations passam aqui)
   app.use(
     "/api/trpc",
+    csrfGuard(),
     createExpressMiddleware({
       router: appRouter,
       createContext,
@@ -709,6 +719,7 @@ async function startServer() {
   startCommentAlertScheduler();
   startRadarScheduler();
   startMetricsScheduler();
+  startInstagramTokenRefreshScheduler();
   db.migrateNullTrialDates().then(() => {
     console.log("[migrate] trialExpiresAt backfill concluido");
   }).catch((e) => console.warn("[migrate] trialExpiresAt backfill falhou:", e));
