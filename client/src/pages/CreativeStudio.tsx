@@ -5,13 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { usePlan } from "@/_core/hooks/usePlan";
 import { cn } from "@/lib/utils";
 import {
-  ArrowRight, Bot, Clapperboard, Crop, FileText, Film, GalleryHorizontal,
+  ArrowRight, Clapperboard, Crop, FileText, Film, GalleryHorizontal,
   Image, Layers3, LayoutGrid, Lock, Palette, Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
 
 const tools = [
-  { id: "chat", title: "Copiloto de conteúdo", description: "Explore ideias, campanhas, textos e estratégias com IA.", path: "/dashboard/chat", icon: Bot, color: "from-violet-500 to-purple-600", tag: "Estratégia" },
   { id: "images", title: "Imagens com IA", description: "Crie imagens para anúncios, redes sociais e campanhas.", path: "/dashboard/images", icon: Image, color: "from-blue-500 to-cyan-500", tag: "Visual" },
   { id: "carousel", title: "Carrosséis", description: "Gere sequências educativas e comerciais para redes sociais.", path: "/dashboard/carousel", icon: GalleryHorizontal, color: "from-amber-500 to-orange-500", tag: "Social" },
   { id: "articles", title: "Artigos e SEO", description: "Produza artigos completos a partir de temas e notícias.", path: "/dashboard/articles", icon: FileText, color: "from-emerald-500 to-teal-500", tag: "Conteúdo" },
