@@ -21,7 +21,6 @@ import Reels from "./pages/Reels";
 import CommentAutomations from "./pages/CommentAutomations";
 import StyleAnalyzer from "./pages/StyleAnalyzer";
 import Radar from "./pages/Radar";
-import Seo from "./pages/Seo";
 import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
 import Resize from "./pages/Resize";
@@ -68,7 +67,6 @@ function AppRoutes() {
       <Route path="/dashboard/comment-automations" component={CommentAutomations} />
       <Route path="/dashboard/style-analyzer" component={StyleAnalyzer} />
       <Route path="/dashboard/radar" component={Radar} />
-      <Route path="/dashboard/seo" component={Seo} />
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
       <Route path="/dashboard/campaign" component={CampaignHub} />

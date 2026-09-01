@@ -27,7 +27,6 @@ import {
   MessageCircle,
   ScanSearch,
   TrendingUp,
-  Search,
   Lock,
   Crown,
   Layers,
@@ -70,7 +69,6 @@ const NAV_ITEMS_CONFIG = [
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "results" as const },
   { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const, group: "results" as const },
   { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const, group: "strategy" as const },
-  { id: "seo", icon: Search, path: "/dashboard/seo", color: "from-cyan-500 to-blue-600", labelKey: "seo" as const, descKey: "seoDesc" as const, group: "strategy" as const },
   { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const, group: "strategy" as const },
 ];
 
