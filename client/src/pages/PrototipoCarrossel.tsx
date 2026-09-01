@@ -1969,6 +1969,19 @@ export default function PrototipoCarrossel() {
     refetchInterval: 15000,
     refetchOnWindowFocus: true,
   });
+  const { data: brandKits = [] } = trpc.brandKit.list.useQuery(undefined, { staleTime: 30_000 });
+  const brandKitPresets: NamedDesignPreset[] = brandKits.map((kit) => ({
+    presetName: kit.companyName ? `${kit.companyName} · Brand Kit` : `Marca #${kit.id} · Brand Kit`,
+    accentColor: kit.accentColor || kit.primaryColor || DEFAULT_DESIGN.accentColor,
+    bgColor: kit.secondaryColor || "#0d1117",
+    fontFamily: kit.headingFont || "Montserrat, Arial, sans-serif",
+    titleAlign: "left",
+    titleSize: 1,
+    profileImageUrl: kit.logoUrl || undefined,
+    profileName: kit.companyName || undefined,
+    profileHandle: kit.instagramHandle ? `@${kit.instagramHandle.replace(/^@/, "")}` : undefined,
+    template: "dark",
+  }));
 
   const [trendingNiche, setTrendingNiche] = useState("");
   const trendingQuery = trpc.carousel.getTrendingTopics.useQuery(
@@ -3208,7 +3221,7 @@ export default function PrototipoCarrossel() {
 
               {/* Named presets */}
               <div className="flex flex-wrap gap-1.5">
-                {[...BUILTIN_PRESETS, ...namedPresets].map((p) => {
+                {[...brandKitPresets, ...BUILTIN_PRESETS, ...namedPresets].map((p) => {
                   const isActive = design.accentColor === p.accentColor && design.bgColor === p.bgColor && design.profileName === p.profileName;
                   const isUserPreset = namedPresets.some((np) => np.presetName === p.presetName);
                   return (
