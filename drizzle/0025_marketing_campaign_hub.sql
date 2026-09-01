@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS `marketing_campaigns` (
   INDEX `idx_marketing_campaigns_user_status` (`userId`, `status`)
 );
 
+--> statement-breakpoint
+
 CREATE TABLE IF NOT EXISTS `campaign_assets` (
   `id` int AUTO_INCREMENT NOT NULL,
   `campaignId` int NOT NULL,
