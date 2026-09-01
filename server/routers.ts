@@ -5672,7 +5672,7 @@ const TWOFA_MAX_ATTEMPTS = 5;
 async function sendVerificationEmail(userId: number, email: string, name: string): Promise<void> {
   const raw = db.generateRawToken();
   await db.createEmailToken(userId, "verify", raw, VERIFY_TTL_MS);
-  const link = `${ENV.appBaseUrl.replace(/\/$/, "")}/app/verify-email?token=${encodeURIComponent(raw)}`;
+  const link = `${ENV.appBaseUrl.replace(/\/$/, "")}/api/auth/verify-email?token=${encodeURIComponent(raw)}`;
   const tpl = verificationEmail(name || "usuário", link);
   await sendEmail({ ...tpl, to: email });
 }

@@ -289,6 +289,35 @@ async function startServer() {
     res.send(approvalHtmlPage(result.ok, "rejeitado", result.reason));
   });
 
+  // Confirmação por link precisa acontecer no servidor. Assim o link funciona
+  // mesmo quando o proxy/CDN da hospedagem não possui fallback para rotas SPA.
+  app.get("/api/auth/verify-email", async (req, res) => {
+    const rawToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (rawToken.length < 10) {
+      res.redirect(303, "/app?email_verification=invalid");
+      return;
+    }
+    try {
+      const token = await db.peekEmailToken("verify", rawToken);
+      if (!token) {
+        res.redirect(303, "/app?email_verification=invalid");
+        return;
+      }
+      await db.consumeEmailTokenById(token.id);
+      await db.markEmailVerified(token.userId);
+      await db.recordAudit({
+        action: "email.verified",
+        actorUserId: token.userId,
+        ip: req.ip ?? null,
+        userAgent: req.headers["user-agent"] ?? null,
+      });
+      res.redirect(303, "/app?email_verification=success");
+    } catch (error) {
+      console.error("[auth.verify-email] Falha ao confirmar e-mail:", error);
+      res.redirect(303, "/app?email_verification=error");
+    }
+  });
+
   // ── Link curto para notícias do digest (evita URLs longas no template WhatsApp) ──
   app.get("/n/:id/:idx", async (req, res) => {
     const id = Number(req.params.id);

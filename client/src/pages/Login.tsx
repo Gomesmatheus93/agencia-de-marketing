@@ -19,6 +19,7 @@ export default function Login() {
   const [mode, setMode] = useState<"login" | "register">(location === "/register" ? "register" : "login");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   // 2FA (código por e-mail)
   const [twoFa, setTwoFa] = useState<{ challengeId: number } | null>(null);
@@ -27,6 +28,10 @@ export default function Login() {
   // Show OAuth errors from redirect params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const emailVerification = params.get("email_verification");
+    if (emailVerification === "success") setNotice("E-mail confirmado com sucesso. Você já pode entrar.");
+    else if (emailVerification === "invalid") setError("O link de confirmação é inválido, já foi utilizado ou expirou.");
+    else if (emailVerification === "error") setError("Não foi possível confirmar o e-mail. Tente solicitar um novo link.");
 
     // Legacy Facebook OAuth errors
     const oauthError = params.get("error");
@@ -249,6 +254,9 @@ export default function Login() {
 
               {error && (
                 <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+              )}
+              {notice && (
+                <p className="text-sm text-emerald-700 bg-emerald-500/10 px-3 py-2 rounded-lg">{notice}</p>
               )}
 
               <button
