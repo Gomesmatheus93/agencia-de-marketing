@@ -6,6 +6,8 @@ export const translations = {
   pt: {
     // ── Sidebar nav labels ──────────────────────────────────────────────
     dashboard: "Dashboard",
+    creativeStudio: "Estúdio Criativo",
+    creativeStudioDesc: "Todas as ferramentas de criação",
     chat: "Chat com IA",
     images: "Gerar Imagens",
     videos: "Videos IA",
@@ -53,6 +55,9 @@ export const translations = {
     teamSection: "Equipe",
     modules: "Módulos",
     navGroupCreation: "Criação de Conteúdo",
+    navGroupOperation: "Operação",
+    navGroupResults: "Mídia & Resultados",
+    navGroupStrategy: "Estratégia",
     navGroupBrand: "Identidade & Marca",
     navGroupDistribution: "Distribuição",
     navGroupGrowth: "Inteligência & Growth",
@@ -352,6 +357,8 @@ export const translations = {
   en: {
     // ── Sidebar nav labels ──────────────────────────────────────────────
     dashboard: "Dashboard",
+    creativeStudio: "Creative Studio",
+    creativeStudioDesc: "All creation tools",
     chat: "AI Chat",
     images: "Generate Images",
     videos: "AI Videos",
@@ -399,6 +406,9 @@ export const translations = {
     teamSection: "Team",
     modules: "Modules",
     navGroupCreation: "Content Creation",
+    navGroupOperation: "Operations",
+    navGroupResults: "Media & Results",
+    navGroupStrategy: "Strategy",
     navGroupBrand: "Brand & Identity",
     navGroupDistribution: "Distribution",
     navGroupGrowth: "Intelligence & Growth",

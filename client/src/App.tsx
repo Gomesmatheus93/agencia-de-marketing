@@ -6,7 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/OperationalDashboard";
 import Chat from "./pages/Chat";
 import Images from "./pages/Images";
 import Videos from "./pages/Videos";
@@ -39,6 +39,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AccountSecurity from "./pages/AccountSecurity";
 import PaidTraffic from "./pages/PaidTraffic";
+import CreativeStudio from "./pages/CreativeStudio";
 
 function AppRoutes() {
   return (
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/dashboard/chat" component={Chat} />
+      <Route path="/dashboard/studio" component={CreativeStudio} />
       <Route path="/dashboard/images" component={Images} />
       <Route path="/dashboard/videos" component={Videos} />
       <Route path="/dashboard/articles" component={Articles} />

@@ -40,6 +40,7 @@ import {
   Check,
   Users,
   MousePointerClick,
+  PanelsTopLeft,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -58,33 +59,27 @@ import UpgradeModal from "@/components/UpgradeModal";
 
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-violet-500 to-purple-600", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
-  { id: "chat", icon: MessageSquare, path: "/dashboard/chat", color: "from-violet-500 to-purple-600", labelKey: "chat" as const, descKey: "chatDesc" as const, group: "creation" as const },
-  { id: "images", icon: Image, path: "/dashboard/images", color: "from-blue-500 to-cyan-500", labelKey: "images" as const, descKey: "imagesDesc" as const, group: "creation" as const },
-  { id: "videos", icon: Clapperboard, path: "/dashboard/videos", color: "from-fuchsia-500 to-rose-500", labelKey: "videos" as const, descKey: "videosDesc" as const, group: "creation" as const },
-  { id: "articles", icon: FileText, path: "/dashboard/articles", color: "from-emerald-500 to-teal-500", labelKey: "articles" as const, descKey: "articlesDesc" as const, group: "creation" as const },
-  { id: "carousel", icon: GalleryHorizontal, path: "/dashboard/carousel", color: "from-amber-500 to-orange-500", labelKey: "carousel" as const, descKey: "carouselDesc" as const, group: "creation" as const },
-  { id: "reels", icon: Film, path: "/dashboard/reels", color: "from-red-500 to-pink-500", labelKey: "reels" as const, descKey: "reelsDesc" as const, group: "creation" as const },
-  { id: "stories", icon: Layers, path: "/dashboard/stories", color: "from-pink-500 to-rose-500", labelKey: "stories" as const, descKey: "storiesDesc" as const, group: "creation" as const },
-  { id: "resize", icon: Crop, path: "/dashboard/resize", color: "from-cyan-500 to-blue-500", labelKey: "resize" as const, descKey: "resizeDesc" as const, group: "creation" as const },
-  { id: "brand",    icon: Palette,     path: "/dashboard/brand",    color: "from-rose-500 to-pink-600",    labelKey: "brand" as const,    descKey: "brandDesc" as const, group: "brand" as const },
-  { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const, group: "brand" as const },
+  { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-orange-500 to-red-500", labelKey: "campaign" as const, descKey: "campaignDesc" as const, group: "operation" as const },
+  { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-violet-500 to-indigo-600", labelKey: "creativeStudio" as const, descKey: "creativeStudioDesc" as const, group: "creation" as const },
+  { id: "brand", icon: Palette, path: "/dashboard/brand", color: "from-rose-500 to-pink-600", labelKey: "brand" as const, descKey: "brandDesc" as const, group: "creation" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "distribution" as const },
   { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-violet-500 to-purple-600", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "distribution" as const },
   { id: "emailMarketing", icon: Mail, path: "/dashboard/email-marketing", color: "from-emerald-500 to-teal-500", labelKey: "emailMarketing" as const, descKey: "emailMarketingDesc" as const, group: "distribution" as const },
   { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-pink-500 to-rose-600", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "distribution" as const },
-  { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "growth" as const },
-  { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const, group: "growth" as const },
-  { id: "seo", icon: Search, path: "/dashboard/seo", color: "from-cyan-500 to-blue-600", labelKey: "seo" as const, descKey: "seoDesc" as const, group: "growth" as const },
-  { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-orange-500 to-red-500", labelKey: "campaign" as const, descKey: "campaignDesc" as const, group: "growth" as const },
-  { id: "paidTraffic", icon: MousePointerClick, path: "/dashboard/paid-traffic", color: "from-blue-500 to-indigo-600", labelKey: "paidTraffic" as const, descKey: "paidTrafficDesc" as const, group: "growth" as const },
-  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const, group: "growth" as const },
+  { id: "paidTraffic", icon: MousePointerClick, path: "/dashboard/paid-traffic", color: "from-blue-500 to-indigo-600", labelKey: "paidTraffic" as const, descKey: "paidTrafficDesc" as const, group: "results" as const },
+  { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "results" as const },
+  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const, group: "results" as const },
+  { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const, group: "strategy" as const },
+  { id: "seo", icon: Search, path: "/dashboard/seo", color: "from-cyan-500 to-blue-600", labelKey: "seo" as const, descKey: "seoDesc" as const, group: "strategy" as const },
+  { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const, group: "strategy" as const },
 ];
 
 const NAV_GROUP_LABEL_KEYS = {
+  operation: "navGroupOperation",
   creation: "navGroupCreation",
-  brand: "navGroupBrand",
   distribution: "navGroupDistribution",
-  growth: "navGroupGrowth",
+  results: "navGroupResults",
+  strategy: "navGroupStrategy",
 } as const;
 
 const SETTINGS_CONFIG = {
@@ -98,6 +93,8 @@ const ART_STUDIO_CONFIG = {
 const TEAM_CONFIG = {
   id: "team", icon: Users, path: "/dashboard/team", color: "from-slate-600 to-slate-800", labelKey: "team" as const, descKey: "teamDesc" as const,
 };
+
+const CREATIVE_MODULE_IDS = new Set(["chat", "images", "videos", "articles", "carousel", "reels", "stories", "resize", "artStudio"]);
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -176,7 +173,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   type NavItem = { id: string; label: string; description: string; icon: React.ComponentType<{ className?: string }>; path: string; color: string };
   const NavButton = ({ item }: { item: NavItem }) => {
     const Icon = item.icon;
-    const isActive = activeModule === item.id;
+    const isActive = activeModule === item.id || (item.id === "studio" && !!activeModule && CREATIVE_MODULE_IDS.has(activeModule));
     const locked = isLocked(item.id);
     return (
       <button
@@ -190,7 +187,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           setSidebarOpen(false);
         }}
         className={cn(
-          "w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 group",
+          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
           isActive
             ? "bg-primary/10 text-primary"
             : locked
