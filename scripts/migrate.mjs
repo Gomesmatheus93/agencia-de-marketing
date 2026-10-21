@@ -18,6 +18,13 @@ function parsePositiveInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/** Mensagem útil do erro (sem a URL do banco, que tem a senha). */
+function describe(error) {
+  const e = error?.cause ?? error;
+  const parts = [e?.code, e?.message].filter(Boolean).join(" ");
+  return (parts || String(error)).replaceAll(databaseUrl, "<DATABASE_URL>");
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -44,7 +51,7 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     }
 
     console.warn(
-      `Database migration attempt ${attempt}/${maxAttempts} failed. Retrying in ${retryDelayMs}ms...`
+      `Database migration attempt ${attempt}/${maxAttempts} failed: ${describe(error)}. Retrying in ${retryDelayMs}ms...`
     );
     await delay(retryDelayMs);
   }

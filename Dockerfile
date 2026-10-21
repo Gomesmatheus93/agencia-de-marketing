@@ -43,6 +43,9 @@ COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/landing ./landing
 COPY --from=build --chown=node:node /app/server/agents/skills ./server/agents/skills
+# Fontes e logos usados pelos agentes para renderizar as artes (server/agents/design/render.ts).
+COPY --from=build --chown=node:node /app/server/agents/design/fonts ./server/agents/design/fonts
+COPY --from=build --chown=node:node /app/server/agents/design/assets ./server/agents/design/assets
 
 RUN mkdir -p uploads && chown -R node:node /app
 
