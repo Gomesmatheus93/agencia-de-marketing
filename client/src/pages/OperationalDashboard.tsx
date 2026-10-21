@@ -9,7 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight, Bot, Building2, CalendarRange, ClipboardCheck, Clock3, Crown, GalleryHorizontal, Image, Layers, Lock,
-  Megaphone, Send, Sparkles,
+  Send, Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -61,7 +61,6 @@ export default function OperationalDashboard() {
   const recent = trpc.agents.recent.useQuery();
   const agents = trpc.agents.list.useQuery();
   const postStats = trpc.posts.getStats.useQuery();
-  const campaigns = trpc.campaignHub.list.useQuery();
 
   const firstName = user?.name?.split(" ")[0] || "Usuário";
   const hour = new Date().getHours();
@@ -71,7 +70,6 @@ export default function OperationalDashboard() {
   const nameOf = (slug: string) => agents.data?.agents.find((a) => a.slug === slug)?.name ?? slug;
   const r = recent.data ?? {};
   const latestCreation = [r.carrossel, r.stories, r.legendas].filter(Boolean).sort((a, b) => +new Date(b!.createdAt) - +new Date(a!.createdAt))[0];
-  const activeCampaigns = (campaigns.data ?? []).filter((c) => !["archived", "completed"].includes(c.status));
 
   return (
     <AppLayout activeModule="dashboard">
@@ -135,26 +133,6 @@ export default function OperationalDashboard() {
             </div>
           </section>
 
-          <Card className="border-border/60">
-            <CardContent className="p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="flex items-center gap-2 font-semibold"><Megaphone className="h-4 w-4 text-muted-foreground" />Campanhas em andamento</p>
-                <Button variant="ghost" size="sm" asChild><Link href="/dashboard/campaign">Ver todas<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
-              </div>
-              {activeCampaigns.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma campanha ativa. Use campanhas para agrupar plano, peças e resultados de uma ação (ex.: lançamento, sazonal, collab).</p>
-              ) : (
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {activeCampaigns.slice(0, 6).map((c) => (
-                    <Link key={c.id} href="/dashboard/campaign" className="rounded-xl border p-3 text-sm transition hover:border-primary/30 hover:bg-accent/40">
-                      <p className="truncate font-medium">{c.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{c.objective || "Objetivo a definir"} · {c.assets.length} peças</p>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </main>
     </AppLayout>

@@ -21,8 +21,6 @@ import CommentAutomations from "./pages/CommentAutomations";
 import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
 import Resize from "./pages/Resize";
-import Campaign from "./pages/Campaign";
-import CampaignHub from "./pages/CampaignHub";
 import Report from "./pages/Report";
 import Onboarding from "./pages/Onboarding";
 import ArtStudio from "./pages/ArtStudio";
@@ -74,8 +72,6 @@ function AppRoutes() {
       <Route path="/dashboard/comment-automations" component={CommentAutomations} />
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
-      <Route path="/dashboard/campaign" component={CampaignHub} />
-      <Route path="/dashboard/campaign/create" component={Campaign} />
       <Route path="/dashboard/report" component={Report} />
       <Route path="/dashboard/onboarding" component={Onboarding} />
       <Route path="/dashboard/artes" component={ArtStudio} />

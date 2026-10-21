@@ -190,7 +190,6 @@ export default function Onboarding() {
                   { label: "Gerar imagem", path: "/dashboard/images" },
                   { label: "Criar artigo", path: "/dashboard/articles" },
                   { label: "Ver Analytics", path: "/dashboard/analytics" },
-                  { label: "Criar campanha", path: "/dashboard/campaign" },
                 ].map(({ label, path }) => (
                   <button
                     key={path}

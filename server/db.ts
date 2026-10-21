@@ -83,10 +83,6 @@ import {
   type InsertAuditLog,
   emailTokens,
   type EmailToken,
-  marketingCampaigns,
-  campaignAssets,
-  type InsertMarketingCampaign,
-  type InsertCampaignAsset,
 } from "../drizzle/schema";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
@@ -2986,89 +2982,4 @@ export async function respondToContentApproval(
     .where(eq(contentApprovals.token, token));
 
   return getContentApprovalByToken(token);
-}
-
-// ─── Marketing Campaign Hub ──────────────────────────────────────────────────
-export async function listMarketingCampaigns(userId: number) {
-  const database = await getDb();
-  if (!database) return [];
-  const rows = await database.select().from(marketingCampaigns)
-    .where(eq(marketingCampaigns.userId, userId))
-    .orderBy(desc(marketingCampaigns.updatedAt));
-  const assets = await database.select().from(campaignAssets)
-    .where(eq(campaignAssets.userId, userId));
-  return rows.map((campaign) => ({
-    ...campaign,
-    assets: assets.filter((asset) => asset.campaignId === campaign.id),
-  }));
-}
-
-export async function getMarketingCampaign(userId: number, campaignId: number) {
-  const database = await getDb();
-  if (!database) return null;
-  const [campaign] = await database.select().from(marketingCampaigns).where(and(
-    eq(marketingCampaigns.id, campaignId),
-    eq(marketingCampaigns.userId, userId)
-  )).limit(1);
-  if (!campaign) return null;
-  const assets = await database.select().from(campaignAssets).where(and(
-    eq(campaignAssets.campaignId, campaignId),
-    eq(campaignAssets.userId, userId)
-  )).orderBy(desc(campaignAssets.updatedAt));
-  return { ...campaign, assets };
-}
-
-export async function createMarketingCampaign(data: InsertMarketingCampaign) {
-  const database = await getDb();
-  if (!database) throw new Error("Banco de dados indisponível.");
-  const [result] = await database.insert(marketingCampaigns).values(data).returning({ id: marketingCampaigns.id });
-  return getMarketingCampaign(data.userId, insertId(result));
-}
-
-export async function updateMarketingCampaign(
-  userId: number,
-  campaignId: number,
-  data: Partial<Omit<InsertMarketingCampaign, "id" | "userId" | "createdAt">>
-) {
-  const database = await getDb();
-  if (!database) throw new Error("Banco de dados indisponível.");
-  await database.update(marketingCampaigns).set(data).where(and(
-    eq(marketingCampaigns.id, campaignId),
-    eq(marketingCampaigns.userId, userId)
-  ));
-  return getMarketingCampaign(userId, campaignId);
-}
-
-export async function deleteMarketingCampaign(userId: number, campaignId: number) {
-  const database = await getDb();
-  if (!database) return;
-  await database.delete(campaignAssets).where(and(
-    eq(campaignAssets.campaignId, campaignId),
-    eq(campaignAssets.userId, userId)
-  ));
-  await database.delete(marketingCampaigns).where(and(
-    eq(marketingCampaigns.id, campaignId),
-    eq(marketingCampaigns.userId, userId)
-  ));
-}
-
-export async function attachCampaignAsset(data: InsertCampaignAsset) {
-  const database = await getDb();
-  if (!database) throw new Error("Banco de dados indisponível.");
-  const campaign = await getMarketingCampaign(data.userId, data.campaignId);
-  if (!campaign) throw new Error("Campanha não encontrada.");
-  const [result] = await database.insert(campaignAssets).values(data).returning({ id: campaignAssets.id });
-  const [asset] = await database.select().from(campaignAssets)
-    .where(eq(campaignAssets.id, insertId(result))).limit(1);
-  return asset;
-}
-
-export async function removeCampaignAsset(userId: number, campaignId: number, assetId: number) {
-  const database = await getDb();
-  if (!database) return;
-  await database.delete(campaignAssets).where(and(
-    eq(campaignAssets.id, assetId),
-    eq(campaignAssets.campaignId, campaignId),
-    eq(campaignAssets.userId, userId)
-  ));
 }
