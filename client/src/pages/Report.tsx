@@ -58,7 +58,7 @@ export default function Report() {
         {/* Header */}
         <div className="flex items-start justify-between mb-8 no-print">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-alle-purple to-alle-purple-light flex items-center justify-center">
               <FileBarChart2 className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -76,7 +76,7 @@ export default function Report() {
         {/* Report content */}
         <div className="bg-card border border-border rounded-3xl overflow-hidden">
           {/* Report header */}
-          <div className="bg-gradient-to-br from-violet-600 to-purple-700 p-8 text-white">
+          <div className="bg-gradient-to-br from-alle-purple to-alle-purple-light p-8 text-white">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-violet-200 text-sm font-medium mb-1">Relatório Mensal de Marketing</p>
@@ -188,7 +188,7 @@ export default function Report() {
             {/* Footer do relatório */}
             <div className="pt-4 border-t border-border text-center">
               <p className="text-xs text-muted-foreground">
-                Relatório gerado automaticamente pela plataforma KrythosLab · {new Date().toLocaleDateString("pt-BR")}
+                Relatório gerado automaticamente pela plataforma Alle Energia · {new Date().toLocaleDateString("pt-BR")}
               </p>
             </div>
           </div>

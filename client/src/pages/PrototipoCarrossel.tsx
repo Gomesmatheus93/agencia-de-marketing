@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import type { RadarPrefill } from "@/pages/Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
@@ -1929,18 +1929,18 @@ export default function PrototipoCarrossel() {
   const [phase, setPhase] = useState<Phase>("list");
   const [inputMode, setInputMode] = useState<InputMode>("topic");
   const [topic, setTopic] = useState("");
-  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+  const radarPrefillRef = useRef<ContentPrefill | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as RadarPrefill;
+      const prefill = JSON.parse(raw) as ContentPrefill;
       sessionStorage.removeItem(RADAR_PREFILL_KEY);
       radarPrefillRef.current = prefill;
       setTopic(prefill.topic);
       setPhase("form");
-      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+      toast.info("Pauta carregada — revise o tema e clique em Gerar.");
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1986,7 +1986,7 @@ export default function PrototipoCarrossel() {
   });
   const { data: brandKits = [] } = trpc.brandKit.list.useQuery(undefined, { staleTime: 30_000 });
   const brandKitPresets: NamedDesignPreset[] = brandKits.map((kit) => ({
-    presetName: kit.companyName ? `${kit.companyName} · Brand Kit` : `Marca #${kit.id} · Brand Kit`,
+    presetName: kit.companyName || `Marca #${kit.id}`,
     accentColor: kit.accentColor || kit.primaryColor || DEFAULT_DESIGN.accentColor,
     bgColor: kit.secondaryColor || "#0d1117",
     fontFamily: kit.headingFont || "Montserrat, Arial, sans-serif",

@@ -4,6 +4,7 @@ import { getHolidaysForYear } from "@shared/holidays";
 import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
 import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
+import { agentsRouter } from "./agents/router";
 import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { assertPublicHttpUrl } from "./_core/ssrfGuard";
@@ -2020,7 +2021,7 @@ Conteúdo: ${article.content.slice(0, 4000)}`,
     return {
       // URL para registrar no painel Meta (verificação do número)
       metaWebhookUrl: `${base}/api/whatsapp/webhook`,
-      verifyToken: ENV.whatsappVerifyToken || "krythos-webhook-verify",
+      verifyToken: ENV.whatsappVerifyToken || "alle-webhook-verify",
       // URL para configurar no agregador de números ("Webhook do Agente IA")
       aggregatorWebhookUrl: `${base}/api/aggregator/webhook`,
       isLocalhost,
@@ -3034,7 +3035,7 @@ Retorne APENAS JSON válido:
           try {
             assertPublicHttpUrl(url);
             const res = await fetch(url, {
-              headers: { "User-Agent": "KrythosLab/1.0 carousel-persist" },
+              headers: { "User-Agent": "AlleEnergia/1.0 carousel-persist" },
               signal: AbortSignal.timeout(12_000),
             });
             if (!res.ok) return slide;
@@ -3709,66 +3710,6 @@ const brandKitRouter = router({
   listNiches: protectedProcedure.query(async () => {
     return db.listNicheProfiles();
   }),
-
-  create: protectedProcedure
-    .input(z.object(brandKitFieldsSchema))
-    .mutation(async ({ ctx, input }) => {
-      // A 1ª marca da conta é livre em qualquer plano (comportamento de
-      // sempre); a 2ª em diante é o que desbloqueia gerenciar vários
-      // clientes, então exige o plano Agency.
-      const existing = await db.listBrandKits(ctx.user.id);
-      if (existing.length >= 1) {
-        requireAgencyPlan(ctx.user as PlanUser);
-      }
-      return db.createBrandKit(ctx.user.id, input);
-    }),
-
-  update: protectedProcedure
-    .input(z.object({ id: z.number(), ...brandKitFieldsSchema }))
-    .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-      return db.updateBrandKit(ctx.user.id, id, data);
-    }),
-
-  setActive: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      await db.setActiveBrandKit(ctx.user.id, input.id);
-      return { success: true };
-    }),
-
-  delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      await db.deleteBrandKit(ctx.user.id, input.id);
-      return { success: true };
-    }),
-
-  // Mantido pra compatibilidade — upsert direto por userId, sem id.
-  save: protectedProcedure
-    .input(z.object(brandKitFieldsSchema))
-    .mutation(async ({ ctx, input }) => {
-      const active = await db.getActiveBrandKit(ctx.user.id);
-      if (active) return db.updateBrandKit(ctx.user.id, active.id, input);
-      return db.createBrandKit(ctx.user.id, input);
-    }),
-
-  importFromAnalysis: protectedProcedure
-    .input(z.object({
-      companyName: z.string().optional(),
-      instagramHandle: z.string().optional(),
-      primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      toneOfVoice: z.enum(["professional", "casual", "inspiring", "educational"]).optional(),
-      industry: z.string().max(128).optional(),
-      nicheId: z.string().max(64).optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      const active = await db.getActiveBrandKit(ctx.user.id);
-      if (active) return db.updateBrandKit(ctx.user.id, active.id, input);
-      return db.createBrandKit(ctx.user.id, input);
-    }),
 });
 
 // ─── Equipe (funcionários de uma conta principal) ──────────────────────────────
@@ -4766,98 +4707,6 @@ REGRAS OBRIGATÓRIAS:
 });
 
 
-// ─── Style Analyzer Router ────────────────────────────────────────────────────
-// ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
-
-const radarRouter = router({
-  getTopics: protectedProcedure.query(async ({ ctx }) => {
-    const topics = await db.getRadarTopicsForUser(ctx.user.id);
-    return topics;
-  }),
-
-  updateStatus: protectedProcedure
-    .input(z.object({
-      trendingTopicId: z.number().int(),
-      status: z.enum(["sugerido", "usado", "descartado"]),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      await db.updateUserTopicAngleStatus(ctx.user.id, input.trendingTopicId, input.status);
-      return { success: true };
-    }),
-
-  adminRefresh: protectedProcedure.mutation(async ({ ctx }) => {
-    requirePaidPlan(ctx.user as PlanUser);
-    const { runRadarPipeline } = await import("./_core/radarScheduler");
-    const result = await runRadarPipeline();
-    return { inserted: result.inserted };
-  }),
-
-  searchTopics: protectedProcedure
-    .input(z.object({ query: z.string().min(2).max(80) }))
-    .mutation(async ({ ctx, input }) => {
-      requirePaidPlan(ctx.user as PlanUser);
-      const { searchTopicsByQuery } = await import("./_core/radarScheduler");
-      const result = await searchTopicsByQuery(input.query, ctx.user.id);
-      return { inserted: result.inserted };
-    }),
-});
-
-const styleAnalyzerRouter = router({
-  analyze: protectedProcedure
-    .input(z.object({
-      usernameOrUrl: z.string().min(1).max(255),
-      // Accepts both HTTP URLs and data: URIs (base64 screenshots from client)
-      uploadedImages: z.array(z.string().max(8_000_000)).max(8).optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      requirePaidPlan(ctx.user as PlanUser);
-      const { analyzeInstagramProfileStyle } = await import("./_core/instagramStyleAgent");
-      const connection = await db.getInstagramConnection(ctx.user.id);
-      try {
-        return await analyzeInstagramProfileStyle({
-          username: input.usernameOrUrl,
-          connectedAccount: connection ? {
-            instagramAccountId: connection.instagramAccountId,
-            accessToken: connection.accessToken,
-            username: connection.username ?? undefined,
-            name: connection.name,
-            profilePictureUrl: connection.profilePictureUrl,
-          } : null,
-          uploadedImages: input.uploadedImages,
-        });
-      } catch (err) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Erro ao analisar perfil: ${err instanceof Error ? err.message : "falha desconhecida"}`,
-        });
-      }
-    }),
-
-  save: protectedProcedure
-    .input(z.object({
-      profileHandle: z.string().min(1).max(100),
-      profileName: z.string().optional(),
-      profilePictureUrl: z.string().optional(),
-      source: z.enum(["api", "scrape", "upload"]),
-      analysisJson: z.string().max(50000),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      const id = await db.saveStyleProfile(ctx.user.id, input);
-      return { id };
-    }),
-
-  list: protectedProcedure.query(async ({ ctx }) => {
-    return db.listStyleProfiles(ctx.user.id);
-  }),
-
-  delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      await db.deleteStyleProfile(ctx.user.id, input.id);
-      return { success: true };
-    }),
-});
-
 // ─── SEO Keyword Research Router ─────────────────────────────────────────────
 
 const seoRouter = router({
@@ -5062,10 +4911,7 @@ const editorialPlanRouter = router({
     .mutation(async ({ ctx, input }) => {
       requireAgencyPlan(ctx.user as PlanUser);
 
-      const [brand, radarTopicsRaw] = await Promise.all([
-        db.getBrandKit(ctx.user.id),
-        db.getRadarTopicsForUser(ctx.user.id),
-      ]);
+      const brand = await db.getBrandKit(ctx.user.id);
 
       const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
       const monthName = monthNames[input.month - 1];
@@ -5102,24 +4948,6 @@ const editorialPlanRouter = router({
           ].filter(Boolean).join("\n")
         : null;
 
-      // Build radar context: top trending topics not yet used/discarded
-      const radarTopics = radarTopicsRaw
-        .filter((t) => t.angle?.status !== "usado" && t.angle?.status !== "descartado")
-        .sort((a, b) => (b.viralScore ?? 50) - (a.viralScore ?? 50))
-        .slice(0, 12);
-
-      const radarBlock = radarTopics.length > 0
-        ? [
-            `TEMAS EM ALTA — RADAR DE TENDÊNCIAS (incorpore os mais relevantes para as categorias definidas):`,
-            ...radarTopics.map((t, i) => {
-              const hook = t.angle?.suggestedHook ?? t.description ?? "";
-              const hookSnippet = hook.length > 120 ? hook.slice(0, 120) + "…" : hook;
-              return `${i + 1}. "${t.angle?.suggestedTitle ?? t.title}" — ${hookSnippet} [score viral: ${t.viralScore}]`;
-            }),
-            ``,
-            `INSTRUÇÃO: Distribua entre 30-50% dos posts adaptando estes temas em alta para as categorias editoriais. Os demais posts devem ser pautas perenes e estratégicas da marca.`,
-          ].join("\n")
-        : null;
 
       const response = await invokeLLM({
         messages: [
@@ -5139,7 +4967,6 @@ const editorialPlanRouter = router({
               `CATEGORIAS EDITORIAIS (use todas de forma balanceada):`,
               input.categories.join(", "),
               brandContext ? `\nINFO DA MARCA:\n${brandContext}` : "",
-              radarBlock ? `\n${radarBlock}` : "",
               holidaysBlock ? `\n${holidaysBlock}` : "",
               ``,
               `DATAS OBRIGATÓRIAS — use CADA uma destas ${totalPosts} datas exatamente UMA vez em scheduledDate, nesta lista, sem pular nenhuma e sem usar nenhuma outra data:`,
@@ -5656,48 +5483,6 @@ const storiesRouter = router({
 
 // ─── Helpers de conta (verificação de e-mail, reset de senha, 2FA) ───────────
 
-const paidTrafficRouter = router({
-  connection: protectedProcedure.query(async ({ ctx }) => {
-    const connection = await db.getInstagramConnection(ctx.user.id);
-    return {
-      connected: Boolean(connection?.userAccessToken),
-      instagramUsername: connection?.username ?? null,
-      reconnectRequired: Boolean(connection && !connection.userAccessToken),
-    };
-  }),
-
-  metaAdAccounts: protectedProcedure.query(async ({ ctx }) => {
-    const connection = await db.getInstagramConnection(ctx.user.id);
-    if (!connection?.userAccessToken) {
-      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Reconecte sua conta Meta para autorizar o acesso aos anúncios." });
-    }
-    const result = await graphGet<{ data?: Array<{ id: string; name: string; currency?: string; account_status?: number }> }>(
-      "me/adaccounts",
-      { fields: "id,name,currency,account_status", limit: "100" },
-      connection.userAccessToken
-    );
-    return result.data ?? [];
-  }),
-
-  metaCampaigns: protectedProcedure
-    .input(z.object({ adAccountId: z.string().regex(/^act_\d+$/) }))
-    .query(async ({ ctx, input }) => {
-      const connection = await db.getInstagramConnection(ctx.user.id);
-      if (!connection?.userAccessToken) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conta Meta Ads não conectada." });
-      }
-      const result = await graphGet<{ data?: Array<Record<string, unknown>> }>(
-        `${input.adAccountId}/campaigns`,
-        {
-          fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(maximum){spend,impressions,reach,clicks,actions,action_values}",
-          limit: "100",
-        },
-        connection.userAccessToken
-      );
-      return result.data ?? [];
-    }),
-});
-
 const campaignHubStatusSchema = z.enum(["draft", "planning", "production", "approval", "active", "completed", "archived"]);
 const campaignAssetTypeSchema = z.enum(["article", "carousel", "post", "image", "reel", "story", "ad", "report"]);
 const campaignAssetStatusSchema = z.enum(["draft", "ready", "pending_approval", "approved", "published", "failed"]);
@@ -6177,21 +5962,19 @@ export const appRouter = router({
   carousel: carouselRouter,
   campaign: campaignRouter,
   campaignHub: campaignHubRouter,
-  paidTraffic: paidTrafficRouter,
   canva: canvaRouter,
   posts: postsRouter,
   analytics: analyticsRouter,
   admin: adminRouter,
   features: featuresRouter,
   brandKit: brandKitRouter,
+  agents: agentsRouter,
   team: teamRouter,
   contentApproval: contentApprovalRouter,
   reels: reelsRouter,
   artStudio: artStudioRouter,
   commentAlerts: commentAlertsRouter,
   commentAutomations: commentAutomationsRouter,
-  styleAnalyzer: styleAnalyzerRouter,
-  radar: radarRouter,
   seo: seoRouter,
   searchConsole: searchConsoleRouter,
   performance: performanceRouter,

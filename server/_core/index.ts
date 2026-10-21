@@ -11,9 +11,9 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { startInstagramPostScheduler } from "./instagramPostScheduler";
+import { failStaleRuns } from "../agents/store";
 import { startNewsDigestScheduler } from "./newsDigestScheduler";
 import { startCommentAlertScheduler } from "./commentAlertScheduler";
-import { startRadarScheduler } from "./radarScheduler";
 import { startMetricsScheduler } from "./metricsScheduler";
 import { startInstagramTokenRefreshScheduler } from "./instagramTokenRefreshScheduler";
 import { autoGenerateFromNews } from "./newsAutoGenerator";
@@ -157,7 +157,7 @@ async function startServer() {
       // For S3 private objects, generate a presigned URL so the proxy can fetch them
       const fetchUrl = await getMetaFetchableStorageUrl(url);
       const upstream = await fetch(fetchUrl, {
-        headers: { "User-Agent": "KrythosLab/1.0 render-proxy", Accept: "image/*" },
+        headers: { "User-Agent": "AlleEnergia/1.0 render-proxy", Accept: "image/*" },
         signal: AbortSignal.timeout(15_000),
       });
       if (!upstream.ok) { res.status(502).send("Upstream error"); return; }
@@ -173,7 +173,7 @@ async function startServer() {
   });
 
   // Video proxy — streams S3 videos to the browser with CORS and range-request support.
-  // Direct S3 links fail in browsers because S3 buckets don't have CORS headers for krythoslab.com.
+  // Direct S3 links fail in browsers because S3 buckets don't have CORS headers for the app domain.
   app.get("/api/video-proxy", async (req, res) => {
     try { await sdk.authenticateRequest(req); } catch { res.status(401).send("Unauthorized"); return; }
     const url = typeof req.query.url === "string" ? req.query.url : "";
@@ -189,7 +189,7 @@ async function startServer() {
       const rangeHeader = req.headers.range;
       const upstream = await fetch(fetchUrl, {
         headers: {
-          "User-Agent": "KrythosLab/1.0 video-proxy",
+          "User-Agent": "AlleEnergia/1.0 video-proxy",
           ...(rangeHeader ? { Range: rangeHeader } : {}),
         },
         signal: AbortSignal.timeout(30_000),
@@ -743,10 +743,10 @@ async function startServer() {
   // executa por vez, seguro pra múltiplas réplicas. SEM REDIS_URL, o lock
   // vira um no-op (sempre "ganha") e cada réplica roda por conta própria —
   // ou seja, ainda não escale horizontalmente sem o Redis configurado.
+  failStaleRuns().catch((e) => console.warn("[agents] falha ao limpar execuções interrompidas:", e));
   startInstagramPostScheduler();
   startNewsDigestScheduler();
   startCommentAlertScheduler();
-  startRadarScheduler();
   startMetricsScheduler();
   startInstagramTokenRefreshScheduler();
   db.migrateNullTrialDates().then(() => {
@@ -756,7 +756,7 @@ async function startServer() {
     if (!configured) {
       console.warn(
         "[S3] CORS não pôde ser configurado automaticamente.\n" +
-        "  → Acesse AWS Console > S3 > krythos > Permissions > CORS e adicione:\n" +
+        "  → Acesse AWS Console > S3 > <seu bucket> > Permissions > CORS e adicione:\n" +
         '  [{"AllowedHeaders":["*"],"AllowedMethods":["GET","HEAD","PUT"],"AllowedOrigins":["*"],"ExposeHeaders":["Content-Length","Content-Range","ETag"],"MaxAgeSeconds":3600}]'
       );
     }

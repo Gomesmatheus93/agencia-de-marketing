@@ -21,7 +21,7 @@ vi.mock("./newsAutoGenerator", () => ({
 }));
 
 vi.mock("./env", () => ({
-  ENV: { appBaseUrl: "https://krythoslab.com" },
+  ENV: { appBaseUrl: "https://alleenergia.com" },
 }));
 
 import * as db from "../db";
@@ -102,9 +102,9 @@ describe("handleAggregatorWebhook — more news trigger", () => {
     );
     const sentText = vi.mocked(sendWhatsAppText).mock.calls[0][1];
     expect(sentText).toContain("Eixos");
-    expect(sentText).toContain("https://krythoslab.com/n/99/0");
+    expect(sentText).toContain("https://alleenergia.com/n/99/0");
     expect(sentText).toContain("PV Magazine");
-    expect(sentText).toContain("https://krythoslab.com/n/99/1");
+    expect(sentText).toContain("https://alleenergia.com/n/99/1");
 
     expect(statusMock).toHaveBeenCalledWith(200);
     expect(jsonMock).toHaveBeenCalledWith(
@@ -213,11 +213,11 @@ describe("buildDigestTextMessage", () => {
 
   it("includes source and link per item, like the original template", () => {
     const text = buildDigestTextMessage([
-      { title: "Título X", source: "Canal Solar", url: "https://krythoslab.com/n/1/0" },
+      { title: "Título X", source: "Canal Solar", url: "https://alleenergia.com/n/1/0" },
     ]);
     expect(text).toContain("1️⃣ Título X");
     expect(text).toContain("Canal Solar");
-    expect(text).toContain("https://krythoslab.com/n/1/0");
+    expect(text).toContain("https://alleenergia.com/n/1/0");
   });
 
   it("omits source/link lines when not provided", () => {

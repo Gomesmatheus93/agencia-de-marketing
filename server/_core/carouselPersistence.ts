@@ -159,7 +159,7 @@ async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefin
   const response = await fetch(assetUrl, {
     signal: AbortSignal.timeout(10_000),
     headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; KrythosBot/1.0)",
+      "User-Agent": "Mozilla/5.0 (compatible; AlleEnergiaBot/1.0)",
       "Accept": "image/*,*/*;q=0.8",
     },
   });

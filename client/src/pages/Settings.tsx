@@ -744,7 +744,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold">Painel Admin</h1>
-            <p className="text-sm text-muted-foreground">Controle total da plataforma KrythosLab</p>
+            <p className="text-sm text-muted-foreground">Controle total da plataforma Alle Energia</p>
           </div>
           <Badge variant="secondary" className="ml-auto text-xs gap-1 border border-border/50">
             <Shield className="w-3 h-3" />

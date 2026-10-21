@@ -12,7 +12,7 @@ export const ENV = {
   // Envio de e-mail (verificação, recuperação de senha, códigos 2FA) via webhook do n8n.
   n8nEmailWebhookUrl: process.env.N8N_EMAIL_WEBHOOK_URL ?? "",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
-  emailFrom: process.env.EMAIL_FROM ?? "KrythosLab <no-reply@krythoslab.com>",
+  emailFrom: process.env.EMAIL_FROM ?? "Alle Energia <no-reply@alleenergia.com>",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiApiBaseUrl: process.env.OPENAI_API_BASE_URL ?? "https://api.openai.com/v1",
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
@@ -77,7 +77,7 @@ export const ENV = {
   whatsappRecipientNumber: process.env.WHATSAPP_RECIPIENT_NUMBER ?? "",
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "",
   whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? "",
-  // Shared secret for n8n → KrythosLab server-to-server calls
+  // Shared secret for n8n → Alle Energia server-to-server calls
   n8nSecret: process.env.N8N_SECRET ?? "",
   // ScraperAPI — usado para buscar posts de perfis externos do Instagram via proxy residencial
   // Cadastro gratuito: https://www.scraperapi.com (1000 req/mês grátis)

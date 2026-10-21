@@ -1,7 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useState, useRef, useEffect } from "react";
-import type { RadarPrefill } from "@/pages/Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,8 +51,8 @@ const STYLE_OPTIONS: {
   desc: string;
   gradient: string;
 }[] = [
-  { id: "commercial", label: "Geral",      icon: Sparkles,    desc: "Foto comercial de alta qualidade",  gradient: "from-violet-500 to-purple-600" },
-  { id: "produto",    label: "Produto",    icon: ShoppingBag, desc: "E-commerce e catálogos",            gradient: "from-blue-500 to-cyan-600" },
+  { id: "commercial", label: "Geral",      icon: Sparkles,    desc: "Foto comercial de alta qualidade",  gradient: "from-alle-purple to-alle-purple-light" },
+  { id: "produto",    label: "Produto",    icon: ShoppingBag, desc: "E-commerce e catálogos",            gradient: "from-alle-orange to-alle-orange-light" },
   { id: "banner",     label: "Banner",     icon: Megaphone,   desc: "Anúncios e publicidade",            gradient: "from-orange-500 to-red-500" },
   { id: "social",     label: "Social",     icon: LayoutGrid,  desc: "Posts e stories",                   gradient: "from-pink-500 to-rose-600" },
   { id: "logo",       label: "Logo",       icon: Brush,       desc: "Identidade visual",                 gradient: "from-emerald-500 to-teal-600" },
@@ -194,11 +194,11 @@ export default function Images() {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as RadarPrefill;
+      const prefill = JSON.parse(raw) as ContentPrefill;
       sessionStorage.removeItem(RADAR_PREFILL_KEY);
       setPrompt(`${prefill.topic}${prefill.hook ? ` — ${prefill.hook}` : ""}`);
       setStyle("social");
-      toast.info("Pauta do Radar carregada — ajuste o prompt e clique em Gerar.");
+      toast.info("Pauta carregada — ajuste o prompt e clique em Gerar.");
     } catch { /* ignore */ }
   }, []);
 
@@ -290,7 +290,7 @@ export default function Images() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = `krythos-image-${Date.now()}.png`;
+      a.download = `alle-image-${Date.now()}.png`;
       a.click();
       URL.revokeObjectURL(blobUrl);
       toast.success("Download iniciado!");
@@ -303,7 +303,7 @@ export default function Images() {
 
         {/* ── Header ───────────────────────────────────────────── */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-alle-orange to-alle-orange-light flex items-center justify-center shadow-md flex-shrink-0">
             <Wand2 className="w-5 h-5 text-white" />
           </div>
           <div>

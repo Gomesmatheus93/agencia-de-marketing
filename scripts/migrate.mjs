@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/mysql2";
-import { migrate } from "drizzle-orm/mysql2/migrator";
-import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 const migrationsFolder = process.env.MIGRATIONS_FOLDER ?? "drizzle";
@@ -23,13 +23,13 @@ function delay(ms) {
 }
 
 async function runMigrations() {
-  const connection = await mysql.createConnection(databaseUrl);
+  const client = postgres(databaseUrl, { max: 1, prepare: false, onnotice: () => {} });
 
   try {
-    const db = drizzle(connection);
+    const db = drizzle(client);
     await migrate(db, { migrationsFolder });
   } finally {
-    await connection.end();
+    await client.end();
   }
 }
 

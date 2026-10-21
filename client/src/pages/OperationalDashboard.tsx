@@ -2,48 +2,161 @@ import AppLayout from "@/components/AppLayout";
 import UpgradeModal from "@/components/UpgradeModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { usePlan } from "@/_core/hooks/usePlan";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { ArrowRight, CalendarDays, CircleDollarSign, Clock3, Crown, Layers3, Lock, Megaphone, MousePointerClick, Plus, Rocket, Sparkles, Target, Wand2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  ArrowRight, Bot, Building2, CalendarRange, ClipboardCheck, Clock3, Crown, GalleryHorizontal, Image, Layers, Lock,
+  Megaphone, Send, Sparkles,
+} from "lucide-react";
+import { useState } from "react";
 import { Link } from "wouter";
 
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const statusInfo: Record<string, { label: string; progress: number; color: string }> = {
-  draft: { label: "Rascunho", progress: 8, color: "bg-slate-500" }, planning: { label: "Planejamento", progress: 20, color: "bg-blue-500" }, production: { label: "Produção", progress: 45, color: "bg-violet-500" }, approval: { label: "Aprovação", progress: 65, color: "bg-amber-500" }, active: { label: "Em veiculação", progress: 82, color: "bg-emerald-500" }, completed: { label: "Concluída", progress: 100, color: "bg-teal-500" }, archived: { label: "Arquivada", progress: 100, color: "bg-zinc-500" },
-};
+type Recent = { threadId: number; title: string; status: string; createdAt: string | Date; summary: string | null; images: string[] } | null;
+
+function when(date: string | Date) {
+  return new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+/** Um passo do fluxo da agência, com o último resultado do agente responsável. */
+function Step({ n, title, icon: Icon, href, cta, recent, empty, children }: {
+  n: number; title: string; icon: React.ComponentType<{ className?: string }>; href: string; cta: string;
+  recent?: Recent; empty: string; children?: React.ReactNode;
+}) {
+  return (
+    <Card className="flex h-full flex-col border-border/60">
+      <CardContent className="flex flex-1 flex-col gap-3 p-5">
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{n}</span>
+          <Icon className="h-4 w-4 text-muted-foreground" />
+          <p className="font-semibold">{title}</p>
+        </div>
+        <div className="flex-1 text-sm">
+          {children ?? (recent ? (
+            <div className="space-y-2">
+              <p className="line-clamp-1 font-medium">{recent.title}</p>
+              {recent.status === "running" ? <Badge variant="outline" className="border-primary/30 text-primary">trabalhando…</Badge>
+                : recent.status === "failed" ? <Badge variant="outline" className="border-amber-500/40 text-amber-700">parou com erro</Badge>
+                : recent.summary && <p className="line-clamp-3 text-muted-foreground">{recent.summary}</p>}
+              {recent.images.length > 0 && (
+                <div className="flex gap-1.5">{recent.images.map((src) => <img key={src} src={src} alt="" className="h-16 w-12 rounded-md border object-cover" loading="lazy" />)}</div>
+              )}
+              <p className="text-xs text-muted-foreground">{when(recent.createdAt)}</p>
+            </div>
+          ) : <p className="text-muted-foreground">{empty}</p>)}
+        </div>
+        <Button variant="outline" size="sm" asChild className="justify-between"><Link href={href}>{cta}<ArrowRight className="h-3.5 w-3.5" /></Link></Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function OperationalDashboard() {
   const { user } = useAuth();
-  const { isExpired, isTrialActive, isLegacy, isPaid, daysLeft, usage, limits } = usePlan();
+  const { isExpired, isTrialActive, isLegacy, isPaid, daysLeft } = usePlan();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const campaignsQuery = trpc.campaignHub.list.useQuery();
-  const imageStats = trpc.images.getStats.useQuery();
-  const articleStats = trpc.articles.getStats.useQuery();
-  const carouselStats = trpc.carousel.getStats.useQuery();
+  const office = trpc.agents.office.useQuery(undefined, { refetchInterval: 5000 });
+  const recent = trpc.agents.recent.useQuery();
+  const agents = trpc.agents.list.useQuery();
   const postStats = trpc.posts.getStats.useQuery();
-  const campaigns = campaignsQuery.data ?? [];
-  const totals = useMemo(() => campaigns.reduce((acc, item) => ({ budget: acc.budget + item.budgetCents, spent: acc.spent + item.spentCents, revenue: acc.revenue + item.revenueCents, active: acc.active + (item.status === "active" ? 1 : 0), approval: acc.approval + (item.status === "approval" ? 1 : 0), assets: acc.assets + item.assets.length }), { budget: 0, spent: 0, revenue: 0, active: 0, approval: 0, assets: 0 }), [campaigns]);
-  const roas = totals.spent > 0 ? totals.revenue / totals.spent : 0;
-  const contentTotal = (imageStats.data?.count ?? 0) + (articleStats.data?.count ?? 0) + (carouselStats.data?.count ?? 0) + (postStats.data?.count ?? 0);
+  const campaigns = trpc.campaignHub.list.useQuery();
+
   const firstName = user?.name?.split(" ")[0] || "Usuário";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const working = (office.data ?? []).filter((a) => a.state === "tool" || a.state === "thinking");
+  const waiting = (office.data ?? []).filter((a) => a.state === "waiting_approval");
+  const nameOf = (slug: string) => agents.data?.agents.find((a) => a.slug === slug)?.name ?? slug;
+  const r = recent.data ?? {};
+  const latestCreation = [r.carrossel, r.stories, r.legendas].filter(Boolean).sort((a, b) => +new Date(b!.createdAt) - +new Date(a!.createdAt))[0];
+  const activeCampaigns = (campaigns.data ?? []).filter((c) => !["archived", "completed"].includes(c.status));
 
-  return <AppLayout activeModule="dashboard"><main className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/.09),transparent_30%),radial-gradient(circle_at_top_right,hsl(215_90%_60%/.07),transparent_28%)] p-4 md:p-8"><div className="mx-auto max-w-[1500px] space-y-6">
-    <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Sparkles className="mr-1.5 h-3 w-3" />Central de operação</Badge><h1 className="text-3xl font-bold tracking-tight md:text-4xl">{greeting}, <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent">{firstName}</span></h1><p className="mt-2 text-sm text-muted-foreground">Veja o que precisa de atenção e continue sua operação de marketing.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link href="/dashboard/studio"><Wand2 className="mr-2 h-4 w-4" />Abrir Estúdio</Link></Button><Button asChild><Link href="/dashboard/campaign"><Plus className="mr-2 h-4 w-4" />Nova campanha</Link></Button></div></header>
-    {!isPaid && !isLegacy && (isExpired || isTrialActive) && <div className={cn("flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center", isExpired ? "border-destructive/25 bg-destructive/[.07]" : "border-amber-500/25 bg-amber-500/[.07]")}><div className="flex flex-1 items-start gap-3">{isExpired ? <Lock className="mt-0.5 h-5 w-5 text-destructive" /> : <Clock3 className="mt-0.5 h-5 w-5 text-amber-500" />}<div><p className="text-sm font-semibold">{isExpired ? "Seu período de teste terminou" : `Teste gratuito · ${daysLeft} ${daysLeft === 1 ? "dia restante" : "dias restantes"}`}</p><p className="mt-1 text-xs text-muted-foreground">{isExpired ? "Escolha um plano para continuar sua operação." : `${usage?.images ?? 0}/${limits?.images ?? 5} imagens · ${usage?.carousel ?? 0}/${limits?.carousel ?? 3} carrosséis · ${usage?.articles ?? 0}/${limits?.articles ?? 3} artigos hoje`}</p></div></div><Button size="sm" onClick={() => setUpgradeOpen(true)}><Crown className="mr-1.5 h-3.5 w-3.5" />{isExpired ? "Ver planos" : "Fazer upgrade"}</Button></div>}
-    <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} expired={isExpired} />
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Kpi icon={Rocket} label="Campanhas ativas" value={String(totals.active)} helper={`${campaigns.length} no total`} /><Kpi icon={Clock3} label="Em aprovação" value={String(totals.approval)} helper="Precisam de atenção" tone="amber" /><Kpi icon={Layers3} label="Conteúdos criados" value={String(contentTotal)} helper={`${totals.assets} vinculados a campanhas`} /><Kpi icon={CircleDollarSign} label="Investimento" value={brl.format(totals.spent / 100)} helper={`${brl.format(totals.budget / 100)} planejados`} /><Kpi icon={Target} label="ROAS" value={`${roas.toFixed(2)}x`} helper={`${brl.format(totals.revenue / 100)} em receita`} tone="emerald" /></section>
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,.55fr)]"><Card className="border-border/60 bg-card/80 backdrop-blur"><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-lg">Campanhas em andamento</CardTitle><p className="mt-1 text-xs text-muted-foreground">Prioridades, progresso e investimento da operação.</p></div><Button variant="ghost" size="sm" asChild><Link href="/dashboard/campaign">Ver todas<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button></CardHeader><CardContent>{campaignsQuery.isLoading ? <div className="py-14 text-center text-sm text-muted-foreground">Carregando sua operação...</div> : campaigns.length === 0 ? <EmptyCampaign /> : <div className="space-y-3">{campaigns.filter((item) => !["archived", "completed"].includes(item.status)).slice(0, 5).map((campaign) => { const state = statusInfo[campaign.status] ?? statusInfo.draft; return <Link key={campaign.id} href="/dashboard/campaign" className="block rounded-2xl border border-border/60 bg-background/55 p-4 transition hover:border-primary/25 hover:shadow-md"><div className="flex flex-col gap-4 md:flex-row md:items-center"><div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white", state.color)}><Megaphone className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{campaign.name}</p><Badge variant="outline" className="text-[10px]">{state.label}</Badge></div><p className="mt-1 truncate text-xs text-muted-foreground">{campaign.clientName || "Marca não informada"} · {campaign.objective || "Objetivo a definir"}</p></div><div className="w-full md:w-40"><div className="mb-1.5 flex justify-between text-[10px] text-muted-foreground"><span>Progresso</span><span>{state.progress}%</span></div><Progress value={state.progress} className="h-1.5" /></div><div className="w-28"><p className="text-[10px] text-muted-foreground">Investido</p><p className="text-sm font-semibold">{brl.format(campaign.spentCents / 100)}</p></div></div></Link>; })}</div>}</CardContent></Card>
-      <div className="space-y-6"><Card className="border-border/60 bg-card/80"><CardHeader><CardTitle className="text-base">Próximas ações</CardTitle></CardHeader><CardContent className="space-y-2"><Action href="/dashboard/campaign" icon={Target} title="Planejar campanha" helper="Defina objetivo, público e canais" /><Action href="/dashboard/studio" icon={Wand2} title="Criar conteúdo" helper="Acesse todas as ferramentas criativas" /><Action href="/dashboard/calendar" icon={CalendarDays} title="Organizar calendário" helper="Revise publicações e datas" /><Action href="/dashboard/paid-traffic" icon={MousePointerClick} title="Acompanhar mídia" helper="Meta Ads, orçamento e resultados" /></CardContent></Card><Card className="border-primary/15 bg-gradient-to-br from-primary/[.08] to-violet-500/[.04]"><CardContent className="p-5"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-4 w-4" /></div><h3 className="mt-4 text-sm font-semibold">Recomendação do dia</h3><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{totals.approval > 0 ? `Existem ${totals.approval} campanhas em aprovação. Resolva os retornos antes de produzir novos ativos.` : campaigns.length === 0 ? "Crie sua primeira campanha antes de gerar peças. Assim cada conteúdo nasce com objetivo e público definidos." : totals.assets === 0 ? "Suas campanhas ainda não têm ativos vinculados. Abra o Estúdio e comece pelo formato mais importante." : "Sua operação está organizada. Revise o calendário e acompanhe os resultados das campanhas ativas."}</p></CardContent></Card></div></div>
-  </div></main></AppLayout>;
+  return (
+    <AppLayout activeModule="dashboard">
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px] space-y-6">
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{greeting}, <span className="bg-gradient-to-r from-alle-purple to-alle-orange bg-clip-text text-transparent">{firstName}</span></h1>
+              <p className="mt-1 text-sm text-muted-foreground">A agência da Alle Energia: planejar, criar, publicar e medir, com os agentes fazendo o trabalho pesado.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild><Link href="/escritorio"><Building2 className="mr-2 h-4 w-4" />Ver escritório</Link></Button>
+              <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />Planejar a semana</Link></Button>
+            </div>
+          </header>
+
+          {!isPaid && !isLegacy && (isExpired || isTrialActive) && (
+            <div className={cn("flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center", isExpired ? "border-destructive/25 bg-destructive/[.07]" : "border-amber-500/25 bg-amber-500/[.07]")}>
+              <div className="flex flex-1 items-center gap-3">{isExpired ? <Lock className="h-5 w-5 text-destructive" /> : <Clock3 className="h-5 w-5 text-amber-500" />}
+                <p className="text-sm font-semibold">{isExpired ? "Seu período de teste terminou" : `Teste gratuito · ${daysLeft} ${daysLeft === 1 ? "dia restante" : "dias restantes"}`}</p></div>
+              <Button size="sm" onClick={() => setUpgradeOpen(true)}><Crown className="mr-1.5 h-3.5 w-3.5" />{isExpired ? "Ver planos" : "Fazer upgrade"}</Button>
+            </div>
+          )}
+          <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} expired={isExpired} />
+
+          <Card className="border-primary/20 bg-gradient-to-r from-primary/[.06] to-alle-orange/[.05]">
+            <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-alle-purple to-alle-orange text-white"><Bot className="h-5 w-5" /></div>
+                <div>
+                  <p className="font-semibold">
+                    {working.length ? `${working.length} agente${working.length > 1 ? "s" : ""} trabalhando agora` : "Nenhum agente trabalhando agora"}
+                    {waiting.length > 0 && <span className="text-alle-orange"> · {waiting.length} aguardando sua aprovação</span>}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {working.length ? working.map((a) => nameOf(a.agentSlug)).join(", ") : "Mande uma tarefa pelo menu Criar ou converse com um agente."}
+                  </p>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" asChild><Link href="/dashboard/agents">Ver equipe<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
+            </CardContent>
+          </Card>
+
+          <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Fluxo da semana</h2>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Step n={1} title="Planejar" icon={CalendarRange} href="/dashboard/planejamento" cta="Abrir planejamento" recent={r.planejamento} empty="Nenhum plano ainda. Gere o plano da semana ou do mês." />
+              <Step n={2} title="Criar" icon={Sparkles} href="/dashboard/criar/carrossel" cta="Criar com agente" recent={latestCreation} empty="Nenhuma peça criada ainda." />
+              <Step n={3} title="Publicar" icon={Send} href="/dashboard/posts" cta="Abrir postagens" empty="">
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold">{postStats.data?.count ?? 0}</p>
+                  <p className="text-muted-foreground">postagens na plataforma</p>
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    <Link href="/dashboard/criar/carrossel" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-accent"><GalleryHorizontal className="h-3 w-3" />Carrossel</Link>
+                    <Link href="/dashboard/criar/post" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-accent"><Image className="h-3 w-3" />Post</Link>
+                    <Link href="/dashboard/criar/stories" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-accent"><Layers className="h-3 w-3" />Stories</Link>
+                  </div>
+                </div>
+              </Step>
+              <Step n={4} title="Medir" icon={ClipboardCheck} href="/dashboard/auditoria" cta="Abrir auditoria" recent={r.auditoria} empty="Nenhuma auditoria ainda. Ela ensina a voz da Alle aos outros agentes." />
+            </div>
+          </section>
+
+          <Card className="border-border/60">
+            <CardContent className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="flex items-center gap-2 font-semibold"><Megaphone className="h-4 w-4 text-muted-foreground" />Campanhas em andamento</p>
+                <Button variant="ghost" size="sm" asChild><Link href="/dashboard/campaign">Ver todas<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
+              </div>
+              {activeCampaigns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma campanha ativa. Use campanhas para agrupar plano, peças e resultados de uma ação (ex.: lançamento, sazonal, collab).</p>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {activeCampaigns.slice(0, 6).map((c) => (
+                    <Link key={c.id} href="/dashboard/campaign" className="rounded-xl border p-3 text-sm transition hover:border-primary/30 hover:bg-accent/40">
+                      <p className="truncate font-medium">{c.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{c.objective || "Objetivo a definir"} · {c.assets.length} peças</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </AppLayout>
+  );
 }
-
-function Kpi({ icon: Icon, label, value, helper, tone = "primary" }: { icon: any; label: string; value: string; helper: string; tone?: "primary" | "amber" | "emerald" }) { const tones = { primary: "bg-primary/10 text-primary", amber: "bg-amber-500/10 text-amber-500", emerald: "bg-emerald-500/10 text-emerald-500" }; return <Card className="border-border/50 bg-card/75"><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">{label}</p><div className={cn("rounded-lg p-2", tones[tone])}><Icon className="h-3.5 w-3.5" /></div></div><p className="mt-2 text-2xl font-bold">{value}</p><p className="mt-1 text-[10px] text-muted-foreground">{helper}</p></CardContent></Card>; }
-function Action({ href, icon: Icon, title, helper }: { href: string; icon: any; title: string; helper: string }) { return <Link href={href} className="group flex items-center gap-3 rounded-xl border border-transparent p-2.5 transition hover:border-border hover:bg-muted/40"><div className="rounded-lg bg-primary/10 p-2 text-primary"><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{title}</p><p className="truncate text-[10px] text-muted-foreground">{helper}</p></div><ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition group-hover:translate-x-1" /></Link>; }
-function EmptyCampaign() { return <div className="flex flex-col items-center py-14 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10"><Megaphone className="h-6 w-6 text-primary" /></div><h3 className="mt-4 text-sm font-semibold">Transforme tarefas em uma operação</h3><p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">Crie uma campanha para conectar briefing, conteúdos, publicação, mídia e resultados.</p><Button className="mt-5" size="sm" asChild><Link href="/dashboard/campaign"><Plus className="mr-1.5 h-3.5 w-3.5" />Criar campanha</Link></Button></div>; }

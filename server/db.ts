@@ -1,12 +1,17 @@
-﻿import { eq, desc, asc, and, or, isNull, lte, sql, count, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import type { ResultSetHeader } from "mysql2";
+import { eq, desc, asc, and, or, isNull, lte, sql, count, inArray } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import type { SQL } from "drizzle-orm";
+import postgres from "postgres";
 import { nanoid } from "nanoid";
 import { hashPassword } from "./_core/password";
 import { blindIndex, decryptField, encryptField } from "./_core/crypto";
 
+// Id da linha recém-inserida, lido do RETURNING. Aceita a linha, a lista de
+// linhas ou o par [linhas, meta] devolvido por execute().
 function insertId(result: unknown): number {
-  return (result as ResultSetHeader).insertId;
+  let row: unknown = result;
+  while (Array.isArray(row)) row = row[0];
+  return Number((row as { id: number | string }).id);
 }
 import {
   InsertUser,
@@ -86,41 +91,35 @@ import {
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
 let _db: ReturnType<typeof drizzle> | null = null;
-let _dailyUsageTableReady: Promise<void> | null = null;
-let _carouselTableReady: Promise<void> | null = null;
-let _carouselTemplateTableReady: Promise<void> | null = null;
-let _avatarVideoTableReady: Promise<void> | null = null;
-let _socialPostsMetadataReady: Promise<void> | null = null;
-let _featureFlagsTableReady: Promise<void> | null = null;
-let _canvaConnectionsTableReady: Promise<void> | null = null;
-let _linkedinConnectionsTableReady: Promise<void> | null = null;
-let _heygenDigitalTwinsTableReady: Promise<void> | null = null;
-let _searchConsoleConnectionsTableReady: Promise<void> | null = null;
-let _reelsScriptsTableReady: Promise<void> | null = null;
-let _commentPollStateReady: Promise<void> | null = null;
-let _commentAlertsReady: Promise<void> | null = null;
-let _commentAutomationsTableReady: Promise<void> | null = null;
-let _postMetricsTableReady: Promise<void> | null = null;
-let _postMetricsVideoColumnsReady: Promise<void> | null = null;
-let _igAccountInsightsTableReady: Promise<void> | null = null;
-let _templatePerformanceTableReady: Promise<void> | null = null;
-let _editorialPlanItemsTableReady: Promise<void> | null = null;
-let _artStudioTablesReady: Promise<void> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      // Sem connectionLimit explícito, o driver cai no padrão do mysql2 (10),
-      // baixo demais pra várias agências gerando conteúdo ao mesmo tempo.
-      _db = drizzle({
-        connection: { uri: process.env.DATABASE_URL, connectionLimit: 20 },
-      });
+      // max: 20 conexões no pool; prepare: false mantém compatibilidade com o
+      // pooler do Supabase em modo transaction.
+      const client = postgres(process.env.DATABASE_URL, { max: 20, prepare: false });
+      _db = drizzle(client);
+      // O drizzle desliga a conversão de timestamptz (OID 1184) do driver porque
+      // converte por conta própria nas colunas tipadas. O SQL cru deste arquivo
+      // passa e recebe Date diretamente (como no mysql2), então restauramos.
+      client.options.serializers[1184] = (v: unknown) => (v instanceof Date ? v.toISOString() : v);
+      client.options.parsers[1184] = (v: string) => new Date(v);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+// SQL cru. Devolve [linhas, null] — o mesmo formato do mysql2 — para que os
+// acessos `const [rows] = ...` deste arquivo continuem válidos.
+async function execute(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  query: SQL
+): Promise<[any[], null]> {
+  const rows = await db.execute(query);
+  return [Array.from(rows), null];
 }
 
 function parseCarouselSlides(value: unknown): CarouselSlideData[] {
@@ -258,324 +257,14 @@ function hydrateCarousel(row: Omit<Carousel, "slides"> & { slides: unknown; desi
   return hydrated;
 }
 
-function isMysqlDuplicateColumnError(error: unknown): boolean {
-  const inspected = new Set<unknown>();
-  const parts: string[] = [];
-
-  const collect = (value: unknown, depth = 0) => {
-    if (!value || depth > 4 || inspected.has(value)) return;
-    inspected.add(value);
-
-    if (typeof value === "string") {
-      parts.push(value);
-      return;
-    }
-
-    if (typeof value !== "object") return;
-
-    const record = value as Record<string, unknown>;
-    for (const key of ["code", "errno", "sqlState", "sqlMessage", "message"]) {
-      const field = record[key];
-      if (field !== undefined) parts.push(String(field));
-    }
-
-    collect(record.cause, depth + 1);
-  };
-
-  collect(error);
-
-  return /ER_DUP_FIELDNAME|Duplicate column|1060|42S21/i.test(parts.join(" "));
-}
-
-async function ensureCarouselTable() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_carouselTableReady) {
-    _carouselTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS carousels (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          topic varchar(512) NOT NULL,
-          style varchar(100) NOT NULL,
-          hook text NOT NULL,
-          caption text NOT NULL,
-          finalCta text NOT NULL,
-          coverImageUrl text,
-          slides text NOT NULL,
-          designSettings text,
-          sourceTopicAngleId int,
-          hookType varchar(32),
-          contentFormat varchar(32) DEFAULT 'carousel',
-          templateId int,
-          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-      // Backfill columns for existing installs
-      for (const stmt of [
-        sql`ALTER TABLE carousels ADD COLUMN designSettings text`,
-        sql`ALTER TABLE carousels ADD COLUMN sourceTopicAngleId int`,
-        sql`ALTER TABLE carousels ADD COLUMN hookType varchar(32)`,
-        sql`ALTER TABLE carousels ADD COLUMN contentFormat varchar(32) DEFAULT 'carousel'`,
-        sql`ALTER TABLE carousels ADD COLUMN templateId int`,
-      ]) {
-        try { await db.execute(stmt); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-      }
-    })().catch((error) => {
-      _carouselTableReady = null;
-      throw error;
-    });
-  }
-
-  await _carouselTableReady;
-}
-
-async function ensureCarouselTemplateTable() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_carouselTemplateTableReady) {
-    _carouselTemplateTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS carousel_templates (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          name varchar(255) NOT NULL,
-          imageUrl text NOT NULL,
-          styleBrief text,
-          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-    })().catch((error) => {
-      _carouselTemplateTableReady = null;
-      throw error;
-    });
-  }
-
-  await _carouselTemplateTableReady;
-}
-
-async function ensureAvatarVideoTable() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_avatarVideoTableReady) {
-    _avatarVideoTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS avatar_videos (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          provider varchar(32) NOT NULL DEFAULT 'd-id',
-          title varchar(512) NOT NULL,
-          topic text,
-          script text NOT NULL,
-          sourceImageUrl text NOT NULL,
-          videoUrl text,
-          voiceProvider varchar(64),
-          voiceId varchar(128),
-          providerJobId varchar(255),
-          status enum('processing','completed','failed') NOT NULL DEFAULT 'processing',
-          errorMessage text,
-          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-    })().catch((error) => {
-      _avatarVideoTableReady = null;
-      throw error;
-    });
-  }
-
-  await _avatarVideoTableReady;
-}
-
 // ─── Approval columns migration ──────────────────────────────────────────────
-let _approvalColumnsReady: Promise<void> | null = null;
-
-async function ensureApprovalColumns() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_approvalColumnsReady) {
-    _approvalColumnsReady = (async () => {
-      // 1. Add approvalToken column if missing
-      const [cols] = (await db.execute(sql`
-        SELECT column_name FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name = 'social_posts'
-          AND column_name IN ('approvalToken', 'approvalExpiresAt')
-      `)) as unknown as [Array<{ column_name: string }>, unknown];
-
-      const existing = new Set((cols as Array<{ column_name: string }>).map((r) => r.column_name));
-
-      if (!existing.has("approvalToken")) {
-        try {
-          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN approvalToken varchar(64)`);
-        } catch (e) {
-          if (!isMysqlDuplicateColumnError(e)) throw e;
-        }
-      }
-      if (!existing.has("approvalExpiresAt")) {
-        try {
-          await db.execute(sql`ALTER TABLE social_posts ADD COLUMN approvalExpiresAt timestamp NULL`);
-        } catch (e) {
-          if (!isMysqlDuplicateColumnError(e)) throw e;
-        }
-      }
-
-      // 2. Extend the status enum to include pending_approval and rejected
-      const [enumRows] = (await db.execute(sql`
-        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'social_posts'
-          AND COLUMN_NAME = 'status'
-      `)) as unknown as [Array<{ COLUMN_TYPE: string }>, unknown];
-
-      const colType = (enumRows as Array<{ COLUMN_TYPE: string }>)[0]?.COLUMN_TYPE ?? "";
-      if (!colType.includes("pending_approval")) {
-        await db.execute(sql`
-          ALTER TABLE social_posts
-          MODIFY COLUMN status enum('draft','pending_approval','scheduled','published','failed','rejected')
-          NOT NULL DEFAULT 'draft'
-        `);
-      }
-    })().catch((e) => {
-      _approvalColumnsReady = null;
-      throw e;
-    });
-  }
-  await _approvalColumnsReady;
-}
-
-async function ensureSocialPostsMetadataColumn() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_socialPostsMetadataReady) {
-    _socialPostsMetadataReady = (async () => {
-      const [columnRows] = (await db.execute(sql`
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name = 'social_posts'
-          AND column_name IN ('metadata', 'errorMessage', 'igMediaId', 'contentType', 'contentId', 'storyData', 'retryCount')
-      `)) as unknown as [Array<{ column_name: string }>, unknown];
-
-      const existing = new Set((columnRows as Array<{ column_name: string }>).map((r) => r.column_name));
-
-      for (const [col, ddl] of [
-        ["metadata", sql`ALTER TABLE social_posts ADD COLUMN metadata text`],
-        ["errorMessage", sql`ALTER TABLE social_posts ADD COLUMN errorMessage text`],
-        ["igMediaId", sql`ALTER TABLE social_posts ADD COLUMN igMediaId varchar(100)`],
-        ["contentType", sql`ALTER TABLE social_posts ADD COLUMN contentType varchar(20)`],
-        ["contentId", sql`ALTER TABLE social_posts ADD COLUMN contentId int`],
-        ["storyData", sql`ALTER TABLE social_posts ADD COLUMN storyData text`],
-        ["retryCount", sql`ALTER TABLE social_posts ADD COLUMN retryCount int NOT NULL DEFAULT 0`],
-      ] as const) {
-        if (!existing.has(col)) {
-          try {
-            await db.execute(ddl);
-          } catch (error) {
-            if (!isMysqlDuplicateColumnError(error)) throw error;
-          }
-        }
-      }
-    })().catch((error) => {
-      _socialPostsMetadataReady = null;
-      throw error;
-    });
-  }
-
-  await _socialPostsMetadataReady;
-}
 
 // ─── Users — runtime column migration ────────────────────────────────────────
-
-let _userExtraColumnsReady: Promise<void> | null = null;
-
-async function ensureUserExtraColumns() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_userExtraColumnsReady) {
-    _userExtraColumnsReady = (async () => {
-      const [cols] = (await db.execute(sql`
-        SELECT column_name, column_type FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name = 'users'
-          AND column_name IN ('isActive', 'plan', 'trialExpiresAt')
-      `)) as unknown as [Array<{ column_name: string; column_type: string }>, unknown];
-
-      const existing = new Map(
-        (cols as Array<{ column_name: string; column_type: string }>).map((r) => [r.column_name, r.column_type])
-      );
-
-      if (!existing.has("isActive")) {
-        try {
-          await db.execute(sql`ALTER TABLE users ADD COLUMN isActive tinyint(1) NOT NULL DEFAULT 1`);
-        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-      }
-
-      if (!existing.has("plan")) {
-        try {
-          await db.execute(sql`ALTER TABLE users ADD COLUMN plan enum('free','pro','agency') NOT NULL DEFAULT 'free'`);
-        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-      }
-
-      if (!existing.has("trialExpiresAt")) {
-        try {
-          await db.execute(sql`ALTER TABLE users ADD COLUMN trialExpiresAt datetime NULL`);
-        } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-      }
-    })().catch((e) => { _userExtraColumnsReady = null; throw e; });
-  }
-  await _userExtraColumnsReady;
-}
 
 // ─── Users — colunas de segurança (criptografia / sessão / verificação / 2FA) ──
 // A migration formal 0020+ faz o trabalho estrutural (widen de email, índices).
 // Este guard só garante os ADD COLUMN idempotentes em ambientes onde a migration
 // ficou pra trás, seguindo o padrão dos outros ensure*Columns() do arquivo.
-
-let _userSecurityColumnsReady: Promise<void> | null = null;
-
-async function ensureUserSecurityColumns() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_userSecurityColumnsReady) {
-    _userSecurityColumnsReady = (async () => {
-      const [cols] = (await db.execute(sql`
-        SELECT column_name FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'users'
-          AND column_name IN ('emailHash','emailDomain','tokenVersion','emailVerifiedAt','twoFactorEnabled')
-      `)) as unknown as [Array<{ column_name: string }>, unknown];
-      const existing = new Set((cols as Array<{ column_name: string }>).map((r) => r.column_name));
-
-      for (const [col, ddl] of [
-        ["emailHash", sql`ALTER TABLE users ADD COLUMN emailHash varchar(64)`],
-        ["emailDomain", sql`ALTER TABLE users ADD COLUMN emailDomain varchar(255)`],
-        ["tokenVersion", sql`ALTER TABLE users ADD COLUMN tokenVersion int NOT NULL DEFAULT 0`],
-        ["emailVerifiedAt", sql`ALTER TABLE users ADD COLUMN emailVerifiedAt timestamp NULL`],
-        ["twoFactorEnabled", sql`ALTER TABLE users ADD COLUMN twoFactorEnabled tinyint(1) NOT NULL DEFAULT 0`],
-      ] as const) {
-        if (!existing.has(col)) {
-          try { await db.execute(ddl); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-        }
-      }
-      if (!existing.has("emailHash")) {
-        try { await db.execute(sql`ALTER TABLE users ADD UNIQUE INDEX uq_users_emailHash (emailHash)`); } catch { /* já existe */ }
-      }
-      // Contas que já existiam quando a coluna foi criada entram como verificadas.
-      if (!existing.has("emailVerifiedAt")) {
-        try { await db.execute(sql`UPDATE users SET emailVerifiedAt = NOW() WHERE emailVerifiedAt IS NULL`); } catch { /* ignore */ }
-      }
-    })().catch((e) => { _userSecurityColumnsReady = null; throw e; });
-  }
-  await _userSecurityColumnsReady;
-}
 
 // ─── Users — helpers de criptografia de campos ───────────────────────────────
 
@@ -642,8 +331,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const db = await getDb();
   if (!db) { console.warn("[Database] Cannot upsert user: database not available"); return; }
 
-  await ensureUserSecurityColumns();
-
   try {
     const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
@@ -681,7 +368,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -705,21 +392,14 @@ export async function getUserById(id: number) {
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureUserExtraColumns();
-  await ensureUserSecurityColumns();
-  // Busca pelo blind index. Fallback pro e-mail em texto puro cobre a janela
-  // entre o deploy do código e o backfill (scripts/encrypt-existing-data.mjs).
-  let result = await db.select().from(users).where(eq(users.emailHash, blindIndex(email))).limit(1);
-  if (result.length === 0) {
-    result = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  }
+  // Busca pelo blind index (o e-mail fica cifrado no banco).
+  const result = await db.select().from(users).where(eq(users.emailHash, blindIndex(email))).limit(1);
   return result.length > 0 ? decryptUserRow(result[0]) : undefined;
 }
 
 export async function getUserByOpenIdWithActiveCheck(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureUserExtraColumns();
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   const user = result[0];
   if (!user) return undefined;
@@ -745,57 +425,26 @@ export async function updateUserPassword(id: number, passwordHash: string) {
 export async function bumpUserTokenVersion(id: number) {
   const db = await getDb();
   if (!db) return;
-  await ensureUserSecurityColumns();
-  await db.execute(sql`UPDATE users SET tokenVersion = tokenVersion + 1 WHERE id = ${id}`);
+  await execute(db, sql`UPDATE users SET "tokenVersion" = "tokenVersion" + 1 WHERE id = ${id}`);
 }
 
 export async function markEmailVerified(id: number) {
   const db = await getDb();
   if (!db) return;
-  await ensureUserSecurityColumns();
-  await db.execute(sql`UPDATE users SET emailVerifiedAt = NOW() WHERE id = ${id} AND emailVerifiedAt IS NULL`);
+  await execute(db, sql`UPDATE users SET "emailVerifiedAt" = NOW() WHERE id = ${id} AND "emailVerifiedAt" IS NULL`);
 }
 
 export async function setTwoFactorEnabled(id: number, enabled: boolean) {
   const db = await getDb();
   if (!db) return;
-  await ensureUserSecurityColumns();
-  await db.execute(sql`UPDATE users SET twoFactorEnabled = ${enabled ? 1 : 0} WHERE id = ${id}`);
+  await execute(db, sql`UPDATE users SET "twoFactorEnabled" = ${enabled} WHERE id = ${id}`);
 }
 
 // ─── Audit log ───────────────────────────────────────────────────────────────
 
-let _auditLogTableReady: Promise<void> | null = null;
-async function ensureAuditLogTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_auditLogTableReady) {
-    _auditLogTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`audit_log\` (
-          \`id\`           int AUTO_INCREMENT PRIMARY KEY,
-          \`actorUserId\`  int,
-          \`targetUserId\` int,
-          \`action\`       varchar(64) NOT NULL,
-          \`targetType\`   varchar(32),
-          \`targetId\`     varchar(64),
-          \`ip\`           varchar(64),
-          \`userAgent\`    varchar(255),
-          \`metadata\`     json,
-          \`createdAt\`    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          INDEX \`idx_audit_log_actor\` (\`actorUserId\`),
-          INDEX \`idx_audit_log_action\` (\`action\`)
-        )
-      `);
-    })().catch((e) => { _auditLogTableReady = null; throw e; });
-  }
-  await _auditLogTableReady;
-}
-
 /** Registra uma ação sensível. Best-effort: nunca lança. */
 export async function recordAudit(entry: Omit<InsertAuditLog, "id" | "createdAt">): Promise<void> {
   try {
-    await ensureAuditLogTable();
     const db = await getDb();
     if (!db) return;
     await db.insert(auditLog).values({
@@ -808,38 +457,12 @@ export async function recordAudit(entry: Omit<InsertAuditLog, "id" | "createdAt"
 }
 
 export async function getAuditLog(limit = 200): Promise<AuditLog[]> {
-  await ensureAuditLogTable();
   const db = await getDb();
   if (!db) return [];
   return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit);
 }
 
 // ─── Email tokens (verify / reset / 2fa) ─────────────────────────────────────
-
-let _emailTokensTableReady: Promise<void> | null = null;
-async function ensureEmailTokensTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_emailTokensTableReady) {
-    _emailTokensTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`email_tokens\` (
-          \`id\`         int AUTO_INCREMENT PRIMARY KEY,
-          \`userId\`     int NOT NULL,
-          \`type\`       enum('verify','reset','2fa') NOT NULL,
-          \`tokenHash\`  varchar(64) NOT NULL,
-          \`expiresAt\`  timestamp NOT NULL,
-          \`consumedAt\` timestamp NULL,
-          \`attempts\`   int NOT NULL DEFAULT 0,
-          \`createdAt\`  timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          INDEX \`idx_email_tokens_user_type\` (\`userId\`, \`type\`),
-          INDEX \`idx_email_tokens_hash\` (\`tokenHash\`)
-        )
-      `);
-    })().catch((e) => { _emailTokensTableReady = null; throw e; });
-  }
-  await _emailTokensTableReady;
-}
 
 export function hashToken(raw: string): string {
   return createHash("sha256").update(raw, "utf8").digest("hex");
@@ -857,7 +480,6 @@ export async function createEmailToken(
   raw: string,
   ttlMs: number
 ): Promise<void> {
-  await ensureEmailTokensTable();
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(emailTokens)
@@ -873,7 +495,6 @@ export async function createEmailToken(
 
 /** Retorna o token válido (não consumido, não expirado) sem consumi-lo. */
 export async function peekEmailToken(type: EmailTokenType, raw: string): Promise<EmailToken | null> {
-  await ensureEmailTokensTable();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(emailTokens)
@@ -895,7 +516,6 @@ export async function consumeEmailTokenById(id: number): Promise<void> {
 }
 
 export async function getEmailTokenById(id: number): Promise<EmailToken | null> {
-  await ensureEmailTokensTable();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(emailTokens).where(eq(emailTokens.id, id)).limit(1);
@@ -905,14 +525,13 @@ export async function getEmailTokenById(id: number): Promise<EmailToken | null> 
 export async function incrementEmailTokenAttempts(id: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await db.execute(sql`UPDATE email_tokens SET attempts = attempts + 1 WHERE id = ${id}`);
+  await execute(db, sql`UPDATE email_tokens SET attempts = attempts + 1 WHERE id = ${id}`);
   const [row] = await db.select({ attempts: emailTokens.attempts }).from(emailTokens).where(eq(emailTokens.id, id)).limit(1);
   return row?.attempts ?? 0;
 }
 
 /** Busca um token 2fa/reset ativo pelo id do usuário (fluxo por código). */
 export async function getActiveEmailTokenForUser(userId: number, type: EmailTokenType): Promise<EmailToken | null> {
-  await ensureEmailTokensTable();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(emailTokens)
@@ -935,26 +554,23 @@ export function generateNumericCode(digits = 6): string {
 export async function migrateNullTrialDates(): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureUserExtraColumns();
   const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await db.execute(
-    sql`UPDATE users SET trialExpiresAt = ${sevenDaysFromNow}
-        WHERE trialExpiresAt IS NULL AND plan = 'free' AND role != 'admin'`
+  await execute(db, 
+    sql`UPDATE users SET "trialExpiresAt" = ${sevenDaysFromNow}
+        WHERE "trialExpiresAt" IS NULL AND plan = 'free' AND role != 'admin'`
   );
 }
 
 export async function setUserPlan(id: number, plan: "free" | "pro" | "agency") {
   const db = await getDb();
   if (!db) return;
-  await ensureUserExtraColumns();
-  await db.execute(sql`UPDATE users SET plan = ${plan} WHERE id = ${id}`);
+  await execute(db, sql`UPDATE users SET plan = ${plan} WHERE id = ${id}`);
 }
 
 export async function setUserActive(id: number, isActive: boolean) {
   const db = await getDb();
   if (!db) return;
-  await ensureUserExtraColumns();
-  await db.execute(sql`UPDATE users SET isActive = ${isActive ? 1 : 0} WHERE id = ${id}`);
+  await execute(db, sql`UPDATE users SET "isActive" = ${isActive} WHERE id = ${id}`);
 }
 
 export async function deleteUserById(id: number) {
@@ -981,7 +597,6 @@ export async function createTeamMember(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureUserSecurityColumns();
   const passwordHash = await hashPassword(data.password);
   const openId = `local_${nanoid()}`;
   await db.insert(users).values(encryptUserWrite({
@@ -1017,12 +632,11 @@ export async function removeTeamMember(ownerId: number, memberId: number) {
 export async function listAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  await ensureUserExtraColumns();
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
   return rows.map((u) => decryptUserRow(u)).map((u) => ({
     ...u,
     plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
-    isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
+    isActive: u.isActive,
     trialExpiresAt: (u as unknown as { trialExpiresAt?: Date | null }).trialExpiresAt ?? null,
   }));
 }
@@ -1030,10 +644,7 @@ export async function listAllUsers() {
 export async function listUsersWithStats() {
   const db = await getDb();
   if (!db) return [];
-  await ensureUserExtraColumns();
   // Ensure all lazily-created tables exist before querying them
-  await ensureAvatarVideoTable();
-  await ensureSocialPostsMetadataColumn();
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
 
   type CountRow = { userId: number; n: number };
@@ -1062,7 +673,7 @@ export async function listUsersWithStats() {
   return rows.map((u) => decryptUserRow(u)).map((u) => ({
     ...u,
     plan: ((u as unknown as { plan?: string }).plan ?? "free") as "free" | "pro" | "agency",
-    isActive: ((u as unknown as { isActive?: number | boolean }).isActive ?? 1) !== 0,
+    isActive: u.isActive,
     trialExpiresAt: (u as unknown as { trialExpiresAt?: Date | null }).trialExpiresAt ?? null,
     usage: {
       images:   imgs[u.id]  ?? 0,
@@ -1091,7 +702,7 @@ export async function createConversation(userId: number, title?: string): Promis
   const [result] = await db.insert(chatConversations).values({
     userId,
     title: title || "Nova Conversa",
-  });
+  }).returning({ id: chatConversations.id });
   const created = await db.select().from(chatConversations)
     .where(eq(chatConversations.id, insertId(result))).limit(1);
   return created[0];
@@ -1137,7 +748,7 @@ export async function addMessage(
     .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.userId, userId)))
     .limit(1);
   if (!owned) throw new Error("Conversation not found");
-  const [result] = await db.insert(chatMessages).values({ conversationId, userId, role, content: encryptField(content) });
+  const [result] = await db.insert(chatMessages).values({ conversationId, userId, role, content: encryptField(content) }).returning({ id: chatMessages.id });
   // Update conversation updatedAt
   await db.update(chatConversations).set({ updatedAt: new Date() })
     .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.userId, userId)));
@@ -1173,7 +784,7 @@ export async function saveImage(
 ): Promise<GeneratedImage> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(generatedImages).values({ userId, prompt, imageUrl, fileKey, width, height });
+  const [result] = await db.insert(generatedImages).values({ userId, prompt, imageUrl, fileKey, width, height }).returning({ id: generatedImages.id });
   const created = await db.select().from(generatedImages)
     .where(eq(generatedImages.id, insertId(result))).limit(1);
   return created[0];
@@ -1205,58 +816,6 @@ export async function getImageCount(userId: number): Promise<number> {
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
 
-let _articlesTableReady: Promise<void> | null = null;
-async function ensureArticlesTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_articlesTableReady) {
-    _articlesTableReady = (async () => {
-      // Create table if not exists (handles fresh installs)
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`articles\` (
-          \`id\`                 int AUTO_INCREMENT PRIMARY KEY,
-          \`userId\`             int NOT NULL,
-          \`title\`              varchar(512) NOT NULL,
-          \`topic\`              mediumtext,
-          \`sourceUrl\`          text,
-          \`coverImageUrl\`      text,
-          \`content\`            mediumtext NOT NULL,
-          \`summary\`            mediumtext,
-          \`status\`             enum('draft','published','archived') NOT NULL DEFAULT 'draft',
-          \`sourceTopicAngleId\` int,
-          \`hookType\`           varchar(32),
-          \`contentFormat\`      varchar(32) DEFAULT 'article',
-          \`createdAt\`          timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\`          timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX \`idx_articles_userId\` (\`userId\`)
-        )
-      `);
-
-      // For existing installs: add columns that may be missing and upgrade TEXT→MEDIUMTEXT
-      for (const [label, stmt] of [
-        ["add sourceTopicAngleId", sql`ALTER TABLE articles ADD COLUMN sourceTopicAngleId int`],
-        ["add hookType",           sql`ALTER TABLE articles ADD COLUMN hookType varchar(32)`],
-        ["add contentFormat",      sql`ALTER TABLE articles ADD COLUMN contentFormat varchar(32) DEFAULT 'article'`],
-        ["content→MEDIUMTEXT",     sql`ALTER TABLE articles MODIFY COLUMN content MEDIUMTEXT NOT NULL`],
-        ["topic→MEDIUMTEXT",       sql`ALTER TABLE articles MODIFY COLUMN topic MEDIUMTEXT`],
-        ["summary→MEDIUMTEXT",     sql`ALTER TABLE articles MODIFY COLUMN summary MEDIUMTEXT`],
-      ] as const) {
-        try {
-          await db.execute(stmt);
-          console.log(`[DB] articles: ${label} ok`);
-        } catch (e) {
-          // Duplicate column (1060) or same type = already migrated, ignore
-          const msg = String(e);
-          if (!msg.includes("1060") && !msg.includes("Duplicate column")) {
-            console.warn(`[DB] articles: ${label} skipped:`, msg.slice(0, 200));
-          }
-        }
-      }
-    })().catch((e) => { _articlesTableReady = null; throw e; });
-  }
-  await _articlesTableReady;
-}
-
 // Campos de texto longo de artigos guardam ciphertext ("enc:v1:..."). Decifra
 // in-place (a linha vem fresca do drizzle, mutação é segura).
 function decryptArticleRow<T extends Record<string, unknown> | undefined>(row: T): T {
@@ -1276,7 +835,6 @@ function encryptArticleWrite<T extends Record<string, unknown>>(data: T): T {
 }
 
 export async function getArticles(userId: number): Promise<Article[]> {
-  await ensureArticlesTable();
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select().from(articles)
@@ -1286,7 +844,6 @@ export async function getArticles(userId: number): Promise<Article[]> {
 }
 
 export async function getArticle(id: number, userId: number): Promise<Article | undefined> {
-  await ensureArticlesTable();
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(articles)
@@ -1308,10 +865,9 @@ export async function saveArticle(
     contentFormat?: string;
   }
 ): Promise<Article> {
-  await ensureArticlesTable();
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(articles).values(encryptArticleWrite({ userId, ...data }));
+  const [result] = await db.insert(articles).values(encryptArticleWrite({ userId, ...data })).returning({ id: articles.id });
   const created = await db.select().from(articles)
     .where(eq(articles.id, insertId(result))).limit(1);
   return decryptArticleRow(created[0])!;
@@ -1350,7 +906,6 @@ export async function getArticleCount(userId: number): Promise<number> {
 export async function getCarousels(userId: number): Promise<Carousel[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureCarouselTable();
   const result = await db.select().from(carousels)
     .where(eq(carousels.userId, userId))
     .orderBy(desc(carousels.createdAt));
@@ -1375,12 +930,11 @@ export async function saveCarousel(
 ): Promise<Carousel> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureCarouselTable();
   const [result] = await db.insert(carousels).values({
     userId,
     ...data,
     slides: JSON.stringify(data.slides),
-  });
+  }).returning({ id: carousels.id });
   const created = await db.select().from(carousels)
     .where(eq(carousels.id, insertId(result))).limit(1);
   return hydrateCarousel(created[0] as Omit<Carousel, "slides"> & { slides: unknown });
@@ -1389,7 +943,6 @@ export async function saveCarousel(
 export async function deleteCarousel(id: number, userId: number) {
   const db = await getDb();
   if (!db) return;
-  await ensureCarouselTable();
   await db.delete(carousels).where(and(eq(carousels.id, id), eq(carousels.userId, userId)));
 }
 
@@ -1400,7 +953,6 @@ export async function updateCarouselSlides(
 ): Promise<Carousel | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureCarouselTable();
   await db.update(carousels).set({
     slides: JSON.stringify(slides),
     updatedAt: new Date(),
@@ -1426,7 +978,6 @@ export async function updateCarouselContent(
 ): Promise<Carousel | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureCarouselTable();
   await db.update(carousels).set({
     hook: data.hook,
     caption: data.caption,
@@ -1446,7 +997,6 @@ export async function updateCarouselContent(
 export async function getCarouselCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await ensureCarouselTable();
   const [row] = await db.select({ count: count() }).from(carousels).where(eq(carousels.userId, userId));
   return row?.count ?? 0;
 }
@@ -1456,7 +1006,6 @@ export async function getCarouselCount(userId: number): Promise<number> {
 export async function getCarouselTemplates(userId: number): Promise<CarouselTemplate[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureCarouselTemplateTable();
   return db
     .select()
     .from(carouselTemplates)
@@ -1470,7 +1019,6 @@ export async function getCarouselTemplate(
 ): Promise<CarouselTemplate | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureCarouselTemplateTable();
   const result = await db
     .select()
     .from(carouselTemplates)
@@ -1489,13 +1037,12 @@ export async function saveCarouselTemplate(
 ): Promise<CarouselTemplate> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureCarouselTemplateTable();
   const [result] = await db.insert(carouselTemplates).values({
     userId,
     name: data.name,
     imageUrl: data.imageUrl,
     styleBrief: data.styleBrief ?? null,
-  });
+  }).returning({ id: carouselTemplates.id });
   const created = await db
     .select()
     .from(carouselTemplates)
@@ -1507,7 +1054,6 @@ export async function saveCarouselTemplate(
 export async function deleteCarouselTemplate(id: number, userId: number) {
   const db = await getDb();
   if (!db) return;
-  await ensureCarouselTemplateTable();
   await db
     .delete(carouselTemplates)
     .where(and(eq(carouselTemplates.id, id), eq(carouselTemplates.userId, userId)));
@@ -1516,7 +1062,6 @@ export async function deleteCarouselTemplate(id: number, userId: number) {
 export async function getAvatarVideos(userId: number): Promise<AvatarVideo[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureAvatarVideoTable();
   return db.select().from(avatarVideos)
     .where(eq(avatarVideos.userId, userId))
     .orderBy(desc(avatarVideos.createdAt));
@@ -1540,7 +1085,6 @@ export async function saveAvatarVideo(
 ): Promise<AvatarVideo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureAvatarVideoTable();
   const [result] = await db.insert(avatarVideos).values({
     userId,
     provider: data.provider ?? "d-id",
@@ -1554,7 +1098,7 @@ export async function saveAvatarVideo(
     providerJobId: data.providerJobId,
     status: data.status ?? "processing",
     errorMessage: data.errorMessage,
-  });
+  }).returning({ id: avatarVideos.id });
   const created = await db.select().from(avatarVideos)
     .where(eq(avatarVideos.id, insertId(result))).limit(1);
   return created[0];
@@ -1578,7 +1122,6 @@ export async function updateAvatarVideo(
 ): Promise<AvatarVideo | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureAvatarVideoTable();
   await db.update(avatarVideos).set({
     ...data,
     updatedAt: new Date(),
@@ -1593,14 +1136,12 @@ export async function updateAvatarVideo(
 export async function deleteAvatarVideo(id: number, userId: number) {
   const db = await getDb();
   if (!db) return;
-  await ensureAvatarVideoTable();
   await db.delete(avatarVideos).where(and(eq(avatarVideos.id, id), eq(avatarVideos.userId, userId)));
 }
 
 export async function getAvatarVideoCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await ensureAvatarVideoTable();
   const [row] = await db.select({ count: count() }).from(avatarVideos).where(eq(avatarVideos.userId, userId));
   return row?.count ?? 0;
 }
@@ -1611,7 +1152,6 @@ export async function getSocialPosts(
 ): Promise<SocialPost[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureSocialPostsMetadataColumn();
   const conditions = channel
     ? and(eq(socialPosts.userId, userId), eq(socialPosts.channel, channel))
     : eq(socialPosts.userId, userId);
@@ -1626,7 +1166,6 @@ export async function getDueScheduledInstagramPosts(
 ): Promise<SocialPost[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureSocialPostsMetadataColumn();
   return db.select().from(socialPosts)
     .where(
       and(
@@ -1655,9 +1194,8 @@ export async function saveSocialPost(
 ): Promise<SocialPost> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureSocialPostsMetadataColumn();
   const status = data.scheduledAt ? "scheduled" : "draft";
-  const [result] = await db.insert(socialPosts).values({ userId, ...data, status });
+  const [result] = await db.insert(socialPosts).values({ userId, ...data, status }).returning({ id: socialPosts.id });
   const created = await db.select().from(socialPosts)
     .where(eq(socialPosts.id, insertId(result))).limit(1);
   return created[0];
@@ -1666,7 +1204,6 @@ export async function saveSocialPost(
 export async function getStoryPosts(userId: number): Promise<SocialPost[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureSocialPostsMetadataColumn();
   return db.select().from(socialPosts).where(
     and(eq(socialPosts.userId, userId), eq(socialPosts.contentType, "story"))
   ).orderBy(desc(socialPosts.createdAt));
@@ -1675,7 +1212,6 @@ export async function getStoryPosts(userId: number): Promise<SocialPost[]> {
 export async function getSocialPostById(id: number, userId: number): Promise<SocialPost | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureSocialPostsMetadataColumn();
   const rows = await db.select().from(socialPosts).where(
     and(eq(socialPosts.id, id), eq(socialPosts.userId, userId))
   ).limit(1);
@@ -1703,7 +1239,6 @@ export async function updateSocialPost(
 ) {
   const db = await getDb();
   if (!db) return;
-  await ensureSocialPostsMetadataColumn();
   await db.update(socialPosts).set(data).where(
     and(eq(socialPosts.id, id), eq(socialPosts.userId, userId))
   );
@@ -1723,11 +1258,10 @@ export async function setSocialPostPendingApproval(
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureApprovalColumns();
-  await db.execute(sql`
+  await execute(db, sql`
     UPDATE social_posts
-    SET status = 'pending_approval', approvalToken = ${token}, approvalExpiresAt = ${expiresAt}
-    WHERE id = ${id} AND userId = ${userId}
+    SET status = 'pending_approval', "approvalToken" = ${token}, "approvalExpiresAt" = ${expiresAt}
+    WHERE id = ${id} AND "userId" = ${userId}
   `);
 }
 
@@ -1736,9 +1270,8 @@ export async function getSocialPostByApprovalToken(
 ): Promise<SocialPost | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureApprovalColumns();
-  const rows = await db.execute(sql`
-    SELECT * FROM social_posts WHERE approvalToken = ${token} LIMIT 1
+  const rows = await execute(db, sql`
+    SELECT * FROM social_posts WHERE "approvalToken" = ${token} LIMIT 1
   `) as unknown as [Array<Record<string, unknown>>, unknown];
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   if (!row) return null;
@@ -1751,7 +1284,6 @@ export async function resolveApprovalToken(
 ): Promise<{ ok: boolean; reason?: string }> {
   const db = await getDb();
   if (!db) return { ok: false, reason: "Banco de dados indisponível" };
-  await ensureApprovalColumns();
 
   const post = await getSocialPostByApprovalToken(token);
   if (!post) return { ok: false, reason: "Token inválido ou expirado" };
@@ -1765,9 +1297,9 @@ export async function resolveApprovalToken(
   }
 
   const newStatus = action === "approve" ? "scheduled" : "rejected";
-  await db.execute(sql`
+  await execute(db, sql`
     UPDATE social_posts
-    SET status = ${newStatus}, approvalToken = NULL, approvalExpiresAt = NULL
+    SET status = ${newStatus}, "approvalToken" = NULL, "approvalExpiresAt" = NULL
     WHERE id = ${post.id}
   `);
   return { ok: true };
@@ -1781,36 +1313,8 @@ export async function getPostCount(userId: number): Promise<number> {
 }
 
 // ─── Instagram Connections ────────────────────────────────────────────────────
-let _igConnectionsReady: Promise<void> | null = null;
-
-async function ensureInstagramConnectionsColumns(): Promise<void> {
-  if (!_igConnectionsReady) {
-    _igConnectionsReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      const [cols] = await db.execute(sql`
-        SELECT COLUMN_NAME FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instagram_connections'
-      `);
-      const existing = new Set((cols as unknown as Array<{ COLUMN_NAME: string }>).map(c => c.COLUMN_NAME));
-      if (!existing.has("tokenSource")) {
-        await db.execute(sql`
-          ALTER TABLE \`instagram_connections\`
-          ADD COLUMN \`tokenSource\` varchar(16) DEFAULT 'facebook'
-        `);
-        console.log("[DB] Added tokenSource column to instagram_connections");
-      }
-      if (!existing.has("userAccessToken")) {
-        await db.execute(sql`ALTER TABLE \`instagram_connections\` ADD COLUMN \`userAccessToken\` text`);
-        console.log("[DB] Added userAccessToken column to instagram_connections");
-      }
-    })();
-  }
-  return _igConnectionsReady;
-}
 
 export async function getInstagramConnection(userId: number): Promise<InstagramConnection | null> {
-  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.userId, userId));
@@ -1818,7 +1322,6 @@ export async function getInstagramConnection(userId: number): Promise<InstagramC
 }
 
 export async function getInstagramConnectionByIgId(igAccountId: string): Promise<InstagramConnection | null> {
-  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(instagramConnections).where(eq(instagramConnections.instagramAccountId, igAccountId));
@@ -1826,7 +1329,6 @@ export async function getInstagramConnectionByIgId(igAccountId: string): Promise
 }
 
 export async function upsertInstagramConnection(data: InsertInstagramConnection): Promise<void> {
-  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return;
   const existing = await getInstagramConnection(data.userId);
@@ -1860,36 +1362,8 @@ export async function deleteInstagramConnection(userId: number): Promise<void> {
 
 // ─── Canva Connections ────────────────────────────────────────────────────────
 
-async function ensureCanvaConnectionsTable(): Promise<void> {
-  if (!_canvaConnectionsTableReady) {
-    _canvaConnectionsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`canva_connections\` (
-          \`id\` int AUTO_INCREMENT NOT NULL,
-          \`userId\` int NOT NULL,
-          \`canvaUserId\` varchar(128) NOT NULL,
-          \`displayName\` varchar(255),
-          \`email\` varchar(320),
-          \`profilePictureUrl\` text,
-          \`accessToken\` text NOT NULL,
-          \`refreshToken\` text,
-          \`tokenExpiresAt\` timestamp NULL,
-          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`canva_connections_pk\` PRIMARY KEY (\`id\`),
-          CONSTRAINT \`canva_connections_userId_unique\` UNIQUE (\`userId\`)
-        )
-      `);
-    })();
-  }
-  return _canvaConnectionsTableReady;
-}
-
 export async function getCanvaConnection(userId: number): Promise<CanvaConnection | null> {
   try {
-    await ensureCanvaConnectionsTable();
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(canvaConnections).where(eq(canvaConnections.userId, userId));
@@ -1900,7 +1374,6 @@ export async function getCanvaConnection(userId: number): Promise<CanvaConnectio
 }
 
 export async function upsertCanvaConnection(data: InsertCanvaConnection): Promise<void> {
-  await ensureCanvaConnectionsTable();
   const db = await getDb();
   if (!db) return;
   const existing = await getCanvaConnection(data.userId);
@@ -1923,7 +1396,6 @@ export async function upsertCanvaConnection(data: InsertCanvaConnection): Promis
 
 export async function deleteCanvaConnection(userId: number): Promise<void> {
   try {
-    await ensureCanvaConnectionsTable();
     const db = await getDb();
     if (!db) return;
     await db.delete(canvaConnections).where(eq(canvaConnections.userId, userId));
@@ -1934,37 +1406,8 @@ export async function deleteCanvaConnection(userId: number): Promise<void> {
 
 // ─── LinkedIn Connections ──────────────────────────────────────────────────────
 
-async function ensureLinkedInConnectionsTable(): Promise<void> {
-  if (!_linkedinConnectionsTableReady) {
-    _linkedinConnectionsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`linkedin_connections\` (
-          \`id\` int AUTO_INCREMENT NOT NULL,
-          \`userId\` int NOT NULL,
-          \`linkedinMemberId\` varchar(128) NOT NULL,
-          \`authorUrn\` varchar(160) NOT NULL,
-          \`name\` varchar(255),
-          \`email\` varchar(320),
-          \`profilePictureUrl\` text,
-          \`accessToken\` text NOT NULL,
-          \`refreshToken\` text,
-          \`tokenExpiresAt\` timestamp NULL,
-          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`linkedin_connections_pk\` PRIMARY KEY (\`id\`),
-          CONSTRAINT \`linkedin_connections_userId_unique\` UNIQUE (\`userId\`)
-        )
-      `);
-    })();
-  }
-  return _linkedinConnectionsTableReady;
-}
-
 export async function getLinkedInConnection(userId: number): Promise<LinkedInConnection | null> {
   try {
-    await ensureLinkedInConnectionsTable();
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(linkedinConnections).where(eq(linkedinConnections.userId, userId));
@@ -1975,7 +1418,6 @@ export async function getLinkedInConnection(userId: number): Promise<LinkedInCon
 }
 
 export async function upsertLinkedInConnection(data: InsertLinkedInConnection): Promise<void> {
-  await ensureLinkedInConnectionsTable();
   const db = await getDb();
   if (!db) return;
   const existing = await getLinkedInConnection(data.userId);
@@ -1999,7 +1441,6 @@ export async function upsertLinkedInConnection(data: InsertLinkedInConnection): 
 
 export async function deleteLinkedInConnection(userId: number): Promise<void> {
   try {
-    await ensureLinkedInConnectionsTable();
     const db = await getDb();
     if (!db) return;
     await db.delete(linkedinConnections).where(eq(linkedinConnections.userId, userId));
@@ -2010,34 +1451,8 @@ export async function deleteLinkedInConnection(userId: number): Promise<void> {
 
 // ─── HeyGen Digital Twin ────────────────────────────────────────────────────
 
-async function ensureHeygenDigitalTwinsTable(): Promise<void> {
-  if (!_heygenDigitalTwinsTableReady) {
-    _heygenDigitalTwinsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`heygen_digital_twins\` (
-          \`id\` int AUTO_INCREMENT NOT NULL,
-          \`userId\` int NOT NULL,
-          \`avatarId\` varchar(128),
-          \`groupId\` varchar(128) NOT NULL,
-          \`name\` varchar(255),
-          \`status\` varchar(32) NOT NULL DEFAULT 'pending_consent',
-          \`errorMessage\` text,
-          \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`heygen_digital_twins_pk\` PRIMARY KEY (\`id\`),
-          CONSTRAINT \`heygen_digital_twins_userId_unique\` UNIQUE (\`userId\`)
-        )
-      `);
-    })().catch((e) => { _heygenDigitalTwinsTableReady = null; throw e; });
-  }
-  return _heygenDigitalTwinsTableReady;
-}
-
 export async function getHeygenDigitalTwin(userId: number): Promise<HeygenDigitalTwin | null> {
   try {
-    await ensureHeygenDigitalTwinsTable();
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(heygenDigitalTwins).where(eq(heygenDigitalTwins.userId, userId));
@@ -2048,7 +1463,6 @@ export async function getHeygenDigitalTwin(userId: number): Promise<HeygenDigita
 }
 
 export async function upsertHeygenDigitalTwin(data: InsertHeygenDigitalTwin): Promise<void> {
-  await ensureHeygenDigitalTwinsTable();
   const db = await getDb();
   if (!db) return;
   const existing = await getHeygenDigitalTwin(data.userId);
@@ -2069,7 +1483,6 @@ export async function upsertHeygenDigitalTwin(data: InsertHeygenDigitalTwin): Pr
 
 export async function deleteHeygenDigitalTwin(userId: number): Promise<void> {
   try {
-    await ensureHeygenDigitalTwinsTable();
     const db = await getDb();
     if (!db) return;
     await db.delete(heygenDigitalTwins).where(eq(heygenDigitalTwins.userId, userId));
@@ -2080,34 +1493,8 @@ export async function deleteHeygenDigitalTwin(userId: number): Promise<void> {
 
 // ─── Google Search Console Connections ─────────────────────────────────────────
 
-async function ensureSearchConsoleConnectionsTable(): Promise<void> {
-  if (!_searchConsoleConnectionsTableReady) {
-    _searchConsoleConnectionsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`search_console_connections\` (
-          \`id\` int AUTO_INCREMENT NOT NULL,
-          \`userId\` int NOT NULL,
-          \`accessToken\` text NOT NULL,
-          \`refreshToken\` text,
-          \`tokenExpiresAt\` timestamp NULL,
-          \`selectedSiteUrl\` varchar(512),
-          \`availableSites\` mediumtext,
-          \`connectedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`search_console_connections_pk\` PRIMARY KEY (\`id\`),
-          CONSTRAINT \`search_console_connections_userId_unique\` UNIQUE (\`userId\`)
-        )
-      `);
-    })();
-  }
-  return _searchConsoleConnectionsTableReady;
-}
-
 export async function getSearchConsoleConnection(userId: number): Promise<SearchConsoleConnection | null> {
   try {
-    await ensureSearchConsoleConnectionsTable();
     const db = await getDb();
     if (!db) return null;
     const [row] = await db.select().from(searchConsoleConnections).where(eq(searchConsoleConnections.userId, userId));
@@ -2118,7 +1505,6 @@ export async function getSearchConsoleConnection(userId: number): Promise<Search
 }
 
 export async function upsertSearchConsoleConnection(data: InsertSearchConsoleConnection): Promise<void> {
-  await ensureSearchConsoleConnectionsTable();
   const db = await getDb();
   if (!db) return;
   const existing = await getSearchConsoleConnection(data.userId);
@@ -2138,7 +1524,6 @@ export async function upsertSearchConsoleConnection(data: InsertSearchConsoleCon
 }
 
 export async function updateSearchConsoleSelectedSite(userId: number, selectedSiteUrl: string): Promise<void> {
-  await ensureSearchConsoleConnectionsTable();
   const db = await getDb();
   if (!db) return;
   await db.update(searchConsoleConnections)
@@ -2150,7 +1535,6 @@ export async function updateSearchConsoleTokens(
   userId: number,
   data: { accessToken: string; tokenExpiresAt: Date }
 ): Promise<void> {
-  await ensureSearchConsoleConnectionsTable();
   const db = await getDb();
   if (!db) return;
   await db.update(searchConsoleConnections)
@@ -2160,7 +1544,6 @@ export async function updateSearchConsoleTokens(
 
 export async function deleteSearchConsoleConnection(userId: number): Promise<void> {
   try {
-    await ensureSearchConsoleConnectionsTable();
     const db = await getDb();
     if (!db) return;
     await db.delete(searchConsoleConnections).where(eq(searchConsoleConnections.userId, userId));
@@ -2170,40 +1553,16 @@ export async function deleteSearchConsoleConnection(userId: number): Promise<voi
 }
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
-async function ensureFeatureFlagsTable(): Promise<void> {
-  if (!_featureFlagsTableReady) {
-    _featureFlagsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`feature_flags\` (
-          \`id\` int AUTO_INCREMENT NOT NULL,
-          \`key\` varchar(128) NOT NULL,
-          \`label\` varchar(255) NOT NULL,
-          \`description\` text,
-          \`enabled\` boolean NOT NULL DEFAULT false,
-          \`createdAt\` timestamp NOT NULL DEFAULT (now()),
-          \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`feature_flags_id\` PRIMARY KEY(\`id\`),
-          CONSTRAINT \`feature_flags_key_unique\` UNIQUE(\`key\`)
-        )
-      `);
-    })();
-  }
-  return _featureFlagsTableReady;
-}
 
 export async function getFeatureFlags(): Promise<FeatureFlag[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureFeatureFlagsTable();
   return db.select().from(featureFlags).orderBy(asc(featureFlags.createdAt));
 }
 
 export async function getFeatureFlagByKey(key: string): Promise<FeatureFlag | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureFeatureFlagsTable();
   const [row] = await db.select().from(featureFlags).where(eq(featureFlags.key, key));
   return row ?? null;
 }
@@ -2216,7 +1575,6 @@ export async function upsertFeatureFlag(
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureFeatureFlagsTable();
   const existing = await getFeatureFlagByKey(key);
   if (existing) {
     await db.update(featureFlags)
@@ -2230,103 +1588,28 @@ export async function upsertFeatureFlag(
 export async function toggleFeatureFlag(key: string, enabled: boolean): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureFeatureFlagsTable();
   await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, key));
 }
 
 export async function deleteFeatureFlag(key: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureFeatureFlagsTable();
   await db.delete(featureFlags).where(eq(featureFlags.key, key));
 }
 
 // ─── Brand Kits ───────────────────────────────────────────────────────────────
-
-let _brandKitTableReady: Promise<void> | null = null;
-
-async function ensureBrandKitTable(db: Awaited<ReturnType<typeof getDb>>) {
-  if (!db) return;
-  if (!_brandKitTableReady) {
-    _brandKitTableReady = (async () => {
-      // If the table exists with the OLD schema (has a 'name' column), drop and recreate.
-      const [oldCols] = await db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name   = 'brand_kits'
-          AND column_name  = 'name'
-      `) as unknown as [Array<{ cnt: number }>, unknown];
-      if (Number((oldCols as Array<{ cnt: number }>)[0]?.cnt) > 0) {
-        await db.execute(sql`DROP TABLE brand_kits`);
-      }
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS brand_kits (
-          id              int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-          userId          int NOT NULL UNIQUE,
-          companyName     varchar(255),
-          tagline         varchar(512),
-          logoUrl         text,
-          industry        varchar(128),
-          targetAudience  text,
-          brandValues     text,
-          toneOfVoice     varchar(64)  DEFAULT 'professional',
-          primaryColor    varchar(7)   DEFAULT '#6366f1',
-          secondaryColor  varchar(7)   DEFAULT '#8b5cf6',
-          accentColor     varchar(7)   DEFAULT '#06b6d4',
-          instagramHandle varchar(128),
-          linkedinUrl     varchar(255),
-          createdAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt       timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-    })().catch((e) => { _brandKitTableReady = null; throw e; });
-  }
-  await _brandKitTableReady;
-}
 
 // Uma conta pode ter várias marcas (agência gerenciando vários clientes);
 // users.activeBrandKitId aponta pra qual delas preenche automaticamente os
 // módulos de geração. Drop do UNIQUE em brand_kits.userId + a coluna nova em
 // users seguem o mesmo padrão "auto-cura em runtime" das outras migrações
 // de brand_kits — nunca passou por drizzle-kit, então mantemos o padrão.
-let _brandKitMultiReady: Promise<void> | null = null;
-
-async function ensureBrandKitMultiSupport() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_brandKitMultiReady) {
-    _brandKitMultiReady = (async () => {
-      await db.execute(sql`ALTER TABLE brand_kits DROP INDEX userId`).catch(() => {});
-      await db.execute(sql`ALTER TABLE users ADD COLUMN activeBrandKitId INT`).catch(() => {});
-      // Backfill: contas que já tinham uma marca antes desta migração não
-      // têm activeBrandKitId setado — sem isso, getUsersWithNiches/getUserNiche
-      // (que juntam direto por activeBrandKitId) enxergariam nicho nulo pra
-      // todo mundo até alguém abrir o Brand Kit e salvar de novo.
-      // userId era UNIQUE em brand_kits até esta migração — nenhuma conta
-      // existente tem mais de uma linha ainda, então o JOIN casa no máximo 1.
-      await db.execute(sql`
-        UPDATE users u
-        JOIN brand_kits bk ON bk.userId = u.id
-        SET u.activeBrandKitId = bk.id
-        WHERE u.activeBrandKitId IS NULL
-      `).catch((e) => console.error("[BrandKit] Backfill de activeBrandKitId falhou:", e));
-    })().catch((e) => { _brandKitMultiReady = null; throw e; });
-  }
-  await _brandKitMultiReady;
-}
-
-async function ensureBrandKitReady(db: Awaited<ReturnType<typeof getDb>>) {
-  await ensureBrandKitTable(db);
-  await ensureBrandKitNicheColumns();
-  await ensureBrandKitMultiSupport();
-}
 
 export async function listBrandKits(userId: number): Promise<BrandKit[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureBrandKitReady(db);
-  const [rows] = await db.execute(
-    sql`SELECT * FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC`
+  const [rows] = await execute(db, 
+    sql`SELECT * FROM brand_kits WHERE "userId" = ${userId} ORDER BY id ASC`
   ) as unknown as [Array<Record<string, unknown>>, unknown];
   return rows as unknown as BrandKit[];
 }
@@ -2335,16 +1618,15 @@ export async function getActiveBrandKit(userId: number): Promise<BrandKit | null
   const db = await getDb();
   if (!db) return null;
   try {
-    await ensureBrandKitReady(db);
 
-    const [userRows] = await db.execute(
-      sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
+    const [userRows] = await execute(db, 
+      sql`SELECT "activeBrandKitId" FROM users WHERE id = ${userId} LIMIT 1`
     ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
     const activeBrandKitId = userRows[0]?.activeBrandKitId;
 
     if (activeBrandKitId) {
-      const [rows] = await db.execute(
-        sql`SELECT * FROM brand_kits WHERE id = ${activeBrandKitId} AND userId = ${userId} LIMIT 1`
+      const [rows] = await execute(db, 
+        sql`SELECT * FROM brand_kits WHERE id = ${activeBrandKitId} AND "userId" = ${userId} LIMIT 1`
       ) as unknown as [Array<Record<string, unknown>>, unknown];
       if (rows[0]) return rows[0] as unknown as BrandKit;
     }
@@ -2352,8 +1634,8 @@ export async function getActiveBrandKit(userId: number): Promise<BrandKit | null
     // Sem marca ativa definida (conta nova ou nunca migrada) — cai pra
     // primeira marca da conta, preservando o comportamento de antes do
     // multi-brand pra quem só tem uma.
-    const [rows] = await db.execute(
-      sql`SELECT * FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC LIMIT 1`
+    const [rows] = await execute(db, 
+      sql`SELECT * FROM brand_kits WHERE "userId" = ${userId} ORDER BY id ASC LIMIT 1`
     ) as unknown as [Array<Record<string, unknown>>, unknown];
     return rows[0] ? (rows[0] as unknown as BrandKit) : null;
   } catch (e) {
@@ -2379,141 +1661,9 @@ function normalizeBrandKitField(v: string | null | undefined): string | null {
   return v === "" || v == null ? null : v;
 }
 
-export async function createBrandKit(userId: number, data: Partial<BrandKitData>): Promise<BrandKit> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await ensureBrandKitReady(db);
-
-  const n = normalizeBrandKitField;
-  const insertResult = await db.execute(sql`
-    INSERT INTO brand_kits (
-      userId, companyName, tagline, logoUrl, industry, targetAudience, brandValues,
-      toneOfVoice, primaryColor, secondaryColor, accentColor, instagramHandle, linkedinUrl,
-      nicheId, subNicheId
-    ) VALUES (
-      ${userId}, ${n(data.companyName)}, ${n(data.tagline)}, ${n(data.logoUrl)}, ${n(data.industry)},
-      ${n(data.targetAudience)}, ${n(data.brandValues)}, ${n(data.toneOfVoice) ?? "professional"},
-      ${n(data.primaryColor) ?? "#6366f1"}, ${n(data.secondaryColor) ?? "#8b5cf6"}, ${n(data.accentColor) ?? "#06b6d4"},
-      ${n(data.instagramHandle)}, ${n(data.linkedinUrl)},
-      ${n((data as { nicheId?: string | null }).nicheId)}, ${n((data as { subNicheId?: string | null }).subNicheId)}
-    )
-  `);
-  const newId = insertId(insertResult[0]);
-
-  // Primeira marca da conta vira a ativa automaticamente.
-  const [userRows] = await db.execute(
-    sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
-  ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
-  if (!userRows[0]?.activeBrandKitId) {
-    await db.execute(sql`UPDATE users SET activeBrandKitId = ${newId} WHERE id = ${userId}`);
-  }
-
-  const [rows] = await db.execute(
-    sql`SELECT * FROM brand_kits WHERE id = ${newId} LIMIT 1`
-  ) as unknown as [Array<Record<string, unknown>>, unknown];
-  return rows[0] as unknown as BrandKit;
-}
-
-export async function updateBrandKit(
-  userId: number,
-  brandKitId: number,
-  data: Partial<BrandKitData>
-): Promise<BrandKit> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await ensureBrandKitReady(db);
-
-  const n = normalizeBrandKitField;
-  const ni  = n((data as { nicheId?: string | null }).nicheId);
-  const sni = n((data as { subNicheId?: string | null }).subNicheId);
-
-  await db.execute(sql`
-    UPDATE brand_kits SET
-      companyName     = ${n(data.companyName)},
-      tagline         = ${n(data.tagline)},
-      logoUrl         = ${n(data.logoUrl)},
-      industry        = ${n(data.industry)},
-      targetAudience  = ${n(data.targetAudience)},
-      brandValues     = ${n(data.brandValues)},
-      toneOfVoice     = ${n(data.toneOfVoice) ?? "professional"},
-      primaryColor    = ${n(data.primaryColor)   ?? "#6366f1"},
-      secondaryColor  = ${n(data.secondaryColor) ?? "#8b5cf6"},
-      accentColor     = ${n(data.accentColor)    ?? "#06b6d4"},
-      instagramHandle = ${n(data.instagramHandle)},
-      linkedinUrl     = ${n(data.linkedinUrl)},
-      nicheId         = COALESCE(${ni}, nicheId),
-      subNicheId      = COALESCE(${sni}, subNicheId)
-    WHERE id = ${brandKitId} AND userId = ${userId}
-  `);
-
-  const [rows] = await db.execute(
-    sql`SELECT * FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId} LIMIT 1`
-  ) as unknown as [Array<Record<string, unknown>>, unknown];
-  const result = rows[0];
-  if (!result) throw new Error("Failed to save brand kit");
-  return result as unknown as BrandKit;
-}
-
-export async function setActiveBrandKit(userId: number, brandKitId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  await ensureBrandKitReady(db);
-
-  const [rows] = await db.execute(
-    sql`SELECT id FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId} LIMIT 1`
-  ) as unknown as [Array<{ id: number }>, unknown];
-  if (!rows[0]) throw new Error("Marca não encontrada.");
-
-  await db.execute(sql`UPDATE users SET activeBrandKitId = ${brandKitId} WHERE id = ${userId}`);
-}
-
-export async function deleteBrandKit(userId: number, brandKitId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  await ensureBrandKitReady(db);
-
-  const [userRows] = await db.execute(
-    sql`SELECT activeBrandKitId FROM users WHERE id = ${userId} LIMIT 1`
-  ) as unknown as [Array<{ activeBrandKitId: number | null }>, unknown];
-  const wasActive = userRows[0]?.activeBrandKitId === brandKitId;
-
-  await db.execute(sql`DELETE FROM brand_kits WHERE id = ${brandKitId} AND userId = ${userId}`);
-
-  if (wasActive) {
-    const [remaining] = await db.execute(
-      sql`SELECT id FROM brand_kits WHERE userId = ${userId} ORDER BY id ASC LIMIT 1`
-    ) as unknown as [Array<{ id: number }>, unknown];
-    await db.execute(
-      sql`UPDATE users SET activeBrandKitId = ${remaining[0]?.id ?? null} WHERE id = ${userId}`
-    );
-  }
-}
-
 // ─── WhatsApp Digest ───────────────────────────────────────────────────────────
 
 // ── Delivered news deduplication ─────────────────────────────────────────────
-
-let _deliveredNewsTableReady: Promise<void> | null = null;
-
-async function ensureDeliveredNewsTable(db: Awaited<ReturnType<typeof getDb>>) {
-  if (!db) return;
-  if (!_deliveredNewsTableReady) {
-    _deliveredNewsTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`delivered_news\` (
-          \`id\`           INT AUTO_INCREMENT PRIMARY KEY,
-          \`user_id\`      INT NOT NULL,
-          \`url_key\`      VARCHAR(500) NOT NULL,
-          \`title\`        VARCHAR(500),
-          \`delivered_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY uq_user_url (\`user_id\`, \`url_key\`(255)),
-          INDEX idx_user_delivered (\`user_id\`, \`delivered_at\`)
-        )
-      `);
-    })();
-  }
-  return _deliveredNewsTableReady;
-}
 
 function normalizeDeliveredUrl(url: string): string {
   try {
@@ -2529,9 +1679,8 @@ function normalizeDeliveredUrl(url: string): string {
 export async function getDeliveredNewsKeys(userId: number, daysBack = 7): Promise<Set<string>> {
   const db = await getDb();
   if (!db) return new Set();
-  await ensureDeliveredNewsTable(db);
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT url_key FROM delivered_news
     WHERE user_id = ${userId} AND delivered_at > ${cutoff}
   `);
@@ -2545,73 +1694,18 @@ export async function saveDeliveredNews(
 ): Promise<void> {
   const db = await getDb();
   if (!db || items.length === 0) return;
-  await ensureDeliveredNewsTable(db);
   for (const item of items) {
     const key = normalizeDeliveredUrl(item.url);
-    await db
-      .execute(sql`
-        INSERT IGNORE INTO delivered_news (user_id, url_key, title)
+    await execute(db, sql`
+        INSERT INTO delivered_news (user_id, url_key, title)
         VALUES (${userId}, ${key}, ${(item.title ?? "").slice(0, 500)})
+        ON CONFLICT (user_id, url_key) DO NOTHING
       `)
       .catch(() => {});
   }
 }
 
 // ── Digest tables ─────────────────────────────────────────────────────────────
-
-let _digestTablesReady: Promise<void> | null = null;
-
-async function ensureDigestTables(db: Awaited<ReturnType<typeof getDb>>) {
-  if (!db) return;
-  if (!_digestTablesReady) {
-    _digestTablesReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`user_digest_settings\` (
-          \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
-          \`user_id\`           INT NOT NULL UNIQUE,
-          \`whatsapp_number\`   VARCHAR(20) NOT NULL,
-          \`digest_hour\`       TINYINT NOT NULL DEFAULT 6,
-          \`digest_minute\`     TINYINT NOT NULL DEFAULT 50,
-          \`enabled\`           TINYINT(1) NOT NULL DEFAULT 1,
-          \`last_sent_date\`    VARCHAR(12),
-          \`template_name\`     VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario',
-          \`template_language\` VARCHAR(20)  NOT NULL DEFAULT 'pt_BR',
-          \`created_at\`        DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      // Add new columns if table was created before they existed (catch 1060 = duplicate column)
-      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_name\` VARCHAR(100) NOT NULL DEFAULT 'envio_de_noticias_diario'`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`template_language\` VARCHAR(20) NOT NULL DEFAULT 'pt_BR'`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`user_digest_settings\` ADD COLUMN \`reply_webhook_url\` VARCHAR(500) NULL`).catch(() => {});
-      // Guarda ciphertext ("enc:v1:...") — precisa de mais espaço que a URL crua.
-      await db.execute(sql`ALTER TABLE \`user_digest_settings\` MODIFY COLUMN \`reply_webhook_url\` TEXT NULL`).catch(() => {});
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`whatsapp_digest_sessions\` (
-          \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
-          \`campaign_id\`    VARCHAR(36) NOT NULL,
-          \`user_id\`        INT NOT NULL,
-          \`phone_number\`   VARCHAR(20) NOT NULL,
-          \`news_items\`     TEXT NOT NULL,
-          \`message_text\`   TEXT,
-          \`sent_at\`        DATETIME NOT NULL,
-          \`expires_at\`     DATETIME NOT NULL,
-          \`user_response\`  VARCHAR(5),
-          \`chosen_index\`   TINYINT,
-          \`responded_at\`   DATETIME,
-          INDEX idx_phone_expires (\`phone_number\`, \`expires_at\`),
-          INDEX idx_campaign (\`campaign_id\`)
-        )
-      `);
-      // Migrate old sessions table (add columns if not present)
-      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`campaign_id\` VARCHAR(36) NOT NULL DEFAULT ''`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`message_text\` TEXT`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`user_response\` VARCHAR(5)`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`chosen_index\` TINYINT`).catch(() => {});
-      await db.execute(sql`ALTER TABLE \`whatsapp_digest_sessions\` ADD COLUMN \`responded_at\` DATETIME`).catch(() => {});
-    })();
-  }
-  return _digestTablesReady;
-}
 
 export type DigestSettings = {
   id: number;
@@ -2629,8 +1723,7 @@ export type DigestSettings = {
 export async function getUserDigestSettings(userId: number): Promise<DigestSettings | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureDigestTables(db);
-  const rows = await db.execute(sql`SELECT * FROM user_digest_settings WHERE user_id = ${userId} LIMIT 1`);
+  const rows = await execute(db, sql`SELECT * FROM user_digest_settings WHERE user_id = ${userId} LIMIT 1`);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   if (!row) return null;
   return {
@@ -2653,43 +1746,39 @@ export async function upsertDigestSettings(
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureDigestTables(db);
   const tplName = data.templateName ?? "envio_de_noticias_diario";
   const tplLang = data.templateLanguage ?? "pt_BR";
   const webhookUrl = encryptField(data.replyWebhookUrl ?? null);
-  await db.execute(sql`
+  await execute(db, sql`
     INSERT INTO user_digest_settings (user_id, whatsapp_number, digest_hour, digest_minute, enabled, template_name, template_language, reply_webhook_url)
-    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled ? 1 : 0}, ${tplName}, ${tplLang}, ${webhookUrl})
-    ON DUPLICATE KEY UPDATE
-      whatsapp_number    = VALUES(whatsapp_number),
-      digest_hour        = VALUES(digest_hour),
-      digest_minute      = VALUES(digest_minute),
-      enabled            = VALUES(enabled),
-      template_name      = VALUES(template_name),
-      template_language  = VALUES(template_language),
-      reply_webhook_url  = VALUES(reply_webhook_url)
+    VALUES (${userId}, ${data.whatsappNumber}, ${data.digestHour}, ${data.digestMinute}, ${data.enabled}, ${tplName}, ${tplLang}, ${webhookUrl})
+    ON CONFLICT (user_id) DO UPDATE SET
+      whatsapp_number    = EXCLUDED.whatsapp_number,
+      digest_hour        = EXCLUDED.digest_hour,
+      digest_minute      = EXCLUDED.digest_minute,
+      enabled            = EXCLUDED.enabled,
+      template_name      = EXCLUDED.template_name,
+      template_language  = EXCLUDED.template_language,
+      reply_webhook_url  = EXCLUDED.reply_webhook_url
   `);
 }
 
 export async function resetDigestLastSent(userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureDigestTables(db);
-  await db.execute(sql`UPDATE user_digest_settings SET last_sent_date = NULL WHERE user_id = ${userId}`);
+  await execute(db, sql`UPDATE user_digest_settings SET last_sent_date = NULL WHERE user_id = ${userId}`);
 }
 
 export async function markDigestLastSent(userId: number, dateStr: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureDigestTables(db);
-  await db.execute(sql`UPDATE user_digest_settings SET last_sent_date = ${dateStr} WHERE user_id = ${userId}`);
+  await execute(db, sql`UPDATE user_digest_settings SET last_sent_date = ${dateStr} WHERE user_id = ${userId}`);
 }
 
 export async function getAllEnabledDigestSettings(): Promise<DigestSettings[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureDigestTables(db);
-  const rows = await db.execute(sql`SELECT * FROM user_digest_settings WHERE enabled = 1`);
+  const rows = await execute(db, sql`SELECT * FROM user_digest_settings WHERE enabled = true`);
   return (rows[0] as unknown as Array<Record<string, unknown>>).map((row) => ({
     id: Number(row.id),
     userId: Number(row.user_id),
@@ -2739,14 +1828,14 @@ export async function saveDigestSession(
   const db = await getDb();
   const campaign = campaignId ?? randomCampaignId();
   if (!db) return { id: 0, campaignId: campaign };
-  await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const now = new Date();
   const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   console.log(`[DigestSession] Salvando sessão phone=${normalized} userId=${userId} campaign=${campaign}`);
-  const insertResult = await db.execute(sql`
+  const insertResult = await execute(db, sql`
     INSERT INTO whatsapp_digest_sessions (campaign_id, user_id, phone_number, news_items, message_text, sent_at, expires_at)
     VALUES (${campaign}, ${userId}, ${normalized}, ${JSON.stringify(newsItems)}, ${messageText ?? null}, ${now}, ${expires})
+    RETURNING id
   `);
   return { id: insertId(insertResult[0]), campaignId: campaign };
 }
@@ -2756,8 +1845,7 @@ export async function saveDigestSession(
 export async function getDigestSessionNewsItems(id: number): Promise<DigestNewsItem[] | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureDigestTables(db);
-  const rows = await db.execute(sql`SELECT news_items FROM whatsapp_digest_sessions WHERE id = ${id} LIMIT 1`);
+  const rows = await execute(db, sql`SELECT news_items FROM whatsapp_digest_sessions WHERE id = ${id} LIMIT 1`);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   if (!row) return null;
   try {
@@ -2773,13 +1861,12 @@ export async function recordSessionResponse(
 ): Promise<{ userId: number; campaignId: string; newsItems: DigestNewsItem[]; chosenItem: DigestNewsItem } | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const withPlus = `+${normalized}`;
   const brAlt = brazilianVariant(normalized);
   const brCondition = brAlt ? sql`OR phone_number = ${brAlt} OR phone_number = ${`+${brAlt}`}` : sql``;
   console.log(`[DigestSession] Buscando sessão para phone=${normalized}${brAlt ? ` | variante BR: ${brAlt}` : ''} choice=${choice}`);
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT id, campaign_id, user_id, news_items FROM whatsapp_digest_sessions
     WHERE (phone_number = ${normalized} OR phone_number = ${withPlus} ${brCondition})
       AND expires_at > NOW() AND user_response IS NULL
@@ -2796,7 +1883,7 @@ export async function recordSessionResponse(
   const idx = choice - 1;
   const chosenItem = newsItems[idx];
   if (!chosenItem) return null;
-  await db.execute(sql`
+  await execute(db, sql`
     UPDATE whatsapp_digest_sessions
     SET user_response = ${String(choice)}, chosen_index = ${idx}, responded_at = NOW()
     WHERE id = ${Number(row.id)}
@@ -2819,12 +1906,11 @@ export async function getActiveDigestSession(
 ): Promise<{ userId: number; newsItems: DigestNewsItem[] } | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureDigestTables(db);
   const normalized = normalizePhone(phoneNumber);
   const withPlus = `+${normalized}`;
   const brAlt = brazilianVariant(normalized);
   const brCondition = brAlt ? sql`OR phone_number = ${brAlt} OR phone_number = ${`+${brAlt}`}` : sql``;
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT user_id, news_items FROM whatsapp_digest_sessions
     WHERE (phone_number = ${normalized} OR phone_number = ${withPlus} ${brCondition}) AND expires_at > NOW()
     ORDER BY sent_at DESC LIMIT 1
@@ -2841,15 +1927,13 @@ export async function getActiveDigestSession(
   }
 }
 
-
 export async function getRecentSentNewsUrls(userId: number, daysBack = 7): Promise<Set<string>> {
   const db = await getDb();
   if (!db) return new Set();
-  await ensureDigestTables(db);
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT news_items FROM whatsapp_digest_sessions
     WHERE user_id = ${userId}
-      AND sent_at >= DATE_SUB(NOW(), INTERVAL ${daysBack} DAY)
+      AND sent_at >= NOW() - make_interval(days => ${daysBack})
     ORDER BY sent_at DESC
   `);
   const urls = new Set<string>();
@@ -2886,50 +1970,6 @@ export type ReelsScript = {
   updatedAt: Date;
 };
 
-async function ensureReelsScriptsTable() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_reelsScriptsTableReady) {
-    _reelsScriptsTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS reels_scripts (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          title varchar(512) NOT NULL,
-          topic text NOT NULL,
-          tone varchar(64) NOT NULL DEFAULT 'educational',
-          duration varchar(32) NOT NULL DEFAULT 'medium',
-          hook text NOT NULL,
-          reward text NOT NULL,
-          loopClose text NOT NULL,
-          caption text NOT NULL,
-          hashtags text NOT NULL,
-          scenes text NOT NULL,
-          sourceTopicAngleId int,
-          hookType varchar(32),
-          contentFormat varchar(32) DEFAULT 'reels',
-          status enum('draft','published') NOT NULL DEFAULT 'draft',
-          createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-      for (const stmt of [
-        sql`ALTER TABLE reels_scripts ADD COLUMN sourceTopicAngleId int`,
-        sql`ALTER TABLE reels_scripts ADD COLUMN hookType varchar(32)`,
-        sql`ALTER TABLE reels_scripts ADD COLUMN contentFormat varchar(32) DEFAULT 'reels'`,
-      ]) {
-        try { await db.execute(stmt); } catch (e) { if (!isMysqlDuplicateColumnError(e)) throw e; }
-      }
-    })().catch((error) => {
-      _reelsScriptsTableReady = null;
-      throw error;
-    });
-  }
-
-  await _reelsScriptsTableReady;
-}
-
 function hydrateReelsScript(row: Record<string, unknown>): ReelsScript {
   return {
     id: Number(row.id),
@@ -2953,9 +1993,8 @@ function hydrateReelsScript(row: Record<string, unknown>): ReelsScript {
 export async function getReelsScripts(userId: number): Promise<ReelsScript[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureReelsScriptsTable();
-  const rows = await db.execute(sql`
-    SELECT * FROM reels_scripts WHERE userId = ${userId} ORDER BY createdAt DESC
+  const rows = await execute(db, sql`
+    SELECT * FROM reels_scripts WHERE "userId" = ${userId} ORDER BY "createdAt" DESC
   `);
   return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateReelsScript);
 }
@@ -2980,9 +2019,8 @@ export async function saveReelsScript(
 ): Promise<ReelsScript> {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  await ensureReelsScriptsTable();
-  const insertResult = await db.execute(sql`
-    INSERT INTO reels_scripts (userId, title, topic, tone, duration, hook, reward, loopClose, caption, hashtags, scenes, sourceTopicAngleId, hookType, contentFormat)
+  const insertResult = await execute(db, sql`
+    INSERT INTO reels_scripts ("userId", title, topic, tone, duration, hook, reward, "loopClose", caption, hashtags, scenes, "sourceTopicAngleId", "hookType", "contentFormat")
     VALUES (
       ${userId},
       ${data.title},
@@ -2999,28 +2037,26 @@ export async function saveReelsScript(
       ${data.hookType ?? null},
       ${data.contentFormat ?? 'reels'}
     )
+    RETURNING id
   `);
   const id = insertId(insertResult[0]);
-  const selectResult = await db.execute(sql`SELECT * FROM reels_scripts WHERE id = ${id}`);
+  const selectResult = await execute(db, sql`SELECT * FROM reels_scripts WHERE id = ${id}`);
   return hydrateReelsScript((selectResult[0] as unknown as Record<string, unknown>[])[0]);
 }
 
 export async function deleteReelsScript(id: number, userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureReelsScriptsTable();
-  await db.execute(sql`DELETE FROM reels_scripts WHERE id = ${id} AND userId = ${userId}`);
+  await execute(db, sql`DELETE FROM reels_scripts WHERE id = ${id} AND "userId" = ${userId}`);
 }
 
 export async function getReelsScriptCount(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await ensureReelsScriptsTable();
-  const cntResult = await db.execute(sql`SELECT COUNT(*) as cnt FROM reels_scripts WHERE userId = ${userId}`);
+  const cntResult = await execute(db, sql`SELECT COUNT(*) as cnt FROM reels_scripts WHERE "userId" = ${userId}`);
   const row = (cntResult[0] as unknown as Record<string, unknown>[])[0];
   return Number(row?.cnt ?? 0);
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Comment Alerts (Phase 5 — 60-minute engagement window)
@@ -3038,56 +2074,6 @@ export type CommentAlert = {
   whatsappSentAt: Date | null;
   acknowledgedAt: Date | null;
 };
-
-async function ensureCommentPollStateTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_commentPollStateReady) {
-    _commentPollStateReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS comment_poll_state (
-          userId int NOT NULL,
-          mediaId varchar(100) NOT NULL,
-          lastKnownCount int NOT NULL DEFAULT 0,
-          lastCheckedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (userId, mediaId)
-        )
-      `);
-    })().catch((err) => {
-      _commentPollStateReady = null;
-      throw err;
-    });
-  }
-  await _commentPollStateReady;
-}
-
-async function ensureCommentAlertsTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_commentAlertsReady) {
-    _commentAlertsReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS comment_alerts (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          mediaId varchar(100) NOT NULL,
-          mediaCaption text,
-          mediaPermalink text,
-          previousCount int NOT NULL DEFAULT 0,
-          newCount int NOT NULL DEFAULT 0,
-          detectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          whatsappSentAt timestamp NULL,
-          acknowledgedAt timestamp NULL,
-          INDEX idx_user_ack (userId, acknowledgedAt)
-        )
-      `);
-    })().catch((err) => {
-      _commentAlertsReady = null;
-      throw err;
-    });
-  }
-  await _commentAlertsReady;
-}
 
 function hydrateAlert(row: Record<string, unknown>): CommentAlert {
   return {
@@ -3107,10 +2093,9 @@ function hydrateAlert(row: Record<string, unknown>): CommentAlert {
 export async function getCommentPollCount(userId: number, mediaId: string): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await ensureCommentPollStateTable();
-  const rows = await db.execute(sql`
-    SELECT lastKnownCount FROM comment_poll_state
-    WHERE userId = ${userId} AND mediaId = ${mediaId}
+  const rows = await execute(db, sql`
+    SELECT "lastKnownCount" FROM comment_poll_state
+    WHERE "userId" = ${userId} AND "mediaId" = ${mediaId}
   `);
   const row = (rows[0] as unknown as Array<Record<string, unknown>>)[0];
   return row ? Number(row.lastKnownCount) : -1;
@@ -3119,11 +2104,10 @@ export async function getCommentPollCount(userId: number, mediaId: string): Prom
 export async function upsertCommentPollState(userId: number, mediaId: string, count: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureCommentPollStateTable();
-  await db.execute(sql`
-    INSERT INTO comment_poll_state (userId, mediaId, lastKnownCount)
+  await execute(db, sql`
+    INSERT INTO comment_poll_state ("userId", "mediaId", "lastKnownCount")
     VALUES (${userId}, ${mediaId}, ${count})
-    ON DUPLICATE KEY UPDATE lastKnownCount = ${count}, lastCheckedAt = CURRENT_TIMESTAMP
+    ON CONFLICT ("userId", "mediaId") DO UPDATE SET "lastKnownCount" = ${count}, "lastCheckedAt" = CURRENT_TIMESTAMP
   `);
 }
 
@@ -3139,9 +2123,8 @@ export async function insertCommentAlert(
 ): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await ensureCommentAlertsTable();
-  const result = await db.execute(sql`
-    INSERT INTO comment_alerts (userId, mediaId, mediaCaption, mediaPermalink, previousCount, newCount)
+  const result = await execute(db, sql`
+    INSERT INTO comment_alerts ("userId", "mediaId", "mediaCaption", "mediaPermalink", "previousCount", "newCount")
     VALUES (
       ${userId},
       ${data.mediaId},
@@ -3150,6 +2133,7 @@ export async function insertCommentAlert(
       ${data.previousCount},
       ${data.newCount}
     )
+    RETURNING id
   `);
   return insertId(result[0]);
 }
@@ -3157,27 +2141,25 @@ export async function insertCommentAlert(
 export async function markAlertWhatsappSent(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql`UPDATE comment_alerts SET whatsappSentAt = CURRENT_TIMESTAMP WHERE id = ${id}`);
+  await execute(db, sql`UPDATE comment_alerts SET "whatsappSentAt" = CURRENT_TIMESTAMP WHERE id = ${id}`);
 }
 
 export async function acknowledgeCommentAlert(id: number, userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureCommentAlertsTable();
-  await db.execute(sql`
-    UPDATE comment_alerts SET acknowledgedAt = CURRENT_TIMESTAMP
-    WHERE id = ${id} AND userId = ${userId}
+  await execute(db, sql`
+    UPDATE comment_alerts SET "acknowledgedAt" = CURRENT_TIMESTAMP
+    WHERE id = ${id} AND "userId" = ${userId}
   `);
 }
 
 export async function getOpenCommentAlerts(userId: number): Promise<CommentAlert[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureCommentAlertsTable();
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT * FROM comment_alerts
-    WHERE userId = ${userId} AND acknowledgedAt IS NULL
-    ORDER BY detectedAt DESC
+    WHERE "userId" = ${userId} AND "acknowledgedAt" IS NULL
+    ORDER BY "detectedAt" DESC
     LIMIT 20
   `);
   return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAlert);
@@ -3186,9 +2168,9 @@ export async function getOpenCommentAlerts(userId: number): Promise<CommentAlert
 export async function getAllInstagramConnections(): Promise<Array<{ userId: number; instagramAccountId: string; accessToken: string }>> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.execute(sql`
-    SELECT userId, instagramAccountId, accessToken FROM instagram_connections
-    WHERE accessToken IS NOT NULL AND instagramAccountId IS NOT NULL
+  const rows = await execute(db, sql`
+    SELECT "userId", "instagramAccountId", "accessToken" FROM instagram_connections
+    WHERE "accessToken" IS NOT NULL AND "instagramAccountId" IS NOT NULL
   `);
   return (rows[0] as unknown as Array<Record<string, unknown>>).map((r) => ({
     userId: Number(r.userId),
@@ -3200,7 +2182,6 @@ export async function getAllInstagramConnections(): Promise<Array<{ userId: numb
 export async function getInstagramConnectionsExpiringBefore(
   cutoff: Date
 ): Promise<Array<{ userId: number; username: string | null; accessToken: string; tokenSource: string; tokenExpiresAt: Date | null }>> {
-  await ensureInstagramConnectionsColumns();
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select({
@@ -3232,39 +2213,6 @@ export async function updateInstagramConnectionToken(
 
 // ─── Comment Automations (Comment-to-DM) ─────────────────────────────────────
 
-async function ensureCommentAutomationsTable(): Promise<void> {
-  if (!_commentAutomationsTableReady) {
-    _commentAutomationsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`comment_automations\` (
-          \`id\`                    INT AUTO_INCREMENT PRIMARY KEY,
-          \`userId\`                INT NOT NULL,
-          \`igAccountId\`           VARCHAR(64) NOT NULL,
-          \`igPostId\`              VARCHAR(64) NOT NULL,
-          \`postCaption\`           TEXT,
-          \`postThumbnailUrl\`      TEXT,
-          \`keywords\`              JSON NOT NULL,
-          \`publicReplyMessage\`    TEXT NOT NULL,
-          \`dmFirstMessage\`        TEXT NOT NULL,
-          \`dmFollowupMessage\`     TEXT,
-          \`dmLink\`                TEXT,
-          \`status\`                VARCHAR(16) NOT NULL DEFAULT 'active',
-          \`commentsMatchedCount\`  INT NOT NULL DEFAULT 0,
-          \`dmsSentCount\`          INT NOT NULL DEFAULT 0,
-          \`linkClicksCount\`       INT NOT NULL DEFAULT 0,
-          \`createdAt\`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX \`idx_ca_userId\` (\`userId\`),
-          INDEX \`idx_ca_igPost\` (\`igAccountId\`, \`igPostId\`)
-        )
-      `);
-    })().catch(() => { _commentAutomationsTableReady = null; });
-  }
-  return _commentAutomationsTableReady!;
-}
-
 function hydrateAutomation(row: Record<string, unknown>): CommentAutomation {
   return {
     id: Number(row.id),
@@ -3290,9 +2238,8 @@ function hydrateAutomation(row: Record<string, unknown>): CommentAutomation {
 export async function getCommentAutomations(userId: number): Promise<CommentAutomation[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureCommentAutomationsTable();
-  const rows = await db.execute(sql`
-    SELECT * FROM comment_automations WHERE userId = ${userId} ORDER BY createdAt DESC
+  const rows = await execute(db, sql`
+    SELECT * FROM comment_automations WHERE "userId" = ${userId} ORDER BY "createdAt" DESC
   `);
   return (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAutomation);
 }
@@ -3313,11 +2260,10 @@ export async function createCommentAutomation(
 ): Promise<CommentAutomation> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureCommentAutomationsTable();
-  const result = await db.execute(sql`
+  const result = await execute(db, sql`
     INSERT INTO comment_automations
-      (userId, igAccountId, igPostId, postCaption, postThumbnailUrl, keywords,
-       publicReplyMessage, dmFirstMessage, dmFollowupMessage, dmLink)
+      ("userId", "igAccountId", "igPostId", "postCaption", "postThumbnailUrl", keywords,
+       "publicReplyMessage", "dmFirstMessage", "dmFollowupMessage", "dmLink")
     VALUES (
       ${userId}, ${data.igAccountId}, ${data.igPostId},
       ${data.postCaption ?? null}, ${data.postThumbnailUrl ?? null},
@@ -3325,27 +2271,26 @@ export async function createCommentAutomation(
       ${data.publicReplyMessage}, ${data.dmFirstMessage},
       ${data.dmFollowupMessage ?? null}, ${data.dmLink ?? null}
     )
+    RETURNING id
   `);
-  const rows = await db.execute(sql`SELECT * FROM comment_automations WHERE id = ${insertId(result[0])} LIMIT 1`);
+  const rows = await execute(db, sql`SELECT * FROM comment_automations WHERE id = ${insertId(result[0])} LIMIT 1`);
   return hydrateAutomation((rows[0] as unknown as Record<string, unknown>[])[0]);
 }
 
 export async function toggleCommentAutomationStatus(id: number, userId: number): Promise<'active' | 'paused'> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureCommentAutomationsTable();
-  const rows = await db.execute(sql`SELECT status FROM comment_automations WHERE id = ${id} AND userId = ${userId} LIMIT 1`);
+  const rows = await execute(db, sql`SELECT status FROM comment_automations WHERE id = ${id} AND "userId" = ${userId} LIMIT 1`);
   const current = ((rows[0] as unknown as Record<string, unknown>[])[0])?.status as string ?? 'active';
   const next = current === 'active' ? 'paused' : 'active';
-  await db.execute(sql`UPDATE comment_automations SET status = ${next} WHERE id = ${id} AND userId = ${userId}`);
+  await execute(db, sql`UPDATE comment_automations SET status = ${next} WHERE id = ${id} AND "userId" = ${userId}`);
   return next;
 }
 
 export async function deleteCommentAutomation(id: number, userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureCommentAutomationsTable();
-  await db.execute(sql`DELETE FROM comment_automations WHERE id = ${id} AND userId = ${userId}`);
+  await execute(db, sql`DELETE FROM comment_automations WHERE id = ${id} AND "userId" = ${userId}`);
 }
 
 export async function matchCommentAutomation(
@@ -3355,16 +2300,15 @@ export async function matchCommentAutomation(
 ): Promise<CommentAutomation | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureCommentAutomationsTable();
-  const rows = await db.execute(sql`
+  const rows = await execute(db, sql`
     SELECT * FROM comment_automations
-    WHERE igAccountId = ${igAccountId} AND igPostId = ${igPostId} AND status = 'active'
+    WHERE "igAccountId" = ${igAccountId} AND "igPostId" = ${igPostId} AND status = 'active'
   `);
   const campaigns = (rows[0] as unknown as Record<string, unknown>[]).map(hydrateAutomation);
   console.log(`[DB] matchCommentAutomation: igAccountId=${igAccountId}, igPostId=${igPostId}, campaigns_found=${campaigns.length}`);
   if (campaigns.length === 0) {
     // Debug: show all active campaigns to help diagnose mismatch
-    const allRows = await db.execute(sql`SELECT igAccountId, igPostId, status, keywords FROM comment_automations WHERE status = 'active' LIMIT 5`);
+    const allRows = await execute(db, sql`SELECT "igAccountId", "igPostId", status, keywords FROM comment_automations WHERE status = 'active' LIMIT 5`);
     const allCampaigns = allRows[0] as unknown as Array<{ igAccountId: string; igPostId: string; status: string; keywords: string }>;
     console.log(`[DB] Campanhas ativas no banco:`, JSON.stringify(allCampaigns));
   }
@@ -3377,8 +2321,7 @@ export async function matchCommentAutomation(
 export async function getInstagramConnectionByAutomationId(automationId: number): Promise<InstagramConnection | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureCommentAutomationsTable();
-  const rows = await db.execute(sql`SELECT userId FROM comment_automations WHERE id = ${automationId} LIMIT 1`);
+  const rows = await execute(db, sql`SELECT "userId" FROM comment_automations WHERE id = ${automationId} LIMIT 1`);
   const userId = ((rows[0] as unknown as Record<string, unknown>[])[0])?.userId as number | undefined;
   if (!userId) return null;
   return getInstagramConnection(userId);
@@ -3387,101 +2330,13 @@ export async function getInstagramConnectionByAutomationId(automationId: number)
 export async function incrementCommentMatchedCount(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql`UPDATE comment_automations SET commentsMatchedCount = commentsMatchedCount + 1 WHERE id = ${id}`);
+  await execute(db, sql`UPDATE comment_automations SET "commentsMatchedCount" = "commentsMatchedCount" + 1 WHERE id = ${id}`);
 }
 
 export async function incrementDmsSentCount(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql`UPDATE comment_automations SET dmsSentCount = dmsSentCount + 1 WHERE id = ${id}`);
-}
-
-// ── Style profiles ────────────────────────────────────────────────────────────
-
-let _styleProfilesTableReady: Promise<void> | null = null;
-
-async function ensureStyleProfilesTable(db: Awaited<ReturnType<typeof getDb>>) {
-  if (!db) return;
-  if (!_styleProfilesTableReady) {
-    _styleProfilesTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`style_profiles\` (
-          \`id\`                  INT AUTO_INCREMENT PRIMARY KEY,
-          \`user_id\`             INT NOT NULL,
-          \`profile_handle\`      VARCHAR(100) NOT NULL,
-          \`profile_name\`        VARCHAR(255),
-          \`profile_picture_url\` TEXT,
-          \`source\`              VARCHAR(20) NOT NULL DEFAULT 'scrape',
-          \`analysis_json\`       LONGTEXT NOT NULL,
-          \`created_at\`          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_user_created (\`user_id\`, \`created_at\`)
-        )
-      `);
-    })();
-  }
-  return _styleProfilesTableReady;
-}
-
-export async function saveStyleProfile(
-  userId: number,
-  data: {
-    profileHandle: string;
-    profileName?: string | null;
-    profilePictureUrl?: string | null;
-    source: string;
-    analysisJson: string;
-  }
-): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-  await ensureStyleProfilesTable(db);
-  const result = await db.execute(sql`
-    INSERT INTO \`style_profiles\`
-      (\`user_id\`, \`profile_handle\`, \`profile_name\`, \`profile_picture_url\`, \`source\`, \`analysis_json\`)
-    VALUES
-      (${userId}, ${data.profileHandle}, ${data.profileName ?? null}, ${data.profilePictureUrl ?? null}, ${data.source}, ${data.analysisJson})
-  `);
-  return insertId(result);
-}
-
-export async function listStyleProfiles(userId: number): Promise<Array<{
-  id: number;
-  profileHandle: string;
-  profileName: string | null;
-  profilePictureUrl: string | null;
-  source: string;
-  analysisJson: string;
-  createdAt: Date;
-}>> {
-  const db = await getDb();
-  if (!db) return [];
-  await ensureStyleProfilesTable(db);
-  const rows = await db.execute(sql`
-    SELECT id, profile_handle, profile_name, profile_picture_url, source, analysis_json, created_at
-    FROM \`style_profiles\`
-    WHERE user_id = ${userId}
-    ORDER BY created_at DESC
-    LIMIT 50
-  `);
-  const list = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : [];
-  return list.map((r) => ({
-    id: Number(r.id),
-    profileHandle: String(r.profile_handle ?? ""),
-    profileName: r.profile_name != null ? String(r.profile_name) : null,
-    profilePictureUrl: r.profile_picture_url != null ? String(r.profile_picture_url) : null,
-    source: String(r.source ?? "scrape"),
-    analysisJson: String(r.analysis_json ?? "{}"),
-    createdAt: r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at)),
-  }));
-}
-
-export async function deleteStyleProfile(userId: number, id: number): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  await ensureStyleProfilesTable(db);
-  await db.execute(sql`
-    DELETE FROM \`style_profiles\` WHERE id = ${id} AND user_id = ${userId}
-  `);
+  await execute(db, sql`UPDATE comment_automations SET "dmsSentCount" = "dmsSentCount" + 1 WHERE id = ${id}`);
 }
 
 // ─── Niche Profiles ───────────────────────────────────────────────────────────
@@ -3492,26 +2347,7 @@ async function ensureNicheProfilesTable() {
   const db = await getDb();
   if (!db) return;
   if (!_nicheProfilesReady) {
-    _nicheProfilesReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`niche_profiles\` (
-          \`id\`                 VARCHAR(64)  NOT NULL PRIMARY KEY,
-          \`parentId\`           VARCHAR(64),
-          \`label\`              VARCHAR(128) NOT NULL,
-          \`version\`            INT          NOT NULL DEFAULT 1,
-          \`subNiches\`          JSON,
-          \`visualGrammar\`      JSON,
-          \`copyTone\`           JSON,
-          \`referenceImageTags\` JSON,
-          \`carouselPatterns\`   JSON,
-          \`keywords\`           JSON,
-          \`isActive\`           TINYINT(1)   NOT NULL DEFAULT 1,
-          \`createdAt\`          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\`          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-      await seedNicheProfiles(db);
-    })().catch((e) => { _nicheProfilesReady = null; throw e; });
+    _nicheProfilesReady = seedNicheProfiles(db).catch((e) => { _nicheProfilesReady = null; throw e; });
   }
   await _nicheProfilesReady;
 }
@@ -3519,11 +2355,11 @@ async function ensureNicheProfilesTable() {
 async function seedNicheProfiles(db: Awaited<ReturnType<typeof getDb>>) {
   if (!db) return;
   const { NICHE_PROFILES } = await import('./_core/nicheProfilesSeed');
-  const [rows] = await db.execute(sql`SELECT COUNT(*) as cnt FROM niche_profiles`) as unknown as [Array<{ cnt: number }>, unknown];
+  const [rows] = await execute(db, sql`SELECT COUNT(*) as cnt FROM niche_profiles`) as unknown as [Array<{ cnt: number }>, unknown];
   if (Number((rows as Array<{ cnt: number }>)[0]?.cnt) > 0) return;
   for (const p of NICHE_PROFILES) {
-    await db.execute(sql`
-      INSERT IGNORE INTO niche_profiles (id, label, version, subNiches, visualGrammar, copyTone, referenceImageTags, carouselPatterns, keywords)
+    await execute(db, sql`
+      INSERT INTO niche_profiles (id, label, version, "subNiches", "visualGrammar", "copyTone", "referenceImageTags", "carouselPatterns", keywords)
       VALUES (
         ${p.id}, ${p.label}, ${p.version},
         ${JSON.stringify(p.subNiches)},
@@ -3533,6 +2369,7 @@ async function seedNicheProfiles(db: Awaited<ReturnType<typeof getDb>>) {
         ${JSON.stringify(p.carouselPatterns)},
         ${JSON.stringify(p.keywords)}
       )
+      ON CONFLICT (id) DO NOTHING
     `);
   }
   console.log(`[NicheProfiles] Seeded ${NICHE_PROFILES.length} niche profiles.`);
@@ -3542,7 +2379,7 @@ export async function listNicheProfiles(): Promise<Array<{ id: string; label: st
   const db = await getDb();
   if (!db) return [];
   await ensureNicheProfilesTable();
-  const [rows] = await db.execute(sql`SELECT id, label, version, subNiches, keywords FROM niche_profiles WHERE isActive = 1 ORDER BY label`) as unknown as [Array<Record<string, unknown>>, unknown];
+  const [rows] = await execute(db, sql`SELECT id, label, version, "subNiches", keywords FROM niche_profiles WHERE "isActive" = true ORDER BY label`) as unknown as [Array<Record<string, unknown>>, unknown];
   return (rows as Array<Record<string, unknown>>).map((r) => ({
     id: String(r.id),
     label: String(r.label),
@@ -3556,7 +2393,7 @@ export async function getNicheProfile(id: string): Promise<{ id: string; label: 
   const db = await getDb();
   if (!db) return null;
   await ensureNicheProfilesTable();
-  const [rows] = await db.execute(sql`SELECT * FROM niche_profiles WHERE id = ${id} AND isActive = 1 LIMIT 1`) as unknown as [Array<Record<string, unknown>>, unknown];
+  const [rows] = await execute(db, sql`SELECT * FROM niche_profiles WHERE id = ${id} AND "isActive" = true LIMIT 1`) as unknown as [Array<Record<string, unknown>>, unknown];
   const row = (rows as Array<Record<string, unknown>>)[0];
   if (!row) return null;
   const parse = (v: unknown) => v ? (typeof v === 'string' ? JSON.parse(v) : v) : null;
@@ -3573,45 +2410,9 @@ export async function getNicheProfile(id: string): Promise<{ id: string; label: 
 
 // ─── Brand Kit niche columns migration ───────────────────────────────────────
 
-let _brandKitNicheColumnsReady: Promise<void> | null = null;
-
-async function ensureBrandKitNicheColumns() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_brandKitNicheColumnsReady) {
-    _brandKitNicheColumnsReady = (async () => {
-      await db.execute(sql`ALTER TABLE brand_kits ADD COLUMN nicheId VARCHAR(64)`).catch(() => {});
-      await db.execute(sql`ALTER TABLE brand_kits ADD COLUMN subNicheId VARCHAR(64)`).catch(() => {});
-    })().catch((e) => { _brandKitNicheColumnsReady = null; throw e; });
-  }
-  await _brandKitNicheColumnsReady;
-}
-
 // ─── Daily Usage (trial limits) ───────────────────────────────────────────────
 
-async function ensureDailyUsageTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_dailyUsageTableReady) {
-    _dailyUsageTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS daily_usage (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          userId INT NOT NULL,
-          feature VARCHAR(32) NOT NULL,
-          date VARCHAR(10) NOT NULL,
-          count INT NOT NULL DEFAULT 0,
-          UNIQUE KEY uq_daily_usage (userId, feature, date),
-          INDEX idx_daily_usage_uid_feat_date (userId, feature, date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-    })().catch((e) => { _dailyUsageTableReady = null; throw e; });
-  }
-  await _dailyUsageTableReady;
-}
-
 export async function getDailyUsageCount(userId: number, feature: string, date: string): Promise<number> {
-  await ensureDailyUsageTable();
   const db = await getDb();
   if (!db) return 0;
   const rows = await db
@@ -3623,18 +2424,16 @@ export async function getDailyUsageCount(userId: number, feature: string, date: 
 }
 
 export async function incrementDailyUsage(userId: number, feature: string, date: string): Promise<void> {
-  await ensureDailyUsageTable();
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql`
-    INSERT INTO daily_usage (userId, feature, date, count)
+  await execute(db, sql`
+    INSERT INTO daily_usage ("userId", feature, date, count)
     VALUES (${userId}, ${feature}, ${date}, 1)
-    ON DUPLICATE KEY UPDATE count = count + 1
+    ON CONFLICT ("userId", feature, date) DO UPDATE SET count = daily_usage.count + 1
   `);
 }
 
 export async function getDailyUsageAll(userId: number, date: string): Promise<Record<string, number>> {
-  await ensureDailyUsageTable();
   const db = await getDb();
   if (!db) return {};
   const rows = await db
@@ -3644,349 +2443,7 @@ export async function getDailyUsageAll(userId: number, date: string): Promise<Re
   return Object.fromEntries(rows.map((r) => [r.feature, r.count]));
 }
 
-// ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
-
-let _radarTablesReady: Promise<void> | null = null;
-
-async function ensureRadarTables() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_radarTablesReady) {
-    _radarTablesReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS trending_topics (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          externalId VARCHAR(128) NOT NULL,
-          title VARCHAR(512) NOT NULL,
-          description TEXT,
-          source VARCHAR(16) NOT NULL DEFAULT 'serper',
-          viralScore INT NOT NULL DEFAULT 50,
-          emotionalAngle VARCHAR(16),
-          relevanceWindow VARCHAR(16),
-          niches JSON,
-          sourceUrl VARCHAR(1000),
-          collectedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          expiresAt TIMESTAMP NOT NULL,
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY uq_trending_topics_externalId (externalId)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-      // Add sourceUrl to existing tables (no IF NOT EXISTS — not supported in MySQL 5.7)
-      // Fails silently if column already exists (Duplicate column name error) — that's fine
-      await db.execute(sql`ALTER TABLE trending_topics ADD COLUMN sourceUrl VARCHAR(1000)`).catch(() => {});
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS user_topic_angles (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          userId INT NOT NULL,
-          trendingTopicId INT NOT NULL,
-          suggestedTitle VARCHAR(512) NOT NULL,
-          suggestedHook TEXT NOT NULL,
-          status VARCHAR(16) NOT NULL DEFAULT 'sugerido',
-          contentRef VARCHAR(255),
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY uq_user_topic_angles_user_topic (userId, trendingTopicId),
-          INDEX idx_user_topic_angles_userId (userId)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-    })().catch((e) => { _radarTablesReady = null; throw e; });
-  }
-
-  await _radarTablesReady;
-}
-
-export type RadarTopic = TrendingTopic & { angle: UserTopicAngle | null };
-
-export async function upsertTrendingTopic(data: {
-  externalId: string;
-  title: string;
-  description?: string;
-  source?: string;
-  sourceUrl?: string;
-  expiresAt: Date;
-}): Promise<number> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return 0;
-  await db.execute(sql`
-    INSERT INTO trending_topics (externalId, title, description, source, expiresAt)
-    VALUES (${data.externalId}, ${data.title}, ${data.description ?? null}, ${data.source ?? "serper"}, ${data.expiresAt})
-    ON DUPLICATE KEY UPDATE
-      title = VALUES(title),
-      description = VALUES(description),
-      expiresAt = VALUES(expiresAt)
-  `);
-  const rows = await db
-    .select({ id: trendingTopics.id })
-    .from(trendingTopics)
-    .where(eq(trendingTopics.externalId, data.externalId))
-    .limit(1);
-  const id = rows[0]?.id ?? 0;
-  // sourceUrl stored separately — column may not exist yet on first deploy
-  if (id && data.sourceUrl) {
-    await db.execute(sql`UPDATE trending_topics SET sourceUrl = ${data.sourceUrl} WHERE id = ${id}`).catch(() => {});
-  }
-  return id;
-}
-
-export async function updateTopicClassification(id: number, data: {
-  viralScore: number;
-  emotionalAngle: string;
-  relevanceWindow: string;
-  niches: string[];
-}): Promise<void> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return;
-  await db
-    .update(trendingTopics)
-    .set({
-      viralScore: data.viralScore,
-      emotionalAngle: data.emotionalAngle,
-      relevanceWindow: data.relevanceWindow,
-      niches: data.niches,
-    })
-    .where(eq(trendingTopics.id, id));
-}
-
-export async function getPendingTopicsForClassification(): Promise<TrendingTopic[]> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select()
-    .from(trendingTopics)
-    .where(sql`niches IS NULL AND expiresAt > NOW()`)
-    .limit(20);
-}
-
-export async function getActiveTopics(): Promise<TrendingTopic[]> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select()
-    .from(trendingTopics)
-    .where(sql`expiresAt > NOW() AND niches IS NOT NULL`)
-    .orderBy(desc(trendingTopics.viralScore))
-    .limit(50);
-}
-
-// Junta pela marca ATIVA de cada usuário (users.activeBrandKitId), não por
-// users.id = brandKits.userId — com múltiplas marcas por conta, esse join
-// duplicaria uma linha por marca.
-export async function getUsersWithNiches(): Promise<Array<{ id: number; nicheId: string | null; subNicheId: string | null }>> {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db
-    .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
-    .from(users)
-    .leftJoin(brandKits, eq(users.activeBrandKitId, brandKits.id))
-    .where(sql`users.isActive = 1`);
-  return rows;
-}
-
-export async function getUserNiche(userId: number): Promise<{ id: number; nicheId: string | null; subNicheId: string | null } | null> {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db
-    .select({ id: users.id, nicheId: brandKits.nicheId, subNicheId: brandKits.subNicheId })
-    .from(users)
-    .leftJoin(brandKits, eq(users.activeBrandKitId, brandKits.id))
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export async function getTopicsByIds(ids: number[]): Promise<TrendingTopic[]> {
-  if (ids.length === 0) return [];
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select()
-    .from(trendingTopics)
-    .where(inArray(trendingTopics.id, ids));
-}
-
-export async function upsertUserTopicAngle(data: {
-  userId: number;
-  trendingTopicId: number;
-  suggestedTitle: string;
-  suggestedHook: string;
-}): Promise<void> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return;
-  await db.execute(sql`
-    INSERT INTO user_topic_angles (userId, trendingTopicId, suggestedTitle, suggestedHook)
-    VALUES (${data.userId}, ${data.trendingTopicId}, ${data.suggestedTitle}, ${data.suggestedHook})
-    ON DUPLICATE KEY UPDATE
-      suggestedTitle = VALUES(suggestedTitle),
-      suggestedHook = VALUES(suggestedHook),
-      updatedAt = CURRENT_TIMESTAMP
-  `);
-}
-
-export async function getRadarTopicsForUser(userId: number): Promise<(RadarTopic & { sourceUrl: string | null })[]> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return [];
-
-  // Try with sourceUrl (may not exist on old DBs before the column was added)
-  try {
-    const rows = await db
-      .select({
-        topic: trendingTopics,
-        angle: userTopicAngles,
-        sourceUrl: sql<string | null>`trending_topics.sourceUrl`,
-      })
-      .from(trendingTopics)
-      .leftJoin(
-        userTopicAngles,
-        and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
-      )
-      .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
-      .orderBy(desc(trendingTopics.viralScore))
-      .limit(30);
-    return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: r.sourceUrl ?? null }));
-  } catch (err) {
-    // sourceUrl column may not exist yet — fall back to query without it
-    console.warn("[Radar] getRadarTopicsForUser fallback (sourceUrl column missing?):", (err as Error).message);
-    const rows = await db
-      .select({ topic: trendingTopics, angle: userTopicAngles })
-      .from(trendingTopics)
-      .leftJoin(
-        userTopicAngles,
-        and(eq(userTopicAngles.trendingTopicId, trendingTopics.id), eq(userTopicAngles.userId, userId))
-      )
-      .where(sql`trending_topics.expiresAt > NOW() AND trending_topics.niches IS NOT NULL`)
-      .orderBy(desc(trendingTopics.viralScore))
-      .limit(30);
-    return rows.map((r) => ({ ...r.topic, angle: r.angle ?? null, sourceUrl: null }));
-  }
-}
-
-export async function updateUserTopicAngleStatus(userId: number, trendingTopicId: number, status: string): Promise<void> {
-  await ensureRadarTables();
-  const db = await getDb();
-  if (!db) return;
-  await db
-    .update(userTopicAngles)
-    .set({ status, updatedAt: new Date() })
-    .where(and(eq(userTopicAngles.userId, userId), eq(userTopicAngles.trendingTopicId, trendingTopicId)));
-}
-
 // ─── Post Metrics (Module 1.3) ────────────────────────────────────────────────
-
-async function ensurePostMetricsTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_postMetricsTableReady) {
-    _postMetricsTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS post_metrics (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          socialPostId int NOT NULL,
-          collectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          reach int NOT NULL DEFAULT 0,
-          saves int NOT NULL DEFAULT 0,
-          shares int NOT NULL DEFAULT 0,
-          comments int NOT NULL DEFAULT 0,
-          likes int NOT NULL DEFAULT 0,
-          followsDelta int NOT NULL DEFAULT 0,
-          rawScore int NOT NULL DEFAULT 0,
-          normalizedScore int NOT NULL DEFAULT 0,
-          impressions int NOT NULL DEFAULT 0,
-          videoViews int NOT NULL DEFAULT 0,
-          avgWatchTimeMs int NOT NULL DEFAULT 0,
-          INDEX idx_post_metrics_socialPostId (socialPostId)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-    })().catch((e) => { _postMetricsTableReady = null; throw e; });
-  }
-  await _postMetricsTableReady;
-  await ensurePostMetricsVideoColumns();
-}
-
-async function ensurePostMetricsVideoColumns(): Promise<void> {
-  if (!_postMetricsVideoColumnsReady) {
-    _postMetricsVideoColumnsReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      const [cols] = await db.execute(sql`
-        SELECT COLUMN_NAME FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'post_metrics'
-      `);
-      const existing = new Set((cols as unknown as Array<{ COLUMN_NAME: string }>).map(c => c.COLUMN_NAME));
-      if (!existing.has("impressions")) {
-        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`impressions\` int NOT NULL DEFAULT 0`);
-      }
-      if (!existing.has("videoViews")) {
-        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`videoViews\` int NOT NULL DEFAULT 0`);
-      }
-      if (!existing.has("avgWatchTimeMs")) {
-        await db.execute(sql`ALTER TABLE \`post_metrics\` ADD COLUMN \`avgWatchTimeMs\` int NOT NULL DEFAULT 0`);
-      }
-    })().catch((e) => { _postMetricsVideoColumnsReady = null; throw e; });
-  }
-  await _postMetricsVideoColumnsReady;
-}
-
-async function ensureInstagramAccountInsightsDailyTable(): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  if (!_igAccountInsightsTableReady) {
-    _igAccountInsightsTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS instagram_account_insights_daily (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          dateKey varchar(10) NOT NULL,
-          collectedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          demographics json,
-          websiteClicks int NOT NULL DEFAULT 0,
-          phoneCallClicks int NOT NULL DEFAULT 0,
-          emailContacts int NOT NULL DEFAULT 0,
-          textMessageClicks int NOT NULL DEFAULT 0,
-          getDirectionsClicks int NOT NULL DEFAULT 0,
-          totalInteractions int NOT NULL DEFAULT 0,
-          accountsEngaged int NOT NULL DEFAULT 0,
-          INDEX idx_ig_account_insights_userId (userId),
-          UNIQUE KEY uq_ig_account_insights_user_date (userId, dateKey)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-    })().catch((e) => { _igAccountInsightsTableReady = null; throw e; });
-  }
-  await _igAccountInsightsTableReady;
-}
-
-async function ensureTemplatePerformanceTable() {
-  const db = await getDb();
-  if (!db) return;
-  if (!_templatePerformanceTableReady) {
-    _templatePerformanceTableReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS template_performance (
-          id int AUTO_INCREMENT PRIMARY KEY,
-          userId int NOT NULL,
-          niche varchar(64) NOT NULL,
-          templateStyle varchar(100) NOT NULL,
-          hookType varchar(32) NOT NULL,
-          contentFormat varchar(32) NOT NULL,
-          sourceKind varchar(16) NOT NULL,
-          avgScore int NOT NULL DEFAULT 0,
-          postCount int NOT NULL DEFAULT 0,
-          updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_template_perf_userId_niche (userId, niche),
-          UNIQUE KEY uq_template_perf_combo (userId, niche, templateStyle, hookType, contentFormat, sourceKind)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-    })().catch((e) => { _templatePerformanceTableReady = null; throw e; });
-  }
-  await _templatePerformanceTableReady;
-}
 
 export async function savePostMetric(data: {
   socialPostId: number;
@@ -4002,7 +2459,6 @@ export async function savePostMetric(data: {
   videoViews?: number;
   avgWatchTimeMs?: number;
 }): Promise<void> {
-  await ensurePostMetricsTable();
   const db = await getDb();
   if (!db) return;
   await db.insert(postMetrics).values({
@@ -4022,7 +2478,6 @@ export async function savePostMetric(data: {
 }
 
 export async function getLatestMetricForPost(socialPostId: number): Promise<PostMetric | null> {
-  await ensurePostMetricsTable();
   const db = await getDb();
   if (!db) return null;
   const rows = await db
@@ -4049,7 +2504,6 @@ export async function saveInstagramAccountInsightsSnapshot(data: {
   totalInteractions: number;
   accountsEngaged: number;
 }): Promise<void> {
-  await ensureInstagramAccountInsightsDailyTable();
   const db = await getDb();
   if (!db) return;
   const dateKey = todayDateKey();
@@ -4084,7 +2538,6 @@ export async function saveInstagramAccountInsightsSnapshot(data: {
 }
 
 export async function getLatestInstagramAccountInsights(userId: number): Promise<InstagramAccountInsightsDaily | null> {
-  await ensureInstagramAccountInsightsDailyTable();
   const db = await getDb();
   if (!db) return null;
   const rows = await db
@@ -4097,7 +2550,6 @@ export async function getLatestInstagramAccountInsights(userId: number): Promise
 }
 
 export async function getInstagramAccountInsightsHistory(userId: number, days: number): Promise<InstagramAccountInsightsDaily[]> {
-  await ensureInstagramAccountInsightsDailyTable();
   const db = await getDb();
   if (!db) return [];
   const since = new Date(Date.now() - days * 86400_000);
@@ -4121,23 +2573,21 @@ export async function getPublishedPostsWithIgMedia(): Promise<Array<{
   contentId: number | null;
   publishedAt: Date | null;
 }>> {
-  await ensurePostMetricsTable();
-  await ensureSocialPostsMetadataColumn();
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.execute(sql`
-    SELECT sp.id, sp.userId, sp.igMediaId, sp.contentType, sp.contentId, sp.publishedAt,
-           COALESCE(c.style, r.contentFormat, 'unknown') AS style,
-           COALESCE(c.hookType, r.hookType, sp.contentType) AS hookType,
-           COALESCE(c.contentFormat, r.contentFormat, sp.contentType) AS contentFormat,
-           COALESCE(c.sourceTopicAngleId, r.sourceTopicAngleId) AS sourceTopicAngleId
+  const rows = await execute(db, sql`
+    SELECT sp.id, sp."userId", sp."igMediaId", sp."contentType", sp."contentId", sp."publishedAt",
+           COALESCE(c.style, r."contentFormat", 'unknown') AS style,
+           COALESCE(c."hookType", r."hookType", sp."contentType") AS "hookType",
+           COALESCE(c."contentFormat", r."contentFormat", sp."contentType") AS "contentFormat",
+           COALESCE(c."sourceTopicAngleId", r."sourceTopicAngleId") AS "sourceTopicAngleId"
     FROM social_posts sp
-    LEFT JOIN carousels c ON sp.contentType = 'carousel' AND c.id = sp.contentId
-    LEFT JOIN reels_scripts r ON sp.contentType = 'reels' AND r.id = sp.contentId
+    LEFT JOIN carousels c ON sp."contentType" = 'carousel' AND c.id = sp."contentId"
+    LEFT JOIN reels_scripts r ON sp."contentType" = 'reels' AND r.id = sp."contentId"
     WHERE sp.status = 'published'
-      AND sp.igMediaId IS NOT NULL
+      AND sp."igMediaId" IS NOT NULL
       AND sp.channel = 'instagram'
-    ORDER BY sp.publishedAt DESC
+    ORDER BY sp."publishedAt" DESC
     LIMIT 200
   `);
   return (rows[0] as unknown as Array<Record<string, unknown>>).map((r) => ({
@@ -4164,30 +2614,28 @@ export async function upsertTemplatePerformance(data: {
   avgScore: number;
   postCount: number;
 }): Promise<void> {
-  await ensureTemplatePerformanceTable();
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql`
-    INSERT INTO template_performance (userId, niche, templateStyle, hookType, contentFormat, sourceKind, avgScore, postCount)
+  await execute(db, sql`
+    INSERT INTO template_performance ("userId", niche, "templateStyle", "hookType", "contentFormat", "sourceKind", "avgScore", "postCount")
     VALUES (${data.userId}, ${data.niche}, ${data.templateStyle}, ${data.hookType}, ${data.contentFormat}, ${data.sourceKind}, ${data.avgScore}, ${data.postCount})
-    ON DUPLICATE KEY UPDATE
-      avgScore = VALUES(avgScore),
-      postCount = VALUES(postCount),
-      updatedAt = CURRENT_TIMESTAMP
+    ON CONFLICT ("userId", niche, "templateStyle", "hookType", "contentFormat", "sourceKind") DO UPDATE SET
+      "avgScore" = EXCLUDED."avgScore",
+      "postCount" = EXCLUDED."postCount",
+      "updatedAt" = CURRENT_TIMESTAMP
   `);
 }
 
 export async function getTopPerformanceForUser(userId: number, contentFormat?: string): Promise<TemplatePerformance[]> {
-  await ensureTemplatePerformanceTable();
   const db = await getDb();
   if (!db) return [];
   const rows = contentFormat
     ? await db.select().from(templatePerformance)
-        .where(and(eq(templatePerformance.userId, userId), eq(templatePerformance.contentFormat, contentFormat), sql`postCount >= 3`))
+        .where(and(eq(templatePerformance.userId, userId), eq(templatePerformance.contentFormat, contentFormat), sql`"postCount" >= 3`))
         .orderBy(desc(templatePerformance.avgScore))
         .limit(10)
     : await db.select().from(templatePerformance)
-        .where(and(eq(templatePerformance.userId, userId), sql`postCount >= 3`))
+        .where(and(eq(templatePerformance.userId, userId), sql`"postCount" >= 3`))
         .orderBy(desc(templatePerformance.avgScore))
         .limit(20);
   return rows;
@@ -4200,42 +2648,7 @@ export async function getUserNicheForPerformance(userId: number): Promise<string
 
 // ─── Editorial Plan Items (Module 2.1) ───────────────────────────────────────
 
-async function ensureEditorialPlanItemsTable() {
-  if (!_editorialPlanItemsTableReady) {
-    _editorialPlanItemsTableReady = (async () => {
-      const db = await getDb();
-      if (!db) return;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS \`editorial_plan_items\` (
-          \`id\` int NOT NULL AUTO_INCREMENT,
-          \`userId\` int NOT NULL,
-          \`year\` int NOT NULL,
-          \`month\` int NOT NULL,
-          \`scheduledDate\` varchar(10) NOT NULL,
-          \`format\` varchar(32) NOT NULL,
-          \`category\` varchar(255) NOT NULL,
-          \`suggestedTitle\` varchar(512) NOT NULL,
-          \`pauta\` text NOT NULL,
-          \`status\` varchar(16) NOT NULL DEFAULT 'pending',
-          \`socialPostId\` int DEFAULT NULL,
-          \`contentType\` varchar(20) DEFAULT NULL,
-          \`contentId\` int DEFAULT NULL,
-          \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          CONSTRAINT \`editorial_plan_items_pk\` PRIMARY KEY(\`id\`),
-          INDEX \`idx_editorial_plan_userId_month\` (\`userId\`, \`year\`, \`month\`)
-        )
-      `);
-    })().catch((error) => {
-      _editorialPlanItemsTableReady = null;
-      throw error;
-    });
-  }
-  return _editorialPlanItemsTableReady;
-}
-
 export async function getEditorialPlanItems(userId: number, year: number, month: number): Promise<EditorialPlanItem[]> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return [];
   return db.select().from(editorialPlanItems)
@@ -4248,13 +2661,12 @@ export async function getEditorialPlanItems(userId: number, year: number, month:
 }
 
 export async function countGeneratedPlanItems(userId: number, year: number, month: number): Promise<number> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return 0;
-  const [rows] = await db.execute(sql`
+  const [rows] = await execute(db, sql`
     SELECT COUNT(*) AS cnt FROM editorial_plan_items
-    WHERE userId = ${userId} AND year = ${year} AND month = ${month}
-    AND (status = 'done' OR socialPostId IS NOT NULL OR contentId IS NOT NULL)
+    WHERE "userId" = ${userId} AND year = ${year} AND month = ${month}
+    AND (status = 'done' OR "socialPostId" IS NOT NULL OR "contentId" IS NOT NULL)
   `);
   return Number((rows as unknown as Array<{ cnt: number }>)[0]?.cnt ?? 0);
 }
@@ -4265,7 +2677,6 @@ export async function saveEditorialPlanItems(
   month: number,
   items: Array<Omit<InsertEditorialPlanItem, "userId" | "year" | "month" | "id" | "createdAt" | "updatedAt">>
 ): Promise<EditorialPlanItem[]> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return [];
   await db.delete(editorialPlanItems).where(
@@ -4282,12 +2693,25 @@ export async function saveEditorialPlanItems(
   return getEditorialPlanItems(userId, year, month);
 }
 
+/** Acrescenta pautas ao calendário sem mexer nas que já existem no mês. */
+export async function addEditorialPlanItems(
+  userId: number,
+  items: Array<Omit<InsertEditorialPlanItem, "userId" | "year" | "month" | "id" | "createdAt" | "updatedAt">>
+): Promise<number> {
+  const db = await getDb();
+  if (!db || items.length === 0) return 0;
+  await db.insert(editorialPlanItems).values(items.map((item) => {
+    const [year, month] = item.scheduledDate.split("-").map(Number);
+    return { ...item, userId, year, month };
+  }));
+  return items.length;
+}
+
 export async function updateEditorialPlanItem(
   id: number,
   userId: number,
   data: Partial<Pick<EditorialPlanItem, "status" | "socialPostId" | "contentType" | "contentId" | "scheduledDate">>
 ): Promise<EditorialPlanItem | null> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return null;
   await db.update(editorialPlanItems)
@@ -4299,7 +2723,6 @@ export async function updateEditorialPlanItem(
 }
 
 export async function getEditorialPlanItemById(id: number, userId: number): Promise<EditorialPlanItem | null> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(editorialPlanItems)
@@ -4308,7 +2731,6 @@ export async function getEditorialPlanItemById(id: number, userId: number): Prom
 }
 
 export async function deleteEditorialPlanItems(userId: number, year: number, month: number): Promise<void> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return;
   await db.delete(editorialPlanItems).where(
@@ -4321,7 +2743,6 @@ export async function deleteEditorialPlanItems(userId: number, year: number, mon
 }
 
 export async function deleteEditorialPlanItemsByDate(userId: number, scheduledDate: string): Promise<void> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return;
   await db.delete(editorialPlanItems).where(
@@ -4333,7 +2754,6 @@ export async function deleteEditorialPlanItemsByDate(userId: number, scheduledDa
 }
 
 export async function deleteEditorialPlanItem(userId: number, id: number): Promise<void> {
-  await ensureEditorialPlanItemsTable();
   const db = await getDb();
   if (!db) return;
   await db.delete(editorialPlanItems).where(
@@ -4343,72 +2763,11 @@ export async function deleteEditorialPlanItem(userId: number, id: number): Promi
 
 // ─── Art Studio (empresas, domínios e artes prontas editáveis) ────────────────
 
-async function ensureArtStudioTables() {
-  const db = await getDb();
-  if (!db) return;
-
-  if (!_artStudioTablesReady) {
-    _artStudioTablesReady = (async () => {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS companies (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS company_domains (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          companyId INT NOT NULL,
-          domain VARCHAR(255) NOT NULL UNIQUE,
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_company_domains_companyId (companyId)
-        )
-      `);
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS art_templates (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          companyId INT NULL,
-          name VARCHAR(255) NOT NULL,
-          imageUrl TEXT NOT NULL,
-          thumbnailUrl TEXT,
-          canvasJson JSON,
-          width INT NOT NULL DEFAULT 1080,
-          height INT NOT NULL DEFAULT 1350,
-          createdByUserId INT NOT NULL,
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_art_templates_companyId (companyId)
-        )
-      `);
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS artworks (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          templateId INT NOT NULL,
-          userId INT NOT NULL,
-          canvasJson JSON NOT NULL,
-          imageUrl TEXT NOT NULL,
-          createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_artworks_userId (userId),
-          INDEX idx_artworks_templateId (templateId)
-        )
-      `);
-    })().catch((error) => {
-      _artStudioTablesReady = null;
-      throw error;
-    });
-  }
-
-  await _artStudioTablesReady;
-}
-
 // Companies
 
 export async function listCompanies(): Promise<Array<Company & { domains: CompanyDomain[] }>> {
   const db = await getDb();
   if (!db) return [];
-  await ensureArtStudioTables();
   const companyRows = await db.select().from(companies).orderBy(desc(companies.createdAt));
   const domainRows = await db.select().from(companyDomains);
   return companyRows.map((c) => ({
@@ -4420,8 +2779,7 @@ export async function listCompanies(): Promise<Array<Company & { domains: Compan
 export async function createCompany(name: string): Promise<Company> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureArtStudioTables();
-  const [result] = await db.insert(companies).values({ name });
+  const [result] = await db.insert(companies).values({ name }).returning({ id: companies.id });
   const [row] = await db.select().from(companies).where(eq(companies.id, insertId(result))).limit(1);
   return row;
 }
@@ -4429,7 +2787,6 @@ export async function createCompany(name: string): Promise<Company> {
 export async function deleteCompany(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureArtStudioTables();
   await db.delete(companyDomains).where(eq(companyDomains.companyId, id));
   await db.delete(artTemplates).where(eq(artTemplates.companyId, id));
   await db.delete(companies).where(eq(companies.id, id));
@@ -4438,9 +2795,8 @@ export async function deleteCompany(id: number): Promise<void> {
 export async function addCompanyDomain(companyId: number, domain: string): Promise<CompanyDomain> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureArtStudioTables();
   const normalized = domain.trim().toLowerCase();
-  const [result] = await db.insert(companyDomains).values({ companyId, domain: normalized });
+  const [result] = await db.insert(companyDomains).values({ companyId, domain: normalized }).returning({ id: companyDomains.id });
   const [row] = await db.select().from(companyDomains).where(eq(companyDomains.id, insertId(result))).limit(1);
   return row;
 }
@@ -4448,14 +2804,12 @@ export async function addCompanyDomain(companyId: number, domain: string): Promi
 export async function removeCompanyDomain(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureArtStudioTables();
   await db.delete(companyDomains).where(eq(companyDomains.id, id));
 }
 
 export async function getCompanyByDomain(domain: string): Promise<Company | null> {
   const db = await getDb();
   if (!db) return null;
-  await ensureArtStudioTables();
   const normalized = domain.trim().toLowerCase();
   const rows = await db
     .select({ id: companies.id, name: companies.name, createdAt: companies.createdAt })
@@ -4471,7 +2825,6 @@ export async function getCompanyByDomain(domain: string): Promise<Company | null
 export async function listArtTemplates(companyId?: number | null): Promise<ArtTemplate[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureArtStudioTables();
   if (companyId === undefined) {
     return db.select().from(artTemplates).orderBy(desc(artTemplates.createdAt));
   }
@@ -4484,7 +2837,6 @@ export async function listArtTemplates(companyId?: number | null): Promise<ArtTe
 export async function getArtTemplate(id: number): Promise<ArtTemplate | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureArtStudioTables();
   const rows = await db.select().from(artTemplates).where(eq(artTemplates.id, id)).limit(1);
   return rows[0];
 }
@@ -4499,7 +2851,6 @@ export async function createArtTemplate(data: {
 }): Promise<ArtTemplate> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureArtStudioTables();
   const [result] = await db.insert(artTemplates).values({
     name: data.name,
     companyId: data.companyId,
@@ -4507,7 +2858,7 @@ export async function createArtTemplate(data: {
     createdByUserId: data.createdByUserId,
     width: data.width ?? 1080,
     height: data.height ?? 1350,
-  });
+  }).returning({ id: artTemplates.id });
   const [row] = await db.select().from(artTemplates).where(eq(artTemplates.id, insertId(result))).limit(1);
   return row;
 }
@@ -4518,7 +2869,6 @@ export async function updateArtTemplate(
 ): Promise<ArtTemplate | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureArtStudioTables();
   const updates: Record<string, unknown> = {};
   if (data.name !== undefined) updates.name = data.name;
   if (data.canvasJson !== undefined) updates.canvasJson = data.canvasJson;
@@ -4533,7 +2883,6 @@ export async function updateArtTemplate(
 export async function deleteArtTemplate(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureArtStudioTables();
   await db.delete(artworks).where(eq(artworks.templateId, id));
   await db.delete(artTemplates).where(eq(artTemplates.id, id));
 }
@@ -4543,7 +2892,6 @@ export async function deleteArtTemplate(id: number): Promise<void> {
 export async function listArtworks(userId: number): Promise<Artwork[]> {
   const db = await getDb();
   if (!db) return [];
-  await ensureArtStudioTables();
   return db.select().from(artworks).where(eq(artworks.userId, userId)).orderBy(desc(artworks.updatedAt));
 }
 
@@ -4555,13 +2903,12 @@ export async function saveArtwork(data: {
 }): Promise<Artwork> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await ensureArtStudioTables();
   const [result] = await db.insert(artworks).values({
     templateId: data.templateId,
     userId: data.userId,
     canvasJson: data.canvasJson,
     imageUrl: data.imageUrl,
-  });
+  }).returning({ id: artworks.id });
   const [row] = await db.select().from(artworks).where(eq(artworks.id, insertId(result))).limit(1);
   return row;
 }
@@ -4569,7 +2916,6 @@ export async function saveArtwork(data: {
 export async function deleteArtwork(id: number, userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await ensureArtStudioTables();
   await db.delete(artworks).where(and(eq(artworks.id, id), eq(artworks.userId, userId)));
 }
 
@@ -4594,7 +2940,7 @@ export async function createContentApproval(
     contentId,
     clientName: clientName || null,
     expiresAt,
-  });
+  }).returning({ id: contentApprovals.id });
   return { id: insertId(result), token };
 }
 
@@ -4602,7 +2948,7 @@ export async function getContentApprovalByToken(token: string): Promise<ContentA
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(contentApprovals)
-    .where(and(eq(contentApprovals.token, token), sql`expiresAt > NOW()`))
+    .where(and(eq(contentApprovals.token, token), sql`"expiresAt" > NOW()`))
     .limit(1);
   return row ?? null;
 }
@@ -4675,7 +3021,7 @@ export async function getMarketingCampaign(userId: number, campaignId: number) {
 export async function createMarketingCampaign(data: InsertMarketingCampaign) {
   const database = await getDb();
   if (!database) throw new Error("Banco de dados indisponível.");
-  const [result] = await database.insert(marketingCampaigns).values(data);
+  const [result] = await database.insert(marketingCampaigns).values(data).returning({ id: marketingCampaigns.id });
   return getMarketingCampaign(data.userId, insertId(result));
 }
 
@@ -4711,7 +3057,7 @@ export async function attachCampaignAsset(data: InsertCampaignAsset) {
   if (!database) throw new Error("Banco de dados indisponível.");
   const campaign = await getMarketingCampaign(data.userId, data.campaignId);
   if (!campaign) throw new Error("Campanha não encontrada.");
-  const [result] = await database.insert(campaignAssets).values(data);
+  const [result] = await database.insert(campaignAssets).values(data).returning({ id: campaignAssets.id });
   const [asset] = await database.select().from(campaignAssets)
     .where(eq(campaignAssets.id, insertId(result))).limit(1);
   return asset;

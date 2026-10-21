@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
-  Palette,
   AtSign,
   MessageSquare,
   CheckCircle2,
@@ -17,32 +16,22 @@ import {
   Rocket,
 } from "lucide-react";
 
-type Step = "welcome" | "brandkit" | "instagram" | "whatsapp" | "done";
+type Step = "welcome" | "instagram" | "whatsapp" | "done";
 
 const STEPS: { id: Step; title: string; icon: React.ElementType; color: string }[] = [
-  { id: "welcome",   title: "Bem-vindo",    icon: Sparkles,      color: "from-violet-500 to-purple-600" },
-  { id: "brandkit",  title: "Brand Kit",    icon: Palette,       color: "from-pink-500 to-rose-500" },
+  { id: "welcome",   title: "Bem-vindo",    icon: Sparkles,      color: "from-alle-purple to-alle-purple-light" },
   { id: "instagram", title: "Instagram",  icon: AtSign,        color: "from-orange-500 to-amber-500" },
   { id: "whatsapp",  title: "WhatsApp",     icon: MessageSquare, color: "from-emerald-500 to-teal-500" },
-  { id: "done",      title: "Pronto!",      icon: Rocket,        color: "from-blue-500 to-cyan-500" },
+  { id: "done",      title: "Pronto!",      icon: Rocket,        color: "from-alle-orange to-alle-orange-light" },
 ];
 
-const STEP_ORDER: Step[] = ["welcome", "brandkit", "instagram", "whatsapp", "done"];
+const STEP_ORDER: Step[] = ["welcome", "instagram", "whatsapp", "done"];
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const [step, setStep] = useState<Step>("welcome");
-  const [brandName, setBrandName] = useState("");
-  const [brandNiche, setBrandNiche] = useState("");
-  const [brandColor, setBrandColor] = useState("#6366f1");
   const [whatsappNumber, setWhatsappNumber] = useState("");
-  const [savedBrand, setSavedBrand] = useState(false);
   const [savedWhatsapp, setSavedWhatsapp] = useState(false);
-
-  const saveBrandMut = trpc.brandKit.save.useMutation({
-    onSuccess: () => { setSavedBrand(true); toast.success("Brand Kit salvo!"); },
-    onError: (e: { message: string }) => toast.error(e.message),
-  });
 
   const saveWhatsappMut = trpc.articles.saveDigestSettings.useMutation({
     onSuccess: () => { setSavedWhatsapp(true); toast.success("Número salvo!"); },
@@ -99,13 +88,12 @@ export default function Onboarding() {
         <div className="p-8 space-y-5">
           {step === "welcome" && (
             <div className="text-center space-y-4">
-              <p className="text-foreground font-semibold text-lg">Seja bem-vindo à KrythosLab!</p>
+              <p className="text-foreground font-semibold text-lg">Seja bem-vindo à Alle Energia!</p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                Vamos configurar sua agência em menos de 3 minutos. Você vai definir sua identidade de marca, conectar seu Instagram e configurar o envio de notícias pelo WhatsApp.
+                Vamos configurar sua agência em menos de 3 minutos. Você vai conectar seu Instagram e configurar o envio de notícias pelo WhatsApp.
               </p>
-              <div className="grid grid-cols-3 gap-3 pt-2">
+              <div className="grid grid-cols-2 gap-3 pt-2">
                 {[
-                  { icon: Palette, label: "Brand Kit" },
                   { icon: AtSign, label: "Instagram" },
                   { icon: MessageSquare, label: "WhatsApp" },
                 ].map(({ icon: StepIcon, label }) => (
@@ -115,62 +103,6 @@ export default function Onboarding() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {step === "brandkit" && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Preencha as informações da sua marca. Isso ajuda a IA a gerar conteúdo com a voz certa.</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">Nome da marca *</label>
-                  <Input
-                    placeholder="Ex: Studio Wellness, Clínica Vital..."
-                    value={brandName}
-                    onChange={(e) => setBrandName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">Nicho / Segmento</label>
-                  <Input
-                    placeholder="Ex: Saúde e bem-estar, Moda, Gastronomia..."
-                    value={brandNiche}
-                    onChange={(e) => setBrandNiche(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">Cor principal da marca</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={brandColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
-                      className="w-12 h-10 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
-                    />
-                    <span className="text-sm font-mono text-muted-foreground">{brandColor}</span>
-                  </div>
-                </div>
-              </div>
-              {saveBrandMut && brandName.trim() && !savedBrand && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => saveBrandMut.mutate({ companyName: brandName.trim(), industry: brandNiche.trim(), primaryColor: brandColor })}
-                  disabled={saveBrandMut.isPending}
-                >
-                  {saveBrandMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Salvar Brand Kit
-                </Button>
-              )}
-              {savedBrand && (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Brand Kit salvo com sucesso!
-                </div>
-              )}
-              {!saveBrandMut && (
-                <p className="text-xs text-muted-foreground">Você pode configurar o Brand Kit completo em Configurações → Brand Kit.</p>
-              )}
             </div>
           )}
 

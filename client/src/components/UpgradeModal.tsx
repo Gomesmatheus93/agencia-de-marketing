@@ -13,9 +13,7 @@ const PRO_FEATURES = [
   "Scripts para Reels",
   "Analytics do Instagram",
   "Calendário de conteúdo",
-  "Kit de marca completo",
   "Automação de comentários",
-  "Analisador de estilo",
   "Posts no LinkedIn e Newsletter",
   "Sem limites diários de criação",
 ];

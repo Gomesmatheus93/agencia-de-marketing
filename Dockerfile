@@ -33,12 +33,16 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# python3 roda as ferramentas das skills dos agentes (server/agents/skills/*/*.py, só biblioteca padrão).
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/landing ./landing
+COPY --from=build --chown=node:node /app/server/agents/skills ./server/agents/skills
 
 RUN mkdir -p uploads && chown -R node:node /app
 

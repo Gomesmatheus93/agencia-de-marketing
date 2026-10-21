@@ -16,18 +16,14 @@ import Settings from "./pages/Settings";
 import PrototipoCarrossel from "./pages/PrototipoCarrossel";
 import Analytics from "./pages/Analytics";
 import CalendarPage from "./pages/Calendar";
-import BrandKit from "./pages/BrandKit";
 import Reels from "./pages/Reels";
 import CommentAutomations from "./pages/CommentAutomations";
-import StyleAnalyzer from "./pages/StyleAnalyzer";
-import Radar from "./pages/Radar";
 import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
 import Resize from "./pages/Resize";
 import Campaign from "./pages/Campaign";
 import CampaignHub from "./pages/CampaignHub";
 import Report from "./pages/Report";
-import EmailMarketing from "./pages/EmailMarketing";
 import Onboarding from "./pages/Onboarding";
 import ArtStudio from "./pages/ArtStudio";
 import Approve from "./pages/Approve";
@@ -37,8 +33,12 @@ import VerifyEmailPending from "./pages/VerifyEmailPending";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AccountSecurity from "./pages/AccountSecurity";
-import PaidTraffic from "./pages/PaidTraffic";
 import CreativeStudio from "./pages/CreativeStudio";
+import Agents from "./pages/Agents";
+import AgentOffice from "./pages/AgentOffice";
+import Planning from "./pages/Planning";
+import AuditPage from "./pages/Audit";
+import { CreateCarousel, CreatePost, CreateStories } from "./pages/CreateWithAgent";
 
 function AppRoutes() {
   return (
@@ -53,6 +53,14 @@ function AppRoutes() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/dashboard/chat" component={Chat} />
       <Route path="/dashboard/studio" component={CreativeStudio} />
+      <Route path="/escritorio" component={AgentOffice} />
+      <Route path="/dashboard/planejamento" component={Planning} />
+      <Route path="/dashboard/auditoria" component={AuditPage} />
+      <Route path="/dashboard/criar/carrossel" component={CreateCarousel} />
+      <Route path="/dashboard/criar/post" component={CreatePost} />
+      <Route path="/dashboard/criar/stories" component={CreateStories} />
+      <Route path="/dashboard/agents" component={Agents} />
+      <Route path="/dashboard/agents/:slug" component={Agents} />
       <Route path="/dashboard/images" component={Images} />
       <Route path="/dashboard/videos" component={Videos} />
       <Route path="/dashboard/articles" component={Articles} />
@@ -61,19 +69,14 @@ function AppRoutes() {
       <Route path="/dashboard/analytics" component={Analytics} />
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/calendar" component={CalendarPage} />
-      <Route path="/dashboard/brand" component={BrandKit} />
       <Route path="/dashboard/reels" component={Reels} />
       <Route path="/dashboard/settings" component={Settings} />
       <Route path="/dashboard/comment-automations" component={CommentAutomations} />
-      <Route path="/dashboard/style-analyzer" component={StyleAnalyzer} />
-      <Route path="/dashboard/radar" component={Radar} />
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
       <Route path="/dashboard/campaign" component={CampaignHub} />
       <Route path="/dashboard/campaign/create" component={Campaign} />
-      <Route path="/dashboard/paid-traffic" component={PaidTraffic} />
       <Route path="/dashboard/report" component={Report} />
-      <Route path="/dashboard/email-marketing" component={EmailMarketing} />
       <Route path="/dashboard/onboarding" component={Onboarding} />
       <Route path="/dashboard/artes" component={ArtStudio} />
       <Route path="/dashboard/team" component={Team} />

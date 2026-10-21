@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { createCipheriv, createHash, createHmac, randomBytes, scrypt } from "node:crypto";
 import { promisify } from "node:util";
-import mysql from "mysql2/promise";
+import postgres from "postgres";
 
 const scryptAsync = promisify(scrypt);
 
@@ -60,41 +60,53 @@ async function hashPassword(value) {
   return `s2$${N}$${r}$${p}$${salt}$${hash.toString("hex")}`;
 }
 
-const connection = await mysql.createConnection(databaseUrl);
+const sql = postgres(databaseUrl, { max: 1, prepare: false });
 
 try {
   const emailHash = blindIndex(email);
   const emailDomain = email.slice(email.lastIndexOf("@") + 1) || null;
 
-  const [existingUsers] = await connection.execute(
-    "SELECT openId FROM users WHERE emailHash = ? OR email = ? LIMIT 1",
-    [emailHash, email]
-  );
+  const existingUsers = await sql`
+    SELECT "openId" FROM users WHERE "emailHash" = ${emailHash} LIMIT 1
+  `;
   const fallbackOpenId = `seed_${createHash("sha256").update(email).digest("hex").slice(0, 32)}`;
   const openId = existingUsers[0]?.openId ?? fallbackOpenId;
   const passwordHash = await hashPassword(password);
   const encEmail = encryptField(email);
   const encName = encryptField(name);
 
-  await connection.execute(
-    `INSERT INTO users (openId, name, email, emailHash, emailDomain, loginMethod, passwordHash, role)
-     VALUES (?, ?, ?, ?, ?, 'email', ?, ?)
-     ON DUPLICATE KEY UPDATE
-       name = ?,
-       email = ?,
-       emailHash = ?,
-       emailDomain = ?,
-       loginMethod = 'email',
-       passwordHash = ?,
-       role = ?,
-       updatedAt = NOW(),
-       lastSignedIn = NOW()`,
-    [openId, encName, encEmail, emailHash, emailDomain, passwordHash, role,
-     encName, encEmail, emailHash, emailDomain, passwordHash, role]
-  );
+  // Conta criada pelo seed já entra com e-mail verificado.
+  await sql`
+    INSERT INTO users ("openId", name, email, "emailHash", "emailDomain", "loginMethod", "passwordHash", role, "emailVerifiedAt")
+    VALUES (${openId}, ${encName}, ${encEmail}, ${emailHash}, ${emailDomain}, 'email', ${passwordHash}, ${role}, NOW())
+    ON CONFLICT ("openId") DO UPDATE SET
+      name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      "emailHash" = EXCLUDED."emailHash",
+      "emailDomain" = EXCLUDED."emailDomain",
+      "loginMethod" = 'email',
+      "passwordHash" = EXCLUDED."passwordHash",
+      role = EXCLUDED.role,
+      "emailVerifiedAt" = COALESCE(users."emailVerifiedAt", NOW()),
+      "updatedAt" = NOW(),
+      "lastSignedIn" = NOW()
+  `;
+
+  // Identidade fixa da Alle Energia (a plataforma não tem mais tela de brand kit):
+  // usada pela IA em todas as gerações. Só é criada se a conta ainda não tiver uma.
+  const [seeded] = await sql`SELECT id, "activeBrandKitId" FROM users WHERE "openId" = ${openId}`;
+  const [existingKit] = await sql`SELECT id FROM brand_kits WHERE "userId" = ${seeded.id} LIMIT 1`;
+  if (!existingKit) {
+    const [kit] = await sql`
+      INSERT INTO brand_kits ("userId", "companyName", tagline, industry, "toneOfVoice", "primaryColor", "secondaryColor", "accentColor", "instagramHandle", "defaultCta")
+      VALUES (${seeded.id}, 'Alle Energia', 'Autonomia e Liberdade Energética', 'Energia', 'professional', '#7c00ae', '#ff7300', '#ff9a3c', '@alleenergia', 'Fale com a Alle Energia')
+      RETURNING id
+    `;
+    await sql`UPDATE users SET "activeBrandKitId" = ${kit.id} WHERE id = ${seeded.id}`;
+  }
 
   console.log(`Seed user ready: ${email}`);
   console.log("Password configured from SEED_USER_PASSWORD.");
 } finally {
-  await connection.end();
+  await sql.end();
 }

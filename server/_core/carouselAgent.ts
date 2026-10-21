@@ -29,7 +29,7 @@ const PROFILE_CONTEXTS: Record<string, string> = {
 const BRANDSDECODED_PROFILE_ID = "brandsdecoded-claude";
 
 const DESIGNER_AGENT_SYSTEM_PROMPT = `
-Você é um Agente Designer Sênior da agência KrythosLab, especializado em carrosséis profissionais para Instagram otimizados para o algoritmo.
+Você é um Agente Designer Sênior da Alle Energia, especializado em carrosséis profissionais para Instagram otimizados para o algoritmo.
 
 Sua missão é transformar um template base em um carrossel visualmente natural, estratégico e profissional — e que maximize alcance orgânico no Instagram.
 
@@ -117,7 +117,7 @@ Retorne APENAS o JSON abaixo, sem texto antes ou depois:
 // Retorna blocos semânticos independentes de template visual.
 
 const CONTENT_AGENT_SYSTEM_PROMPT = `
-Você é um Agente de Conteúdo Sênior da KrythosLab, especializado em carrosséis para Instagram.
+Você é um Agente de Conteúdo Sênior da Alle Energia, especializado em carrosséis para Instagram.
 
 Sua missão: gerar conteúdo estratégico estruturado — independente de template visual. O design será aplicado separadamente.
 
@@ -677,7 +677,7 @@ async function searchWikimediaImage(query: string) {
     });
 
     const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
-      headers: { "user-agent": "KrythosLab carousel image agent" },
+      headers: { "user-agent": "AlleEnergia carousel image agent" },
       signal: AbortSignal.timeout(8_000),
     });
 
@@ -815,7 +815,7 @@ function isCarouselFallbackImageUrl(imageUrl?: string) {
 async function persistExternalImage(externalUrl: string): Promise<string> {
   try {
     const res = await fetch(externalUrl, {
-      headers: { "User-Agent": "KrythosLab/1.0 carousel-agent", Accept: "image/*" },
+      headers: { "User-Agent": "AlleEnergia/1.0 carousel-agent", Accept: "image/*" },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return externalUrl;

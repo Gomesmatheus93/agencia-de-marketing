@@ -1,0 +1,372 @@
+import AppLayout from "@/components/AppLayout";
+import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { Bot, Camera, Copy, Download, GalleryHorizontal, ImageIcon, Loader2, Smartphone, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+type CarouselResult = {
+  title: string;
+  slides: Array<{ role: string; heading: string; body: string; imageUrl: string }>;
+  caption: string; altText: string; hashtags: string[]; assumptions: string[];
+};
+type PostResult = {
+  title: string; imageUrl: string; caption: string; firstComment: string | null; altText: string;
+  hashtags: string[]; linterVerdict: "READY" | "REVIEW" | "FIX"; assumptions: string[];
+};
+
+/** Pauta deixada por outra tela (ex.: planejamento) para abrir já preenchida. */
+function usePrefill(agentSlug: string) {
+  const [value] = useState(() => {
+    const key = `task_prefill_${agentSlug}`;
+    const v = sessionStorage.getItem(key);
+    if (v) sessionStorage.removeItem(key);
+    return v ?? "";
+  });
+  return value;
+}
+
+async function download(url: string, name: string) {
+  try {
+    const blob = await (await fetch(url)).blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
+function copy(text: string) {
+  navigator.clipboard.writeText(text);
+  toast.success("Copiado");
+}
+
+function CaptionBlock({ caption, hashtags, altText, firstComment, verdict }: { caption: string; hashtags: string[]; altText: string; firstComment?: string | null; verdict?: string }) {
+  const full = hashtags.length ? `${caption}\n\n${hashtags.join(" ")}` : caption;
+  return (
+    <Card><CardContent className="space-y-4 p-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold">Legenda</p>
+        <div className="flex items-center gap-2">
+          {verdict && <Badge variant="outline" className={cn(verdict === "READY" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400" : "border-amber-500/40 text-amber-700 dark:text-amber-400")}>revisão: {verdict === "READY" ? "pronta" : verdict === "REVIEW" ? "com ressalvas" : "corrigir"}</Badge>}
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => copy(full)}><Copy className="h-3.5 w-3.5" />Copiar</Button>
+        </div>
+      </div>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed">{full}</p>
+      {firstComment && <div className="rounded-lg bg-muted/50 p-3 text-sm"><p className="mb-1 text-xs font-medium text-muted-foreground">Primeiro comentário</p><p className="whitespace-pre-wrap">{firstComment}</p></div>}
+      <div className="rounded-lg bg-muted/50 p-3 text-sm"><p className="mb-1 text-xs font-medium text-muted-foreground">Texto alternativo</p><p>{altText}</p></div>
+    </CardContent></Card>
+  );
+}
+
+function Assumptions({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
+      <p className="mb-1 font-medium text-foreground">O agente assumiu:</p>
+      <ul className="list-disc space-y-0.5 pl-4">{items.map((a) => <li key={a}>{a}</li>)}</ul>
+    </div>
+  );
+}
+
+function Shell({ agentLabel, title, description, active, children }: { agentLabel: string; title: string; description: string; active: string; children: React.ReactNode }) {
+  return (
+    <AppLayout activeModule={active}>
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1300px] space-y-6">
+          <header>
+            <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary"><Bot className="mr-1.5 h-3 w-3" />{agentLabel}</Badge>
+            <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
+          </header>
+          {children}
+        </div>
+      </main>
+    </AppLayout>
+  );
+}
+
+// ─── Carrossel ────────────────────────────────────────────────────────────────
+
+export function CreateCarousel() {
+  const t = useAgentTask<CarouselResult>("carrossel");
+  const prefill = usePrefill("carrossel");
+  const [topic, setTopic] = useState(prefill);
+  const [slides, setSlides] = useState(7);
+  const [style, setStyle] = useState("auto");
+  const [notes, setNotes] = useState("");
+  const [current, setCurrent] = useState(0);
+  const result = t.result;
+  useEffect(() => setCurrent(0), [t.threadId]);
+
+  return (
+    <Shell active="agentCarousel" agentLabel="Agente de Carrossel" title="Criar carrossel" description="O agente escreve o carrossel pela skill, desenha cada slide no visual da Alle, revisa as artes e entrega slides prontos para postar, com a legenda. As artes também ficam na galeria.">
+      <Card><CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
+        <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: as 4 linhas da conta de luz que não são energia — ensinar a ler a fatura e mostrar onde a Alle ajuda a pagar menos" />
+        <div className="grid gap-3 md:grid-cols-[160px_200px_1fr_auto] md:items-end">
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Slides</span>
+            <select value={slides} onChange={(e) => setSlides(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[5, 6, 7, 8, 9, 10].map((n) => <option key={n}>{n}</option>)}</select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Estilo</span>
+            <select value={style} onChange={(e) => setStyle(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
+              <option value="auto">Automático (alterna)</option><option value="roxo">Roxo</option><option value="laranja">Laranja</option><option value="claro">Claro</option>
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" placeholder="Ex.: usar foto de telhado com painel; CTA para o WhatsApp" /></label>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, slides, style, notes: notes || undefined })}>
+            {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar carrossel
+          </Button>
+        </div>
+      </CardContent></Card>
+
+      {t.running && <TaskProgress agentName="Agente de Carrossel" activity={t.activity} startedAt={t.thread?.createdAt} />}
+      {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}
+      {!t.thread && !t.running && <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground"><GalleryHorizontal className="mx-auto mb-3 h-8 w-8 text-primary/60" />Descreva a pauta e clique em Criar carrossel.</div>}
+
+      {result && !t.running && (
+        <>
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
+            <div className="space-y-3">
+              <img src={result.slides[current]?.imageUrl} alt={result.slides[current]?.heading} className="w-full rounded-2xl border shadow-md" />
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {result.slides.map((s, i) => (
+                  <button key={i} onClick={() => setCurrent(i)} className={cn("w-16 shrink-0 overflow-hidden rounded-lg border-2", i === current ? "border-primary" : "border-transparent opacity-70 hover:opacity-100")}>
+                    <img src={s.imageUrl} alt="" className="w-full" />
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.slides[current].imageUrl, `slide-${current + 1}.png`)}><Download className="h-3.5 w-3.5" />Baixar este</Button>
+                <Button size="sm" className="flex-1 gap-1.5" onClick={async () => { for (const [i, s] of result.slides.entries()) await download(s.imageUrl, `slide-${i + 1}.png`); }}><Download className="h-3.5 w-3.5" />Baixar todos ({result.slides.length})</Button>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <Card><CardContent className="p-5">
+                <p className="mb-3 font-semibold">{result.title}</p>
+                <ol className="space-y-2 text-sm">
+                  {result.slides.map((s, i) => (
+                    <li key={i} className={cn("cursor-pointer rounded-lg p-2", i === current && "bg-accent")} onClick={() => setCurrent(i)}>
+                      <span className="mr-2 font-mono text-xs text-muted-foreground">{i + 1}/{result.slides.length} · {s.role}</span><b>{s.heading}</b>
+                      {s.body && <p className="text-muted-foreground">{s.body}</p>}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent></Card>
+              <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} />
+            </div>
+          </section>
+          <Assumptions items={result.assumptions} />
+        </>
+      )}
+    </Shell>
+  );
+}
+
+// ─── Post ─────────────────────────────────────────────────────────────────────
+
+export function CreatePost() {
+  const t = useAgentTask<PostResult>("legendas");
+  const prefill = usePrefill("legendas");
+  const [topic, setTopic] = useState(prefill);
+  const [format, setFormat] = useState("feed_4x5");
+  const [notes, setNotes] = useState("");
+  const result = t.result;
+
+  return (
+    <Shell active="agentPost" agentLabel="Agente de Legendas" title="Criar post" description="O agente escreve e revisa a legenda pela skill, desenha a arte no visual da Alle e confere o resultado antes de entregar.">
+      <Card><CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
+        <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: bandeira tarifária de novembro — quanto ela soma na conta e como se proteger" />
+        <div className="grid gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Formato</span>
+            <select value={format} onChange={(e) => setFormat(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
+              <option value="feed_4x5">Feed 4:5</option><option value="feed_1x1">Feed quadrado</option><option value="story_9x16">Stories 9:16</option>
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" /></label>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, format, notes: notes || undefined })}>
+            {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar post
+          </Button>
+        </div>
+      </CardContent></Card>
+
+      {t.running && <TaskProgress agentName="Agente de Legendas" activity={t.activity} startedAt={t.thread?.createdAt} />}
+      {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}
+      {!t.thread && !t.running && <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground"><ImageIcon className="mx-auto mb-3 h-8 w-8 text-primary/60" />Descreva a pauta e clique em Criar post.</div>}
+
+      {result && !t.running && (
+        <>
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
+            <div className="space-y-3">
+              <img src={result.imageUrl} alt={result.altText} className="w-full rounded-2xl border shadow-md" />
+              <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => download(result.imageUrl, "post.png")}><Download className="h-3.5 w-3.5" />Baixar arte</Button>
+            </div>
+            <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} firstComment={result.firstComment} verdict={result.linterVerdict} />
+          </section>
+          <Assumptions items={result.assumptions} />
+        </>
+      )}
+    </Shell>
+  );
+}
+
+// ─── Stories ──────────────────────────────────────────────────────────────────
+
+type StickerType = "nenhum" | "enquete" | "caixa_de_perguntas" | "quiz" | "slider" | "link" | "contagem";
+type StoriesResult = {
+  title: string; goal: string; followUp: string; assumptions: string[];
+  frames: Array<{
+    role: "abertura" | "meio" | "pergunta" | "fechamento"; imageUrl: string; onScreen: string; voiceover: string | null;
+    sticker: { type: StickerType; prompt: string | null; options: string[] };
+    replaceWithRealMedia: boolean; notes: string | null;
+  }>;
+};
+
+const STICKER_LABEL: Record<StickerType, string> = {
+  nenhum: "Sem figurinha", enquete: "Enquete", caixa_de_perguntas: "Caixa de perguntas", quiz: "Quiz",
+  slider: "Slider", link: "Link", contagem: "Contagem regressiva",
+};
+
+/** Prévia da figurinha (no app ela é colocada pela equipe, na faixa que a arte deixou livre). */
+function StickerMock({ sticker }: { sticker: StoriesResult["frames"][number]["sticker"] }) {
+  const prompt = sticker.prompt ?? "";
+  const box = "mx-auto w-[78%] rounded-xl bg-white text-center text-[9px] font-semibold text-neutral-900 shadow-lg";
+  switch (sticker.type) {
+    case "enquete":
+      return (
+        <div className={box}>
+          <p className="px-2 py-1.5 leading-tight">{prompt}</p>
+          <div className="flex border-t">{(sticker.options.length ? sticker.options : ["Sim", "Não"]).slice(0, 2).map((o, i) => <span key={i} className={cn("flex-1 py-1.5 text-[#7c00ae]", i === 0 && "border-r")}>{o}</span>)}</div>
+        </div>
+      );
+    case "quiz":
+      return (
+        <div className={cn(box, "p-1.5")}>
+          <p className="mb-1 leading-tight">{prompt}</p>
+          {sticker.options.slice(0, 4).map((o, i) => <p key={i} className="mb-0.5 rounded-full bg-neutral-100 px-2 py-0.5 text-left font-medium">{String.fromCharCode(65 + i)}  {o}</p>)}
+        </div>
+      );
+    case "caixa_de_perguntas":
+      return (
+        <div className={cn(box, "overflow-hidden")}>
+          <p className="bg-gradient-to-r from-[#7c00ae] to-[#ff7300] px-2 py-2 leading-tight text-white">{prompt}</p>
+          <p className="py-1.5 font-normal text-neutral-400">Digite algo…</p>
+        </div>
+      );
+    case "slider":
+      return (
+        <div className={cn(box, "p-2")}>
+          <p className="mb-1.5 leading-tight">{prompt}</p>
+          <div className="relative h-1 rounded-full bg-gradient-to-r from-[#a23fd6] to-[#ff7300]"><span className="absolute -top-2 left-1/3 text-sm">⚡</span></div>
+        </div>
+      );
+    case "link":
+      return <div className="mx-auto w-fit rounded-full bg-white px-3 py-1 text-[9px] font-semibold text-[#7c00ae] shadow-lg">🔗 {prompt || "Saiba mais"}</div>;
+    case "contagem":
+      return (
+        <div className={cn(box, "p-2")}>
+          <p className="leading-tight">{prompt}</p>
+          <p className="mt-1 font-mono text-[11px] text-[#7c00ae]">00 : 00 : 00</p>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function PhoneFrame({ frame, index, total }: { frame: StoriesResult["frames"][number]; index: number; total: number }) {
+  return (
+    <div className="relative w-[230px] shrink-0 overflow-hidden rounded-[28px] border-[6px] border-neutral-900 bg-black shadow-xl" style={{ aspectRatio: "9 / 16" }}>
+      <img src={frame.imageUrl} alt={frame.onScreen} className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-x-2 top-2 flex gap-1">
+        {Array.from({ length: total }).map((_, i) => <span key={i} className={cn("h-0.5 flex-1 rounded-full", i <= index ? "bg-white" : "bg-white/40")} />)}
+      </div>
+      <div className="absolute left-2 top-4 flex items-center gap-1.5">
+        <img src="/alle-avatar.png" alt="" className="h-5 w-5 rounded-full border border-white/60" />
+        <span className="text-[9px] font-semibold text-white drop-shadow">alleenergia</span>
+      </div>
+      {frame.sticker.type !== "nenhum" && (
+        // Faixa y=1150–1480 de 1920 (STORY_STICKER_ZONE no servidor).
+        <div className="absolute inset-x-0 flex items-center justify-center" style={{ top: `${(1150 / 1920) * 100}%`, height: `${(330 / 1920) * 100}%` }}>
+          <div className="w-full"><StickerMock sticker={frame.sticker} /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ROLE_LABEL = { abertura: "Abertura", meio: "Conteúdo", pergunta: "Pergunta", fechamento: "Fechamento" } as const;
+
+export function CreateStories() {
+  const t = useAgentTask<StoriesResult>("stories");
+  const prefill = usePrefill("stories");
+  const [topic, setTopic] = useState(prefill);
+  const [frames, setFrames] = useState(5);
+  const [notes, setNotes] = useState("");
+  const result = t.result;
+
+  return (
+    <Shell active="agentStories" agentLabel="Agente de Stories" title="Criar stories" description="O agente monta a sequência do dia pela skill de stories, desenha cada quadro em 1080×1920 no visual da Alle e diz qual figurinha usar e onde. A prévia mostra como fica no celular.">
+      <Card><CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3"><p className="font-semibold">Tema do dia</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
+        <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: a conta de outubro chegou mais cara — descobrir quem levou susto e puxar conversa no Direct" />
+        <div className="grid gap-3 md:grid-cols-[160px_1fr_auto] md:items-end">
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Quadros</span>
+            <select value={frames} onChange={(e) => setFrames(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" placeholder="Ex.: usar caixa de perguntas; mencionar a collab com a @allpfit" /></label>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, frames, notes: notes || undefined })}>
+            {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar stories
+          </Button>
+        </div>
+      </CardContent></Card>
+
+      {t.running && <TaskProgress agentName="Agente de Stories" activity={t.activity} startedAt={t.thread?.createdAt} />}
+      {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}
+      {!t.thread && !t.running && <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground"><Smartphone className="mx-auto mb-3 h-8 w-8 text-primary/60" />Descreva o tema do dia e clique em Criar stories.</div>}
+
+      {result && !t.running && (
+        <>
+          <section className="grid gap-4 md:grid-cols-2">
+            <Card><CardContent className="p-5"><p className="text-xs font-medium uppercase tracking-wide text-primary">Objetivo</p><p className="mt-1 text-sm">{result.goal}</p></CardContent></Card>
+            <Card><CardContent className="p-5"><p className="text-xs font-medium uppercase tracking-wide text-primary">Depois de postar</p><p className="mt-1 text-sm">{result.followUp}</p></CardContent></Card>
+          </section>
+
+          <div className="flex justify-end">
+            <Button size="sm" className="gap-1.5" onClick={async () => { for (const [i, f] of result.frames.entries()) await download(f.imageUrl, `story-${i + 1}.png`); }}>
+              <Download className="h-3.5 w-3.5" />Baixar todos ({result.frames.length})
+            </Button>
+          </div>
+
+          <section className="flex gap-5 overflow-x-auto pb-3">
+            {result.frames.map((f, i) => (
+              <div key={i} className="w-[230px] shrink-0 space-y-2">
+                <PhoneFrame frame={f} index={i} total={result.frames.length} />
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline">{i + 1}. {ROLE_LABEL[f.role]}</Badge>
+                    {f.sticker.type !== "nenhum" && <Badge variant="outline" className="border-primary/30 text-primary">{STICKER_LABEL[f.sticker.type]}</Badge>}
+                  </div>
+                  {f.replaceWithRealMedia && <p className="flex gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300"><Camera className="h-3.5 w-3.5 shrink-0" />Ideal: gravar foto ou vídeo real da equipe</p>}
+                  {f.voiceover && <p><b>Falar:</b> {f.voiceover}</p>}
+                  {f.sticker.type !== "nenhum" && f.sticker.prompt && <p><b>Figurinha:</b> {f.sticker.prompt}{f.sticker.options.length ? ` (${f.sticker.options.join(" / ")})` : ""}</p>}
+                  {f.notes && <p className="text-muted-foreground">{f.notes}</p>}
+                  <button className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => download(f.imageUrl, `story-${i + 1}.png`)}><Download className="h-3 w-3" />baixar</button>
+                </div>
+              </div>
+            ))}
+          </section>
+          <Assumptions items={result.assumptions} />
+        </>
+      )}
+    </Shell>
+  );
+}

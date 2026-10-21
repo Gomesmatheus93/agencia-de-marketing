@@ -94,23 +94,23 @@ export default function Login() {
   const isPending = loginMutation.isPending || registerMutation.isPending || verify2faMutation.isPending;
 
   const features = [
-    { icon: Zap, label: "Chat com IA", color: "from-violet-500 to-purple-600" },
-    { icon: Image, label: "Geração de Imagens", color: "from-blue-500 to-cyan-500" },
+    { icon: Zap, label: "Chat com IA", color: "from-alle-purple to-alle-purple-light" },
+    { icon: Image, label: "Geração de Imagens", color: "from-alle-orange to-alle-orange-light" },
     { icon: FileText, label: "Artigos Automáticos", color: "from-emerald-500 to-teal-500" },
     { icon: Share2, label: "Automação de Posts", color: "from-orange-500 to-rose-500" },
   ];
 
   return (
     <div className="min-h-screen flex gradient-bg relative overflow-hidden">
-      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-violet-400/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-400/20 blur-[100px] pointer-events-none" />
-      <div className="absolute top-[40%] right-[20%] w-[300px] h-[300px] rounded-full bg-purple-300/15 blur-[80px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-alle-purple/20 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-alle-orange/20 blur-[100px] pointer-events-none" />
+      <div className="absolute top-[40%] right-[20%] w-[300px] h-[300px] rounded-full bg-alle-purple-light/15 blur-[80px] pointer-events-none" />
 
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative">
         <div className="flex items-center justify-center lg:justify-start">
             <img src="/logo_completa.png" 
-            alt="logokrythos"
+            alt="Alle Energia"
             className="w-50 h-auto object-contain"
             />
         </div>
@@ -139,17 +139,14 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} KrythosLab. Todos os direitos reservados.</p>
+        <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} Alle Energia. Todos os direitos reservados.</p>
       </div>
 
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md space-y-8 animate-fade-in-up">
-          <div className="flex lg:hidden items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-foreground tracking-tight">KrythosLab</span>
+          <div className="flex lg:hidden items-center justify-center mb-8">
+            <img src="/logo_completa.png" alt="Alle Energia" className="w-56 h-auto object-contain" />
           </div>
 
           <div className="glass-card p-8 space-y-6">

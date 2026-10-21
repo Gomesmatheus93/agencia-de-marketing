@@ -258,7 +258,7 @@ export default function AdminPanel() {
           <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
             <Shield className="w-3.5 h-3.5 text-primary" />
           </div>
-          <span className="font-bold text-sm text-white">KrythosLab <span className="text-primary">Admin</span></span>
+          <span className="font-bold text-sm text-white">Alle Energia <span className="text-primary">Admin</span></span>
         </div>
 
         <div className="flex gap-1 p-0.5 bg-zinc-900 border border-zinc-800 rounded-lg ml-4">

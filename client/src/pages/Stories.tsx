@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { RadarPrefill } from "@/pages/Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -338,10 +338,10 @@ export default function Stories() {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as RadarPrefill;
+      const prefill = JSON.parse(raw) as ContentPrefill;
       sessionStorage.removeItem(RADAR_PREFILL_KEY);
       setTopic(prefill.topic);
-      toast.info("Pauta do Radar carregada — ajuste os tipos e clique em Gerar.");
+      toast.info("Pauta carregada — ajuste os tipos e clique em Gerar.");
     } catch { /* ignore */ }
   }, []);
   const [nSlides, setNSlides] = useState(3);

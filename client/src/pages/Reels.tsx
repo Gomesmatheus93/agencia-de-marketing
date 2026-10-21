@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { RadarPrefill } from "@/pages/Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import { trpc } from "@/lib/trpc";
 import AppLayout from "@/components/AppLayout";
@@ -71,17 +71,17 @@ export default function Reels() {
   const [duration, setDuration] = useState<"short" | "medium" | "long">("medium");
   const [extraContext, setExtraContext] = useState("");
   const [selected, setSelected] = useState<ReelsScript | null>(null);
-  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+  const radarPrefillRef = useRef<ContentPrefill | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as RadarPrefill;
+      const prefill = JSON.parse(raw) as ContentPrefill;
       sessionStorage.removeItem(RADAR_PREFILL_KEY);
       radarPrefillRef.current = prefill;
       setTopic(prefill.topic);
-      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+      toast.info("Pauta carregada — revise o tema e clique em Gerar.");
     } catch { /* ignore */ }
   }, []);
 

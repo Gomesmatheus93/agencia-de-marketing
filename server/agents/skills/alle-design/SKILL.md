@@ -1,0 +1,122 @@
+---
+name: alle-design
+description: >-
+  Como desenhar as artes da Alle Energia (posts, slides de carrossel, stories)
+  em SVG e transformá-las em PNG com a ferramenta render_design. Use sempre que
+  for entregar uma peça visual.
+---
+
+# alle-design
+
+Você não gera imagens em pixels. Você **desenha a arte em SVG** (layout,
+tipografia, formas, logo e fotos de banco) e a ferramenta `render_design`
+transforma em PNG, salva na galeria da plataforma e te devolve a imagem para
+você conferir. A peça só está pronta depois que você olhou o PNG.
+
+## Formatos
+
+| formato | viewBox | uso | zona segura do texto |
+| --- | --- | --- | --- |
+| `feed_4x5` | `0 0 1080 1350` | post e slides de carrossel | 80 px das laterais, 100 px de cima e de baixo |
+| `feed_1x1` | `0 0 1080 1080` | post quadrado | 80 px de todos os lados |
+| `story_9x16` | `0 0 1080 1920` | stories e capa de reels | nada acima de y=250 nem abaixo de y=1600 |
+
+O `<svg>` precisa ter exatamente esse `viewBox` (e `xmlns="http://www.w3.org/2000/svg"`).
+
+## Identidade
+
+**Cores**
+
+| papel | cor |
+| --- | --- |
+| roxo Alle (principal) | `#7c00ae` |
+| roxo de fundo | `#7B2FBE` |
+| roxo escuro (formas, sombras) | `#5B1D9A`, `#44015e` |
+| lilás claro | `#a23fd6` |
+| laranja Alle (destaque) | `#ff7300` |
+| laranja de fundo | `#F47B20` |
+| laranjas das formas | `#F99040` (claro), `#CC5500` (escuro) |
+| texto escuro sobre laranja | `#1E0A01` |
+| off-white | `#FFF8F2` |
+
+Uma cor de destaque por peça. Laranja sobre roxo ou branco sobre laranja; nunca
+laranja sobre laranja nem roxo sobre roxo para texto.
+
+**Tipografia:** só `font-family="Montserrat"`. Pesos disponíveis: 300, 400,
+500, 600, 700, 800, 900. Título em dois pesos é a assinatura da Alle: a
+primeira parte fina (300) em branco, a parte que importa em extra-negrito (800)
+na cor de destaque.
+
+**Tamanhos mínimos** (a peça é vista no celular a um terço do tamanho real):
+título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaixo de 26 px.
+
+**Logo** (use como `<image href="alle:…">`, mantendo a proporção):
+
+| href | proporção | quando |
+| --- | --- | --- |
+| `alle:logo` | 1200×353 | fundo claro |
+| `alle:logo-branco` | 1200×353 | fundo roxo, laranja ou foto escura |
+| `alle:raio` | 376×600 | o raio sozinho, fundo claro |
+| `alle:raio-branco` | 376×600 | o raio sozinho, fundo escuro |
+
+Logo completo com 300–380 px de largura no canto superior esquerdo da capa e
+do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.
+Em fundo laranja, o logo e o raio são **sempre** as versões brancas (o raio
+colorido tem metade laranja e some no fundo laranja).
+
+**Assinatura dos fundos** (a mesma dos templates "Alle Laranja" e "Alle Roxo"):
+- Roxo: fundo `#7B2FBE` com um raio geométrico grande em `#5B1D9A` atrás do texto:
+  `<polygon points="680,80 900,80 540,620 760,620 340,1280 880,660 660,660" fill="#5B1D9A"/>`
+- Laranja: fundo `#F47B20` com dois triângulos no canto superior direito:
+  `<polygon points="720,0 1080,0 1080,740 860,880 640,500" fill="#CC5500" opacity="0.45"/>`
+  `<polygon points="840,0 1080,0 1080,500 960,580 800,240" fill="#F99040" opacity="0.5"/>`
+- Claro: fundo `#FFF8F2`, texto `#1E0A01`, destaques em `#7c00ae` e `#ff7300`.
+
+Alterne roxo e laranja ao longo de um carrossel (ex.: capa roxa, miolo
+laranja/claro, CTA roxo) para dar ritmo sem perder a unidade.
+
+## Texto no SVG
+
+O SVG **não quebra linha sozinho**. Quebre você, com `<tspan x="…" dy="…">`.
+Para estimar quantos caracteres cabem numa linha de Montserrat:
+largura disponível ÷ (tamanho da fonte × 0,6) no peso 800, × 0,55 no 400,
+× 0,52 no 300. Com 920 px de largura útil: ~15 caracteres a 100 px/800,
+~19 a 80 px/800, ~40 a 40 px/400. Na dúvida, fonte menor ou menos palavras.
+
+Entrelinha: 1,1 a 1,15× o tamanho no título; 1,35× no texto corrido.
+Escape `&` como `&amp;` e `<` como `&lt;` dentro do texto.
+
+## Fotos
+
+Use `search_photos` para achar fotos (pessoas reais, casas, telhados com
+painel solar, conta de luz, comércio, academia…). Prefira fotos verticais
+para `feed_4x5` e `story_9x16`. Use a `url` grande no `<image>`, com
+`preserveAspectRatio="xMidYMid slice"` e as dimensões da área. Sempre ponha
+uma camada escura ou um degradê (roxo `#44015e` a 70–85% de opacidade) entre a
+foto e o texto. Texto direto sobre foto sem camada é proibido.
+Nunca use foto com marca, logo ou texto de terceiros em destaque.
+
+## Layouts do carrossel
+
+1. **Capa:** logo no topo, título em dois pesos ocupando o terço de baixo, uma
+   linha de promessa, `1/N` no canto superior direito, "@alleenergia · deslize →" no rodapé.
+2. **Conteúdo:** número do slide grande e transparente ao fundo ou no topo,
+   título de 3 a 7 palavras (700–800), até 25 palavras de apoio (400–500).
+   Uma ideia por slide.
+3. **Resumo:** lista curta, feita para print e para mandar a alguém.
+4. **CTA:** uma ação só, em destaque; logo completo; @alleenergia.
+
+Em todos: `n/N` no canto superior direito e `@alleenergia` pequeno no rodapé.
+
+## Rotina de revisão (obrigatória)
+
+1. Desenhe e chame `render_design`.
+2. Olhe o PNG devolvido e confira: algum texto saiu da zona segura ou foi
+   cortado? Alguma linha encostou na outra? O contraste está bom? O destaque
+   é o que mais chama atenção? O logo está nítido e proporcional?
+3. Se algo estiver errado, corrija e renderize de novo. Duas correções por
+   peça é o normal; se passar de três, simplifique o layout.
+4. Entregue com os links das artes, na ordem.
+
+Nunca invente número, depoimento, cliente ou selo na arte. Se faltar um dado,
+deixe a área com um texto neutro e avise na entrega.

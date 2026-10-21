@@ -20,7 +20,7 @@ export function buildNewsletterHtml(params: NewsletterTemplateParams): string {
     ctaText,
     coverImageUrl,
     sourceUrl,
-    brandName = "KrythosLab",
+    brandName = "Alle Energia",
   } = params;
 
   const esc = (s: string) =>

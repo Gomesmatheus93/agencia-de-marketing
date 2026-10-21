@@ -114,3 +114,7 @@ client/public/__manus__/version.json
 
 # Imagens geradas localmente
 uploads/
+
+# Python (ferramentas das skills dos agentes)
+__pycache__/
+*.pyc

@@ -1,7 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect, useRef } from "react";
-import type { RadarPrefill } from "@/pages/Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
@@ -193,18 +193,18 @@ export default function Articles() {
   const utils = trpc.useUtils();
   const [topic, setTopic] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const radarPrefillRef = useRef<RadarPrefill | null>(null);
+  const radarPrefillRef = useRef<ContentPrefill | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(RADAR_PREFILL_KEY);
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as RadarPrefill;
+      const prefill = JSON.parse(raw) as ContentPrefill;
       sessionStorage.removeItem(RADAR_PREFILL_KEY);
       radarPrefillRef.current = prefill;
       setTopic(prefill.topic);
       setShowGenerator(true);
-      toast.info("Pauta do Radar carregada — revise o tema e clique em Gerar.");
+      toast.info("Pauta carregada — revise o tema e clique em Gerar.");
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -31,8 +31,8 @@ type ModuleConfig = {
 };
 
 const MODULE_CONFIGS: ModuleConfig[] = [
-  { id: "chat",     icon: MessageSquare,    path: "/dashboard/chat",      gradient: "from-violet-500 to-purple-600", color: "text-violet-600" },
-  { id: "images",   icon: Image,            path: "/dashboard/images",    gradient: "from-blue-500 to-cyan-500",     color: "text-blue-600" },
+  { id: "chat",     icon: MessageSquare,    path: "/dashboard/chat",      gradient: "from-alle-purple to-alle-purple-light", color: "text-violet-600" },
+  { id: "images",   icon: Image,            path: "/dashboard/images",    gradient: "from-alle-orange to-alle-orange-light",     color: "text-blue-600" },
   { id: "videos",   icon: Clapperboard,     path: "/dashboard/videos",    gradient: "from-fuchsia-500 to-rose-500",  color: "text-fuchsia-600" },
   { id: "articles", icon: FileText,         path: "/dashboard/articles",  gradient: "from-emerald-500 to-teal-500",  color: "text-emerald-600" },
   { id: "carousel", icon: GalleryHorizontal,path: "/dashboard/carousel",  gradient: "from-amber-500 to-orange-500",  color: "text-amber-600" },

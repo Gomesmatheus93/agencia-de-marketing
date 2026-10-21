@@ -22,24 +22,21 @@ import {
   BarChart2,
   Wand2,
   CalendarDays,
-  Palette,
   Globe,
   MessageCircle,
-  ScanSearch,
-  TrendingUp,
   Lock,
   Crown,
   Layers,
   Crop,
   Target,
   FileBarChart2,
-  Mail,
   LayoutGrid,
-  ChevronsUpDown,
-  Check,
   Users,
-  MousePointerClick,
   PanelsTopLeft,
+  Bot,
+  CalendarRange,
+  ClipboardCheck,
+  Building2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -56,28 +53,33 @@ import { usePlan } from "@/_core/hooks/usePlan";
 import { useCompanyAccess } from "@/_core/hooks/useCompanyAccess";
 import UpgradeModal from "@/components/UpgradeModal";
 
+// Menu na ordem em que o trabalho da agência acontece: agentes → planejar →
+// criar → publicar → medir.
 const NAV_ITEMS_CONFIG = [
-  { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-violet-500 to-purple-600", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
-  { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-orange-500 to-red-500", labelKey: "campaign" as const, descKey: "campaignDesc" as const, group: "operation" as const },
-  { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-violet-500 to-indigo-600", labelKey: "creativeStudio" as const, descKey: "creativeStudioDesc" as const, group: "creation" as const },
-  { id: "brand", icon: Palette, path: "/dashboard/brand", color: "from-rose-500 to-pink-600", labelKey: "brand" as const, descKey: "brandDesc" as const, group: "creation" as const },
-  { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-orange-500 to-rose-500", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "distribution" as const },
-  { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-violet-500 to-purple-600", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "distribution" as const },
-  { id: "emailMarketing", icon: Mail, path: "/dashboard/email-marketing", color: "from-emerald-500 to-teal-500", labelKey: "emailMarketing" as const, descKey: "emailMarketingDesc" as const, group: "distribution" as const },
-  { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-pink-500 to-rose-600", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "distribution" as const },
-  { id: "paidTraffic", icon: MousePointerClick, path: "/dashboard/paid-traffic", color: "from-blue-500 to-indigo-600", labelKey: "paidTraffic" as const, descKey: "paidTrafficDesc" as const, group: "results" as const },
-  { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-cyan-500 to-blue-500", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "results" as const },
-  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-violet-500 to-purple-600", labelKey: "report" as const, descKey: "reportDesc" as const, group: "results" as const },
-  { id: "radar", icon: TrendingUp, path: "/dashboard/radar", color: "from-emerald-500 to-cyan-500", labelKey: "radar" as const, descKey: "radarDesc" as const, group: "strategy" as const },
-  { id: "styleAnalyzer", icon: ScanSearch, path: "/dashboard/style-analyzer", color: "from-violet-500 to-indigo-600", labelKey: "styleAnalyzer" as const, descKey: "styleAnalyzerDesc" as const, group: "strategy" as const },
+  { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
+  { id: "office", icon: Building2, path: "/escritorio", color: "from-alle-purple to-alle-orange", labelKey: "office" as const, descKey: "officeDesc" as const, group: "agency" as const },
+  { id: "agents", icon: Bot, path: "/dashboard/agents", color: "from-alle-purple to-alle-orange", labelKey: "agents" as const, descKey: "agentsDesc" as const, group: "agency" as const },
+  { id: "planning", icon: CalendarRange, path: "/dashboard/planejamento", color: "from-alle-purple to-alle-purple-light", labelKey: "planning" as const, descKey: "planningDesc" as const, group: "plan" as const },
+  { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-alle-purple to-alle-purple-light", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "plan" as const },
+  { id: "campaign", icon: Target, path: "/dashboard/campaign", color: "from-alle-orange to-alle-orange-light", labelKey: "campaign" as const, descKey: "campaignDesc" as const, group: "plan" as const },
+  { id: "agentCarousel", icon: GalleryHorizontal, path: "/dashboard/criar/carrossel", color: "from-alle-purple to-alle-orange", labelKey: "createCarousel" as const, descKey: "createCarouselDesc" as const, group: "create" as const },
+  { id: "agentPost", icon: Image, path: "/dashboard/criar/post", color: "from-alle-purple to-alle-orange", labelKey: "createPost" as const, descKey: "createPostDesc" as const, group: "create" as const },
+  { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },
+  { id: "agentReels", icon: Clapperboard, path: "/dashboard/agents/reels", color: "from-alle-purple to-alle-orange", labelKey: "createReels" as const, descKey: "createReelsDesc" as const, group: "create" as const },
+  { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-slate-500 to-slate-600", labelKey: "moreTools" as const, descKey: "moreToolsDesc" as const, group: "create" as const },
+  { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-alle-orange to-alle-orange-light", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "publish" as const },
+  { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-alle-orange to-alle-orange-light", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "publish" as const },
+  { id: "audit", icon: ClipboardCheck, path: "/dashboard/auditoria", color: "from-alle-orange to-alle-orange-light", labelKey: "audit" as const, descKey: "auditDesc" as const, group: "measure" as const },
+  { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-alle-orange to-alle-orange-light", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "measure" as const },
+  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-alle-orange to-alle-orange-light", labelKey: "report" as const, descKey: "reportDesc" as const, group: "measure" as const },
 ];
 
 const NAV_GROUP_LABEL_KEYS = {
-  operation: "navGroupOperation",
-  creation: "navGroupCreation",
-  distribution: "navGroupDistribution",
-  results: "navGroupResults",
-  strategy: "navGroupStrategy",
+  agency: "navGroupAgency",
+  plan: "navGroupPlan",
+  create: "navGroupCreate",
+  publish: "navGroupPublish",
+  measure: "navGroupMeasure",
 } as const;
 
 const SETTINGS_CONFIG = {
@@ -92,6 +94,7 @@ const TEAM_CONFIG = {
   id: "team", icon: Users, path: "/dashboard/team", color: "from-slate-600 to-slate-800", labelKey: "team" as const, descKey: "teamDesc" as const,
 };
 
+// Telas manuais (sem agente) acendem o item "Mais ferramentas".
 const CREATIVE_MODULE_IDS = new Set(["chat", "images", "videos", "articles", "carousel", "reels", "stories", "resize", "artStudio"]);
 
 interface AppLayoutProps {
@@ -107,16 +110,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; featureName?: string }>({ open: false });
   const { isLocked, isExpired, isTrialActive, isLegacy, isPaid, daysLeft } = usePlan();
-  const utils = trpc.useUtils();
-  const { data: brandKits = [] } = trpc.brandKit.list.useQuery(undefined, { enabled: isAuthenticated });
-  const { data: activeBrandKit } = trpc.brandKit.getActive.useQuery(undefined, { enabled: isAuthenticated });
-  const setActiveBrandKitMutation = trpc.brandKit.setActive.useMutation({
-    onSuccess: () => {
-      utils.brandKit.getActive.invalidate();
-      utils.brandKit.list.invalidate();
-      utils.brandKit.get.invalidate();
-    },
-  });
   const isDarkTheme = theme === "dark";
   const themeToggleLabel = isDarkTheme ? t("lightTheme") : t("darkTheme");
   const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
@@ -285,11 +278,11 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       {/* Logo */}
       <div className="p-5 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden">
+          <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden p-1">
             <img
               src="/logo.png"
-              alt="KrythosLab"
-              className="w-full h-full object-cover"
+              alt="Alle Energia"
+              className="w-full h-full object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
                 (e.target as HTMLImageElement).parentElement!.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>';
@@ -297,7 +290,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             />
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-sm text-foreground tracking-tight truncate">KrythosLab</div>
+            <div className="font-bold text-sm text-foreground tracking-tight truncate">Alle Energia</div>
             <div className="text-[11px] text-muted-foreground truncate">{t("platformName")}</div>
           </div>
         </div>
@@ -382,48 +375,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
         </div>
       )}
 
-      {/* Brand switcher — só aparece pra quem já tem mais de uma marca (Agency) */}
-      {brandKits.length > 1 && (
-        <div className="px-3 pb-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-border/50 hover:bg-accent/50 transition-all duration-200">
-                <span
-                  className="w-3 h-3 rounded-full flex-shrink-0 border border-black/10"
-                  style={{ backgroundColor: activeBrandKit?.primaryColor ?? "#6366f1" }}
-                />
-                <span className="flex-1 text-left min-w-0 text-sm font-medium text-foreground truncate">
-                  {activeBrandKit?.companyName || "Marca"}
-                </span>
-                <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56 glass-card border-border/50">
-              {brandKits.map((kit) => (
-                <DropdownMenuItem
-                  key={kit.id}
-                  onClick={() => {
-                    if (kit.id !== activeBrandKit?.id) setActiveBrandKitMutation.mutate({ id: kit.id });
-                  }}
-                  className="gap-2"
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
-                    style={{ backgroundColor: kit.primaryColor ?? "#6366f1" }}
-                  />
-                  <span className="flex-1 truncate">{kit.companyName || "Sem nome"}</span>
-                  {activeBrandKit?.id === kit.id && <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/dashboard/brand")} className="gap-2 text-muted-foreground">
-                <Palette className="w-3.5 h-3.5" />
-                Gerenciar marcas
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
@@ -537,8 +488,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
         expired={isExpired}
       />
       {/* Ambient orbs */}
-      <div className="fixed top-[-15%] left-[-5%] w-[400px] h-[400px] rounded-full bg-violet-400/10 blur-[100px] pointer-events-none z-0" />
-      <div className="fixed bottom-[-15%] right-[-5%] w-[350px] h-[350px] rounded-full bg-blue-400/10 blur-[80px] pointer-events-none z-0" />
+      <div className="fixed top-[-15%] left-[-5%] w-[400px] h-[400px] rounded-full bg-alle-purple/10 blur-[100px] pointer-events-none z-0" />
+      <div className="fixed bottom-[-15%] right-[-5%] w-[350px] h-[350px] rounded-full bg-alle-orange/10 blur-[80px] pointer-events-none z-0" />
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col glass-sidebar fixed left-0 top-0 bottom-0 z-30">
@@ -586,17 +537,17 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <Menu className="w-5 h-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center overflow-hidden">
+            <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center overflow-hidden p-0.5">
               <img
                 src="/logo.png"
-                alt="KrythosLab"
-                className="w-full h-full object-cover"
+                alt="Alle Energia"
+                className="w-full h-full object-contain"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
             </div>
-            <span className="font-bold text-sm tracking-tight">KrythosLab</span>
+            <span className="font-bold text-sm tracking-tight">Alle Energia</span>
           </div>
           <div className="flex items-center gap-3">
             <button

@@ -90,7 +90,7 @@ function layout(input: {
 }): string {
   const baseUrl = ENV.appBaseUrl.replace(/\/$/, "");
   const logoUrl = `${baseUrl}/logo_completa.png`;
-  const supportEmail = "suporte@krythoslab.com";
+  const supportEmail = "suporte@alleenergia.com";
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -109,7 +109,7 @@ function layout(input: {
           <tr>
             <td align="center" style="padding:0 0 22px">
               <a href="${escapeHtml(baseUrl)}" style="text-decoration:none">
-                <img src="${escapeHtml(logoUrl)}" width="190" alt="KrythosLab" style="display:block;width:190px;max-width:65%;height:auto;border:0">
+                <img src="${escapeHtml(logoUrl)}" width="190" alt="Alle Energia" style="display:block;width:190px;max-width:65%;height:auto;border:0">
               </a>
             </td>
           </tr>
@@ -120,7 +120,7 @@ function layout(input: {
               ${input.bodyHtml}
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:30px;border-top:1px solid #eef0f4">
                 <tr><td style="padding-top:22px">
-                  <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.65"><strong style="color:#374151">🔒 Sua segurança importa.</strong><br>A KrythosLab nunca solicitará sua senha ou código de acesso por e-mail.</p>
+                  <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.65"><strong style="color:#374151">🔒 Sua segurança importa.</strong><br>A Alle Energia nunca solicitará sua senha ou código de acesso por e-mail.</p>
                 </td></tr>
               </table>
             </td>
@@ -128,8 +128,8 @@ function layout(input: {
           <tr>
             <td align="center" style="padding:22px 20px 0;color:#8b93a1;font-size:12px;line-height:1.7">
               <p style="margin:0 0 5px">Precisa de ajuda? <a href="mailto:${supportEmail}" style="color:#6d4aff;text-decoration:none">${supportEmail}</a></p>
-              <p style="margin:0">KrythosLab · Marketing inteligente com IA</p>
-              <p style="margin:5px 0 0"><a href="${escapeHtml(baseUrl)}" style="color:#8b93a1;text-decoration:underline">krythoslab.com</a></p>
+              <p style="margin:0">Alle Energia · Autonomia e Liberdade Energética</p>
+              <p style="margin:5px 0 0"><a href="${escapeHtml(baseUrl)}" style="color:#8b93a1;text-decoration:underline">alleenergia.com</a></p>
             </td>
           </tr>
         </table>
@@ -160,19 +160,19 @@ export function verificationEmail(name: string, link: string): SendEmailInput {
   const safeName = escapeHtml(name || "usuário");
   return {
     to: "",
-    subject: "Confirme seu e-mail | KrythosLab",
+    subject: "Confirme seu e-mail | Alle Energia",
     tag: "verify-email",
-    text: `Olá ${name},\n\nSua conta na KrythosLab está quase pronta. Confirme seu e-mail pelo link abaixo:\n${link}\n\nEste link expira em 24 horas e pode ser usado apenas uma vez.\n\nSe você não criou esta conta, ignore esta mensagem.\n\nKrythosLab`,
+    text: `Olá ${name},\n\nSua conta na Alle Energia está quase pronta. Confirme seu e-mail pelo link abaixo:\n${link}\n\nEste link expira em 24 horas e pode ser usado apenas uma vez.\n\nSe você não criou esta conta, ignore esta mensagem.\n\nAlle Energia`,
     html: layout({
-      preheader: "Confirme seu endereço de e-mail para ativar sua conta na KrythosLab.",
+      preheader: "Confirme seu endereço de e-mail para ativar sua conta na Alle Energia.",
       eyebrow: "Ativação de conta",
       title: "Confirme seu e-mail",
       bodyHtml: `<p style="margin:0;color:#374151;font-size:15px;line-height:1.7">Olá, <strong>${safeName}</strong>!</p>
-        <p style="margin:12px 0 0;color:#4b5563;font-size:15px;line-height:1.7">Sua conta na KrythosLab está quase pronta. Confirme seu endereço de e-mail para ativar o acesso e proteger sua conta.</p>
+        <p style="margin:12px 0 0;color:#4b5563;font-size:15px;line-height:1.7">Sua conta na Alle Energia está quase pronta. Confirme seu endereço de e-mail para ativar o acesso e proteger sua conta.</p>
         ${actionButton("Confirmar meu e-mail", link)}
         <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6">⏱️ Este link expira em <strong>24 horas</strong> e pode ser utilizado apenas uma vez.</p>
         ${fallbackLink(link)}
-        <p style="margin:16px 0 0;color:#8b93a1;font-size:12px;line-height:1.6">Se você não criou uma conta na KrythosLab, pode ignorar esta mensagem com segurança.</p>`,
+        <p style="margin:16px 0 0;color:#8b93a1;font-size:12px;line-height:1.6">Se você não criou uma conta na Alle Energia, pode ignorar esta mensagem com segurança.</p>`,
     }),
   };
 }
@@ -181,11 +181,11 @@ export function passwordResetEmail(name: string, link: string): SendEmailInput {
   const safeName = escapeHtml(name || "usuário");
   return {
     to: "",
-    subject: "Redefina sua senha | KrythosLab",
+    subject: "Redefina sua senha | Alle Energia",
     tag: "password-reset",
-    text: `Olá ${name},\n\nRecebemos uma solicitação para redefinir sua senha. Use o link abaixo:\n${link}\n\nO link expira em 30 minutos e pode ser usado apenas uma vez.\n\nSe você não solicitou a alteração, ignore esta mensagem. Sua senha continuará a mesma.\n\nKrythosLab`,
+    text: `Olá ${name},\n\nRecebemos uma solicitação para redefinir sua senha. Use o link abaixo:\n${link}\n\nO link expira em 30 minutos e pode ser usado apenas uma vez.\n\nSe você não solicitou a alteração, ignore esta mensagem. Sua senha continuará a mesma.\n\nAlle Energia`,
     html: layout({
-      preheader: "Use este link seguro para criar uma nova senha na KrythosLab.",
+      preheader: "Use este link seguro para criar uma nova senha na Alle Energia.",
       eyebrow: "Segurança da conta",
       title: "Redefina sua senha",
       bodyHtml: `<p style="margin:0;color:#374151;font-size:15px;line-height:1.7">Olá, <strong>${safeName}</strong>!</p>
@@ -203,15 +203,15 @@ export function twoFactorCodeEmail(name: string, code: string): SendEmailInput {
   const safeCode = escapeHtml(code);
   return {
     to: "",
-    subject: `${code} é seu código de acesso | KrythosLab`,
+    subject: `${code} é seu código de acesso | Alle Energia`,
     tag: "2fa-code",
-    text: `Olá ${name},\n\nSeu código de verificação é: ${code}\n\nEle expira em 10 minutos. Não compartilhe este código.\n\nKrythosLab`,
+    text: `Olá ${name},\n\nSeu código de verificação é: ${code}\n\nEle expira em 10 minutos. Não compartilhe este código.\n\nAlle Energia`,
     html: layout({
-      preheader: `${code} é seu código temporário de acesso à KrythosLab.`,
+      preheader: `${code} é seu código temporário de acesso à Alle Energia.`,
       eyebrow: "Verificação em duas etapas",
       title: "Seu código de acesso",
       bodyHtml: `<p style="margin:0;color:#374151;font-size:15px;line-height:1.7">Olá, <strong>${safeName}</strong>!</p>
-        <p style="margin:12px 0 0;color:#4b5563;font-size:15px;line-height:1.7">Use o código abaixo para concluir seu acesso à KrythosLab:</p>
+        <p style="margin:12px 0 0;color:#4b5563;font-size:15px;line-height:1.7">Use o código abaixo para concluir seu acesso à Alle Energia:</p>
         <div style="margin:26px 0;padding:20px;text-align:center;background:#f8f7ff;border:1px solid #e5dfff;border-radius:12px;color:#33236f;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;font-weight:800;letter-spacing:9px">${safeCode}</div>
         <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6">⏱️ Este código expira em <strong>10 minutos</strong>. Não compartilhe com ninguém.</p>
         <div style="margin-top:18px;padding:14px 16px;background:#fff8eb;border:1px solid #fde6b8;border-radius:10px;color:#78520b;font-size:12px;line-height:1.6">Se você não tentou entrar, recomendamos alterar sua senha imediatamente.</div>`,

@@ -1,0 +1,551 @@
+{
+  "version": "1-pt",
+  "note": "Léxico em português usado por humanize.py e detect.py (passado com --lexicon). Baseado no slop.json original (mesmo formato): caracteres invisíveis e tipografia iguais; palavras, frases e estruturas reescritas para português. Só são substituídas automaticamente palavras cuja troca não quebra a concordância; o resto fica em 'structures', que apenas sinaliza para reescrita manual. O último bloco de 'phrases' é específico de Instagram. Edite à vontade.",
+  "invisible": [
+    {
+      "cp": "U+200B",
+      "name": "ZERO WIDTH SPACE",
+      "action": "delete"
+    },
+    {
+      "cp": "U+200C",
+      "name": "ZERO WIDTH NON-JOINER",
+      "action": "delete"
+    },
+    {
+      "cp": "U+200D",
+      "name": "ZERO WIDTH JOINER",
+      "action": "delete"
+    },
+    {
+      "cp": "U+2060",
+      "name": "WORD JOINER",
+      "action": "delete"
+    },
+    {
+      "cp": "U+FEFF",
+      "name": "ZERO WIDTH NO-BREAK SPACE / BOM",
+      "action": "delete"
+    },
+    {
+      "cp": "U+00AD",
+      "name": "SOFT HYPHEN",
+      "action": "delete"
+    },
+    {
+      "cp": "U+180E",
+      "name": "MONGOLIAN VOWEL SEPARATOR",
+      "action": "delete"
+    },
+    {
+      "cp": "U+061C",
+      "name": "ARABIC LETTER MARK",
+      "action": "delete"
+    },
+    {
+      "cp": "U+200E",
+      "name": "LEFT-TO-RIGHT MARK",
+      "action": "delete"
+    },
+    {
+      "cp": "U+200F",
+      "name": "RIGHT-TO-LEFT MARK",
+      "action": "delete"
+    },
+    {
+      "cp": "U+E0000-U+E007F",
+      "name": "TAG CHARACTERS (invisible ASCII smuggling)",
+      "action": "delete"
+    },
+    {
+      "cp": "U+00A0",
+      "name": "NO-BREAK SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+202F",
+      "name": "NARROW NO-BREAK SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+2009",
+      "name": "THIN SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+2007",
+      "name": "FIGURE SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+2003",
+      "name": "EM SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+2002",
+      "name": "EN SPACE",
+      "action": "space"
+    },
+    {
+      "cp": "U+2063",
+      "name": "INVISIBLE SEPARATOR",
+      "action": "delete"
+    }
+  ],
+  "typographic": [
+    {
+      "from": "—",
+      "name": "EM DASH",
+      "to": ", "
+    },
+    {
+      "from": "–",
+      "name": "EN DASH",
+      "to": "-"
+    },
+    {
+      "from": "‘",
+      "name": "LEFT SINGLE QUOTE",
+      "to": "'"
+    },
+    {
+      "from": "’",
+      "name": "RIGHT SINGLE QUOTE",
+      "to": "'"
+    },
+    {
+      "from": "“",
+      "name": "LEFT DOUBLE QUOTE",
+      "to": "\""
+    },
+    {
+      "from": "”",
+      "name": "RIGHT DOUBLE QUOTE",
+      "to": "\""
+    },
+    {
+      "from": "…",
+      "name": "HORIZONTAL ELLIPSIS",
+      "to": "..."
+    },
+    {
+      "from": "′",
+      "name": "PRIME",
+      "to": "'"
+    },
+    {
+      "from": "·",
+      "name": "MIDDLE DOT",
+      "to": "-"
+    },
+    {
+      "from": "•",
+      "name": "BULLET",
+      "to": "-"
+    },
+    {
+      "from": "→",
+      "name": "RIGHTWARDS ARROW",
+      "to": "->"
+    }
+  ],
+  "words": [
+    {
+      "find": "crucial",
+      "replace": "importante",
+      "family": "adjectives"
+    },
+    {
+      "find": "cruciais",
+      "replace": "importantes",
+      "family": "adjectives"
+    },
+    {
+      "find": "robusto",
+      "replace": "sólido",
+      "family": "adjectives"
+    },
+    {
+      "find": "robusta",
+      "replace": "sólida",
+      "family": "adjectives"
+    },
+    {
+      "find": "robustos",
+      "replace": "sólidos",
+      "family": "adjectives"
+    },
+    {
+      "find": "robustas",
+      "replace": "sólidas",
+      "family": "adjectives"
+    },
+    {
+      "find": "disruptivo",
+      "replace": "novo",
+      "family": "adjectives"
+    },
+    {
+      "find": "disruptiva",
+      "replace": "nova",
+      "family": "adjectives"
+    },
+    {
+      "find": "disruptivos",
+      "replace": "novos",
+      "family": "adjectives"
+    },
+    {
+      "find": "disruptivas",
+      "replace": "novas",
+      "family": "adjectives"
+    },
+    {
+      "find": "revolucionário",
+      "replace": "novo",
+      "family": "adjectives"
+    },
+    {
+      "find": "revolucionária",
+      "replace": "nova",
+      "family": "adjectives"
+    },
+    {
+      "find": "alavancar",
+      "replace": "aumentar",
+      "family": "verbs"
+    },
+    {
+      "find": "alavanque",
+      "replace": "aumente",
+      "family": "verbs"
+    },
+    {
+      "find": "alavancando",
+      "replace": "aumentando",
+      "family": "verbs"
+    },
+    {
+      "find": "potencializar",
+      "replace": "aumentar",
+      "family": "verbs"
+    },
+    {
+      "find": "potencialize",
+      "replace": "aumente",
+      "family": "verbs"
+    },
+    {
+      "find": "potencializando",
+      "replace": "aumentando",
+      "family": "verbs"
+    },
+    {
+      "find": "maximizar",
+      "replace": "aumentar",
+      "family": "verbs"
+    },
+    {
+      "find": "maximize",
+      "replace": "aumente",
+      "family": "verbs"
+    },
+    {
+      "find": "sinergia",
+      "replace": "parceria",
+      "family": "nouns"
+    },
+    {
+      "find": "sinergias",
+      "replace": "parcerias",
+      "family": "nouns"
+    }
+  ],
+  "phrases": [
+    {
+      "find": "no cenário atual",
+      "replace": "hoje",
+      "family": "openers"
+    },
+    {
+      "find": "nos dias de hoje",
+      "replace": "hoje",
+      "family": "openers"
+    },
+    {
+      "find": "no mundo atual",
+      "replace": "hoje",
+      "family": "openers"
+    },
+    {
+      "find": "nos tempos atuais",
+      "replace": "hoje",
+      "family": "openers"
+    },
+    {
+      "find": "nos dias atuais",
+      "replace": "hoje",
+      "family": "openers"
+    },
+    {
+      "find": "vale ressaltar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "vale destacar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "vale a pena destacar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "é importante ressaltar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "é importante destacar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "é importante lembrar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "é fundamental destacar que",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "dito isso,",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "nesse sentido,",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "em suma,",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "sem mais delongas,",
+      "replace": "",
+      "family": "connectives"
+    },
+    {
+      "find": "de forma eficaz",
+      "replace": "bem",
+      "family": "connectives"
+    },
+    {
+      "find": "de maneira eficiente",
+      "replace": "bem",
+      "family": "connectives"
+    },
+    {
+      "find": "pare de rolar o feed",
+      "replace": "",
+      "family": "openers"
+    },
+    {
+      "find": "pare de rolar",
+      "replace": "",
+      "family": "openers"
+    },
+    {
+      "find": "siga para mais conteúdos como este",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "siga para mais conteúdos",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "siga para mais",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "marque alguém que precisa ver isso",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "marque um amigo que precisa ver isso",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "marque alguém que precisa saber disso",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "deixe seu like",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "deixa seu like",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "compartilhe com quem precisa ver isso",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "compartilhe com quem precisa",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "corre que ainda dá tempo",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "não perca essa oportunidade",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "não perca tempo",
+      "replace": "",
+      "family": "closers"
+    },
+    {
+      "find": "o algoritmo ama",
+      "replace": "o Instagram entrega",
+      "family": "nouns"
+    },
+    {
+      "find": "vencer o algoritmo",
+      "replace": "ganhar alcance",
+      "family": "nouns"
+    },
+    {
+      "find": "viralizar da noite para o dia",
+      "replace": "ganhar alcance",
+      "family": "nouns"
+    }
+  ],
+  "structures": [
+    {
+      "id": "nao-e-so",
+      "regex": "(?i)\\bn[ãa]o [ée] (?:s[óo]|apenas) [^.!?\\n]{2,60}[,.] [ée]\\b",
+      "name": "\"Não é só X, é Y\"",
+      "fix": "Diga a única coisa que você quer dizer. Corte a metade da preparação."
+    },
+    {
+      "id": "nao-apenas",
+      "regex": "(?i)\\bn[ãa]o (?:s[óo]|apenas)\\b[^.!?\\n]{2,80}\\bmas tamb[ée]m\\b",
+      "name": "\"Não apenas X, mas também Y\"",
+      "fix": "Separe em duas frases ou corte a parte mais fraca."
+    },
+    {
+      "id": "nao-sobre",
+      "regex": "(?i)\\bn[ãa]o [ée] sobre [^.!?\\n]{2,60}[.!] [ée] sobre\\b",
+      "name": "\"Não é sobre X. É sobre Y.\"",
+      "fix": "Comece pelo Y. A inversão é o sinal de texto pronto."
+    },
+    {
+      "id": "o-resultado",
+      "regex": "(?i)^\\s*(?:o resultado|a melhor parte|o segredo|o detalhe|o pulo do gato)\\?\\s*$",
+      "name": "Pergunta retórica de uma linha",
+      "fix": "Responda na mesma frase em vez de encenar uma revelação."
+    },
+    {
+      "id": "o-que-aprendi",
+      "regex": "(?i)\\b(?:veja|aqui est[áa]|olha) o que (?:eu )?aprendi\\b",
+      "name": "\"Veja o que eu aprendi\"",
+      "fix": "Diga a lição. Pule o anúncio."
+    },
+    {
+      "id": "triade",
+      "regex": "(?i)\\b\\w+, \\w+ e \\w+\\.",
+      "name": "Trio de três itens",
+      "fix": "Dois itens ou quatro. Três é o ritmo padrão do modelo."
+    },
+    {
+      "id": "rocket",
+      "regex": "[\\U0001F680\\U0001F525\\U0001F4A1\\u2728\\U0001F3AF]",
+      "name": "Emoji de foguete / fogo / lâmpada / brilho / alvo",
+      "fix": "No máximo um emoji, e não um desses cinco."
+    },
+    {
+      "id": "hashtag-wall",
+      "regex": "(?:#\\w+[ \\t]*){5,}",
+      "name": "Parede de hashtags (5+)",
+      "fix": "Até 5 hashtags, específicas, no fim."
+    },
+    {
+      "id": "como-ia",
+      "regex": "(?i)\\bcomo (?:uma )?(?:ia|intelig[êe]ncia artificial|modelo de linguagem)\\b",
+      "name": "Auto-referência de IA",
+      "fix": "Apague a frase."
+    },
+    {
+      "id": "em-resumo",
+      "regex": "(?im)^\\s*(?:em resumo|resumindo|em conclus[ãa]o|concluindo)\\b",
+      "name": "Abertura de conclusão de redação",
+      "fix": "Post não precisa de parágrafo de conclusão."
+    },
+    {
+      "id": "isca",
+      "regex": "(?im)(?:concorda\\?|o que voc[êe] acha\\?|quem mais\\b[^\\n]*\\?|estou errad[oa]\\?)\\s*$",
+      "name": "Isca de engajamento automática",
+      "fix": "Faça uma pergunta que só a Alle poderia fazer, sobre o assunto do post."
+    },
+    {
+      "id": "pare-rolar",
+      "regex": "(?im)^\\s*(?:pare de rolar|n[ãa]o role|espera,? n[ãa]o passa)\\b",
+      "name": "Abertura \"pare de rolar\"",
+      "fix": "O que faz parar é a própria afirmação. Pedir atenção mostra que ela não foi conquistada."
+    },
+    {
+      "id": "neste-video",
+      "regex": "(?i)\\b(?:neste|nesse) (?:v[íi]deo|reel|post)\\b|\\bno (?:v[íi]deo|post|reel) de hoje\\b|\\bhoje (?:eu )?vou (?:te |lhes? )?(?:mostrar|ensinar)\\b|\\bvou (?:te )?(?:mostrar|ensinar) como\\b",
+      "name": "Preâmbulo de vídeo (\"neste vídeo vou te mostrar\")",
+      "fix": "Apague e comece pelo resultado. Os dois primeiros segundos decidem o reel."
+    },
+    {
+      "id": "emoji-bullets",
+      "regex": "(?m)^\\s*[\\U0001F300-\\U0001FAFF✅➡⬅✔✨]\\s*\\S",
+      "name": "Lista com emojis como marcadores",
+      "fix": "Use hífen ou quebra de linha. Emoji como marcador é o que mais parece template."
+    },
+    {
+      "id": "caixa-alta",
+      "regex": "\\b[A-ZÀ-Ý]{3,}\\b(?:\\s+\\b[A-ZÀ-Ý]{3,}\\b){2,}",
+      "name": "Três ou mais palavras gritadas seguidas",
+      "fix": "Caixa alta é volume, não destaque. No máximo uma palavra."
+    },
+    {
+      "id": "isca-seguir",
+      "regex": "(?i)\\b(?:siga para mais|marque (?:algu[ée]m|um amigo|uma amiga) que|curta se|compartilhe se|comente aqui se|deixe seu like)\\b",
+      "name": "Isca automática de seguir ou marcar",
+      "fix": "Peça a única ação que este post merece."
+    },
+    {
+      "id": "corporatives",
+      "regex": "(?i)\\b(?:jornada|mindset|ecossistema|game[- ]changer|em um mundo cada vez mais|transforma[çc][ãa]o digital|solu[çc][õo]es inovadoras)\\b",
+      "name": "Vocabulário de IA ou corporativês",
+      "fix": "Troque pela palavra que a equipe falaria em voz alta (atenção à concordância)."
+    }
+  ]
+}

@@ -124,7 +124,7 @@ const channelConfig: Record<Channel, {
     label: "Newsletter",
     icon: Mail,
     color: "text-violet-600",
-    gradient: "from-violet-500 to-purple-600",
+    gradient: "from-alle-purple to-alle-purple-light",
     bg: "bg-violet-50 dark:bg-violet-950/20",
     maxChars: 10000,
     supportsImage: false,

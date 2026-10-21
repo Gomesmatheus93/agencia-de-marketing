@@ -30,7 +30,7 @@ import AppLayout from "@/components/AppLayout";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { usePlan } from "@/_core/hooks/usePlan";
-import type { RadarPrefill } from "./Radar";
+import type { ContentPrefill } from "@/lib/contentPrefill";
 
 const RADAR_PREFILL_KEY = "radar_prefill";
 
@@ -254,10 +254,10 @@ export default function Seo() {
     const meta = CONTENT_TYPE_META[contentType];
     if (!meta?.path) {
       void navigator.clipboard.writeText(`${title}\n\n${hook}`);
-      toast.success("Ideia copiada — cole na newsletter em Email Marketing.");
+      toast.success("Ideia copiada — cole na newsletter em Artigos.");
       return;
     }
-    const prefill: RadarPrefill = { topic: title, hook, hookType: "curiosidade" };
+    const prefill: ContentPrefill = { topic: title, hook, hookType: "curiosidade" };
     sessionStorage.setItem(RADAR_PREFILL_KEY, JSON.stringify(prefill));
     navigate(meta.path);
   }

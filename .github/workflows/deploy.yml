@@ -1,9 +1,10 @@
 name: Deploy to Production
 
+# Só manual: este código vive no mesmo repositório da KrythosLab (branch
+# alle-energia), onde o segredo PORTAINER_WEBHOOK_URL aponta para a produção
+# dela. Configure o webhook do servidor da Alle antes de automatizar o deploy.
 on:
-  push:
-    branches:
-      - krythoslab
+  workflow_dispatch:
 
 jobs:
   deploy:

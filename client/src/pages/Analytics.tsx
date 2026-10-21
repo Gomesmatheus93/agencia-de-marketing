@@ -856,7 +856,7 @@ function InstagramTab() {
                   label="Seguidores"
                   value={fmt(profile?.followers_count ?? 0)}
                   icon={Users}
-                  accentClass="bg-gradient-to-br from-violet-500 to-purple-600"
+                  accentClass="bg-gradient-to-br from-alle-purple to-alle-purple-light"
                   isEmpty={!profile?.followers_count}
                   trend={followerChange !== 0
                     ? { delta: followerChange, label: `${followerChange > 0 ? "+" : ""}${followerChange} nos últimos 30d` }
@@ -907,7 +907,7 @@ function InstagramTab() {
                   label="Cliques no Site"
                   value={fmt(totalWebsiteClicks)}
                   icon={ExternalLink}
-                  accentClass="bg-gradient-to-br from-indigo-500 to-violet-600"
+                  accentClass="bg-gradient-to-br from-alle-purple to-alle-purple-light"
                   isEmpty={totalWebsiteClicks === 0}
                   sub="Últimos 30 dias"
                 />

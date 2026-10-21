@@ -182,8 +182,8 @@ function profileBadge(
   handle: string,
   font: string
 ): string {
-  const displayName = name || "KrythosLab";
-  const displayHandle = handle ? `@${handle.replace("@", "")}` : "@krythoslab";
+  const displayName = name || "Alle Energia";
+  const displayHandle = handle ? `@${handle.replace("@", "")}` : "@alleenergia";
   return `
     <g>
       <text x="68" y="${H - 56}" font-family="${esc(font)}" font-size="20" font-weight="700" fill="${esc(palette.text)}">${esc(displayName)}</text>

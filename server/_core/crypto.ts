@@ -3,8 +3,7 @@
 // Formato do ciphertext: "enc:v1:" + base64( iv(12) | authTag(16) | ciphertext )
 //
 // Leitura é retrocompatível: valores SEM o prefixo "enc:v1:" são devolvidos
-// como estão (texto legado). Isso permite fazer o deploy do código antes de
-// rodar o backfill (scripts/encrypt-existing-data.mjs).
+// como estão (texto legado).
 //
 // Chaves (env):
 //   ENCRYPTION_KEY   — 32 bytes em base64 (ou hex/base64url), usada no AES-256-GCM

@@ -1,20 +1,24 @@
 import {
   boolean,
   index,
-  int,
+  integer,
   json,
-  mediumtext,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
+  primaryKey,
+  serial,
+  smallint,
   text,
-  timestamp,
+  timestamp as pgTimestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+
+// Todas as datas são gravadas com fuso (timestamptz), lidas como Date em UTC.
+const timestamp = (name: string) => pgTimestamp(name, { withTimezone: true });
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   // name e email guardam ciphertext ("enc:v1:...") — ver server/_core/crypto.ts.
   name: text("name"),
@@ -27,22 +31,22 @@ export const users = mysqlTable("users", {
   passwordHash: text("passwordHash"),
   // Incrementado a cada "sair de todos os dispositivos" / troca de senha / mudança
   // de role — sessões com tokenVersion diferente do atual são rejeitadas.
-  tokenVersion: int("tokenVersion").default(0).notNull(),
+  tokenVersion: integer("tokenVersion").default(0).notNull(),
   // Verificação de e-mail (null = não verificado). Contas OAuth já entram verificadas.
   emailVerifiedAt: timestamp("emailVerifiedAt"),
   // 2FA por código de e-mail.
   twoFactorEnabled: boolean("twoFactorEnabled").default(false).notNull(),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  plan: mysqlEnum("plan", ["free", "pro", "agency"]).default("free").notNull(),
+  role: text("role", { enum: ["user", "admin"] }).default("user").notNull(),
+  plan: text("plan", { enum: ["free", "pro", "agency"] }).default("free").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
   trialExpiresAt: timestamp("trialExpiresAt"),
-  activeBrandKitId: int("activeBrandKitId"),
+  activeBrandKitId: integer("activeBrandKitId"),
   // null = conta principal (dona da empresa); preenchido = funcionário,
   // aponta pro id da conta principal. Um único nível (sem sub-sub-usuário).
-  companyOwnerId: int("companyOwnerId"),
+  companyOwnerId: integer("companyOwnerId"),
 }, (t) => [
   uniqueIndex("uq_users_emailHash").on(t.emailHash),
   index("idx_users_emailDomain").on(t.emailDomain),
@@ -53,18 +57,18 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // ─── Email Tokens (verificação de conta, reset de senha, código 2FA) ─────────
-export const emailTokens = mysqlTable(
+export const emailTokens = pgTable(
   "email_tokens",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    type: mysqlEnum("type", ["verify", "reset", "2fa"]).notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    type: text("type", { enum: ["verify", "reset", "2fa"] }).notNull(),
     // SHA-256 do token cru (o token cru só existe no e-mail / no link).
     tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
     consumedAt: timestamp("consumedAt"),
     // Tentativas de código erradas (2fa/reset) — para lockout.
-    attempts: int("attempts").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [
@@ -77,14 +81,14 @@ export type EmailToken = typeof emailTokens.$inferSelect;
 export type InsertEmailToken = typeof emailTokens.$inferInsert;
 
 // ─── Audit Log (ações sensíveis) ─────────────────────────────────────────────
-export const auditLog = mysqlTable(
+export const auditLog = pgTable(
   "audit_log",
   {
-    id: int("id").autoincrement().primaryKey(),
+    id: serial("id").primaryKey(),
     // Quem executou a ação (null = sistema / não autenticado).
-    actorUserId: int("actorUserId"),
+    actorUserId: integer("actorUserId"),
     // Sobre quem/o quê a ação foi feita.
-    targetUserId: int("targetUserId"),
+    targetUserId: integer("targetUserId"),
     action: varchar("action", { length: 64 }).notNull(),
     targetType: varchar("targetType", { length: 32 }),
     targetId: varchar("targetId", { length: 64 }),
@@ -103,29 +107,29 @@ export type AuditLog = typeof auditLog.$inferSelect;
 export type InsertAuditLog = typeof auditLog.$inferInsert;
 
 // ─── Daily Usage (trial limits) ───────────────────────────────────────────────
-export const dailyUsage = mysqlTable(
+export const dailyUsage = pgTable(
   "daily_usage",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     feature: varchar("feature", { length: 32 }).notNull(),
     date: varchar("date", { length: 10 }).notNull(),
-    count: int("count").notNull().default(0),
+    count: integer("count").notNull().default(0),
   },
-  (t) => [index("idx_daily_usage_uid_feat_date").on(t.userId, t.feature, t.date)]
+  (t) => [uniqueIndex("uq_daily_usage").on(t.userId, t.feature, t.date)]
 );
 
 export type DailyUsage = typeof dailyUsage.$inferSelect;
 
 // ─── Chat Conversations ───────────────────────────────────────────────────────
-export const chatConversations = mysqlTable(
+export const chatConversations = pgTable(
   "chat_conversations",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     title: varchar("title", { length: 255 }).notNull().default("Nova Conversa"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_chat_conversations_userId").on(t.userId)]
 );
@@ -134,13 +138,13 @@ export type ChatConversation = typeof chatConversations.$inferSelect;
 export type InsertChatConversation = typeof chatConversations.$inferInsert;
 
 // ─── Chat Messages ────────────────────────────────────────────────────────────
-export const chatMessages = mysqlTable(
+export const chatMessages = pgTable(
   "chat_messages",
   {
-    id: int("id").autoincrement().primaryKey(),
-    conversationId: int("conversationId").notNull(),
-    userId: int("userId").notNull(),
-    role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+    id: serial("id").primaryKey(),
+    conversationId: integer("conversationId").notNull(),
+    userId: integer("userId").notNull(),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
     content: text("content").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -153,16 +157,16 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
 // ─── Generated Images ─────────────────────────────────────────────────────────
-export const generatedImages = mysqlTable(
+export const generatedImages = pgTable(
   "generated_images",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     prompt: text("prompt").notNull(),
     imageUrl: text("imageUrl").notNull(),
     fileKey: varchar("fileKey", { length: 512 }),
-    width: int("width").default(1024),
-    height: int("height").default(1024),
+    width: integer("width").default(1024),
+    height: integer("height").default(1024),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (t) => [index("idx_generated_images_userId").on(t.userId)]
@@ -172,23 +176,23 @@ export type GeneratedImage = typeof generatedImages.$inferSelect;
 export type InsertGeneratedImage = typeof generatedImages.$inferInsert;
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
-export const articles = mysqlTable(
+export const articles = pgTable(
   "articles",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     title: varchar("title", { length: 512 }).notNull(),
-    topic: mediumtext("topic"),
+    topic: text("topic"),
     sourceUrl: text("sourceUrl"),
     coverImageUrl: text("coverImageUrl"),
-    content: mediumtext("content").notNull(),
-    summary: mediumtext("summary"),
-    status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
-    sourceTopicAngleId: int("sourceTopicAngleId"),
+    content: text("content").notNull(),
+    summary: text("summary"),
+    status: text("status", { enum: ["draft", "published", "archived"] }).default("draft").notNull(),
+    sourceTopicAngleId: integer("sourceTopicAngleId"),
     hookType: varchar("hookType", { length: 32 }),
     contentFormat: varchar("contentFormat", { length: 32 }).default("article"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_articles_userId").on(t.userId)]
 );
@@ -248,11 +252,11 @@ export type CarouselSlideData = {
 };
 
 // ─── Carousels ────────────────────────────────────────────────────────────────
-export const carousels = mysqlTable(
+export const carousels = pgTable(
   "carousels",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     topic: varchar("topic", { length: 512 }).notNull(),
     style: varchar("style", { length: 100 }).notNull(),
     hook: text("hook").notNull(),
@@ -261,12 +265,12 @@ export const carousels = mysqlTable(
     coverImageUrl: text("coverImageUrl"),
     slides: text("slides").notNull(),
     designSettings: text("designSettings"),
-    sourceTopicAngleId: int("sourceTopicAngleId"),
+    sourceTopicAngleId: integer("sourceTopicAngleId"),
     hookType: varchar("hookType", { length: 32 }),
     contentFormat: varchar("contentFormat", { length: 32 }).default("carousel"),
-    templateId: int("templateId"),
+    templateId: integer("templateId"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_carousels_userId").on(t.userId)]
 );
@@ -283,16 +287,16 @@ export type InsertCarousel = Omit<InsertCarouselRow, "slides"> & {
 };
 
 // ─── Social Posts ─────────────────────────────────────────────────────────────
-export const carouselTemplates = mysqlTable(
+export const carouselTemplates = pgTable(
   "carousel_templates",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     imageUrl: text("imageUrl").notNull(),
     styleBrief: text("styleBrief"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_carousel_templates_userId").on(t.userId)]
 );
@@ -300,11 +304,11 @@ export const carouselTemplates = mysqlTable(
 export type CarouselTemplate = typeof carouselTemplates.$inferSelect;
 export type InsertCarouselTemplate = typeof carouselTemplates.$inferInsert;
 
-export const avatarVideos = mysqlTable(
+export const avatarVideos = pgTable(
   "avatar_videos",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     provider: varchar("provider", { length: 32 }).notNull().default("d-id"),
     title: varchar("title", { length: 512 }).notNull(),
     topic: text("topic"),
@@ -314,12 +318,12 @@ export const avatarVideos = mysqlTable(
     voiceProvider: varchar("voiceProvider", { length: 64 }),
     voiceId: varchar("voiceId", { length: 128 }),
     providerJobId: varchar("providerJobId", { length: 255 }),
-    status: mysqlEnum("status", ["processing", "completed", "failed"])
+    status: text("status", { enum: ["processing", "completed", "failed"] })
       .default("processing")
       .notNull(),
     errorMessage: text("errorMessage"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_avatar_videos_userId").on(t.userId)]
 );
@@ -327,27 +331,29 @@ export const avatarVideos = mysqlTable(
 export type AvatarVideo = typeof avatarVideos.$inferSelect;
 export type InsertAvatarVideo = typeof avatarVideos.$inferInsert;
 
-export const socialPosts = mysqlTable(
+export const socialPosts = pgTable(
   "social_posts",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    channel: mysqlEnum("channel", ["instagram", "linkedin", "newsletter"]).notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    channel: text("channel", { enum: ["instagram", "linkedin", "newsletter"] }).notNull(),
     title: varchar("title", { length: 512 }),
     content: text("content").notNull(),
     imageUrl: text("imageUrl"),
     metadata: text("metadata"),
     scheduledAt: timestamp("scheduledAt"),
     publishedAt: timestamp("publishedAt"),
-    status: mysqlEnum("status", ["draft", "pending_approval", "scheduled", "published", "failed", "rejected"]).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "pending_approval", "scheduled", "published", "failed", "rejected"] }).default("draft").notNull(),
     errorMessage: text("errorMessage"),
     igMediaId: varchar("igMediaId", { length: 100 }),
     contentType: varchar("contentType", { length: 20 }),
-    contentId: int("contentId"),
+    contentId: integer("contentId"),
     storyData: text("storyData"),
-    retryCount: int("retryCount").default(0).notNull(),
+    retryCount: integer("retryCount").default(0).notNull(),
+    approvalToken: varchar("approvalToken", { length: 64 }),
+    approvalExpiresAt: timestamp("approvalExpiresAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     index("idx_social_posts_userId").on(t.userId),
@@ -359,11 +365,11 @@ export type SocialPost = typeof socialPosts.$inferSelect;
 export type InsertSocialPost = typeof socialPosts.$inferInsert;
 
 // ─── Instagram Connections ────────────────────────────────────────────────────
-export const instagramConnections = mysqlTable(
+export const instagramConnections = pgTable(
   "instagram_connections",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull().unique(),
     instagramAccountId: varchar("instagramAccountId", { length: 64 }).notNull(),
     facebookPageId: varchar("facebookPageId", { length: 64 }),
     username: varchar("username", { length: 64 }),
@@ -378,7 +384,7 @@ export const instagramConnections = mysqlTable(
     // "instagram" = token via Instagram Login (needs graph.instagram.com)
     tokenSource: varchar("tokenSource", { length: 16 }).default("facebook"),
     connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_instagram_connections_userId").on(t.userId)]
 );
@@ -387,11 +393,11 @@ export type InstagramConnection = typeof instagramConnections.$inferSelect;
 export type InsertInstagramConnection = typeof instagramConnections.$inferInsert;
 
 // ─── Canva Connections ────────────────────────────────────────────────────────
-export const canvaConnections = mysqlTable(
+export const canvaConnections = pgTable(
   "canva_connections",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull().unique(),
     canvaUserId: varchar("canvaUserId", { length: 128 }).notNull(),
     displayName: varchar("displayName", { length: 255 }),
     email: varchar("email", { length: 320 }),
@@ -400,7 +406,7 @@ export const canvaConnections = mysqlTable(
     refreshToken: text("refreshToken"),
     tokenExpiresAt: timestamp("tokenExpiresAt"),
     connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_canva_connections_userId").on(t.userId)]
 );
@@ -409,11 +415,11 @@ export type CanvaConnection = typeof canvaConnections.$inferSelect;
 export type InsertCanvaConnection = typeof canvaConnections.$inferInsert;
 
 // ─── LinkedIn Connections ───────────────────────────────────────────────────────
-export const linkedinConnections = mysqlTable(
+export const linkedinConnections = pgTable(
   "linkedin_connections",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull().unique(),
     linkedinMemberId: varchar("linkedinMemberId", { length: 128 }).notNull(),
     authorUrn: varchar("authorUrn", { length: 160 }).notNull(),
     name: varchar("name", { length: 255 }),
@@ -423,7 +429,7 @@ export const linkedinConnections = mysqlTable(
     refreshToken: text("refreshToken"),
     tokenExpiresAt: timestamp("tokenExpiresAt"),
     connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_linkedin_connections_userId").on(t.userId)]
 );
@@ -432,11 +438,11 @@ export type LinkedInConnection = typeof linkedinConnections.$inferSelect;
 export type InsertLinkedInConnection = typeof linkedinConnections.$inferInsert;
 
 // ─── HeyGen Digital Twin (video-trained avatar, full-body natural motion) ─────
-export const heygenDigitalTwins = mysqlTable(
+export const heygenDigitalTwins = pgTable(
   "heygen_digital_twins",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull().unique(),
     avatarId: varchar("avatarId", { length: 128 }),
     groupId: varchar("groupId", { length: 128 }).notNull(),
     name: varchar("name", { length: 255 }),
@@ -444,7 +450,7 @@ export const heygenDigitalTwins = mysqlTable(
     status: varchar("status", { length: 32 }).notNull().default("pending_consent"),
     errorMessage: text("errorMessage"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_heygen_digital_twins_userId").on(t.userId)]
 );
@@ -453,20 +459,20 @@ export type HeygenDigitalTwin = typeof heygenDigitalTwins.$inferSelect;
 export type InsertHeygenDigitalTwin = typeof heygenDigitalTwins.$inferInsert;
 
 // ─── Google Search Console Connections ─────────────────────────────────────────
-export const searchConsoleConnections = mysqlTable(
+export const searchConsoleConnections = pgTable(
   "search_console_connections",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull().unique(),
     accessToken: text("accessToken").notNull(),
     refreshToken: text("refreshToken"),
     tokenExpiresAt: timestamp("tokenExpiresAt"),
     // Site the user picked to report on (e.g. "https://example.com/" or "sc-domain:example.com")
     selectedSiteUrl: varchar("selectedSiteUrl", { length: 512 }),
     // JSON array of every verified site the connected Google account can access
-    availableSites: mediumtext("availableSites"),
+    availableSites: text("availableSites"),
     connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_search_console_connections_userId").on(t.userId)]
 );
@@ -475,25 +481,25 @@ export type SearchConsoleConnection = typeof searchConsoleConnections.$inferSele
 export type InsertSearchConsoleConnection = typeof searchConsoleConnections.$inferInsert;
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
-export const featureFlags = mysqlTable("feature_flags", {
-  id: int("id").autoincrement().primaryKey(),
+export const featureFlags = pgTable("feature_flags", {
+  id: serial("id").primaryKey(),
   key: varchar("key", { length: 128 }).notNull().unique(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
   enabled: boolean("enabled").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
 
 // ─── Niche Profiles ───────────────────────────────────────────────────────────
-export const nicheProfiles = mysqlTable("niche_profiles", {
+export const nicheProfiles = pgTable("niche_profiles", {
   id: varchar("id", { length: 64 }).primaryKey(),
   parentId: varchar("parentId", { length: 64 }),
   label: varchar("label", { length: 128 }).notNull(),
-  version: int("version").notNull().default(1),
+  version: integer("version").notNull().default(1),
   subNiches: json("subNiches"),
   visualGrammar: json("visualGrammar"),
   copyTone: json("copyTone"),
@@ -502,15 +508,15 @@ export const nicheProfiles = mysqlTable("niche_profiles", {
   keywords: json("keywords"),
   isActive: boolean("isActive").notNull().default(true),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type NicheProfile = typeof nicheProfiles.$inferSelect;
 
 // ─── Brand Kits ───────────────────────────────────────────────────────────────
-export const brandKits = mysqlTable("brand_kits", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const brandKits = pgTable("brand_kits", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
   companyName: varchar("companyName", { length: 255 }),
   tagline: varchar("tagline", { length: 512 }),
   logoUrl: text("logoUrl"),
@@ -536,18 +542,18 @@ export const brandKits = mysqlTable("brand_kits", {
   nicheId: varchar("nicheId", { length: 64 }),
   subNicheId: varchar("subNicheId", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type BrandKit = typeof brandKits.$inferSelect;
 export type InsertBrandKit = typeof brandKits.$inferInsert;
 
 // ─── Comment Automations (Comment-to-DM) ─────────────────────────────────────
-export const commentAutomations = mysqlTable(
+export const commentAutomations = pgTable(
   "comment_automations",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     igAccountId: varchar("igAccountId", { length: 64 }).notNull(),
     igPostId: varchar("igPostId", { length: 64 }).notNull(),
     postCaption: text("postCaption"),
@@ -558,11 +564,11 @@ export const commentAutomations = mysqlTable(
     dmFollowupMessage: text("dmFollowupMessage"),
     dmLink: text("dmLink"),
     status: varchar("status", { length: 16 }).default("active").notNull(),
-    commentsMatchedCount: int("commentsMatchedCount").default(0).notNull(),
-    dmsSentCount: int("dmsSentCount").default(0).notNull(),
-    linkClicksCount: int("linkClicksCount").default(0).notNull(),
+    commentsMatchedCount: integer("commentsMatchedCount").default(0).notNull(),
+    dmsSentCount: integer("dmsSentCount").default(0).notNull(),
+    linkClicksCount: integer("linkClicksCount").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_comment_automations_userId").on(t.userId)]
 );
@@ -571,18 +577,19 @@ export type CommentAutomation = typeof commentAutomations.$inferSelect;
 export type InsertCommentAutomation = typeof commentAutomations.$inferInsert;
 
 // ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
-export const trendingTopics = mysqlTable(
+export const trendingTopics = pgTable(
   "trending_topics",
   {
-    id: int("id").autoincrement().primaryKey(),
+    id: serial("id").primaryKey(),
     externalId: varchar("externalId", { length: 128 }).notNull(),
     title: varchar("title", { length: 512 }).notNull(),
     description: text("description"),
     source: varchar("source", { length: 16 }).default("serper").notNull(),
-    viralScore: int("viralScore").default(50).notNull(),
+    viralScore: integer("viralScore").default(50).notNull(),
     emotionalAngle: varchar("emotionalAngle", { length: 16 }),
     relevanceWindow: varchar("relevanceWindow", { length: 16 }),
     niches: json("niches").$type<string[]>(),
+    sourceUrl: varchar("sourceUrl", { length: 1000 }),
     collectedAt: timestamp("collectedAt").defaultNow().notNull(),
     expiresAt: timestamp("expiresAt").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -593,18 +600,18 @@ export const trendingTopics = mysqlTable(
 export type TrendingTopic = typeof trendingTopics.$inferSelect;
 export type InsertTrendingTopic = typeof trendingTopics.$inferInsert;
 
-export const userTopicAngles = mysqlTable(
+export const userTopicAngles = pgTable(
   "user_topic_angles",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    trendingTopicId: int("trendingTopicId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    trendingTopicId: integer("trendingTopicId").notNull(),
     suggestedTitle: varchar("suggestedTitle", { length: 512 }).notNull(),
     suggestedHook: text("suggestedHook").notNull(),
     status: varchar("status", { length: 16 }).default("sugerido").notNull(),
     contentRef: varchar("contentRef", { length: 255 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     uniqueIndex("uq_user_topic_angles_user_topic").on(t.userId, t.trendingTopicId),
@@ -616,23 +623,23 @@ export type UserTopicAngle = typeof userTopicAngles.$inferSelect;
 export type InsertUserTopicAngle = typeof userTopicAngles.$inferInsert;
 
 // ─── Post Metrics (Module 1.3) ────────────────────────────────────────────────
-export const postMetrics = mysqlTable(
+export const postMetrics = pgTable(
   "post_metrics",
   {
-    id: int("id").autoincrement().primaryKey(),
-    socialPostId: int("socialPostId").notNull(),
+    id: serial("id").primaryKey(),
+    socialPostId: integer("socialPostId").notNull(),
     collectedAt: timestamp("collectedAt").defaultNow().notNull(),
-    reach: int("reach").default(0).notNull(),
-    saves: int("saves").default(0).notNull(),
-    shares: int("shares").default(0).notNull(),
-    comments: int("comments").default(0).notNull(),
-    likes: int("likes").default(0).notNull(),
-    followsDelta: int("followsDelta").default(0).notNull(),
-    rawScore: int("rawScore").default(0).notNull(),
-    normalizedScore: int("normalizedScore").default(0).notNull(),
-    impressions: int("impressions").default(0).notNull(),
-    videoViews: int("videoViews").default(0).notNull(),
-    avgWatchTimeMs: int("avgWatchTimeMs").default(0).notNull(),
+    reach: integer("reach").default(0).notNull(),
+    saves: integer("saves").default(0).notNull(),
+    shares: integer("shares").default(0).notNull(),
+    comments: integer("comments").default(0).notNull(),
+    likes: integer("likes").default(0).notNull(),
+    followsDelta: integer("followsDelta").default(0).notNull(),
+    rawScore: integer("rawScore").default(0).notNull(),
+    normalizedScore: integer("normalizedScore").default(0).notNull(),
+    impressions: integer("impressions").default(0).notNull(),
+    videoViews: integer("videoViews").default(0).notNull(),
+    avgWatchTimeMs: integer("avgWatchTimeMs").default(0).notNull(),
   },
   (t) => [index("idx_post_metrics_socialPostId").on(t.socialPostId)]
 );
@@ -647,21 +654,21 @@ export type InstagramDemographicsBreakdown = {
   country?: Array<{ dimension: string; value: number }>;
 };
 
-export const instagramAccountInsightsDaily = mysqlTable(
+export const instagramAccountInsightsDaily = pgTable(
   "instagram_account_insights_daily",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     dateKey: varchar("dateKey", { length: 10 }).notNull(),
-    collectedAt: timestamp("collectedAt").defaultNow().onUpdateNow().notNull(),
+    collectedAt: timestamp("collectedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
     demographics: json("demographics").$type<InstagramDemographicsBreakdown>(),
-    websiteClicks: int("websiteClicks").default(0).notNull(),
-    phoneCallClicks: int("phoneCallClicks").default(0).notNull(),
-    emailContacts: int("emailContacts").default(0).notNull(),
-    textMessageClicks: int("textMessageClicks").default(0).notNull(),
-    getDirectionsClicks: int("getDirectionsClicks").default(0).notNull(),
-    totalInteractions: int("totalInteractions").default(0).notNull(),
-    accountsEngaged: int("accountsEngaged").default(0).notNull(),
+    websiteClicks: integer("websiteClicks").default(0).notNull(),
+    phoneCallClicks: integer("phoneCallClicks").default(0).notNull(),
+    emailContacts: integer("emailContacts").default(0).notNull(),
+    textMessageClicks: integer("textMessageClicks").default(0).notNull(),
+    getDirectionsClicks: integer("getDirectionsClicks").default(0).notNull(),
+    totalInteractions: integer("totalInteractions").default(0).notNull(),
+    accountsEngaged: integer("accountsEngaged").default(0).notNull(),
   },
   (t) => [
     uniqueIndex("uq_ig_account_insights_user_date").on(t.userId, t.dateKey),
@@ -673,19 +680,19 @@ export type InstagramAccountInsightsDaily = typeof instagramAccountInsightsDaily
 export type InsertInstagramAccountInsightsDaily = typeof instagramAccountInsightsDaily.$inferInsert;
 
 // ─── Template Performance (Module 1.3) ───────────────────────────────────────
-export const templatePerformance = mysqlTable(
+export const templatePerformance = pgTable(
   "template_performance",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     niche: varchar("niche", { length: 64 }).notNull(),
     templateStyle: varchar("templateStyle", { length: 100 }).notNull(),
     hookType: varchar("hookType", { length: 32 }).notNull(),
     contentFormat: varchar("contentFormat", { length: 32 }).notNull(),
     sourceKind: varchar("sourceKind", { length: 16 }).notNull(),
-    avgScore: int("avgScore").default(0).notNull(),
-    postCount: int("postCount").default(0).notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    avgScore: integer("avgScore").default(0).notNull(),
+    postCount: integer("postCount").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     index("idx_template_perf_userId_niche").on(t.userId, t.niche),
@@ -699,24 +706,24 @@ export type TemplatePerformance = typeof templatePerformance.$inferSelect;
 export type InsertTemplatePerformance = typeof templatePerformance.$inferInsert;
 
 // ─── Editorial Plan Items (Module 2.1) ───────────────────────────────────────
-export const editorialPlanItems = mysqlTable(
+export const editorialPlanItems = pgTable(
   "editorial_plan_items",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    year: int("year").notNull(),
-    month: int("month").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(),
     scheduledDate: varchar("scheduledDate", { length: 10 }).notNull(),
     format: varchar("format", { length: 32 }).notNull(),
     category: varchar("category", { length: 255 }).notNull(),
     suggestedTitle: varchar("suggestedTitle", { length: 512 }).notNull(),
     pauta: text("pauta").notNull(),
     status: varchar("status", { length: 16 }).notNull().default("pending"),
-    socialPostId: int("socialPostId"),
+    socialPostId: integer("socialPostId"),
     contentType: varchar("contentType", { length: 20 }),
-    contentId: int("contentId"),
+    contentId: integer("contentId"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     index("idx_editorial_plan_userId_month").on(t.userId, t.year, t.month),
@@ -727,8 +734,8 @@ export type EditorialPlanItem = typeof editorialPlanItems.$inferSelect;
 export type InsertEditorialPlanItem = typeof editorialPlanItems.$inferInsert;
 
 // ─── Companies (multi-tenant domain gating for the "Artes" tab) ──────────────
-export const companies = mysqlTable("companies", {
-  id: int("id").autoincrement().primaryKey(),
+export const companies = pgTable("companies", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -736,11 +743,11 @@ export const companies = mysqlTable("companies", {
 export type Company = typeof companies.$inferSelect;
 export type InsertCompany = typeof companies.$inferInsert;
 
-export const companyDomains = mysqlTable(
+export const companyDomains = pgTable(
   "company_domains",
   {
-    id: int("id").autoincrement().primaryKey(),
-    companyId: int("companyId").notNull(),
+    id: serial("id").primaryKey(),
+    companyId: integer("companyId").notNull(),
     domain: varchar("domain", { length: 255 }).notNull().unique(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -751,20 +758,20 @@ export type CompanyDomain = typeof companyDomains.$inferSelect;
 export type InsertCompanyDomain = typeof companyDomains.$inferInsert;
 
 // ─── Art Templates (ready-made artwork, editable by company users) ───────────
-export const artTemplates = mysqlTable(
+export const artTemplates = pgTable(
   "art_templates",
   {
-    id: int("id").autoincrement().primaryKey(),
-    companyId: int("companyId"), // null = global, visible to every company
+    id: serial("id").primaryKey(),
+    companyId: integer("companyId"), // null = global, visible to every company
     name: varchar("name", { length: 255 }).notNull(),
     imageUrl: text("imageUrl").notNull(),
     thumbnailUrl: text("thumbnailUrl"),
     canvasJson: json("canvasJson").$type<Record<string, unknown>>(),
-    width: int("width").notNull().default(1080),
-    height: int("height").notNull().default(1350),
-    createdByUserId: int("createdByUserId").notNull(),
+    width: integer("width").notNull().default(1080),
+    height: integer("height").notNull().default(1350),
+    createdByUserId: integer("createdByUserId").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_art_templates_companyId").on(t.companyId)]
 );
@@ -772,16 +779,16 @@ export const artTemplates = mysqlTable(
 export type ArtTemplate = typeof artTemplates.$inferSelect;
 export type InsertArtTemplate = typeof artTemplates.$inferInsert;
 
-export const artworks = mysqlTable(
+export const artworks = pgTable(
   "artworks",
   {
-    id: int("id").autoincrement().primaryKey(),
-    templateId: int("templateId").notNull(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    templateId: integer("templateId").notNull(),
+    userId: integer("userId").notNull(),
     canvasJson: json("canvasJson").$type<Record<string, unknown>>().notNull(),
     imageUrl: text("imageUrl").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     index("idx_artworks_userId").on(t.userId),
@@ -793,16 +800,16 @@ export type Artwork = typeof artworks.$inferSelect;
 export type InsertArtwork = typeof artworks.$inferInsert;
 
 // ─── Content Approvals (link de aprovação pra cliente final) ─────────────────
-export const contentApprovals = mysqlTable(
+export const contentApprovals = pgTable(
   "content_approvals",
   {
-    id: int("id").autoincrement().primaryKey(),
+    id: serial("id").primaryKey(),
     token: varchar("token", { length: 64 }).notNull().unique(),
-    userId: int("userId").notNull(),
-    contentType: mysqlEnum("contentType", ["article", "carousel"]).notNull(),
-    contentId: int("contentId").notNull(),
+    userId: integer("userId").notNull(),
+    contentType: text("contentType", { enum: ["article", "carousel"] }).notNull(),
+    contentId: integer("contentId").notNull(),
     clientName: varchar("clientName", { length: 255 }),
-    status: mysqlEnum("status", ["pending", "approved", "changes_requested"]).default("pending").notNull(),
+    status: text("status", { enum: ["pending", "approved", "changes_requested"] }).default("pending").notNull(),
     clientComment: text("clientComment"),
     respondedAt: timestamp("respondedAt"),
     expiresAt: timestamp("expiresAt").notNull(),
@@ -818,11 +825,11 @@ export type ContentApproval = typeof contentApprovals.$inferSelect;
 export type InsertContentApproval = typeof contentApprovals.$inferInsert;
 
 // ─── Marketing Campaign Hub ──────────────────────────────────────────────────
-export const marketingCampaigns = mysqlTable(
+export const marketingCampaigns = pgTable(
   "marketing_campaigns",
   {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     clientName: varchar("clientName", { length: 255 }),
     objective: varchar("objective", { length: 500 }),
@@ -830,32 +837,32 @@ export const marketingCampaigns = mysqlTable(
     offer: text("offer"),
     description: text("description"),
     channels: json("channels").$type<string[]>().notNull(),
-    status: mysqlEnum("status", ["draft", "planning", "production", "approval", "active", "completed", "archived"]).default("draft").notNull(),
-    budgetCents: int("budgetCents").default(0).notNull(),
-    spentCents: int("spentCents").default(0).notNull(),
-    revenueCents: int("revenueCents").default(0).notNull(),
+    status: text("status", { enum: ["draft", "planning", "production", "approval", "active", "completed", "archived"] }).default("draft").notNull(),
+    budgetCents: integer("budgetCents").default(0).notNull(),
+    spentCents: integer("spentCents").default(0).notNull(),
+    revenueCents: integer("revenueCents").default(0).notNull(),
     startDate: timestamp("startDate"),
     endDate: timestamp("endDate"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [index("idx_marketing_campaigns_user_status").on(t.userId, t.status)]
 );
 
-export const campaignAssets = mysqlTable(
+export const campaignAssets = pgTable(
   "campaign_assets",
   {
-    id: int("id").autoincrement().primaryKey(),
-    campaignId: int("campaignId").notNull(),
-    userId: int("userId").notNull(),
-    assetType: mysqlEnum("assetType", ["article", "carousel", "post", "image", "reel", "story", "ad", "report"]).notNull(),
-    assetId: int("assetId"),
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaignId").notNull(),
+    userId: integer("userId").notNull(),
+    assetType: text("assetType", { enum: ["article", "carousel", "post", "image", "reel", "story", "ad", "report"] }).notNull(),
+    assetId: integer("assetId"),
     externalId: varchar("externalId", { length: 255 }),
     label: varchar("label", { length: 500 }),
-    status: mysqlEnum("status", ["draft", "ready", "pending_approval", "approved", "published", "failed"]).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "ready", "pending_approval", "approved", "published", "failed"] }).default("draft").notNull(),
     metadata: json("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
   (t) => [
     index("idx_campaign_assets_campaign").on(t.campaignId),
@@ -867,3 +874,181 @@ export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
 export type InsertMarketingCampaign = typeof marketingCampaigns.$inferInsert;
 export type CampaignAsset = typeof campaignAssets.$inferSelect;
 export type InsertCampaignAsset = typeof campaignAssets.$inferInsert;
+
+// ─── Reels Scripts ────────────────────────────────────────────────────────────
+export const reelsScripts = pgTable(
+  "reels_scripts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    title: varchar("title", { length: 512 }).notNull(),
+    topic: text("topic").notNull(),
+    tone: varchar("tone", { length: 64 }).notNull().default("educational"),
+    duration: varchar("duration", { length: 32 }).notNull().default("medium"),
+    hook: text("hook").notNull(),
+    reward: text("reward").notNull(),
+    loopClose: text("loopClose").notNull(),
+    caption: text("caption").notNull(),
+    hashtags: text("hashtags").notNull(),
+    scenes: text("scenes").notNull(),
+    sourceTopicAngleId: integer("sourceTopicAngleId"),
+    hookType: varchar("hookType", { length: 32 }),
+    contentFormat: varchar("contentFormat", { length: 32 }).default("reels"),
+    status: text("status", { enum: ["draft", "published"] }).default("draft").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (t) => [index("idx_reels_scripts_userId").on(t.userId)]
+);
+
+// ─── Comment Monitoring (polling de novos comentários + alertas) ─────────────
+export const commentPollState = pgTable(
+  "comment_poll_state",
+  {
+    userId: integer("userId").notNull(),
+    mediaId: varchar("mediaId", { length: 100 }).notNull(),
+    lastKnownCount: integer("lastKnownCount").notNull().default(0),
+    lastCheckedAt: timestamp("lastCheckedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.mediaId] })]
+);
+
+export const commentAlerts = pgTable(
+  "comment_alerts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    mediaId: varchar("mediaId", { length: 100 }).notNull(),
+    mediaCaption: text("mediaCaption"),
+    mediaPermalink: text("mediaPermalink"),
+    previousCount: integer("previousCount").notNull().default(0),
+    newCount: integer("newCount").notNull().default(0),
+    detectedAt: timestamp("detectedAt").defaultNow().notNull(),
+    whatsappSentAt: timestamp("whatsappSentAt"),
+    acknowledgedAt: timestamp("acknowledgedAt"),
+  },
+  (t) => [index("idx_comment_alerts_user_ack").on(t.userId, t.acknowledgedAt)]
+);
+
+// ─── WhatsApp News Digest ────────────────────────────────────────────────────
+export const deliveredNews = pgTable(
+  "delivered_news",
+  {
+    id: serial("id").primaryKey(),
+    user_id: integer("user_id").notNull(),
+    url_key: varchar("url_key", { length: 500 }).notNull(),
+    title: varchar("title", { length: 500 }),
+    delivered_at: timestamp("delivered_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("uq_delivered_news_user_url").on(t.user_id, t.url_key),
+    index("idx_delivered_news_user_delivered").on(t.user_id, t.delivered_at),
+  ]
+);
+
+export const userDigestSettings = pgTable("user_digest_settings", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull().unique(),
+  whatsapp_number: varchar("whatsapp_number", { length: 20 }).notNull(),
+  digest_hour: smallint("digest_hour").notNull().default(6),
+  digest_minute: smallint("digest_minute").notNull().default(50),
+  enabled: boolean("enabled").notNull().default(true),
+  last_sent_date: varchar("last_sent_date", { length: 12 }),
+  template_name: varchar("template_name", { length: 100 }).notNull().default("envio_de_noticias_diario"),
+  template_language: varchar("template_language", { length: 20 }).notNull().default("pt_BR"),
+  reply_webhook_url: varchar("reply_webhook_url", { length: 500 }),
+  created_at: timestamp("created_at").defaultNow(),
+});
+
+export const whatsappDigestSessions = pgTable(
+  "whatsapp_digest_sessions",
+  {
+    id: serial("id").primaryKey(),
+    campaign_id: varchar("campaign_id", { length: 36 }).notNull(),
+    user_id: integer("user_id").notNull(),
+    phone_number: varchar("phone_number", { length: 20 }).notNull(),
+    news_items: text("news_items").notNull(),
+    message_text: text("message_text"),
+    sent_at: timestamp("sent_at").notNull(),
+    expires_at: timestamp("expires_at").notNull(),
+    user_response: varchar("user_response", { length: 5 }),
+    chosen_index: smallint("chosen_index"),
+    responded_at: timestamp("responded_at"),
+  },
+  (t) => [
+    index("idx_whatsapp_digest_phone_expires").on(t.phone_number, t.expires_at),
+    index("idx_whatsapp_digest_campaign").on(t.campaign_id),
+  ]
+);
+
+// ─── Style Profiles (análise de estilo de perfis do Instagram) ───────────────
+export const styleProfiles = pgTable(
+  "style_profiles",
+  {
+    id: serial("id").primaryKey(),
+    user_id: integer("user_id").notNull(),
+    profile_handle: varchar("profile_handle", { length: 100 }).notNull(),
+    profile_name: varchar("profile_name", { length: 255 }),
+    profile_picture_url: text("profile_picture_url"),
+    source: varchar("source", { length: 20 }).notNull().default("scrape"),
+    analysis_json: text("analysis_json").notNull(),
+    created_at: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [index("idx_style_profiles_user_created").on(t.user_id, t.created_at)]
+);
+
+// ─── Agentes internos (server/agents) ─────────────────────────────────────────
+// Cada conversa com um agente é uma thread; as mensagens guardam os blocos de
+// conteúdo da API do Claude exatamente como vieram (histórico só cresce).
+export const agentThreads = pgTable(
+  "agent_threads",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    agentSlug: varchar("agentSlug", { length: 64 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    status: text("status", { enum: ["idle", "running", "failed"] }).default("idle").notNull(),
+    lastError: text("lastError"),
+    // "task": rodada disparada por uma tela (auditoria, planejamento…), que
+    // termina com um resultado estruturado em `result` (ver server/agents/tasks.ts).
+    mode: text("mode", { enum: ["chat", "task"] }).default("chat").notNull(),
+    taskInput: json("taskInput").$type<Record<string, unknown>>(),
+    result: json("result").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (t) => [index("idx_agent_threads_user_agent").on(t.userId, t.agentSlug)]
+);
+
+export const agentMessages = pgTable(
+  "agent_messages",
+  {
+    id: serial("id").primaryKey(),
+    threadId: integer("threadId").notNull(),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    content: json("content").$type<unknown[]>().notNull(),
+    // Só nas respostas finais de um turno: o que o usuário decidiu sobre a entrega.
+    approval: text("approval", { enum: ["pending", "approved", "rejected"] }),
+    usage: json("usage").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_agent_messages_thread").on(t.threadId)]
+);
+
+// Memória compartilhada dos agentes (voice.md, swipe.md, log.md, plan.md…),
+// equivalente ao ~/.claude/instagram/ das skills originais.
+export const agentFiles = pgTable(
+  "agent_files",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    path: varchar("path", { length: 128 }).notNull(),
+    content: text("content").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (t) => [uniqueIndex("uq_agent_files_user_path").on(t.userId, t.path)]
+);
+
+export type AgentThread = typeof agentThreads.$inferSelect;
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type AgentFile = typeof agentFiles.$inferSelect;
