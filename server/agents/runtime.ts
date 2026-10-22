@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { getAgent, type AgentDefinition } from "./registry";
 import * as store from "./store";
-import { TASKS, type TaskDefinition } from "./tasks";
+import { TASKS, planContext, planItemSchema, type PlanResult, type TaskDefinition } from "./tasks";
 import { AGENT_TOOLS, executeTool, loadSkillText } from "./tools";
 
 type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
@@ -180,4 +180,50 @@ export async function sendUserMessage(userId: number, threadId: number, text: st
   await store.addMessage(threadId, "user", [...interrupted, { type: "text", text }]);
   await store.setThreadStatus(threadId, "running");
   void runTurn(userId, threadId);
+}
+
+/**
+ * Refaz uma pauta do plano sem rodar a tarefa inteira: uma chamada só, com a
+ * memória da equipe e o resto do plano como contexto, para a nova pauta não
+ * repetir as outras.
+ */
+export async function regeneratePlanItem(userId: number, plan: PlanResult, index: number, feedback: string | undefined) {
+  const agent = getAgent("planejamento")!;
+  const current = plan.items[index];
+  const memory = await Promise.all(["estrategia.md", "marca.md", "voice.md"].map(async (path) => {
+    const content = await store.readFile(userId, path);
+    return content ? `## ${path}\n${content}` : "";
+  }));
+  const context = await planContext(userId);
+  const { $schema: _, ...schema } = z.toJSONSchema(planItemSchema, { io: "input" }) as Record<string, unknown>;
+  const others = plan.items.map((it, i) => (i === index ? null : `- ${it.date} ${it.time} · ${it.format} · ${it.type} · ${it.title}`)).filter(Boolean);
+  const response = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system: await systemPrompt(agent),
+    tools: [{ name: "submit_item", description: "Registra a nova pauta.", input_schema: schema as Anthropic.Beta.Messages.BetaTool["input_schema"] }],
+    tool_choice: { type: "tool", name: "submit_item" },
+    messages: [{
+      role: "user",
+      content: `A equipe não gostou de uma pauta do plano "${plan.periodLabel}" e quer outra no lugar. Crie uma pauta NOVA (outro tema e outro ângulo, não uma reescrita da atual), seguindo a estratégia e a memória abaixo, e registre com submit_item.
+
+PAUTA ATUAL (a ser substituída):
+${JSON.stringify(current, null, 2)}
+
+${feedback ? `O QUE A EQUIPE DISSE (obrigatório respeitar): ${feedback}\n` : ""}
+Mantenha o dia ${current.date} e o horário ${current.time}, salvo se o pedido da equipe disser outra coisa. Não repita tema nem formato das pautas vizinhas. Se não houver pedido de collab, deixe collab como null.
+
+LÓGICA DO PLANO: ${plan.strategy}
+
+OUTRAS PAUTAS DO PLANO (não repetir):
+${others.join("\n")}
+
+${memory.filter(Boolean).join("\n\n")}
+${context ? `\nDADOS DA CONTA:\n${context}` : ""}`,
+    }],
+  });
+  const tool = response.content.find((b) => b.type === "tool_use");
+  const parsed = planItemSchema.safeParse(tool?.type === "tool_use" ? tool.input : null);
+  if (!parsed.success) throw new Error("O agente não devolveu uma pauta válida. Tente de novo.");
+  return parsed.data;
 }

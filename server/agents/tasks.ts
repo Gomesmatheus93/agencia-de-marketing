@@ -125,7 +125,7 @@ const planResult = z.object({
 });
 
 /** Resumo da última auditoria e da última análise de marca da conta, para o planejamento. */
-async function planContext(userId: number): Promise<string | null> {
+export async function planContext(userId: number): Promise<string | null> {
   const { latestTaskResult } = await import("./store");
   const [audit, brand] = await Promise.all([latestTaskResult(userId, "auditoria"), latestTaskResult(userId, "marca")]);
   const parts: string[] = [];

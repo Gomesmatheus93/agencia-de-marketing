@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Bot, CalendarCheck, CalendarRange, Check, GripVertical, Handshake, Loader2, MessageSquareText, Pencil, Sparkles } from "lucide-react";
+import { Bot, CalendarCheck, CalendarRange, Check, GripVertical, Handshake, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -71,6 +71,12 @@ export default function Planning() {
   const [dragging, setDragging] = useState<number | null>(null);
   const [overDay, setOverDay] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ index: number; item: PlanItem } | null>(null);
+  const [redoing, setRedoing] = useState<{ index: number; item: PlanItem } | null>(null);
+  const [redoFeedback, setRedoFeedback] = useState("");
+  const regenerate = trpc.agents.regeneratePlanItem.useMutation({
+    onSuccess: ({ item }) => { toast.success(`Nova pauta: ${item.title}`); setRedoing(null); setRedoFeedback(""); t.refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
   const updateItem = trpc.agents.updatePlanItem.useMutation({
     onSuccess: () => t.refetch(),
     onError: (e) => toast.error(e.message),
@@ -225,11 +231,14 @@ export default function Planning() {
                             <p className="mt-1"><b>Legenda:</b> {item.captionIdea}</p>
                             {item.notes && <p className="mt-1"><b>Obs.:</b> {item.notes}</p>}
                           </details>
-                          <div className="mt-2 flex items-center justify-between">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                             {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : (
                               <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setEditing({ index, item: { ...item } })}><Pencil className="h-3 w-3" />editar</button>
                             )}
-                            <button className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item)}><MessageSquareText className="h-3 w-3" />criar com agente</button>
+                            {!sent.has(index) && (
+                              <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setRedoing({ index, item })}><RefreshCw className="h-3 w-3" />refazer</button>
+                            )}
+                            <button className="ml-auto inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item)}><MessageSquareText className="h-3 w-3" />criar com agente</button>
                           </div>
                         </div>
                       ))}
@@ -271,6 +280,27 @@ export default function Planning() {
           )}
         </div>
       </main>
+      <Dialog open={redoing !== null} onOpenChange={(o) => { if (!o && !regenerate.isPending) setRedoing(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Refazer pauta</DialogTitle></DialogHeader>
+          {redoing && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                O Agente de Planejamento cria outra pauta para <b className="text-foreground">{fmtDay(redoing.item.date)}</b> no lugar de “{redoing.item.title}”, sem repetir as outras da semana.
+              </p>
+              <label className="block space-y-1 text-xs font-medium">O que não ficou bom / o que você quer (opcional)
+                <Textarea rows={3} value={redoFeedback} onChange={(e) => setRedoFeedback(e.target.value)} placeholder="Ex.: muito parecido com o de terça; quero um reel com depoimento de cliente" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRedoing(null)} disabled={regenerate.isPending}>Cancelar</Button>
+                <Button onClick={() => regenerate.mutate({ threadId: t.threadId!, index: redoing.index, feedback: redoFeedback.trim() || undefined })} disabled={regenerate.isPending}>
+                  {regenerate.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Criando…</> : <><Sparkles className="mr-2 h-4 w-4" />Refazer</>}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       {editing && (
         <PlanItemEditor
           item={editing.item}

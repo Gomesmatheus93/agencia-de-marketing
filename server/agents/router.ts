@@ -3,7 +3,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { AGENTS, getAgent } from "./registry";
-import { sendUserMessage } from "./runtime";
+import { regeneratePlanItem, sendUserMessage } from "./runtime";
 import { TASKS, planItemSchema, type PlanResult } from "./tasks";
 import * as store from "./store";
 
@@ -118,6 +118,23 @@ export const agentsRouter = router({
       const items = plan.items.map((it, i) => (i === input.index ? input.item : it));
       await store.setThreadResult(thread.id, { ...plan, items });
       return { ok: true };
+    }),
+
+  /** Troca uma pauta por outra criada pelo Agente de Planejamento. */
+  regeneratePlanItem: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), index: z.number().int().min(0), feedback: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const plan = thread.result as PlanResult | null;
+      if (thread.agentSlug !== "planejamento" || !plan?.items[input.index]) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pauta não encontrada." });
+      }
+      const item = await regeneratePlanItem(ctx.user.id, plan, input.index, input.feedback || undefined)
+        .catch((e) => { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: (e as Error).message }); });
+      // Relê o plano: a equipe pode ter mexido em outra pauta enquanto o agente trabalhava.
+      const fresh = (await ownThread(ctx.user.id, input.threadId)).result as PlanResult;
+      await store.setThreadResult(thread.id, { ...fresh, items: fresh.items.map((it, i) => (i === input.index ? item : it)) });
+      return { item };
     }),
 
   threads: protectedProcedure
