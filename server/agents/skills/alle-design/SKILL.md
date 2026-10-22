@@ -65,8 +65,10 @@ Em fundo laranja, o logo e o raio são **sempre** as versões brancas (o raio
 colorido tem metade laranja e some no fundo laranja).
 
 **Assinatura dos fundos** (a mesma dos templates "Alle Laranja" e "Alle Roxo"):
-- Roxo: fundo `#7B2FBE` com um raio geométrico grande em `#5B1D9A` atrás do texto:
-  `<polygon points="680,80 900,80 540,620 760,620 340,1280 880,660 660,660" fill="#5B1D9A"/>`
+- Roxo: fundo `#7B2FBE` com o raio da marca grande e bem sutil atrás do texto,
+  do lado direito (aprovado pela equipe; em 4:5, ajuste x/y para outros formatos):
+  `<image href="alle:raio-branco" x="560" y="140" width="640" height="1021" opacity="0.09"/>`
+  Nunca desenhe o raio à mão com `<polygon>`: as linhas se cruzam e fica feio.`
 - Laranja: fundo `#F47B20` com dois triângulos no canto superior direito:
   `<polygon points="720,0 1080,0 1080,740 860,880 640,500" fill="#CC5500" opacity="0.45"/>`
   `<polygon points="840,0 1080,0 1080,500 960,580 800,240" fill="#F99040" opacity="0.5"/>`
