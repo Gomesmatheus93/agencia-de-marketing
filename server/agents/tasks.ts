@@ -264,12 +264,74 @@ TAREFA: criar a sequência de stories do dia da Alle Energia, com as artes pront
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 };
 
+// ─── Marca (estudar / conferir o padrão) ──────────────────────────────────────
+
+const brandInput = z.object({
+  mode: z.enum(["estudar", "conferir"]),
+  postCount: z.number().int().min(5).max(50).default(20),
+  focus: z.string().trim().max(2000).optional(),
+});
+
+const brandResult = z.object({
+  mode: z.enum(["estudar", "conferir"]),
+  summary: z.string().describe("O essencial em 2 a 4 frases."),
+  dataSource: z.enum(["instagram", "perfil_publico", "sem_dados"]),
+  confidence: z.enum(["alta", "média", "baixa"]),
+  profile: z.object({
+    offer: z.string().describe("O que a Alle vende e para quem, como aparece nos posts."),
+    tone: z.string(),
+    voiceExamples: z.array(z.string()).max(3).describe("Trechos reais de legendas que soam mais 'Alle'."),
+    pillars: z.array(z.object({ name: z.string(), share: z.number() })).max(8),
+    captionPattern: z.string(),
+    ctas: z.array(z.string()).max(6),
+    palette: z.array(z.object({ hex: z.string(), role: z.string() })).max(8),
+    typography: z.string(),
+    layouts: z.string(),
+    photoStyle: z.string(),
+    logoUsage: z.string(),
+    cadence: z.string().describe("Formatos, frequência, dias e horários típicos."),
+    strategyGaps: z.array(z.string()).describe("Onde o que é publicado diverge de estrategia.md."),
+  }).nullable().describe("Preencha no modo estudar; null no modo conferir."),
+  overallScore: z.number().min(0).max(100).nullable().describe("Nota média de aderência no modo conferir; null no modo estudar."),
+  checks: z.array(z.object({
+    date: z.string(),
+    format: z.string(),
+    hook: z.string(),
+    permalink: z.string().nullable(),
+    imageUrl: z.string().nullable(),
+    score: z.number().min(0).max(100),
+    scores: z.object({ estrategia: z.number(), voz: z.number(), visual: z.number().nullable(), execucao: z.number() }),
+    onBrand: z.array(z.string()).max(4),
+    offBrand: z.array(z.string()).max(5),
+    fix: z.string().nullable(),
+  })).max(50).describe("Um item por post no modo conferir; vazio no modo estudar."),
+  recommendations: z.array(z.string()).max(6),
+  assumptions: z.array(z.string()),
+});
+
+export const brandTask: TaskDefinition<typeof brandInput, typeof brandResult> = {
+  agentSlug: "marca",
+  input: brandInput,
+  result: brandResult,
+  title: (i) => (i.mode === "estudar" ? `Estudo da marca (${i.postCount} posts)` : `Conferência do padrão (${i.postCount} posts)`),
+  brief: (i) => `${TASK_RULES}
+
+TAREFA: ${i.mode === "estudar" ? "ESTUDAR a marca Alle Energia" : "CONFERIR se os posts da Alle Energia seguem o padrão"}, seguindo a sua skill (modo ${i.mode.toUpperCase()}).
+- Leia estrategia.md, marca.md e voice.md (os que existirem) e a identidade da marca.
+- Analise os últimos ${i.postCount} posts. Se o Instagram estiver conectado, use get_instagram_posts e olhe as imagens com view_image. Se não estiver, tente scan_public_instagram com o @ da marca; se também falhar, entregue com dataSource "sem_dados", confiança baixa e explique em summary que é preciso conectar o Instagram.
+${i.mode === "estudar"
+    ? "- Grave o retrato completo em marca.md (substitua o anterior) e preencha \"profile\". \"checks\" fica vazio e overallScore null."
+    : "- Dê a nota de cada post pela tabela da skill e preencha \"checks\" (imageUrl e permalink do post quando houver) e overallScore. \"profile\" fica null. Registre a conferência em log.md."}
+${i.focus ? `\nPEDIDO DA EQUIPE: ${i.focus}` : ""}`,
+};
+
 export const TASKS: Record<string, TaskDefinition> = {
   [auditTask.agentSlug]: auditTask,
   [planTask.agentSlug]: planTask,
   [carouselTask.agentSlug]: carouselTask,
   [postTask.agentSlug]: postTask,
   [storiesTask.agentSlug]: storiesTask,
+  [brandTask.agentSlug]: brandTask,
 };
 
 export type AuditResult = z.infer<typeof auditResult>;
@@ -277,3 +339,4 @@ export type PlanResult = z.infer<typeof planResult>;
 export type CarouselResult = z.infer<typeof carouselResult>;
 export type PostResult = z.infer<typeof postResult>;
 export type StoriesResult = z.infer<typeof storiesResult>;
+export type BrandResult = z.infer<typeof brandResult>;

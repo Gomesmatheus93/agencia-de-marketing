@@ -36,6 +36,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   Building2,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -67,6 +68,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-slate-500 to-slate-600", labelKey: "moreTools" as const, descKey: "moreToolsDesc" as const, group: "create" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-alle-orange to-alle-orange-light", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "publish" as const },
   { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-alle-orange to-alle-orange-light", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "publish" as const },
+  { id: "brandCheck", icon: ShieldCheck, path: "/dashboard/marca", color: "from-alle-purple to-alle-orange", labelKey: "brandCheck" as const, descKey: "brandCheckDesc" as const, group: "measure" as const },
   { id: "audit", icon: ClipboardCheck, path: "/dashboard/auditoria", color: "from-alle-orange to-alle-orange-light", labelKey: "audit" as const, descKey: "auditDesc" as const, group: "measure" as const },
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-alle-orange to-alle-orange-light", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "measure" as const },
   { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-alle-orange to-alle-orange-light", labelKey: "report" as const, descKey: "reportDesc" as const, group: "measure" as const },

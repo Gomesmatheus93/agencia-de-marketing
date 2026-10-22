@@ -54,6 +54,7 @@ export const agentsRouter = router({
       if (slug === "carrossel" && r.slides) { images = r.slides.slice(0, 4).map((x: any) => x.imageUrl); summary = `${r.slides.length} slides`; }
       if (slug === "stories" && r.frames) { images = r.frames.slice(0, 4).map((x: any) => x.imageUrl); summary = `${r.frames.length} quadros`; }
       if (slug === "legendas" && r.imageUrl) { images = [r.imageUrl]; summary = r.title ?? null; }
+      if (slug === "marca" && r.summary) summary = r.overallScore != null ? `Nota ${Math.round(r.overallScore)}/100 · ${r.summary}` : r.summary;
       out[slug] = { threadId: thread.id, title: thread.title, status: thread.status, createdAt: thread.createdAt, summary, images };
     }));
     return out;

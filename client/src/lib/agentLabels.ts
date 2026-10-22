@@ -12,4 +12,5 @@ export const TOOL_LABELS: Record<string, string> = {
   view_image: "Olhou uma imagem",
   render_design: "Desenhou uma arte",
   search_photos: "Buscou fotos",
+  scan_public_instagram: "Olhou o perfil público",
 };

@@ -910,3 +910,24 @@ Sinais: predominância de fotos pessoais, retratos, lifestyle, viagens, gastrono
     rawPostImageUrls: rawPostDataUrls,
   };
 }
+
+/**
+ * Imagens recentes de um perfil público (sem a API da Meta), já baixadas.
+ * Usado pelo Agente de Marca enquanto o Instagram da marca não está conectado.
+ */
+export async function fetchPublicInstagramSnapshot(
+  username: string,
+  maxImages = 9
+): Promise<{ username: string; name?: string; images: Array<{ cdnUrl: string; dataUrl?: string }> }> {
+  const clean = username.replace(/^@/, "").trim();
+  const page = await fetchPublicProfilePage(clean);
+  let urls = page.postImageUrls ?? [];
+  if (urls.length < 3) urls = [...urls, ...(await fetchViaThirdPartyViewer(clean))];
+  urls = [...new Set(urls)].slice(0, maxImages);
+  const loaded = await Promise.all(urls.map((u) => loadImage(u)));
+  return {
+    username: clean,
+    name: page.name,
+    images: loaded.filter((x): x is ImageLoadResult => Boolean(x)).map((x) => ({ cdnUrl: x.cdnUrl, dataUrl: x.dataUrl })),
+  };
+}

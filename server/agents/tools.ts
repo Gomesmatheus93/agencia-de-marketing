@@ -146,6 +146,16 @@ export const AGENT_TOOLS: Tool[] = [
     },
   },
   {
+    name: "scan_public_instagram",
+    description:
+      "Plano B quando o Instagram da marca não está conectado: tenta ver as imagens recentes de um perfil público (sem legendas nem métricas). Pode falhar, porque o Instagram bloqueia leituras de fora; nesse caso, diga que é preciso conectar o Instagram.",
+    input_schema: {
+      type: "object",
+      properties: { username: { type: "string", description: "Ex.: alleenergia" } },
+      required: ["username"],
+    },
+  },
+  {
     name: "view_image",
     description: "Abre uma imagem por URL (ex.: a capa de um post do Instagram) para você ver o visual.",
     input_schema: {
@@ -388,6 +398,8 @@ export async function executeTool(
         if (!photos.length) return fail("Nenhuma foto encontrada. Tente outros termos.");
         return ok(JSON.stringify(photos.map(({ url, thumb, width, height, author, source }) => ({ url, preview: thumb, tamanho: `${width}x${height}`, autor: author, fonte: source })), null, 2));
       }
+      case "scan_public_instagram":
+        return await scanPublicInstagram(String(i.username ?? ""));
       case "view_image":
         return { content: await viewImage(String(i.url ?? "")), isError: false };
       default:
@@ -399,6 +411,25 @@ export async function executeTool(
     console.error(`[agents] ferramenta ${name} falhou:`, error);
     return fail(`Falha ao executar ${name}: ${(error as Error).message}`);
   }
+}
+
+async function scanPublicInstagram(username: string): Promise<{ content: ToolResultContent; isError: boolean }> {
+  if (!/^@?[A-Za-z0-9._]{1,30}$/.test(username)) throw new ToolError("Usuário do Instagram inválido.");
+  const { fetchPublicInstagramSnapshot } = await import("../_core/instagramStyleAgent");
+  const snap = await fetchPublicInstagramSnapshot(username, 9);
+  const images = snap.images.filter((img) => img.dataUrl);
+  if (!images.length) {
+    return fail(`Não consegui ver o perfil público @${snap.username}: o Instagram bloqueou a leitura de fora. Para analisar o feed, o Instagram da marca precisa estar conectado na plataforma.`);
+  }
+  const blocks = await Promise.all(images.map(async (img) => {
+    const b64 = img.dataUrl!.split(",")[1];
+    const small = await sharp(Buffer.from(b64, "base64")).resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+    return { type: "image" as const, source: { type: "base64" as const, media_type: "image/jpeg" as const, data: small.toString("base64") } };
+  }));
+  return {
+    isError: false,
+    content: [{ type: "text", text: `Perfil público @${snap.username}: ${images.length} imagens recentes (sem legendas nem métricas), da mais nova para a mais antiga.` }, ...blocks],
+  };
 }
 
 const RenderDesignInput = z.object({

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle, ArrowLeft, AtSign, Bot, CalendarRange, Check, CircleDashed, ClipboardCheck, Clapperboard, Copy,
   FileText, Flame, GalleryHorizontal, Loader2, MessageCircle, Plus, Recycle, Reply, Send, Trash2, Type, UserRound,
-  Wand2, Wrench, X,
+  ShieldCheck, Wand2, Wrench, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import { Streamdown } from "streamdown";
 import { Link, useLocation, useParams } from "wouter";
 
 const AGENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  marca: ShieldCheck,
   auditoria: ClipboardCheck,
   planejamento: CalendarRange,
   legendas: Type,

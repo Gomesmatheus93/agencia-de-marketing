@@ -15,6 +15,17 @@ export type AgentDefinition = {
 
 export const AGENTS: AgentDefinition[] = [
   {
+    slug: "marca",
+    name: "Agente de Marca",
+    role: "Guardião do padrão",
+    description: "Estuda o Instagram da Alle para entender a marca (voz, pilares, visual) e confere se os posts seguem o padrão e a estratégia.",
+    skill: "alle-brand",
+    starters: [
+      "Estude o Instagram da Alle e monte o retrato da marca",
+      "Confira se os últimos posts estão no padrão",
+    ],
+  },
+  {
     slug: "auditoria",
     name: "Agente de Auditoria",
     role: "Análise de desempenho",
