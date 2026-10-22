@@ -57,21 +57,24 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | `alle:logo` | 1200×353 | fundo claro |
 | `alle:logo-branco` | 1200×353 | fundo roxo, laranja ou foto escura |
 | `alle:raio` | 376×600 | o raio sozinho, fundo claro |
-| `alle:raio-branco` | 376×600 | o raio sozinho, fundo escuro |
+| `alle:raio-branco` | 376×600 | o raio sozinho (branco e laranja), fundo roxo ou escuro |
+| `alle:raio-mono` | 376×600 | o raio sozinho, todo branco: fundo laranja e marca d'água |
 
 Logo completo com 300–380 px de largura no canto superior esquerdo da capa e
 do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.
-Em fundo laranja, o logo e o raio são **sempre** as versões brancas (o raio
-colorido tem metade laranja e some no fundo laranja).
+Em fundo laranja, o raio é **sempre** o `alle:raio-mono` (o raio-branco tem
+metade laranja e essa metade some no fundo laranja).
+
+Sem numeração nos slides: nada de contador "2/7" no topo nem número gigante
+de marca d'água no fundo (pedido da equipe).
 
 **Assinatura dos fundos** (a mesma dos templates "Alle Laranja" e "Alle Roxo"):
 - Roxo: fundo `#7B2FBE` com o raio da marca grande e bem sutil atrás do texto,
   do lado direito (aprovado pela equipe; em 4:5, ajuste x/y para outros formatos):
-  `<image href="alle:raio-branco" x="560" y="140" width="640" height="1021" opacity="0.09"/>`
+  `<image href="alle:raio-mono" x="560" y="140" width="640" height="1021" opacity="0.09"/>`
   Nunca desenhe o raio à mão com `<polygon>`: as linhas se cruzam e fica feio.`
-- Laranja: fundo `#F47B20` com dois triângulos no canto superior direito:
-  `<polygon points="720,0 1080,0 1080,740 860,880 640,500" fill="#CC5500" opacity="0.45"/>`
-  `<polygon points="840,0 1080,0 1080,500 960,580 800,240" fill="#F99040" opacity="0.5"/>`
+- Laranja: fundo `#F47B20` com o mesmo raio grande, todo branco e sutil:
+  `<image href="alle:raio-mono" x="560" y="140" width="640" height="1021" opacity="0.14"/>`
 - Claro: fundo `#FFF8F2`, texto `#1E0A01`, destaques em `#7c00ae` e `#ff7300`.
 
 Alterne roxo e laranja ao longo de um carrossel (ex.: capa roxa, miolo
