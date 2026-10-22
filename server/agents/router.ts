@@ -4,7 +4,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { AGENTS, getAgent } from "./registry";
 import { sendUserMessage } from "./runtime";
-import { TASKS, type PlanResult } from "./tasks";
+import { TASKS, planItemSchema, type PlanResult } from "./tasks";
 import * as store from "./store";
 
 const filePath = z.string().regex(/^[a-z0-9][a-z0-9_\-./]{0,99}\.(md|txt|tsv|json)$/i).refine((p) => !p.includes(".."));
@@ -104,6 +104,20 @@ export const agentsRouter = router({
       pick.forEach((i) => sent.add(i));
       await store.setThreadResult(thread.id, { ...plan, calendarSent: [...sent] });
       return { added: pick.length };
+    }),
+
+  /** Edição manual de uma pauta do plano (mover de dia, mudar o conteúdo). */
+  updatePlanItem: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), index: z.number().int().min(0), item: planItemSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const plan = thread.result as PlanResult | null;
+      if (thread.agentSlug !== "planejamento" || !plan?.items[input.index]) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pauta não encontrada." });
+      }
+      const items = plan.items.map((it, i) => (i === input.index ? input.item : it));
+      await store.setThreadResult(thread.id, { ...plan, items });
+      return { ok: true };
     }),
 
   threads: protectedProcedure

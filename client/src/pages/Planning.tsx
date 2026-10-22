@@ -3,11 +3,12 @@ import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Bot, CalendarCheck, CalendarRange, Check, Handshake, Loader2, MessageSquareText, Sparkles } from "lucide-react";
+import { Bot, CalendarCheck, CalendarRange, Check, GripVertical, Handshake, Loader2, MessageSquareText, Pencil, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -67,6 +68,20 @@ export default function Planning() {
   const [goal, setGoal] = useState<"vendas" | "equilibrado" | "alcance" | "engajamento">("vendas");
   const [notes, setNotes] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [overDay, setOverDay] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ index: number; item: PlanItem } | null>(null);
+  const updateItem = trpc.agents.updatePlanItem.useMutation({
+    onSuccess: () => t.refetch(),
+    onError: (e) => toast.error(e.message),
+  });
+  const saveItem = (index: number, item: PlanItem, message: string) =>
+    updateItem.mutate({ threadId: t.threadId!, index, item: { ...item, addresses: item.addresses ?? null } }, { onSuccess: () => toast.success(message) });
+  const moveTo = (index: number, day: string) => {
+    const item = plan?.items[index];
+    if (!item || item.date === day) return;
+    saveItem(index, { ...item, date: day }, `Movida para ${fmtDay(day)}`);
+  };
 
   const plan = t.result;
   const sent = new Set(plan?.calendarSent ?? []);
@@ -81,7 +96,8 @@ export default function Planning() {
     map.forEach((list) => list.sort((a, b) => a.item.time.localeCompare(b.item.time)));
     return map;
   }, [plan]);
-  const days = plan ? daysBetween(plan.startDate, plan.endDate) : [];
+  // Dias do período mais qualquer dia para onde uma pauta tenha sido movida fora dele.
+  const days = plan ? [...new Set([...daysBetween(plan.startDate, plan.endDate), ...plan.items.map((it) => it.date)])].sort() : [];
 
   const createWithAgent = (item: PlanItem) => {
     const { agent, screen } = FORMAT_STYLE[item.format];
@@ -162,7 +178,7 @@ export default function Planning() {
               </section>
 
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-muted-foreground">{plan.items.length} pautas · {sent.size} no calendário</p>
+                <p className="text-sm text-muted-foreground">{plan.items.length} pautas · {sent.size} no calendário · arraste os cards para trocar o dia ou use "editar"</p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="gap-2" disabled={!selected.size || toCalendar.isPending} onClick={() => toCalendar.mutate({ threadId: t.threadId!, indexes: [...selected] })}>
                     <CalendarCheck className="h-4 w-4" />Enviar selecionadas ({selected.size})
@@ -175,12 +191,25 @@ export default function Planning() {
 
               <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
                 {days.map((day) => (
-                  <div key={day} className="min-h-[140px] rounded-2xl border bg-card/60 p-2.5">
+                  <div
+                    key={day}
+                    onDragOver={(e) => { e.preventDefault(); setOverDay(day); }}
+                    onDragLeave={() => setOverDay((d) => (d === day ? null : d))}
+                    onDrop={(e) => { e.preventDefault(); if (dragging !== null) moveTo(dragging, day); setDragging(null); setOverDay(null); }}
+                    className={cn("min-h-[140px] rounded-2xl border bg-card/60 p-2.5 transition-colors", overDay === day && dragging !== null && "border-primary bg-primary/5")}
+                  >
                     <p className="mb-2 text-xs font-semibold capitalize text-muted-foreground">{fmtDay(day)}</p>
                     <div className="space-y-2">
                       {(byDay.get(day) ?? []).map(({ item, index }) => (
-                        <div key={index} className={cn("rounded-xl border bg-background p-2.5 text-xs shadow-sm", selected.has(index) && "ring-2 ring-primary", sent.has(index) && "opacity-70")}>
+                        <div
+                          key={index}
+                          draggable
+                          onDragStart={(e) => { setDragging(index); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); }}
+                          onDragEnd={() => { setDragging(null); setOverDay(null); }}
+                          className={cn("cursor-grab rounded-xl border bg-background p-2.5 text-xs shadow-sm active:cursor-grabbing", selected.has(index) && "ring-2 ring-primary", sent.has(index) && "opacity-70", dragging === index && "opacity-40")}
+                        >
                           <div className="mb-1.5 flex items-center gap-1.5">
+                            <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
                             <input type="checkbox" checked={selected.has(index)} disabled={sent.has(index)} onChange={() => toggle(index)} aria-label="Selecionar pauta" />
                             <span className="font-mono">{item.time}</span>
                             <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[item.format].className)}>{FORMAT_STYLE[item.format].label}</span>
@@ -197,7 +226,9 @@ export default function Planning() {
                             {item.notes && <p className="mt-1"><b>Obs.:</b> {item.notes}</p>}
                           </details>
                           <div className="mt-2 flex items-center justify-between">
-                            {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : <span />}
+                            {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : (
+                              <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setEditing({ index, item: { ...item } })}><Pencil className="h-3 w-3" />editar</button>
+                            )}
                             <button className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item)}><MessageSquareText className="h-3 w-3" />criar com agente</button>
                           </div>
                         </div>
@@ -240,6 +271,56 @@ export default function Planning() {
           )}
         </div>
       </main>
+      {editing && (
+        <PlanItemEditor
+          item={editing.item}
+          saving={updateItem.isPending}
+          onClose={() => setEditing(null)}
+          onSave={(item) => updateItem.mutate(
+            { threadId: t.threadId!, index: editing.index, item: { ...item, addresses: item.addresses ?? null } },
+            { onSuccess: () => { toast.success("Pauta atualizada"); setEditing(null); } },
+          )}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+function PlanItemEditor({ item, saving, onClose, onSave }: { item: PlanItem; saving: boolean; onClose: () => void; onSave: (item: PlanItem) => void }) {
+  const [draft, setDraft] = useState<PlanItem>(item);
+  const set = <K extends keyof PlanItem>(key: K, value: PlanItem[K]) => setDraft((d) => ({ ...d, [key]: value }));
+  const label = "space-y-1 text-xs font-medium";
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader><DialogTitle>Editar pauta</DialogTitle></DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className={label}>Dia<Input type="date" value={draft.date} onChange={(e) => set("date", e.target.value)} /></label>
+          <label className={label}>Horário<Input type="time" value={draft.time} onChange={(e) => set("time", e.target.value)} /></label>
+          <label className={label}>Formato
+            <select value={draft.format} onChange={(e) => set("format", e.target.value as PlanItem["format"])} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+              <option value="reel">Reel</option><option value="carrossel">Carrossel</option><option value="imagem">Imagem</option><option value="stories">Stories</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
+          <label className={label}>Tipo<Input value={draft.type} onChange={(e) => set("type", e.target.value)} placeholder="Prova, Ensino, Oferta…" /></label>
+          <label className={label}>Título<Input value={draft.title} onChange={(e) => set("title", e.target.value)} /></label>
+        </div>
+        <label className={label}>Ângulo<Textarea rows={3} value={draft.angle} onChange={(e) => set("angle", e.target.value)} /></label>
+        <label className={label}>Gancho<Textarea rows={2} value={draft.hook} onChange={(e) => set("hook", e.target.value)} /></label>
+        <label className={label}>Direção da legenda<Textarea rows={2} value={draft.captionIdea} onChange={(e) => set("captionIdea", e.target.value)} /></label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={label}>Collab (@)<Input value={draft.collab ?? ""} onChange={(e) => set("collab", e.target.value.trim() || null)} placeholder="vazio = sem collab" /></label>
+          <label className={label}>Observações<Input value={draft.notes ?? ""} onChange={(e) => set("notes", e.target.value || null)} /></label>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onSave(draft)} disabled={saving || !draft.title.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(draft.date) || !/^\d{2}:\d{2}$/.test(draft.time)}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

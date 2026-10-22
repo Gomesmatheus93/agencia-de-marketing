@@ -375,6 +375,8 @@ export const TASKS: Record<string, TaskDefinition> = {
 
 export type AuditResult = z.infer<typeof auditResult>;
 export type PlanResult = z.infer<typeof planResult>;
+/** Uma pauta do plano (para edição manual na tela). */
+export const planItemSchema = planResult.shape.items.element;
 export type CarouselResult = z.infer<typeof carouselResult>;
 export type PostResult = z.infer<typeof postResult>;
 export type StoriesResult = z.infer<typeof storiesResult>;
