@@ -64,6 +64,7 @@ export default function Planning() {
   const [startDate, setStartDate] = useState(nextMonday);
   const [period, setPeriod] = useState<"semana" | "mes">("semana");
   const [postsPerWeek, setPostsPerWeek] = useState(5);
+  const [goal, setGoal] = useState<"vendas" | "equilibrado" | "alcance">("vendas");
   const [notes, setNotes] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -112,18 +113,23 @@ export default function Planning() {
           </header>
 
           <Card>
-            <CardContent className="grid gap-4 p-5 md:grid-cols-[repeat(3,minmax(0,180px))_1fr_auto] md:items-end">
+            <CardContent className="grid gap-4 p-5 md:grid-cols-[repeat(4,minmax(0,170px))_1fr_auto] md:items-end">
               <label className="space-y-1.5 text-sm"><span className="font-medium">Começa em</span><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Período</span>
                 <select value={period} onChange={(e) => setPeriod(e.target.value as "semana" | "mes")} className="h-9 w-full rounded-md border bg-background px-2">
                   <option value="semana">Semana</option><option value="mes">Mês</option>
                 </select>
               </label>
+              <label className="space-y-1.5 text-sm"><span className="font-medium">Foco do período</span>
+                <select value={goal} onChange={(e) => setGoal(e.target.value as typeof goal)} className="h-9 w-full rounded-md border bg-background px-2" title="A estratégia permanente da Alle fica em estrategia.md, na memória da equipe (página Agentes).">
+                  <option value="vendas">Vendas</option><option value="equilibrado">Equilibrado</option><option value="alcance">Alcance e autoridade</option>
+                </select>
+              </label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Posts por semana</span><Input type="number" min={1} max={14} value={postsPerWeek} onChange={(e) => setPostsPerWeek(Number(e.target.value))} /></label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Observações para o agente</span>
                 <Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: quarta-feira, post collab com @allpfit; evitar falar de preço" className="min-h-9" />
               </label>
-              <Button className="gap-2" disabled={t.running || t.starting} onClick={() => t.start({ startDate, period, postsPerWeek, notes: notes || undefined })}>
+              <Button className="gap-2" disabled={t.running || t.starting} onClick={() => t.start({ startDate, period, postsPerWeek, goal, notes: notes || undefined })}>
                 {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Gerar planejamento
               </Button>
             </CardContent>

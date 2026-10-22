@@ -82,8 +82,16 @@ const planInput = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   period: z.enum(["semana", "mes"]).default("semana"),
   postsPerWeek: z.number().int().min(1).max(14).default(5),
+  goal: z.enum(["vendas", "equilibrado", "alcance"]).default("vendas"),
   notes: z.string().trim().max(5000).optional(),
 });
+
+// Foco do período escolhido na tela. A estratégia permanente fica em estrategia.md.
+const PLAN_GOALS = {
+  vendas: "VENDAS. A maioria das pautas tem intenção comercial clara. Varie a forma de vender: oferta direta (o que é, como contratar), prova (caso real, depoimento, antes e depois), quebra de objeção, comparação e educação que termina na oferta. Nunca duas ofertas secas seguidas. Todo post termina com um CTA comercial único.",
+  equilibrado: "EQUILIBRADO. Metade das pautas vende (oferta, prova, objeção) e metade constrói confiança e alcance (educação, opinião, bastidores), sempre com CTA.",
+  alcance: "ALCANCE E AUTORIDADE. Prioridade é chegar em quem ainda não segue a Alle (Reels educativos e de opinião), com 1 ou 2 pautas comerciais no período para não perder a venda.",
+} as const;
 
 const planResult = z.object({
   periodLabel: z.string().describe("Ex.: \"Semana de 26/out a 01/nov/2026\"."),
@@ -116,12 +124,13 @@ export const planTask: TaskDefinition<typeof planInput, typeof planResult> = {
   agentSlug: "planejamento",
   input: planInput,
   result: planResult,
-  title: (i) => `Plano ${i.period === "mes" ? "do mês" : "da semana"} a partir de ${i.startDate.split("-").reverse().join("/")}`,
+  title: (i) => `Plano ${i.period === "mes" ? "do mês" : "da semana"} a partir de ${i.startDate.split("-").reverse().join("/")} · foco ${i.goal}`,
   brief: (i) => `${TASK_RULES}
 
 TAREFA: planejamento de postagens do Instagram da Alle Energia.
 - Período: ${i.period === "mes" ? `o mês inteiro que começa em ${i.startDate}` : `7 dias a partir de ${i.startDate}`}. Frequência: ${i.postsPerWeek} posts por semana no feed (stories à parte).
-- Antes de planejar, leia a memória (voice.md, swipe.md, log.md, plan.md — os que existirem) e a identidade da marca. Se o Instagram estiver conectado, olhe os posts recentes para manter a linha e não repetir temas recentes.
+- FOCO DESTE PERÍODO: ${PLAN_GOALS[i.goal]}
+- Antes de planejar, leia a memória: estrategia.md (diretrizes da equipe, obrigatório seguir) e voice.md, swipe.md, log.md, plan.md (os que existirem), além da identidade da marca. Se o Instagram estiver conectado, olhe os posts recentes para manter a linha e não repetir temas recentes.
 - Cada item precisa de um ângulo específico, não só um tema. Não repita o mesmo formato em dias seguidos. Use horários de Brasília pensando no público da Alle.
 - Considere datas comemorativas e sazonais do período no Brasil quando fizer sentido para a marca.
 - Grave o plano em plan.md (substitua o anterior) para os outros agentes lerem.
