@@ -57,6 +57,13 @@ export async function deleteThread(userId: number, threadId: number) {
   await db.delete(agentThreads).where(eq(agentThreads.id, threadId));
 }
 
+/** Resultado da rodada mais recente (concluída) de uma tarefa de tela. */
+export async function latestTaskResult(userId: number, agentSlug: string): Promise<{ result: Record<string, unknown>; date: string } | null> {
+  const threads = await listThreads(userId, agentSlug, "task");
+  const done = threads.find((t) => t.result && t.status !== "running");
+  return done ? { result: done.result!, date: done.updatedAt.toLocaleDateString("pt-BR") } : null;
+}
+
 /** Turnos interrompidos por um restart do servidor nunca terminam sozinhos. */
 export async function failStaleRuns() {
   const db = await requireDb();

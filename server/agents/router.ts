@@ -36,7 +36,9 @@ export const agentsRouter = router({
       const parsed = task.input.safeParse(input.input);
       if (!parsed.success) throw new TRPCError({ code: "BAD_REQUEST", message: parsed.error.issues[0]?.message ?? "Dados inválidos" });
       const thread = await store.createThread(ctx.user.id, task.agentSlug, task.title(parsed.data), { input: parsed.data as Record<string, unknown> });
-      await sendUserMessage(ctx.user.id, thread.id, task.brief(parsed.data));
+      const context = task.context ? await task.context(ctx.user.id) : null;
+      const brief = task.brief(parsed.data) + (context ? `\n\nDADOS DA CONTA:\n${context}` : "");
+      await sendUserMessage(ctx.user.id, thread.id, brief);
       return { threadId: thread.id };
     }),
 

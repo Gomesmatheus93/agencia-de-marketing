@@ -12,6 +12,8 @@ export type TaskDefinition<I extends z.ZodTypeAny = z.ZodTypeAny, R extends z.Zo
   title: (input: z.infer<I>) => string;
   /** Mensagem que abre a tarefa (vai no histórico, não no prompt de sistema). */
   brief: (input: z.infer<I>) => string;
+  /** Dados da conta anexados ao brief (ex.: a última auditoria para o planejamento). */
+  context?: (userId: number) => Promise<string | null>;
 };
 
 const TASK_RULES = `Você está rodando como TAREFA disparada por uma tela da plataforma, não como conversa.
@@ -82,7 +84,7 @@ const planInput = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   period: z.enum(["semana", "mes"]).default("semana"),
   postsPerWeek: z.number().int().min(1).max(14).default(5),
-  goal: z.enum(["vendas", "equilibrado", "alcance"]).default("vendas"),
+  goal: z.enum(["vendas", "equilibrado", "alcance", "engajamento"]).default("vendas"),
   notes: z.string().trim().max(5000).optional(),
 });
 
@@ -90,6 +92,7 @@ const planInput = z.object({
 const PLAN_GOALS = {
   vendas: "VENDAS. A maioria das pautas tem intenção comercial clara. Varie a forma de vender: oferta direta (o que é, como contratar), prova (caso real, depoimento, antes e depois), quebra de objeção, comparação e educação que termina na oferta. Nunca duas ofertas secas seguidas. Todo post termina com um CTA comercial único.",
   equilibrado: "EQUILIBRADO. Metade das pautas vende (oferta, prova, objeção) e metade constrói confiança e alcance (educação, opinião, bastidores), sempre com CTA.",
+  engajamento: "ENGAJAMENTO. O objetivo é aumentar comentários, salvamentos, compartilhamentos e conversas (é o que a auditoria mede e o que destrava o alcance). Ataque os pontos fracos que a auditoria e a análise de marca apontaram e repita o que funcionou nelas (formato, tema, tipo de gancho). Cada pauta precisa de um motivo concreto para interagir: pergunta específica, palavra-chave para comentar, conteúdo salvável (lista, passo a passo, comparação), algo para mandar a alguém. Stories diários com enquete ou caixa de perguntas. Responder os comentários na primeira hora faz parte do plano. Mantenha 1 ou 2 pautas comerciais, com o CTA também pedindo interação.",
   alcance: "ALCANCE E AUTORIDADE. Prioridade é chegar em quem ainda não segue a Alle (Reels educativos e de opinião), com 1 ou 2 pautas comerciais no período para não perder a venda.",
 } as const;
 
@@ -109,6 +112,7 @@ const planResult = z.object({
     hook: z.string().describe("O gancho/primeira linha sugerido."),
     captionIdea: z.string().describe("Direção da legenda em 1 a 3 frases."),
     collab: z.string().nullable().describe("@ do parceiro se for collab, senão null."),
+    addresses: z.string().nullable().describe("Qual ponto da auditoria ou da análise de marca esta pauta melhora ou repete (ex.: \"auditoria: reels com gente real tiveram 4,8x a mediana\"). null se nenhum."),
     notes: z.string().nullable(),
   })).max(60),
   stories: z.string().describe("Orientação dos stories do período."),
@@ -120,8 +124,42 @@ const planResult = z.object({
   assumptions: z.array(z.string()),
 });
 
+/** Resumo da última auditoria e da última análise de marca da conta, para o planejamento. */
+async function planContext(userId: number): Promise<string | null> {
+  const { latestTaskResult } = await import("./store");
+  const [audit, brand] = await Promise.all([latestTaskResult(userId, "auditoria"), latestTaskResult(userId, "marca")]);
+  const parts: string[] = [];
+  if (audit) {
+    const r = audit.result as Record<string, any>;
+    const ranked = [...(r.posts ?? [])].sort((a: any, b: any) => b.outlierMultiple - a.outlierMultiple);
+    const line = (p: any) => `${p.date} · ${p.format} · ${p.theme} · ${p.outlierMultiple}x · "${String(p.hook).slice(0, 90)}"`;
+    parts.push([
+      `ÚLTIMA AUDITORIA (${audit.date}, ${r.period}, ${(r.posts ?? []).length} posts, mediana de engajamento ${r.medianEngagement}):`,
+      `Resumo: ${r.summary}`,
+      ...(r.findings ?? []).map((f: any) => `- Descoberta (${f.confidence}): ${f.title} — ${f.evidence}`),
+      r.stop?.length ? `Parar: ${r.stop.join(" | ")}` : "",
+      r.doMore?.length ? `Fazer mais: ${r.doMore.join(" | ")}` : "",
+      ranked.length ? `Melhores posts:\n${ranked.slice(0, 5).map(line).join("\n")}` : "",
+      ranked.length > 5 ? `Piores posts:\n${ranked.slice(-3).map(line).join("\n")}` : "",
+    ].filter(Boolean).join("\n"));
+  }
+  if (brand) {
+    const r = brand.result as Record<string, any>;
+    const off = (r.checks ?? []).flatMap((c: any) => c.offBrand ?? []);
+    parts.push([
+      `ÚLTIMA ANÁLISE DE MARCA (${brand.date}, modo ${r.mode}${r.overallScore != null ? `, nota ${Math.round(r.overallScore)}/100` : ""}, fonte ${r.dataSource}):`,
+      `Resumo: ${r.summary}`,
+      off.length ? `Desvios encontrados: ${[...new Set(off)].slice(0, 10).join(" | ")}` : "",
+      r.profile?.strategyGaps?.length ? `Diferenças entre feed e estratégia: ${r.profile.strategyGaps.join(" | ")}` : "",
+      r.recommendations?.length ? `Recomendações: ${r.recommendations.join(" | ")}` : "",
+    ].filter(Boolean).join("\n"));
+  }
+  return parts.length ? parts.join("\n\n") : null;
+}
+
 export const planTask: TaskDefinition<typeof planInput, typeof planResult> = {
   agentSlug: "planejamento",
+  context: planContext,
   input: planInput,
   result: planResult,
   title: (i) => `Plano ${i.period === "mes" ? "do mês" : "da semana"} a partir de ${i.startDate.split("-").reverse().join("/")} · foco ${i.goal}`,
@@ -130,6 +168,7 @@ export const planTask: TaskDefinition<typeof planInput, typeof planResult> = {
 TAREFA: planejamento de postagens do Instagram da Alle Energia.
 - Período: ${i.period === "mes" ? `o mês inteiro que começa em ${i.startDate}` : `7 dias a partir de ${i.startDate}`}. Frequência: ${i.postsPerWeek} posts por semana no feed (stories à parte).
 - FOCO DESTE PERÍODO: ${PLAN_GOALS[i.goal]}
+- Se houver DADOS DA CONTA abaixo (última auditoria e análise de marca), o plano se baseia neles: cada pauta deve atacar um ponto a melhorar ou repetir o que funcionou, indicado em "addresses". Explique essa lógica em "strategy".
 - Antes de planejar, leia a memória: estrategia.md (diretrizes da equipe, obrigatório seguir) e voice.md, swipe.md, log.md, plan.md (os que existirem), além da identidade da marca. Se o Instagram estiver conectado, olhe os posts recentes para manter a linha e não repetir temas recentes.
 - Cada item precisa de um ângulo específico, não só um tema. Não repita o mesmo formato em dias seguidos. Use horários de Brasília pensando no público da Alle.
 - Considere datas comemorativas e sazonais do período no Brasil quando fizer sentido para a marca.

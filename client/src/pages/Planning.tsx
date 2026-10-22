@@ -14,7 +14,7 @@ import { useLocation } from "wouter";
 
 type PlanItem = {
   date: string; time: string; format: "reel" | "carrossel" | "imagem" | "stories"; type: string; title: string;
-  angle: string; hook: string; captionIdea: string; collab: string | null; notes: string | null;
+  angle: string; hook: string; captionIdea: string; collab: string | null; notes: string | null; addresses?: string | null;
 };
 type Plan = {
   periodLabel: string; startDate: string; endDate: string; strategy: string;
@@ -64,7 +64,7 @@ export default function Planning() {
   const [startDate, setStartDate] = useState(nextMonday);
   const [period, setPeriod] = useState<"semana" | "mes">("semana");
   const [postsPerWeek, setPostsPerWeek] = useState(5);
-  const [goal, setGoal] = useState<"vendas" | "equilibrado" | "alcance">("vendas");
+  const [goal, setGoal] = useState<"vendas" | "equilibrado" | "alcance" | "engajamento">("vendas");
   const [notes, setNotes] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -107,7 +107,7 @@ export default function Planning() {
             <div>
               <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary"><Bot className="mr-1.5 h-3 w-3" />Agente de Planejamento</Badge>
               <h1 className="text-3xl font-bold tracking-tight">Planejamento de postagens</h1>
-              <p className="mt-1 text-sm text-muted-foreground">O agente lê a memória da equipe, a identidade da Alle e os posts recentes, e monta o plano. Você escolhe o que vai para o calendário.</p>
+              <p className="mt-1 text-sm text-muted-foreground">O agente usa automaticamente a última Auditoria e a última análise de Marca, além da memória da equipe e dos posts recentes, e monta o plano. Você escolhe o que vai para o calendário.</p>
             </div>
             <TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} />
           </header>
@@ -122,7 +122,7 @@ export default function Planning() {
               </label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Foco do período</span>
                 <select value={goal} onChange={(e) => setGoal(e.target.value as typeof goal)} className="h-9 w-full rounded-md border bg-background px-2" title="A estratégia permanente da Alle fica em estrategia.md, na memória da equipe (página Agentes).">
-                  <option value="vendas">Vendas</option><option value="equilibrado">Equilibrado</option><option value="alcance">Alcance e autoridade</option>
+                  <option value="vendas">Vendas</option><option value="equilibrado">Equilibrado</option><option value="engajamento">Engajamento</option><option value="alcance">Alcance e autoridade</option>
                 </select>
               </label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Posts por semana</span><Input type="number" min={1} max={14} value={postsPerWeek} onChange={(e) => setPostsPerWeek(Number(e.target.value))} /></label>
@@ -190,6 +190,7 @@ export default function Planning() {
                           {item.collab && <p className="mt-1 inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"><Handshake className="h-3 w-3" />{item.collab}</p>}
                           <details className="mt-1.5">
                             <summary className="cursor-pointer text-muted-foreground">detalhes</summary>
+                            {item.addresses && <p className="mt-1 rounded bg-primary/5 px-1.5 py-1 text-primary"><b>Por quê:</b> {item.addresses}</p>}
                             <p className="mt-1"><b>Ângulo:</b> {item.angle}</p>
                             <p className="mt-1"><b>Gancho:</b> {item.hook}</p>
                             <p className="mt-1"><b>Legenda:</b> {item.captionIdea}</p>
