@@ -37,6 +37,7 @@ import {
   ClipboardCheck,
   Building2,
   ShieldCheck,
+  Video,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -65,6 +66,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "agentPost", icon: Image, path: "/dashboard/criar/post", color: "from-alle-purple to-alle-orange", labelKey: "createPost" as const, descKey: "createPostDesc" as const, group: "create" as const },
   { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },
   { id: "agentReels", icon: Clapperboard, path: "/dashboard/agents/reels", color: "from-alle-purple to-alle-orange", labelKey: "createReels" as const, descKey: "createReelsDesc" as const, group: "create" as const },
+  { id: "videos", icon: Video, path: "/dashboard/videos", color: "from-alle-purple to-alle-orange", labelKey: "createVideo" as const, descKey: "createVideoDesc" as const, group: "create" as const },
   { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-slate-500 to-slate-600", labelKey: "moreTools" as const, descKey: "moreToolsDesc" as const, group: "create" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-alle-orange to-alle-orange-light", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "publish" as const },
   { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-alle-orange to-alle-orange-light", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "publish" as const },
@@ -95,7 +97,7 @@ const TEAM_CONFIG = {
 };
 
 // Telas manuais (sem agente) acendem o item "Mais ferramentas".
-const CREATIVE_MODULE_IDS = new Set(["chat", "images", "videos", "articles", "carousel", "reels", "stories", "resize", "artStudio"]);
+const CREATIVE_MODULE_IDS = new Set(["chat", "images", "articles", "carousel", "reels", "stories", "resize", "artStudio"]);
 
 interface AppLayoutProps {
   children: React.ReactNode;

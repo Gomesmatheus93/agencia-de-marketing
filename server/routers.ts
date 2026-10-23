@@ -39,7 +39,8 @@ import {
   waitForHeyGenCompletion,
   downloadAndStoreHeyGenVideo,
   listHeyGenVoices,
-  deleteHeyGenTalkingPhoto,
+  listAccountAvatars,
+  generateAccountAvatarVideo,
   deleteHeyGenAvatar,
   createDigitalTwinAvatar,
   checkDigitalTwinStatus,
@@ -507,7 +508,7 @@ const videosRouter = router({
     .input(z.object({ provider: z.literal("heygen"), language: z.string().optional() }))
     .query(async ({ input }) => {
       if (input.provider === "heygen") {
-        return listHeyGenVoices(); // filtro de idioma feito no cliente
+        return listHeyGenVoices(input.language);
       }
       return [
         { voice_id: "pt-BR-FranciscaNeural", name: "Francisca PT-BR", language: "pt-BR", gender: "Female" },
@@ -532,7 +533,9 @@ const videosRouter = router({
         // Usa o Digital Twin (avatar treinado a partir de um video real do usuario,
         // corpo inteiro e movimento natural) em vez do Photo Avatar (so anima a boca).
         useDigitalTwin: z.boolean().optional(),
-      }).refine((value) => value.useDigitalTwin || Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
+        // Avatar que já existe na conta HeyGen (feito pela equipe): não precisa de foto.
+        accountAvatarId: z.string().min(1).max(128).optional(),
+      }).refine((value) => value.useDigitalTwin || value.accountAvatarId || Boolean(value.sourceImageUrl || value.sourceImageDataUrl), {
         message: "Envie a foto da pessoa para gerar o video.",
         path: ["sourceImageDataUrl"],
       })
@@ -540,6 +543,39 @@ const videosRouter = router({
     .mutation(async ({ ctx, input }) => {
       requirePaidPlan(ctx.user as PlanUser);
       const normalizedScript = input.script.replace(/\s+/g, " ").trim();
+
+      // === Caminho avatar da conta: usa um avatar pronto da HeyGen, sem criar nem apagar nada ===
+      if (input.accountAvatarId) {
+        const avatar = (await listAccountAvatars()).find((a) => a.id === input.accountAvatarId);
+        if (!avatar) throw new TRPCError({ code: "BAD_REQUEST", message: "Avatar não encontrado na conta HeyGen." });
+        const voiceId = input.voiceId || avatar.defaultVoiceId;
+        if (!voiceId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma voz para continuar." });
+        const savedAccount = await db.saveAvatarVideo(ctx.user.id, {
+          title: (input.title?.trim() || input.topic?.trim() || normalizedScript.split(/[.!?]/)[0] || `Vídeo com ${avatar.name}`).slice(0, 512),
+          topic: input.topic?.trim(),
+          script: normalizedScript,
+          sourceImageUrl: avatar.previewImageUrl ?? "",
+          provider: "heygen",
+          voiceProvider: "heygen",
+          voiceId,
+          status: "processing",
+        });
+        try {
+          const completed = await withHeyGenVideoSlot(async () => {
+            const videoId = await generateAccountAvatarVideo({ avatar, script: normalizedScript, voiceId });
+            await db.updateAvatarVideo(savedAccount.id, ctx.user.id, { providerJobId: videoId, errorMessage: null });
+            return waitForHeyGenCompletion(videoId);
+          });
+          const stored = await downloadAndStoreHeyGenVideo({ userId: ctx.user.id, videoId: savedAccount.id, resultUrl: completed.resultUrl });
+          const updated = await db.updateAvatarVideo(savedAccount.id, ctx.user.id, { videoUrl: stored.videoUrl, status: "completed", errorMessage: null });
+          if (!updated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "O vídeo foi gerado, mas não consegui salvar o resultado final." });
+          return updated;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "falha desconhecida";
+          await db.updateAvatarVideo(savedAccount.id, ctx.user.id, { status: "failed", errorMessage: message });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao gerar vídeo: ${heyGenFriendlyError(message)}` });
+        }
+      }
 
       // === Caminho Digital Twin: reusa o avatar 3D ja treinado, sem foto nova ===
       if (input.useDigitalTwin) {
@@ -595,7 +631,7 @@ const videosRouter = router({
 
             await db.updateAvatarVideo(savedTwin.id, ctx.user.id, { providerJobId: videoId, errorMessage: null });
 
-            return waitForHeyGenCompletion(videoId, { provider: "v3" });
+            return waitForHeyGenCompletion(videoId);
           });
           const stored = await downloadAndStoreHeyGenVideo({
             userId: ctx.user.id,
@@ -640,7 +676,7 @@ const videosRouter = router({
             });
           }
 
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao gerar video com Avatar 3D: ${message}` });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Erro ao gerar video com Avatar 3D: ${heyGenFriendlyError(message)}` });
         }
       }
 
@@ -672,7 +708,6 @@ const videosRouter = router({
 
         if (input.provider === "heygen") {
           let talkingPhotoId = "";
-          let heygenProvider: "v3" | "v2" = "v3";
 
           try {
             // A conta HeyGen só processa um número limitado de vídeos ao
@@ -691,14 +726,13 @@ const videosRouter = router({
                 talkingStyle: input.talkingStyle ?? "expressive",
               });
               talkingPhotoId = created.talkingPhotoId;
-              heygenProvider = created.provider;
 
               await db.updateAvatarVideo(saved.id, ctx.user.id, {
                 providerJobId: created.videoId,
                 errorMessage: null,
               });
 
-              return waitForHeyGenCompletion(created.videoId, { provider: created.provider });
+              return waitForHeyGenCompletion(created.videoId);
             });
             const stored = await downloadAndStoreHeyGenVideo({
               userId: ctx.user.id,
@@ -707,13 +741,8 @@ const videosRouter = router({
             });
             videoUrl = stored.videoUrl;
           } finally {
-            if (!talkingPhotoId) {
-              // createHeyGenAvatarVideo falhou antes de retornar — nada pra limpar.
-            } else if (heygenProvider === "v3") {
-              await deleteHeyGenAvatar(talkingPhotoId);
-            } else {
-              await deleteHeyGenTalkingPhoto(talkingPhotoId);
-            }
+            // Apaga o avatar temporário criado a partir da foto.
+            if (talkingPhotoId) await deleteHeyGenAvatar(talkingPhotoId);
           }
         } else {
           const talk = await createDidTalk({
@@ -762,10 +791,19 @@ const videosRouter = router({
 
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Erro ao gerar video com avatar: ${message}`,
+          message: `Erro ao gerar video com avatar: ${heyGenFriendlyError(message)}`,
         });
       }
     }),
+
+  getAccountAvatars: protectedProcedure.query(async () => {
+    try {
+      return await listAccountAvatars();
+    } catch (err) {
+      console.warn("[Videos] Falha ao listar avatares da conta HeyGen:", err);
+      return [];
+    }
+  }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -5520,6 +5558,12 @@ async function startTwoFactorChallenge(user: { id: number; email: string | null;
   }
   if (!token) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Falha ao criar desafio 2FA." });
   return token.id;
+}
+
+/** Traduz os erros mais comuns da HeyGen para a equipe. */
+function heyGenFriendlyError(message: string): string {
+  if (message.includes("insufficient_credit")) return "a conta HeyGen está sem saldo. Adicione créditos em app.heygen.com (Billing) e tente de novo.";
+  return message;
 }
 
 export const appRouter = router({

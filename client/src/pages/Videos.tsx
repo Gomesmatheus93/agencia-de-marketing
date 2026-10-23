@@ -330,7 +330,6 @@ function DigitalTwinPanel({ useTwin, onUseTwinChange }: { useTwin: boolean; onUs
 
 type AvatarVideoStatus = "processing" | "completed" | "failed";
 type Provider = "heygen";
-type Emotion = "Excited" | "Friendly" | "Serious" | "Soothing" | "Broadcaster";
 
 type AvatarVideo = {
   id: number;
@@ -407,14 +406,6 @@ async function createPortraitAvatarDataUrl(file: File) {
   context.drawImage(image, foregroundX, foregroundY, foregroundWidth, foregroundHeight);
   return canvas.toDataURL("image/png");
 }
-
-const EMOTION_OPTIONS: { value: Emotion; label: string }[] = [
-  { value: "Friendly", label: "Amigável" },
-  { value: "Excited", label: "Animado" },
-  { value: "Serious", label: "Sério" },
-  { value: "Soothing", label: "Calmo" },
-  { value: "Broadcaster", label: "Apresentador" },
-];
 
 const toneOptions = [
   { value: "professional", label: "Profissional" },
@@ -511,10 +502,13 @@ export default function Videos() {
   const [tone, setTone] = useState<(typeof toneOptions)[number]["value"]>("professional");
   const provider: Provider = "heygen";
   const [voiceId, setVoiceId] = useState("");
-  const [emotion, setEmotion] = useState<Emotion>("Friendly");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState("");
   const [selectedVideo, setSelectedVideo] = useState<AvatarVideo | null>(null);
   const [useDigitalTwin, setUseDigitalTwin] = useState(false);
+  // De onde vem o rosto: um avatar que já existe na conta HeyGen ou uma foto nova.
+  const [source, setSource] = useState<"account" | "photo">("account");
+  const [accountAvatarId, setAccountAvatarId] = useState("");
+  const { data: accountAvatars = [], isLoading: loadingAvatars } = trpc.videos.getAccountAvatars.useQuery();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("videos_script_prefill");
@@ -523,7 +517,7 @@ export default function Videos() {
       const prefill = JSON.parse(raw) as { script: string };
       sessionStorage.removeItem("videos_script_prefill");
       setScript(prefill.script);
-      toast.info("Roteiro do Reels carregado — adicione sua foto e clique em Gerar Vídeo.");
+      toast.info("Roteiro do Reels carregado — escolha o avatar e clique em Gerar Vídeo.");
     } catch { /* ignore */ }
   }, []);
 
@@ -540,9 +534,10 @@ export default function Videos() {
   });
 
   const [voiceLanguageFilter, setVoiceLanguageFilter] = useState("pt");
+  const VOICE_LANGUAGES: Record<string, string> = { pt: "Portuguese", en: "English", es: "Spanish" };
 
   const { data: heyGenVoicesRaw = [], isLoading: loadingVoices } = trpc.videos.getVoices.useQuery(
-    { provider: "heygen" },
+    { provider: "heygen", language: VOICE_LANGUAGES[voiceLanguageFilter] },
     { enabled: true }
   );
 
@@ -584,22 +579,25 @@ export default function Videos() {
   };
 
   const activeUseDigitalTwin = useDigitalTwin && provider === "heygen";
+  const activeAccountAvatar = !activeUseDigitalTwin && source === "account" ? accountAvatars.find((a) => a.id === accountAvatarId) : undefined;
+  const needsPhoto = !activeUseDigitalTwin && !activeAccountAvatar;
+  // O avatar da conta já pode ter uma voz própria; então escolher voz é opcional.
+  const needsVoice = provider === "heygen" && !voiceId && !activeAccountAvatar?.defaultVoiceId;
 
   const handleGenerateVideo = () => {
     if (!script.trim()) { toast.error("Escreva ou gere um roteiro antes de criar o vídeo."); return; }
-    if (!activeUseDigitalTwin && !sourceImageDataUrl) { toast.error("Adicione a foto da pessoa para gerar o avatar."); return; }
-    if (provider === "heygen" && !voiceId) { toast.error("Selecione uma voz para continuar."); return; }
+    if (needsPhoto && !sourceImageDataUrl) { toast.error(source === "account" ? "Escolha um avatar da conta." : "Adicione a foto da pessoa para gerar o avatar."); return; }
+    if (needsVoice) { toast.error("Selecione uma voz para continuar."); return; }
 
     generateVideoMutation.mutate({
       title: title.trim() || undefined,
       topic: topic.trim() || undefined,
       script: script.trim(),
-      sourceImageDataUrl: activeUseDigitalTwin ? undefined : sourceImageDataUrl,
+      sourceImageDataUrl: needsPhoto ? sourceImageDataUrl : undefined,
       voiceId: voiceId || undefined,
       provider,
-      emotion: provider === "heygen" ? emotion : undefined,
-      talkingStyle: provider === "heygen" ? "expressive" : undefined,
       useDigitalTwin: activeUseDigitalTwin || undefined,
+      accountAvatarId: activeAccountAvatar?.id,
     });
   };
 
@@ -631,13 +629,8 @@ export default function Videos() {
 
   const heyGenVoices = heyGenVoicesRaw.length > 0 ? heyGenVoicesRaw : HEYGEN_FALLBACK_VOICES;
 
-  const filteredHeyGenVoices = voiceLanguageFilter
-    ? heyGenVoices.filter((v) =>
-        v.language?.toLowerCase().includes(voiceLanguageFilter.toLowerCase())
-      )
-    : heyGenVoices;
-
-  const heyGenVoiceOptions = (filteredHeyGenVoices.length > 0 ? filteredHeyGenVoices : heyGenVoices).map(
+  // O servidor já filtra pelo idioma escolhido (mais as vozes multilíngues e as da conta).
+  const heyGenVoiceOptions = heyGenVoices.map(
     (v) => ({ value: v.voice_id, label: `${v.name} — ${v.language} ${v.gender}` })
   );
 
@@ -767,7 +760,7 @@ export default function Videos() {
               )}
               <Select value={voiceId} onValueChange={setVoiceId} disabled={provider === "heygen" && loadingVoices}>
                 <SelectTrigger className="glass w-full border-border/50">
-                  <SelectValue placeholder="Selecione uma voz" />
+                  <SelectValue placeholder={activeAccountAvatar?.defaultVoiceId ? "Voz do próprio avatar" : "Selecione uma voz"} />
                 </SelectTrigger>
                 <SelectContent className="glass-card border-border/50 max-h-72">
                   {voiceOptions.length === 0 ? (
@@ -783,29 +776,6 @@ export default function Videos() {
               </Select>
             </div>
           </div>
-
-          {provider === "heygen" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Emoção / expressão</label>
-              <div className="flex flex-wrap gap-2">
-                {EMOTION_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => setEmotion(o.value)}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-xs font-medium transition-all",
-                      emotion === o.value
-                        ? "border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300"
-                        : "border-border/40 text-muted-foreground hover:border-border"
-                    )}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -840,6 +810,46 @@ export default function Videos() {
               Usando seu Avatar 3D — não precisa enviar foto para este vídeo.
             </div>
           ) : (
+            <div className="space-y-3">
+              <div className="flex gap-1.5">
+                {([["account", "Avatar da conta HeyGen"], ["photo", "Foto nova"]] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSource(value)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-all",
+                      source === value ? "border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300" : "border-border/40 text-muted-foreground hover:border-border"
+                    )}
+                  >{label}</button>
+                ))}
+              </div>
+              {source === "account" ? (
+                loadingAvatars ? (
+                  <p className="text-xs text-muted-foreground"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Carregando avatares…</p>
+                ) : accountAvatars.length === 0 ? (
+                  <p className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">Nenhum avatar pronto na conta HeyGen. Crie em app.heygen.com → Avatars ou use "Foto nova".</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+                    {accountAvatars.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setAccountAvatarId(a.id)}
+                        className={cn("overflow-hidden rounded-xl border-2 text-left transition-all", accountAvatarId === a.id ? "border-fuchsia-500 ring-2 ring-fuchsia-500/30" : "border-border/40 hover:border-border")}
+                      >
+                        <div className="aspect-[3/4] bg-muted">
+                          {a.previewImageUrl && <SafeImage src={a.previewImageUrl} alt={a.name} className="h-full w-full object-cover" />}
+                        </div>
+                        <div className="px-2 py-1.5">
+                          <p className="truncate text-xs font-medium">{a.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{a.type === "digital_twin" ? "Avatar 3D" : "Foto"}{a.defaultVoiceId ? " · tem voz" : ""}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : (
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
                 Foto da pessoa
@@ -849,12 +859,14 @@ export default function Videos() {
               </label>
               <SourceImageUpload value={sourceImageDataUrl} onChange={setSourceImageDataUrl} />
             </div>
+              )}
+            </div>
           )}
 
           <div className="flex justify-end">
             <Button
               onClick={handleGenerateVideo}
-              disabled={!script.trim() || (!activeUseDigitalTwin && !sourceImageDataUrl) || generateVideoMutation.isPending || (provider === "heygen" && !voiceId)}
+              disabled={!script.trim() || (needsPhoto && !sourceImageDataUrl) || generateVideoMutation.isPending || needsVoice}
               className={cn(
                 "gap-2 border-0 text-white hover:opacity-90",
                 provider === "heygen"

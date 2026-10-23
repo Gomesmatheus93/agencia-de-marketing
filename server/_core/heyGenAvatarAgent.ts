@@ -1,10 +1,8 @@
-import path from "node:path";
-import fs from "node:fs/promises";
 import sharp from "sharp";
 import { ENV } from "./env";
+import { storagePut } from "../storage";
 
 const HEYGEN_API = "https://api.heygen.com";
-const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -400,7 +398,7 @@ export async function generateDigitalTwinVideo(input: {
           resolution: "1080p",
           aspect_ratio: "9:16",
           engine,
-          voice_settings: { emotion: input.emotion ?? "Friendly", speed: 1.0 },
+          voice_settings: { speed: 1.0 },
         }),
       });
 
@@ -447,7 +445,7 @@ async function generateV3Video(input: {
       expressiveness: "high",
       motion_prompt:
         "natural upper body movement, direct eye contact with camera, conversational hand gestures, warm engaging expression",
-      voice_settings: { emotion: input.emotion ?? "Friendly", speed: 1.0 },
+      voice_settings: { speed: 1.0 },
     }),
   });
 
@@ -464,139 +462,18 @@ async function generateV3Video(input: {
   return videoId;
 }
 
-// Fallback V1/V2 com Avatar IV (caso V3 falhe)
-async function createTalkingPhotoV1(buffer: Buffer): Promise<string | null> {
-  const apiKey = getApiKey();
-  const res = await fetchWithRetry("https://upload.heygen.com/v1/talking_photo", {
-    method: "POST",
-    headers: { "X-Api-Key": apiKey, "Content-Type": "image/jpeg" },
-    body: new Uint8Array(buffer),
-  });
-
-  const bodyText = await res.text();
-  if (!res.ok) {
-    if (bodyText.includes("401028") || bodyText.toLowerCase().includes("exceeded")) return null;
-    throw new Error(`HeyGen V1 upload: ${bodyText.slice(0, 200)}`);
-  }
-
-  let json: { code?: number; data?: { talking_photo_id?: string }; error?: { message?: string; code?: number } };
-  try { json = JSON.parse(bodyText); } catch {
-    throw new Error(`HeyGen V1 upload: resposta não-JSON — ${bodyText.slice(0, 200)}`);
-  }
-
-  if (json.code === 401028 || json.error?.code === 401028) return null;
-  if ((json.code !== 100 && json.code != null) || json.error) {
-    throw new Error(`HeyGen V1 upload: ${json.error?.message ?? `código ${json.code}`}`);
-  }
-
-  return json.data?.talking_photo_id ?? null;
-}
-
-async function generateV2VideoAvatarIV(input: {
-  talkingPhotoId: string;
-  script: string;
-  voiceId: string;
-  emotion?: string;
-}): Promise<string> {
-  const res = await heyGenFetch(`${HEYGEN_API}/v2/video/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      video_inputs: [{
-        character: {
-          type: "talking_photo",
-          talking_photo_id: input.talkingPhotoId,
-          talking_style: "expressive",
-          expression: "happy",
-          scale: 1.0,
-          matting: false,
-        },
-        voice: {
-          type: "text",
-          input_text: input.script,
-          voice_id: input.voiceId,
-          speed: 1.0,
-          emotion: input.emotion ?? "Friendly",
-        },
-      }],
-      dimension: { width: 1080, height: 1920 },
-      use_avatar_iv_model: true,
-    }),
-  });
-
-  const text = await res.text();
-  let parsed: { code?: number; data?: { video_id?: string }; error?: { message?: string } };
-  try { parsed = JSON.parse(text); } catch {
-    throw new Error(`HeyGen V2 generate: resposta inválida — ${text.slice(0, 200)}`);
-  }
-
-  const ok = (parsed.code === 100 || parsed.code === undefined) && !parsed.error;
-  if (!ok) throw new Error(`HeyGen V2 generate: ${parsed.error?.message ?? `código ${parsed.code}`}`);
-
-  const videoId = (parsed.data as { video_id?: string })?.video_id;
-  if (!videoId) throw new Error("HeyGen V2 generate: video_id não retornado.");
-  return videoId;
-}
-
-// Limpeza de avatares para liberar limite da conta
-async function listV3AvatarIds(): Promise<string[]> {
-  try {
-    const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/looks?avatar_type=photo_avatar`, { method: "GET" });
-    const text = await res.text();
-    let parsed: unknown;
-    try { parsed = JSON.parse(text); } catch { return []; }
-
-    const data = (parsed as Record<string, unknown>).data;
-    let items: unknown[] = [];
-    if (Array.isArray(data)) items = data;
-    else if (data && typeof data === "object") {
-      const obj = data as Record<string, unknown>;
-      const list = obj.looks ?? obj.avatar_list ?? obj.items ?? obj.list;
-      if (Array.isArray(list)) items = list;
-    }
-    return items
-      .filter((i): i is Record<string, unknown> => !!i && typeof i === "object")
-      .map((i) => String(i.id ?? i.avatar_id ?? ""))
-      .filter(Boolean);
-  } catch { return []; }
-}
-
-async function listTalkingPhotoIds(): Promise<string[]> {
-  try {
-    const res = await heyGenFetch(`${HEYGEN_API}/v2/talking_photo`, { method: "GET" });
-    const text = await res.text();
-    let parsed: unknown;
-    try { parsed = JSON.parse(text); } catch { return []; }
-    const data = (parsed as Record<string, unknown>).data;
-    let items: unknown[] = [];
-    if (Array.isArray(data)) items = data;
-    else if (data && typeof data === "object") {
-      const obj = data as Record<string, unknown>;
-      const list = obj.talking_photo_list ?? obj.list ?? obj.items ?? obj.talking_photos;
-      if (Array.isArray(list)) items = list;
-    }
-    return items
-      .filter((i): i is Record<string, unknown> => !!i && typeof i === "object")
-      .map((i) => String(i.talking_photo_id ?? i.id ?? ""))
-      .filter(Boolean);
-  } catch { return []; }
-}
-
-async function cleanupAllAvatars(): Promise<void> {
-  const [v3Ids, v2Ids] = await Promise.all([listV3AvatarIds(), listTalkingPhotoIds()]);
-  console.log(`[HeyGen] Limpando ${v3Ids.length} avatares V3 e ${v2Ids.length} talking photos...`);
-  await Promise.all([
-    ...v3Ids.map((id) => deleteHeyGenAvatar(id)),
-    ...v2Ids.map((id) => deleteHeyGenTalkingPhoto(id)),
-  ]);
+// Limpeza para liberar o limite da conta: só apaga os avatares temporários
+// que este app cria a cada vídeo (nome "av-<usuário>-<timestamp>"). Nunca
+// mexe nos avatares feitos pela equipe na HeyGen nem no Digital Twin.
+async function cleanupTemporaryAvatars(): Promise<void> {
+  const looks = await listLooks({ avatar_type: "photo_avatar", ownership: "private" }).catch(() => []);
+  const temp = looks.filter((l) => /^av-\d+-\d+$/.test(l.name));
+  console.log(`[HeyGen] Limpando ${temp.length} avatares temporários...`);
+  await Promise.all(temp.map((l) => deleteHeyGenAvatar(l.id)));
 }
 
 export async function deleteHeyGenAvatar(id: string): Promise<void> {
   try { await heyGenFetch(`${HEYGEN_API}/v3/avatars/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
-}
-
-export async function deleteHeyGenTalkingPhoto(id: string): Promise<void> {
-  try { await heyGenFetch(`${HEYGEN_API}/v2/talking_photo/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
 }
 
 export type HeyGenVoice = {
@@ -607,14 +484,73 @@ export type HeyGenVoice = {
   preview_audio?: string;
 };
 
-export async function listHeyGenVoices(): Promise<HeyGenVoice[]> {
-  try {
-    const res = await heyGenFetch(`${HEYGEN_API}/v2/voices`, { method: "GET" });
-    const text = await res.text();
-    let parsed: { code?: number; data?: { voices?: HeyGenVoice[] } };
-    try { parsed = JSON.parse(text); } catch { return []; }
-    return parsed.data?.voices ?? [];
-  } catch { return []; }
+type V3Page<T> = { data?: T[]; has_more?: boolean; next_token?: string | null };
+
+async function listPaged<T>(pathAndQuery: string, maxPages = 5): Promise<T[]> {
+  const out: T[] = [];
+  let token: string | null | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const sep = pathAndQuery.includes("?") ? "&" : "?";
+    const res = await heyGenFetch(`${HEYGEN_API}${pathAndQuery}${token ? `${sep}token=${encodeURIComponent(token)}` : ""}`, { method: "GET" });
+    const json = (await res.json()) as V3Page<T>;
+    out.push(...(json.data ?? []));
+    if (!json.has_more || !json.next_token) break;
+    token = json.next_token;
+  }
+  return out;
+}
+
+type V3Voice = { voice_id: string; name: string; language: string; gender: string; preview_audio_url?: string | null; type: string };
+
+/** Vozes do idioma pedido (nome em inglês, ex.: "Portuguese"), as multilíngues e as clonadas da conta. */
+export async function listHeyGenVoices(language?: string): Promise<HeyGenVoice[]> {
+  const [own, publicVoices] = await Promise.all([
+    listPaged<V3Voice>("/v3/voices?type=private&limit=100").catch(() => [] as V3Voice[]),
+    listPaged<V3Voice>(`/v3/voices?limit=100${language ? `&language=${encodeURIComponent(language)}` : ""}`).catch(() => [] as V3Voice[]),
+  ]);
+  // O filtro de idioma da HeyGen é frouxo (traz vozes em inglês que "suportam" o
+  // idioma): fica só com as do idioma, primeiro, e as multilíngues.
+  const picked = language
+    ? [
+        ...publicVoices.filter((v) => v.language.trim() === language),
+        ...publicVoices.filter((v) => v.language.trim() === "Multilingual"),
+      ]
+    : publicVoices;
+  const seen = new Set<string>();
+  return [...own, ...picked].filter((v) => !seen.has(v.voice_id) && seen.add(v.voice_id)).map((v) => ({
+    voice_id: v.voice_id,
+    name: v.type === "private" ? `${v.name} (da conta)` : v.name,
+    language: v.language,
+    gender: v.gender,
+    preview_audio: v.preview_audio_url ?? undefined,
+  }));
+}
+
+type V3Look = {
+  id: string; name: string; avatar_type: string; preview_image_url?: string | null;
+  default_voice_id?: string | null; status?: string | null; preferred_orientation?: string | null;
+};
+
+async function listLooks(params: Record<string, string>): Promise<V3Look[]> {
+  return listPaged<V3Look>(`/v3/avatars/looks?${new URLSearchParams({ ...params, limit: "50" })}`);
+}
+
+export type AccountAvatar = { id: string; name: string; type: "photo_avatar" | "digital_twin"; previewImageUrl: string | null; defaultVoiceId: string | null };
+
+/** Avatares prontos da própria conta HeyGen (feitos pela equipe), sem os temporários do app. */
+export async function listAccountAvatars(): Promise<AccountAvatar[]> {
+  const looks = await listLooks({ ownership: "private" });
+  return looks
+    .filter((l) => (l.status ?? "completed") === "completed" && !/^av-\d+-\d+$/.test(l.name))
+    .filter((l): l is V3Look & { avatar_type: AccountAvatar["type"] } => l.avatar_type === "photo_avatar" || l.avatar_type === "digital_twin")
+    .map((l) => ({ id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null, defaultVoiceId: l.default_voice_id ?? null }));
+}
+
+/** Gera o vídeo com um avatar que já existe na conta (não cria nem apaga nada). */
+export async function generateAccountAvatarVideo(input: { avatar: AccountAvatar; script: string; voiceId: string }): Promise<string> {
+  return input.avatar.type === "digital_twin"
+    ? generateDigitalTwinVideo({ avatarId: input.avatar.id, script: input.script, voiceId: input.voiceId })
+    : generateV3Video({ avatarId: input.avatar.id, script: input.script, voiceId: input.voiceId });
 }
 
 export type CreateHeyGenVideoInput = {
@@ -630,7 +566,7 @@ export type CreateHeyGenVideoInput = {
 export type CreatedHeyGenVideo = {
   videoId: string;
   talkingPhotoId: string;
-  provider: "v3" | "v2";
+  provider: "v3";
 };
 
 export async function createHeyGenAvatarVideo(
@@ -644,69 +580,26 @@ export async function createHeyGenAvatarVideo(
   const normalized = await normalizeToJpeg(input.imageBuffer);
   const avatarName = `av-${input.userId}-${Date.now()}`;
 
-  // === Tenta V3 (qualidade do site: avatar IV completo, gestos, corpo inteiro) ===
+  // 1. Upload como asset HeyGen
+  const assetId = await uploadImageAsset(normalized.buffer);
+
+  // 2. Cria o photo avatar temporário (apagado pelo router depois do vídeo)
+  let avatarId: string;
   try {
-    // 1. Upload como asset HeyGen
-    let assetId: string;
-    try {
-      assetId = await uploadImageAsset(normalized.buffer);
-    } catch (uploadErr) {
-      console.warn(`[HeyGen] Asset upload falhou, tentando com base64: ${uploadErr}`);
-      // Fallback base64 se o upload de asset falhar
-      throw uploadErr; // deixa cair para o fallback V2
-    }
-
-    // 2. Cria photo avatar
-    let avatarId: string;
-    try {
-      const created = await createPhotoAvatar(avatarName, assetId);
-      avatarId = created.avatarId;
-    } catch (err) {
-      const msg = String(err instanceof Error ? err.message : err);
-      if (msg.includes("401028") || msg.toLowerCase().includes("exceeded") || msg.toLowerCase().includes("limit")) {
-        await cleanupAllAvatars();
-        const retry = await createPhotoAvatar(avatarName, assetId);
-        avatarId = retry.avatarId;
-      } else {
-        throw err;
-      }
-    }
-
-    // 3. Aguarda avatar ficar pronto (training assíncrono — crítico para animação funcionar)
-    await waitForAvatarReady(avatarId, 180_000);
-
-    // 4. Gera vídeo com Avatar IV + expressividade + gestos
-    const videoId = await generateV3Video({
-      avatarId,
-      script: input.script,
-      voiceId: input.voiceId,
-      emotion: input.emotion,
-    });
-
-    return { videoId, talkingPhotoId: avatarId, provider: "v3" };
-  } catch (v3Err) {
-    console.warn(`[HeyGen] V3 falhou, usando fallback V2+AvatarIV: ${v3Err instanceof Error ? v3Err.message : v3Err}`);
+    avatarId = (await createPhotoAvatar(avatarName, assetId)).avatarId;
+  } catch (err) {
+    const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+    if (!msg.includes("401028") && !msg.includes("exceeded") && !msg.includes("limit")) throw err;
+    await cleanupTemporaryAvatars();
+    avatarId = (await createPhotoAvatar(avatarName, assetId)).avatarId;
   }
 
-  // === Fallback V2 + Avatar IV ===
-  let talkingPhotoId = await createTalkingPhotoV1(normalized.buffer);
+  // 3. Aguarda o avatar ficar pronto (training assíncrono)
+  await waitForAvatarReady(avatarId, 180_000);
 
-  if (talkingPhotoId === null) {
-    await cleanupAllAvatars();
-    talkingPhotoId = await createTalkingPhotoV1(normalized.buffer);
-    if (talkingPhotoId === null) {
-      throw new Error("HeyGen: limite de avatars atingido. Acesse app.heygen.com → Avatars e delete manualmente.");
-    }
-  }
-
-  const videoId = await generateV2VideoAvatarIV({
-    talkingPhotoId,
-    script: input.script,
-    voiceId: input.voiceId,
-    emotion: input.emotion,
-  });
-
-  return { videoId, talkingPhotoId, provider: "v2" };
+  // 4. Gera o vídeo com Avatar IV
+  const videoId = await generateV3Video({ avatarId, script: input.script, voiceId: input.voiceId });
+  return { videoId, talkingPhotoId: avatarId, provider: "v3" };
 }
 
 // ─── Limite de concorrência ──────────────────────────────────────────────
@@ -737,7 +630,7 @@ function releaseHeyGenVideoSlot(): void {
 // Envolve a criação + espera de um vídeo HeyGen numa "vaga" de concorrência.
 // Conservador de propósito: no caminho do Photo Avatar isso também cobre o
 // treino do avatar (que tem seu próprio limite de conta, tratado em
-// cleanupAllAvatars) — prefere segurar a vaga um pouco mais do que o
+// cleanupTemporaryAvatars) — prefere segurar a vaga um pouco mais do que o
 // estritamente necessário a arriscar estourar o teto real da conta.
 export async function withHeyGenVideoSlot<T>(fn: () => Promise<T>): Promise<T> {
   await acquireHeyGenVideoSlot();
@@ -750,35 +643,23 @@ export async function withHeyGenVideoSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 export async function waitForHeyGenCompletion(
   videoId: string,
-  options?: { maxAttempts?: number; delayMs?: number; provider?: "v3" | "v2" }
+  options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<{ resultUrl: string }> {
   const maxAttempts = options?.maxAttempts ?? 60;
   const delayMs = options?.delayMs ?? 8000;
-  const provider = options?.provider ?? "v3";
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const statusUrl = provider === "v3"
-      ? `${HEYGEN_API}/v3/videos/${videoId}`
-      : `${HEYGEN_API}/v1/video_status.get?video_id=${videoId}`;
-
-    const res = await heyGenFetch(statusUrl, { method: "GET" });
+    const res = await heyGenFetch(`${HEYGEN_API}/v3/videos/${videoId}`, { method: "GET" });
     const text = await res.text();
-    let parsed: { code?: number; data?: { status?: string; video_url?: string; url?: string; error?: unknown }; error?: unknown };
+    let parsed: { data?: { status?: string; video_url?: string; failure_message?: string | null; failure_code?: string | null } };
     try { parsed = JSON.parse(text); } catch {
       throw new Error(`HeyGen status: resposta inválida — ${text.slice(0, 200)}`);
     }
 
-    const data = parsed.data as { status?: string; video_url?: string; url?: string; error?: unknown } | undefined;
-    const url = data?.video_url ?? data?.url;
-    const status = data?.status;
-
-    if ((status === "completed" || status === "success") && url) return { resultUrl: url };
-
-    if (status === "failed") {
-      const errMsg = data?.error == null
-        ? "erro desconhecido"
-        : typeof data.error === "string" ? data.error : JSON.stringify(data.error);
-      throw new Error(`HeyGen falhou: ${errMsg}`);
+    const data = parsed.data;
+    if (data?.status === "completed" && data.video_url) return { resultUrl: data.video_url };
+    if (data?.status === "failed") {
+      throw new Error(`HeyGen falhou: ${data.failure_message ?? data.failure_code ?? "erro desconhecido"}`);
     }
 
     if (attempt < maxAttempts) await sleep(delayMs);
@@ -794,16 +675,11 @@ export async function downloadAndStoreHeyGenVideo(input: {
 }): Promise<{ videoUrl: string }> {
   const res = await fetchWithRetry(input.resultUrl, {});
   if (!res.ok) throw new Error(`Falha ao baixar vídeo do HeyGen (${res.status})`);
-
-  const relativePath = path.posix.join(
-    "videos",
-    String(input.userId),
-    "renders",
-    `video-${input.videoId}-heygen.mp4`
+  // No storage (S3), não no disco do container: o disco é apagado a cada deploy.
+  const { url } = await storagePut(
+    `videos/${input.userId}/video-${input.videoId}-heygen-${Date.now()}.mp4`,
+    Buffer.from(await res.arrayBuffer()),
+    "video/mp4"
   );
-  const absolutePath = path.resolve(UPLOADS_ROOT, relativePath);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, Buffer.from(await res.arrayBuffer()));
-
-  return { videoUrl: `/uploads/${relativePath}` };
+  return { videoUrl: url };
 }
