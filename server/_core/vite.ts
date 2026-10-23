@@ -63,11 +63,19 @@ export function serveStatic(app: Express) {
     );
   }
 
+  // Arquivos do build têm hash no nome: podem ficar em cache para sempre. Um
+  // arquivo que não existe mais (aba aberta com a versão anterior durante um
+  // deploy) devolve 404, não o index.html — senão o navegador recebe HTML no
+  // lugar do CSS e a página aparece sem estilo.
+  app.use("/app/assets", express.static(path.join(distPath, "assets"), { immutable: true, maxAge: "1y" }));
+  app.use("/app/assets", (_req, res) => res.status(404).end());
   // Platform served under /app — mirrors Vite base: "/app"
-  app.use("/app", express.static(distPath));
-  // Catch-all: serve React index.html for any /app route (client-side routing)
+  app.use("/app", express.static(distPath, { index: false }));
+  // Catch-all: serve React index.html for any /app route (client-side routing).
+  // Sem cache, para o navegador sempre pegar os nomes de arquivo do build atual.
   app.use("*", (req, res, next) => {
     if (!req.originalUrl.startsWith("/app")) return next();
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
