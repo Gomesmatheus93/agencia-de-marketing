@@ -105,14 +105,43 @@ Nunca use foto com marca, logo ou texto de terceiros em destaque.
 ## Layouts do carrossel
 
 1. **Capa:** logo no topo, título em dois pesos ocupando o terço de baixo, uma
-   linha de promessa, `1/N` no canto superior direito, "@alleenergia · deslize →" no rodapé.
-2. **Conteúdo:** número do slide grande e transparente ao fundo ou no topo,
-   título de 3 a 7 palavras (700–800), até 25 palavras de apoio (400–500).
-   Uma ideia por slide.
+   linha de promessa, "Desliza →" e "@alleenergia" no rodapé.
+2. **Conteúdo:** título de 3 a 7 palavras (700–800), até 25 palavras de apoio
+   (400–500). Uma ideia por slide.
 3. **Resumo:** lista curta, feita para print e para mandar a alguém.
 4. **CTA:** uma ação só, em destaque; logo completo; @alleenergia.
 
-Em todos: `n/N` no canto superior direito e `@alleenergia` pequeno no rodapé.
+Sem numeração: nada de `n/N` no canto nem número grande ao fundo (pedido da
+equipe). Se a ordem importar (passo a passo, lista), use um selo pequeno
+"PASSO 2 DE 3" ou o número dentro de um círculo ao lado do título.
+
+## Layout da parceria com a Allp Fit (padrão da equipe)
+
+Todo post, capa ou arte que fala da parceria Alle + Allp Fit segue o estilo do
+post real em collab com a @allpfit:
+
+- **Fundo roxo profundo** (`#5A16A8`, com uma camada `#3d0b80` a ~35%) e
+  **faixas diagonais em degradê laranja** (`#ff6a00` → `#ff8a1f`, de
+  transparente a ~90%): uma no canto superior direito, outra entrando pela
+  esquerda na altura do terço de baixo.
+- **Co-branding no topo à esquerda:** "allp fit" + "+" + `alle:logo-branco`,
+  tudo branco, do mesmo tamanho visual. Use o logo da Allp Fit em arquivo
+  quando a equipe fornecer; até lá, "allp fit" em Montserrat 800.
+- **Pessoa recortada (sem fundo) à direita**, ocupando da metade para baixo e
+  saindo pela borda inferior, sorrindo, de preferência em roupa de treino ou
+  com camisa da Alle/Allp Fit. Foto real da equipe/alunos tem prioridade; banco
+  só como apoio. O recorte é PNG com transparência (não coloque caixa nem
+  sombra atrás).
+- **Card 1 (à esquerda, sobre a pessoa se precisar):** retângulo de cantos bem
+  arredondados (rx ~34) em degradê de laranja para transparente da esquerda
+  para a direita; linha de apoio em 500 (ex.: "Sua conta de luz pode") e o
+  título em 900, CAIXA ALTA, 2 linhas (ex.: "CUSTAR ATÉ / 15% MENOS.*").
+- **Card 2:** laranja sólido, cantos arredondados, "E O MELHOR:" em 900 e os
+  benefícios em 600 (sem obras, mesma distribuidora, quem tem direito).
+- **Rodapé à esquerda:** selo escuro "ENERGIA DIGITAL" com o raio, o CTA em
+  800 e uma seta branca para a direita (em carrossel, ela indica deslizar).
+- Ressalva do 15% sempre que o percentual aparecer, pequena, no rodapé.
+- Texto nunca em cima do rosto da pessoa: mova a pessoa para a direita.
 
 ## Rotina de revisão (obrigatória)
 
