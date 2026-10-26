@@ -47,7 +47,9 @@ COPY --from=build --chown=node:node /app/server/agents/skills ./server/agents/sk
 COPY --from=build --chown=node:node /app/server/agents/design/fonts ./server/agents/design/fonts
 COPY --from=build --chown=node:node /app/server/agents/design/assets ./server/agents/design/assets
 
-RUN mkdir -p uploads && chown -R node:node /app
+# Os COPY acima já usam --chown. Um chown -R aqui reescreveria todo o node_modules
+# numa camada nova (lento e pesado; derrubava o build no Easypanel).
+RUN mkdir -p uploads && chown node:node /app /app/uploads
 
 USER node
 EXPOSE 3000
