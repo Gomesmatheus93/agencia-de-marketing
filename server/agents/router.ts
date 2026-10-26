@@ -8,7 +8,7 @@ import { TASKS, planItemSchema, type PlanResult } from "./tasks";
 import * as store from "./store";
 import { persistGeneratedImage } from "../_core/imageGeneration";
 import { DESIGN_FORMATS, DesignError, renderDesign } from "./design/render";
-import { applyTexts, extractTexts, findSvgForImage, formatOf } from "./design/edit";
+import { findSvgForImage, formatOf } from "./design/edit";
 
 const filePath = z.string().regex(/^[a-z0-9][a-z0-9_\-./]{0,99}\.(md|txt|tsv|json)$/i).refine((p) => !p.includes(".."));
 
@@ -169,39 +169,35 @@ export const agentsRouter = router({
       return { item };
     }),
 
-  artTexts: protectedProcedure
+  /** O desenho (SVG) de uma arte, para o editor visual. */
+  artSource: protectedProcedure
     .input(z.object({ threadId: z.number().int(), target: artTarget }))
     .query(async ({ ctx, input }) => {
       const { thread, node } = await loadArt(ctx.user.id, input.threadId, input.target);
       const svg = await artSvg(thread.id, node);
-      return { editable: Boolean(svg), texts: svg ? extractTexts(svg) : [], canUndo: Boolean(node.previous) };
+      return { svg, canUndo: Boolean(node.previous) };
     }),
 
-  /** Troca os textos da arte e desenha de novo, sem IA. Guarda a versão anterior para desfazer. */
-  editArtText: protectedProcedure
-    .input(z.object({
-      threadId: z.number().int(),
-      target: artTarget,
-      texts: z.array(z.object({ id: z.number().int().min(0), text: z.string().max(600) })).min(1).max(200),
-    }))
+  /** Salva a arte editada no editor visual: renderiza o SVG, guarda o PNG e mantém a versão anterior. */
+  saveArt: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), target: artTarget, svg: z.string().min(20).max(1_500_000) }))
     .mutation(async ({ ctx, input }) => {
       const { thread, result, node } = await loadArt(ctx.user.id, input.threadId, input.target);
       const svg = await artSvg(thread.id, node);
-      if (!svg) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta arte foi feita antes da edição manual e não tem o desenho guardado." });
-      const nextSvg = applyTexts(svg, input.texts);
-      const format = formatOf(nextSvg);
+      if (!svg) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta arte foi feita antes da edição existir e não tem o desenho guardado." });
+      const format = formatOf(input.svg);
       let png: Buffer;
       try {
-        png = await renderDesign(nextSvg, format);
+        png = await renderDesign(input.svg, format);
       } catch (e) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof DesignError ? e.message : "Não consegui desenhar a arte com esse texto." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof DesignError ? e.message : "Não consegui desenhar a arte." });
       }
       const { url } = await persistGeneratedImage(png.toString("base64"), "png");
       const { width, height } = DESIGN_FORMATS[format];
       await db.saveImage(ctx.user.id, `${thread.title.slice(0, 200)} (editada)`, url, undefined, width, height);
       node.previous = { imageUrl: node.imageUrl, svg };
       node.imageUrl = url;
-      node.svg = nextSvg;
+      node.svg = input.svg;
       await store.setThreadResult(thread.id, result);
       return { imageUrl: url };
     }),

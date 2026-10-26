@@ -139,6 +139,10 @@ async function startServer() {
       res.status(503).json({ status: "error", message: (error as Error).message });
     }
   });
+  // Fontes e arquivos da marca usados nas artes, para o editor visual desenhar
+  // no navegador igual ao renderizador do servidor.
+  app.use("/api/design-assets/fonts", express.static(path.join(process.cwd(), "server/agents/design/fonts"), { maxAge: "7d" }));
+  app.use("/api/design-assets/assets", express.static(path.join(process.cwd(), "server/agents/design/assets"), { maxAge: "7d" }));
   // Serve uploaded images
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

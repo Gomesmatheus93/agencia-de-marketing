@@ -28,7 +28,8 @@ export async function listThreads(userId: number, agentSlug: string, mode: Agent
   const db = await requireDb();
   return db.select().from(agentThreads)
     .where(and(eq(agentThreads.userId, userId), eq(agentThreads.agentSlug, agentSlug), eq(agentThreads.mode, mode)))
-    .orderBy(desc(agentThreads.updatedAt));
+    // Tarefas em ordem de criação: editar o resultado (texto, arte) não muda a posição.
+    .orderBy(desc(mode === "task" ? agentThreads.createdAt : agentThreads.updatedAt));
 }
 
 export async function getThread(userId: number, threadId: number): Promise<AgentThread | undefined> {

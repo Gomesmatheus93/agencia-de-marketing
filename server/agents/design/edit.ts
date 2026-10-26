@@ -1,46 +1,8 @@
 import { DESIGN_FORMATS, type DesignFormat } from "./render";
 import * as store from "../store";
 
-// Edição manual de texto das artes: troca os textos do SVG e renderiza de novo,
-// sem IA. O layout, as cores e as fontes ficam como o agente desenhou.
-
-// Texto "folha": <tspan>…</tspan> ou <text>…</text> sem elementos dentro.
-const LEAF = /<(tspan|text)\b([^>]*)>([^<]*)<\/\1>/g;
-
-function decode(s: string) {
-  return s
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-}
-
-function encode(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-export type ArtText = { id: number; text: string };
-
-/** Os textos da arte, na ordem em que aparecem no SVG (ignora os vazios). */
-export function extractTexts(svg: string): ArtText[] {
-  const out: ArtText[] = [];
-  let id = 0;
-  for (const m of svg.matchAll(LEAF)) {
-    const text = decode(m[3]);
-    if (text.trim()) out.push({ id, text });
-    id++;
-  }
-  return out;
-}
-
-/** Troca os textos pelos editados (por id), mantendo atributos e posição. */
-export function applyTexts(svg: string, edits: ArtText[]): string {
-  const byId = new Map(edits.map((e) => [e.id, e.text]));
-  let id = 0;
-  return svg.replace(LEAF, (whole, tag: string, attrs: string) => {
-    const next = byId.get(id++);
-    return next === undefined ? whole : `<${tag}${attrs}>${encode(next)}</${tag}>`;
-  });
-}
+// Apoio à edição manual das artes (editor visual na tela): de onde vem o SVG de
+// cada arte e em que formato ela é renderizada.
 
 /** Formato de render a partir do tamanho do SVG. */
 export function formatOf(svg: string): DesignFormat {
