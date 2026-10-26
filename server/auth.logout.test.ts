@@ -56,7 +56,6 @@ describe("auth.logout", () => {
       expect.arrayContaining([COOKIE_NAME, REFRESH_COOKIE_NAME])
     );
     expect(clearedCookies[0]?.options).toMatchObject({
-      maxAge: -1,
       secure: true,
       sameSite: "lax",
       httpOnly: true,

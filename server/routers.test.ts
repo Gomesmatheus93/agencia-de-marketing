@@ -346,7 +346,7 @@ describe("auth.logout", () => {
     expect(clearedCookies.map((c) => c.name)).toEqual(
       expect.arrayContaining([COOKIE_NAME, REFRESH_COOKIE_NAME])
     );
-    expect(clearedCookies[0]?.options).toMatchObject({ maxAge: -1 });
+    expect(clearedCookies[0]?.options).toMatchObject({ httpOnly: true, path: "/" });
   });
 
   it("returns current user for auth.me", async () => {

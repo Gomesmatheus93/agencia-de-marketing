@@ -103,8 +103,8 @@ class SDKServer {
 
   clearSessionCookies(req: Request, res: Response): void {
     const opts = getSessionCookieOptions(req);
-    res.clearCookie(COOKIE_NAME, { ...opts, maxAge: -1 });
-    res.clearCookie(REFRESH_COOKIE_NAME, { ...opts, maxAge: -1 });
+    res.clearCookie(COOKIE_NAME, opts);
+    res.clearCookie(REFRESH_COOKIE_NAME, opts);
   }
 
   async verifySession(
