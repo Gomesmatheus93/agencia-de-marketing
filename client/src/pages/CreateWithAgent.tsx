@@ -1,11 +1,12 @@
 import AppLayout from "@/components/AppLayout";
 import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
+import { ArtEditButton, CaptionEditor } from "@/components/agents/ArtEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Bot, Camera, Copy, Download, GalleryHorizontal, ImageIcon, Loader2, Smartphone, Sparkles } from "lucide-react";
+import { Bot, Camera, Copy, Download, GalleryHorizontal, ImageIcon, Loader2, Pencil, Smartphone, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -48,14 +49,18 @@ function copy(text: string) {
   toast.success("Copiado");
 }
 
-function CaptionBlock({ caption, hashtags, altText, firstComment, verdict }: { caption: string; hashtags: string[]; altText: string; firstComment?: string | null; verdict?: string }) {
+function CaptionBlock({ caption, hashtags, altText, firstComment, verdict, threadId, onSaved }: { caption: string; hashtags: string[]; altText: string; firstComment?: string | null; verdict?: string; threadId?: number | null; onSaved?: () => void }) {
   const full = hashtags.length ? `${caption}\n\n${hashtags.join(" ")}` : caption;
+  const [editing, setEditing] = useState(false);
   return (
+    <>
+    {editing && threadId && <CaptionEditor threadId={threadId} caption={caption} hashtags={hashtags} onClose={() => setEditing(false)} onSaved={() => onSaved?.()} />}
     <Card><CardContent className="space-y-4 p-5">
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold">Legenda</p>
         <div className="flex items-center gap-2">
           {verdict && <Badge variant="outline" className={cn(verdict === "READY" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400" : "border-amber-500/40 text-amber-700 dark:text-amber-400")}>revisão: {verdict === "READY" ? "pronta" : verdict === "REVIEW" ? "com ressalvas" : "corrigir"}</Badge>}
+          {threadId && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(true)}><Pencil className="h-3.5 w-3.5" />Editar</Button>}
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => copy(full)}><Copy className="h-3.5 w-3.5" />Copiar</Button>
         </div>
       </div>
@@ -63,6 +68,7 @@ function CaptionBlock({ caption, hashtags, altText, firstComment, verdict }: { c
       {firstComment && <div className="rounded-lg bg-muted/50 p-3 text-sm"><p className="mb-1 text-xs font-medium text-muted-foreground">Primeiro comentário</p><p className="whitespace-pre-wrap">{firstComment}</p></div>}
       <div className="rounded-lg bg-muted/50 p-3 text-sm"><p className="mb-1 text-xs font-medium text-muted-foreground">Texto alternativo</p><p>{altText}</p></div>
     </CardContent></Card>
+    </>
   );
 }
 
@@ -147,6 +153,7 @@ export function CreateCarousel() {
                 <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.slides[current].imageUrl, `slide-${current + 1}.png`)}><Download className="h-3.5 w-3.5" />Baixar este</Button>
                 <Button size="sm" className="flex-1 gap-1.5" onClick={async () => { for (const [i, s] of result.slides.entries()) await download(s.imageUrl, `slide-${i + 1}.png`); }}><Download className="h-3.5 w-3.5" />Baixar todos ({result.slides.length})</Button>
               </div>
+              {t.threadId && <ArtEditButton key={current} threadId={t.threadId} target={{ kind: "slide", index: current }} onSaved={() => t.refetch()} className="w-full gap-1.5" />}
             </div>
             <div className="space-y-4">
               <Card><CardContent className="p-5">
@@ -160,7 +167,7 @@ export function CreateCarousel() {
                   ))}
                 </ol>
               </CardContent></Card>
-              <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} />
+              <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} threadId={t.threadId} onSaved={() => t.refetch()} />
             </div>
           </section>
           <Assumptions items={result.assumptions} />
@@ -207,9 +214,12 @@ export function CreatePost() {
           <section className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
             <div className="space-y-3">
               <img src={result.imageUrl} alt={result.altText} className="w-full rounded-2xl border shadow-md" />
-              <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => download(result.imageUrl, "post.png")}><Download className="h-3.5 w-3.5" />Baixar arte</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.imageUrl, "post.png")}><Download className="h-3.5 w-3.5" />Baixar arte</Button>
+                {t.threadId && <ArtEditButton threadId={t.threadId} target={{ kind: "post" }} onSaved={() => t.refetch()} className="flex-1 gap-1.5" />}
+              </div>
             </div>
-            <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} firstComment={result.firstComment} verdict={result.linterVerdict} />
+            <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} firstComment={result.firstComment} verdict={result.linterVerdict} threadId={t.threadId} onSaved={() => t.refetch()} />
           </section>
           <Assumptions items={result.assumptions} />
         </>
@@ -359,7 +369,10 @@ export function CreateStories() {
                   {f.voiceover && <p><b>Falar:</b> {f.voiceover}</p>}
                   {f.sticker.type !== "nenhum" && f.sticker.prompt && <p><b>Figurinha:</b> {f.sticker.prompt}{f.sticker.options.length ? ` (${f.sticker.options.join(" / ")})` : ""}</p>}
                   {f.notes && <p className="text-muted-foreground">{f.notes}</p>}
-                  <button className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => download(f.imageUrl, `story-${i + 1}.png`)}><Download className="h-3 w-3" />baixar</button>
+                  <div className="flex items-center gap-3">
+                    <button className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => download(f.imageUrl, `story-${i + 1}.png`)}><Download className="h-3 w-3" />baixar</button>
+                    {t.threadId && <ArtEditButton threadId={t.threadId} target={{ kind: "frame", index: i }} onSaved={() => t.refetch()} className="h-7 gap-1 px-2 text-xs" />}
+                  </div>
                 </div>
               </div>
             ))}

@@ -6,6 +6,9 @@ import { AGENTS, getAgent } from "./registry";
 import { regeneratePlanItem, sendUserMessage } from "./runtime";
 import { TASKS, planItemSchema, type PlanResult } from "./tasks";
 import * as store from "./store";
+import { persistGeneratedImage } from "../_core/imageGeneration";
+import { DESIGN_FORMATS, DesignError, renderDesign } from "./design/render";
+import { applyTexts, extractTexts, findSvgForImage, formatOf } from "./design/edit";
 
 const filePath = z.string().regex(/^[a-z0-9][a-z0-9_\-./]{0,99}\.(md|txt|tsv|json)$/i).refine((p) => !p.includes(".."));
 
@@ -13,6 +16,35 @@ async function ownThread(userId: number, threadId: number) {
   const thread = await store.getThread(userId, threadId);
   if (!thread) throw new TRPCError({ code: "NOT_FOUND", message: "Conversa não encontrada" });
   return thread;
+}
+
+
+// ─── Edição manual das artes (texto) ──────────────────────────────────────────
+
+// Qual arte de qual tarefa: slide do carrossel, quadro dos stories ou a arte do post.
+const artTarget = z.object({ kind: z.enum(["slide", "frame", "post"]), index: z.number().int().min(0).default(0) });
+type ArtNode = { imageUrl: string; svg?: string; previous?: { imageUrl: string; svg: string } };
+
+const ART_AGENT: Record<z.infer<typeof artTarget>["kind"], string> = { slide: "carrossel", frame: "stories", post: "legendas" };
+
+function artNode(result: Record<string, any> | null, target: z.infer<typeof artTarget>): ArtNode | null {
+  if (!result) return null;
+  if (target.kind === "post") return typeof result.imageUrl === "string" ? (result as ArtNode) : null;
+  const list = target.kind === "slide" ? result.slides : result.frames;
+  return Array.isArray(list) && list[target.index]?.imageUrl ? list[target.index] : null;
+}
+
+async function artSvg(threadId: number, node: ArtNode) {
+  return node.svg ?? (await findSvgForImage(threadId, node.imageUrl));
+}
+
+async function loadArt(userId: number, threadId: number, target: z.infer<typeof artTarget>) {
+  const thread = await ownThread(userId, threadId);
+  if (thread.agentSlug !== ART_AGENT[target.kind]) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa não tem essa arte." });
+  const result = structuredClone(thread.result as Record<string, any> | null);
+  const node = artNode(result, target);
+  if (!result || !node) throw new TRPCError({ code: "NOT_FOUND", message: "Arte não encontrada." });
+  return { thread, result, node };
 }
 
 export const agentsRouter = router({
@@ -135,6 +167,67 @@ export const agentsRouter = router({
       const fresh = (await ownThread(ctx.user.id, input.threadId)).result as PlanResult;
       await store.setThreadResult(thread.id, { ...fresh, items: fresh.items.map((it, i) => (i === input.index ? item : it)) });
       return { item };
+    }),
+
+  artTexts: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), target: artTarget }))
+    .query(async ({ ctx, input }) => {
+      const { thread, node } = await loadArt(ctx.user.id, input.threadId, input.target);
+      const svg = await artSvg(thread.id, node);
+      return { editable: Boolean(svg), texts: svg ? extractTexts(svg) : [], canUndo: Boolean(node.previous) };
+    }),
+
+  /** Troca os textos da arte e desenha de novo, sem IA. Guarda a versão anterior para desfazer. */
+  editArtText: protectedProcedure
+    .input(z.object({
+      threadId: z.number().int(),
+      target: artTarget,
+      texts: z.array(z.object({ id: z.number().int().min(0), text: z.string().max(600) })).min(1).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { thread, result, node } = await loadArt(ctx.user.id, input.threadId, input.target);
+      const svg = await artSvg(thread.id, node);
+      if (!svg) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta arte foi feita antes da edição manual e não tem o desenho guardado." });
+      const nextSvg = applyTexts(svg, input.texts);
+      const format = formatOf(nextSvg);
+      let png: Buffer;
+      try {
+        png = await renderDesign(nextSvg, format);
+      } catch (e) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof DesignError ? e.message : "Não consegui desenhar a arte com esse texto." });
+      }
+      const { url } = await persistGeneratedImage(png.toString("base64"), "png");
+      const { width, height } = DESIGN_FORMATS[format];
+      await db.saveImage(ctx.user.id, `${thread.title.slice(0, 200)} (editada)`, url, undefined, width, height);
+      node.previous = { imageUrl: node.imageUrl, svg };
+      node.imageUrl = url;
+      node.svg = nextSvg;
+      await store.setThreadResult(thread.id, result);
+      return { imageUrl: url };
+    }),
+
+  undoArtEdit: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), target: artTarget }))
+    .mutation(async ({ ctx, input }) => {
+      const { thread, result, node } = await loadArt(ctx.user.id, input.threadId, input.target);
+      if (!node.previous) throw new TRPCError({ code: "BAD_REQUEST", message: "Não há edição para desfazer." });
+      const current = { imageUrl: node.imageUrl, svg: node.svg ?? "" };
+      node.imageUrl = node.previous.imageUrl;
+      node.svg = node.previous.svg;
+      node.previous = current.svg ? current : undefined;
+      await store.setThreadResult(thread.id, result);
+      return { imageUrl: node.imageUrl };
+    }),
+
+  /** Edição manual da legenda e das hashtags de um carrossel ou post. */
+  editCaption: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), caption: z.string().trim().min(1).max(2200), hashtags: z.array(z.string().trim().min(2).max(60)).max(30) }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const result = thread.result as Record<string, any> | null;
+      if (!result || typeof result.caption !== "string") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa não tem legenda." });
+      await store.setThreadResult(thread.id, { ...result, caption: input.caption, hashtags: input.hashtags });
+      return { ok: true };
     }),
 
   threads: protectedProcedure
