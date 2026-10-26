@@ -55,14 +55,15 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | href | proporção | quando |
 | --- | --- | --- |
 | `alle:logo` | 1200×353 | fundo claro |
-| `alle:logo-branco` | 1200×353 | fundo roxo, laranja ou foto escura |
+| `alle:logo-branco` | 1200×353 | fundo roxo ou foto escura (o raio tem metade laranja) |
+| `alle:logo-mono` | 1200×353 | logo todo branco: fundo laranja |
 | `alle:raio` | 376×600 | o raio sozinho, fundo claro |
 | `alle:raio-branco` | 376×600 | o raio sozinho (branco e laranja), fundo roxo ou escuro |
 | `alle:raio-mono` | 376×600 | o raio sozinho, todo branco: fundo laranja e marca d'água |
 
 Logo completo com 300–380 px de largura no canto superior esquerdo da capa e
 do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.
-Em fundo laranja, o raio é **sempre** o `alle:raio-mono` (o raio-branco tem
+Em fundo laranja, o logo é **sempre** o `alle:logo-mono` e o raio é **sempre** o `alle:raio-mono` (o raio-branco tem
 metade laranja e essa metade some no fundo laranja).
 
 Sem numeração nos slides: nada de contador "2/7" no topo nem número gigante

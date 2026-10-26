@@ -22,7 +22,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const ASSETS = "/api/design-assets/assets";
 const BRAND_IMAGES = [
   { href: "alle:logo", label: "Logo (fundo claro)", w: 1200, h: 353 },
-  { href: "alle:logo-branco", label: "Logo branco", w: 1200, h: 353 },
+  { href: "alle:logo-branco", label: "Logo branco (raio laranja)", w: 1200, h: 353 },
+  { href: "alle:logo-mono", label: "Logo todo branco (fundo laranja)", w: 1200, h: 353 },
   { href: "alle:raio", label: "Raio colorido", w: 376, h: 600 },
   { href: "alle:raio-branco", label: "Raio branco e laranja", w: 376, h: 600 },
   { href: "alle:raio-mono", label: "Raio todo branco", w: 376, h: 600 },
