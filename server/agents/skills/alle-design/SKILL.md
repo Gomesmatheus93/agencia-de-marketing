@@ -60,6 +60,9 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | `alle:raio` | 376×600 | o raio sozinho, fundo claro |
 | `alle:raio-branco` | 376×600 | o raio sozinho (branco e laranja), fundo roxo ou escuro |
 | `alle:raio-mono` | 376×600 | o raio sozinho, todo branco: fundo laranja e marca d'água |
+| `alle:allpfit-mono` | 1271×275 | logo da Allp Fit todo branco: co-branding da parceria sobre roxo/laranja |
+| `alle:allpfit-branco` | 1271×275 | logo da Allp Fit com ícone laranja e texto branco: fundo escuro |
+| `alle:allpfit` | 1271×275 | logo da Allp Fit colorido: fundo claro |
 
 Logo completo com 300–380 px de largura no canto superior esquerdo da capa e
 do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.
@@ -125,8 +128,8 @@ post real em collab com a @allpfit:
   transparente a ~90%): uma no canto superior direito, outra entrando pela
   esquerda na altura do terço de baixo.
 - **Co-branding no topo à esquerda:** "allp fit" + "+" + `alle:logo-branco`,
-  tudo branco, do mesmo tamanho visual. Use o logo da Allp Fit em arquivo
-  quando a equipe fornecer; até lá, "allp fit" em Montserrat 800.
+  tudo branco, do mesmo tamanho visual: `alle:allpfit-mono` + "+" +
+  `alle:logo-branco`.
 - **Pessoa recortada (sem fundo) à direita**, ocupando da metade para baixo e
   saindo pela borda inferior, sorrindo, de preferência em roupa de treino ou
   com camisa da Alle/Allp Fit. Foto real da equipe/alunos tem prioridade; banco
