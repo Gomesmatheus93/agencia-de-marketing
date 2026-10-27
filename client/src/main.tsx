@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { EMAIL_UNVERIFIED_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
+import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -17,14 +17,6 @@ const PUBLIC_PATHS = ["/app/login", "/app/register"];
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
-
-  // E-mail não confirmado → tela de "confirme seu e-mail".
-  if (error.message === EMAIL_UNVERIFIED_ERR_MSG) {
-    if (window.location.pathname !== "/app/verify-email-pending") {
-      window.location.href = "/app/verify-email-pending";
-    }
-    return;
-  }
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 

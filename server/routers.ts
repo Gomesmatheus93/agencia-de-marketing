@@ -78,7 +78,6 @@ import {
   passwordResetEmail,
   sendEmail,
   twoFactorCodeEmail,
-  verificationEmail,
 } from "./_core/email";
 import {
   clearLoginFailures,
@@ -5524,18 +5523,9 @@ const storiesRouter = router({
 const campaignAssetStatusSchema = z.enum(["draft", "ready", "pending_approval", "approved", "published", "failed"]);
 
 
-const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const TWOFA_TTL_MS = 10 * 60 * 1000;
 const TWOFA_MAX_ATTEMPTS = 5;
-
-async function sendVerificationEmail(userId: number, email: string, name: string): Promise<void> {
-  const raw = db.generateRawToken();
-  await db.createEmailToken(userId, "verify", raw, VERIFY_TTL_MS);
-  const link = `${ENV.appBaseUrl.replace(/\/$/, "")}/api/auth/verify-email?token=${encodeURIComponent(raw)}`;
-  const tpl = verificationEmail(name || "usuário", link);
-  await sendEmail({ ...tpl, to: email });
-}
 
 async function sendPasswordResetEmail(userId: number, email: string, name: string): Promise<void> {
   const raw = db.generateRawToken();
@@ -5614,10 +5604,6 @@ export const appRouter = router({
         const ip = ctx.req.ip ?? null;
         const userAgent = ctx.req.headers["user-agent"] ?? null;
         await db.recordAudit({ action: "register", actorUserId: user.id, ip, userAgent });
-        // Envia o e-mail de verificação (novos cadastros por e-mail/senha).
-        void sendVerificationEmail(user.id, input.email, input.name).catch((e) =>
-          console.warn("[auth.register] falha ao enviar verificação:", String(e))
-        );
         const { passwordHash: _rph, ...safeRegUser } = user;
         return safeRegUser;
       }),
@@ -5728,16 +5714,6 @@ export const appRouter = router({
         await db.recordAudit({ action: "email.verified", actorUserId: token.userId, ip: ctx.req.ip ?? null });
         return { success: true } as const;
       }),
-
-    resendVerification: authedProcedure.mutation(async ({ ctx }) => {
-      const u = ctx.actualUser;
-      if ((u as unknown as { emailVerifiedAt?: Date | null }).emailVerifiedAt) {
-        return { success: true, alreadyVerified: true } as const;
-      }
-      if (!u.email) throw new TRPCError({ code: "BAD_REQUEST", message: "Conta sem e-mail." });
-      await sendVerificationEmail(u.id, u.email, u.name ?? "");
-      return { success: true, alreadyVerified: false } as const;
-    }),
 
     // ── Recuperação de senha ───────────────────────────────────────────────
     requestPasswordReset: publicRateLimitedProcedure

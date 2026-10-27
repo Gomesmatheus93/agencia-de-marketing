@@ -1,4 +1,4 @@
-import { EMAIL_UNVERIFIED_ERR_MSG, NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
+import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
@@ -102,25 +102,12 @@ const aiRateLimit = t.middleware(async ({ ctx, next }) => {
   return next();
 });
 
-// Bloqueia contas de e-mail/senha que ainda não confirmaram o e-mail.
-// Contas existentes antes do rollout foram marcadas como verificadas (backfill),
-// e logins OAuth (Instagram) entram já verificados. O cliente reconhece o
-// `code: "FORBIDDEN"` + a flag `emailUnverified` para mostrar a tela de verificação.
-const requireVerifiedEmail = t.middleware(async ({ ctx, next }) => {
-  const u = ctx.actualUser as (typeof ctx.actualUser & { emailVerifiedAt?: Date | null }) | null;
-  const isEmailAccount = !!u && (u.loginMethod === "email" || !!u.passwordHash);
-  if (isEmailAccount && !u!.emailVerifiedAt) {
-    throw new TRPCError({ code: "FORBIDDEN", message: EMAIL_UNVERIFIED_ERR_MSG });
-  }
-  return next();
-});
-
-// requireUser + rate limit, SEM o gate de verificação de e-mail — para os
-// endpoints de gestão de conta (reenviar verificação, etc).
+// Sem confirmação de e-mail: a plataforma é interna e as contas da equipe são
+// criadas pela conta principal (Equipe), então login com senha já basta.
 export const authedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
 
-export const protectedProcedure = authedProcedure.use(requireVerifiedEmail);
-export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit).use(requireVerifiedEmail);
+export const protectedProcedure = authedProcedure;
+export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
 // 10 requests per 15 minutes per IP — para login/registro/verificação/reset/2FA.
 // O brute-force de senha em si tem proteção dedicada (server/_core/loginGuard.ts:
 // 5 falhas por e-mail+IP), então este limite de IP pode ser um pouco mais folgado

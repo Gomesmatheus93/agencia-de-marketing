@@ -27,7 +27,6 @@ import ArtStudio from "./pages/ArtStudio";
 import Approve from "./pages/Approve";
 import Team from "./pages/Team";
 import VerifyEmail from "./pages/VerifyEmail";
-import VerifyEmailPending from "./pages/VerifyEmailPending";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AccountSecurity from "./pages/AccountSecurity";
@@ -46,7 +45,6 @@ function AppRoutes() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Login} />
       <Route path="/verify-email" component={VerifyEmail} />
-      <Route path="/verify-email-pending" component={VerifyEmailPending} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/dashboard" component={Dashboard} />
