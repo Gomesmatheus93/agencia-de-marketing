@@ -128,6 +128,9 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
   const drag = useRef<{ el: SVGGraphicsElement; x: number; y: number; base: string | null; moved: boolean } | null>(null);
   const [selected, setSelected] = useState<SVGGraphicsElement | null>(null);
   const [version, setVersion] = useState(0);
+  // Só muda quando o desenho é trocado por fora (desfazer/refazer, abrir a arte):
+  // aí o painel remonta para mostrar os valores novos. Digitar não remonta.
+  const [rev, setRev] = useState(0);
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -159,6 +162,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
     h.pos = pos;
     setSelected(eid ? (svg.querySelector(`[data-eid="${eid}"]`) as SVGGraphicsElement | null) : null);
     setDirty(pos > 0);
+    setRev((r) => r + 1);
     bump();
   };
 
@@ -478,7 +482,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
         <aside className="w-full shrink-0 overflow-y-auto border-t p-4 lg:w-80 lg:border-l lg:border-t-0">
           {selected ? (
             <Inspector
-              key={`${selected.getAttribute("data-eid")}-${version}`}
+              key={`${selected.getAttribute("data-eid")}-${rev}`}
               el={selected}
               isBg={isBackground(selected, size.current.w, size.current.h)}
               setAttr={setAttr}
@@ -694,7 +698,7 @@ function TextPanel({ el, setAttr, commit, bump, tag }: {
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">{runs.length > 1 ? "Linhas (ou trechos) do texto" : "Texto"}</p>
         {(runs.length ? runs : [el]).map((r, i) => (
-          <div key={i} className="flex items-start gap-1.5">
+          <div key={r.getAttribute("data-eid") ?? i} className="flex items-start gap-1.5">
             <Textarea
               rows={1}
               defaultValue={r.textContent ?? ""}
