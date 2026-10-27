@@ -63,6 +63,7 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | `alle:allpfit-mono` | 1271×275 | logo da Allp Fit todo branco: co-branding da parceria sobre roxo/laranja |
 | `alle:allpfit-branco` | 1271×275 | logo da Allp Fit com ícone laranja e texto branco: fundo escuro |
 | `alle:allpfit` | 1271×275 | logo da Allp Fit colorido: fundo claro |
+| `alle:allpfit-roxo` | 1271×275 | logo roxa oficial da Allp Fit (ícone laranja, letras roxo-escuras): fundo claro, ou sobre uma pílula branca no roxo |
 
 Logo completo com 300–380 px de largura no canto superior esquerdo da capa e
 do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.

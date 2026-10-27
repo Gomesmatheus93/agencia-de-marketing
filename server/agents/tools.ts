@@ -122,7 +122,7 @@ export const AGENT_TOOLS: Tool[] = [
   {
     name: "render_design",
     description:
-      "Transforma uma arte desenhada em SVG (post, slide de carrossel, stories) em PNG, salva na galeria da plataforma e devolve a imagem para você conferir. Siga a skill alle-design. Imagens: href=\"alle:logo\" (e alle:logo-branco, alle:logo-mono, alle:raio, alle:raio-branco, alle:raio-mono; logo da parceira: alle:allpfit, alle:allpfit-branco, alle:allpfit-mono) para a marca e URLs https de search_photos para fotos.",
+      "Transforma uma arte desenhada em SVG (post, slide de carrossel, stories) em PNG, salva na galeria da plataforma e devolve a imagem para você conferir. Siga a skill alle-design. Imagens: href=\"alle:logo\" (e alle:logo-branco, alle:logo-mono, alle:raio, alle:raio-branco, alle:raio-mono; logo da parceira: alle:allpfit, alle:allpfit-branco, alle:allpfit-mono, alle:allpfit-roxo) para a marca e URLs https de search_photos para fotos.",
     input_schema: {
       type: "object",
       properties: {

@@ -27,6 +27,7 @@ const BRAND_IMAGES = [
   { href: "alle:allpfit-mono", label: "Logo Allp Fit todo branco", w: 1271, h: 275 },
   { href: "alle:allpfit-branco", label: "Logo Allp Fit (fundo escuro)", w: 1271, h: 275 },
   { href: "alle:allpfit", label: "Logo Allp Fit colorido (fundo claro)", w: 1271, h: 275 },
+  { href: "alle:allpfit-roxo", label: "Logo Allp Fit roxa (oficial)", w: 1271, h: 275 },
   { href: "alle:raio", label: "Raio colorido", w: 376, h: 600 },
   { href: "alle:raio-branco", label: "Raio branco e laranja", w: 376, h: 600 },
   { href: "alle:raio-mono", label: "Raio todo branco", w: 376, h: 600 },
