@@ -44,6 +44,45 @@ async function download(url: string, name: string) {
   }
 }
 
+/** Baixa o arquivo original; se o navegador bloquear o acesso direto, passa pelo proxy da plataforma. */
+async function fetchOriginal(url: string): Promise<Blob> {
+  try {
+    const res = await fetch(url);
+    if (res.ok) return await res.blob();
+  } catch { /* tenta pelo proxy */ }
+  const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Falha ao baixar ${url}`);
+  return res.blob();
+}
+
+/**
+ * Junta todas as artes num .zip. Os PNGs entram sem recompressão (STORE):
+ * o arquivo dentro do zip é idêntico ao original, mesma qualidade e resolução.
+ */
+async function downloadZip(files: Array<{ url: string; name: string }>, zipName: string) {
+  const id = toast.loading(`Preparando o zip com ${files.length} artes…`);
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    const blobs = await Promise.all(files.map((f) => fetchOriginal(f.url)));
+    blobs.forEach((b, i) => zip.file(files[i].name, b, { compression: "STORE", binary: true }));
+    const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(out);
+    a.download = zipName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast.success("Zip baixado", { id });
+  } catch (e) {
+    toast.error(`Não consegui montar o zip: ${(e as Error).message}`, { id });
+  }
+}
+
+/** Nome de arquivo seguro a partir do título. */
+function slug(text: string) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "artes";
+}
+
 function copy(text: string) {
   navigator.clipboard.writeText(text);
   toast.success("Copiado");
@@ -151,7 +190,7 @@ export function CreateCarousel() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.slides[current].imageUrl, `slide-${current + 1}.png`)}><Download className="h-3.5 w-3.5" />Baixar este</Button>
-                <Button size="sm" className="flex-1 gap-1.5" onClick={async () => { for (const [i, s] of result.slides.entries()) await download(s.imageUrl, `slide-${i + 1}.png`); }}><Download className="h-3.5 w-3.5" />Baixar todos ({result.slides.length})</Button>
+                <Button size="sm" className="flex-1 gap-1.5" onClick={() => downloadZip(result.slides.map((s, i) => ({ url: s.imageUrl, name: `slide-${String(i + 1).padStart(2, "0")}.png` })), `${slug(result.title)}.zip`)}><Download className="h-3.5 w-3.5" />Baixar todos em .zip ({result.slides.length})</Button>
               </div>
               {t.threadId && <ArtEditButton key={current} threadId={t.threadId} target={{ kind: "slide", index: current }} onSaved={() => t.refetch()} className="w-full gap-1.5" />}
             </div>
@@ -351,8 +390,8 @@ export function CreateStories() {
           </section>
 
           <div className="flex justify-end">
-            <Button size="sm" className="gap-1.5" onClick={async () => { for (const [i, f] of result.frames.entries()) await download(f.imageUrl, `story-${i + 1}.png`); }}>
-              <Download className="h-3.5 w-3.5" />Baixar todos ({result.frames.length})
+            <Button size="sm" className="gap-1.5" onClick={() => downloadZip(result.frames.map((f, i) => ({ url: f.imageUrl, name: `story-${String(i + 1).padStart(2, "0")}.png` })), `${slug(result.title)}.zip`)}>
+              <Download className="h-3.5 w-3.5" />Baixar todos em .zip ({result.frames.length})
             </Button>
           </div>
 
