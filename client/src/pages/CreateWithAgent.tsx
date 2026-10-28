@@ -438,7 +438,7 @@ type VideoResult = {
   wordCount: number;
   scenes: Array<{ time: string; speech: string; onScreen: string; broll: string | null }>;
   caption: string; hashtags: string[]; assumptions: string[];
-  videos?: Array<{ id: number; url: string | null; avatarName: string; voiceId: string; createdAt: string }>;
+  videos?: Array<{ id: number; url: string | null; avatarName: string; voiceId: string; createdAt: string; editedUrl?: string; editedAt?: string; edit?: { hook: string; cta: string; transition: boolean } }>;
 };
 
 /** A voz do HeyGen fala cerca de 2,3 palavras por segundo (mesma conta da skill alle-video). */
@@ -533,11 +533,21 @@ export function CreateVideoAgent() {
                 <Card><CardContent className="space-y-3 p-5">
                   <p className="font-semibold">Vídeos gerados</p>
                   <div className="flex gap-4 overflow-x-auto pb-1">
-                    {result.videos.map((v) => (
-                      <div key={`${v.id}-${v.createdAt}`} className="w-[220px] shrink-0 space-y-1.5">
-                        {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-xl border text-xs text-muted-foreground">Sem arquivo</div>}
-                        <p className="text-xs text-muted-foreground">{v.avatarName} · {new Date(v.createdAt).toLocaleString("pt-BR")}</p>
-                        {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
+                    {result.videos.map((v, i) => (
+                      <div key={`${v.id}-${v.createdAt}`} className="flex shrink-0 gap-3">
+                        <div className="w-[200px] space-y-1.5">
+                          {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-xl border text-xs text-muted-foreground">Sem arquivo</div>}
+                          <p className="text-xs text-muted-foreground">Original · {v.avatarName}</p>
+                          {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
+                        </div>
+                        {v.editedUrl && (
+                          <div className="w-[200px] space-y-1.5">
+                            <video key={v.editedUrl} src={v.editedUrl} controls playsInline className="aspect-[9/16] w-full rounded-xl border-2 border-primary bg-black object-contain" />
+                            <p className="text-xs font-medium text-primary">Editado para Reels</p>
+                            <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.editedUrl!, `${slug(result.title)}-reels.mp4`)}><Download className="h-3 w-3" />baixar</button>
+                          </div>
+                        )}
+                        {v.url && t.threadId && <ReelsEditPanel threadId={t.threadId} index={i} video={v} defaultHook={result.scenes[0]?.onScreen ?? ""} onDone={() => t.refetch()} />}
                       </div>
                     ))}
                   </div>
@@ -576,5 +586,34 @@ export function CreateVideoAgent() {
         </>
       )}
     </Shell>
+  );
+}
+
+/** Formulário da edição para Reels: gancho, chamada final e transição. */
+function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threadId: number; index: number; video: NonNullable<VideoResult["videos"]>[number]; defaultHook: string; onDone: () => void }) {
+  const [hook, setHook] = useState(video.edit?.hook ?? defaultHook);
+  const [cta, setCta] = useState(video.edit?.cta ?? "Chama a Ane na bio");
+  const [transition, setTransition] = useState(video.edit?.transition ?? true);
+  const edit = trpc.agents.editVideoForReels.useMutation({
+    onSuccess: () => { toast.success("Vídeo editado para Reels."); onDone(); },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <div className="w-[240px] space-y-2 rounded-xl border p-3 text-sm">
+      <p className="font-semibold">Editar para Reels</p>
+      <p className="text-xs text-muted-foreground">Legenda palavra a palavra com destaque laranja, cortes com zoom, logo, barra de progresso e chamada final. Sempre 1080×1920.</p>
+      <label className="block space-y-1"><span className="text-xs font-medium">Gancho (primeiros 2 s)</span>
+        <input value={hook} maxLength={80} onChange={(e) => setHook(e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm" />
+      </label>
+      <label className="block space-y-1"><span className="text-xs font-medium">Chamada final</span>
+        <input value={cta} maxLength={60} onChange={(e) => setCta(e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm" />
+      </label>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={transition} onChange={(e) => setTransition(e.target.checked)} />Transição de queima de filme com som</label>
+      <p className="text-xs text-muted-foreground">Trilha: escolha um áudio em alta no Instagram na hora de postar.</p>
+      <Button size="sm" className="w-full gap-1.5" disabled={edit.isPending} onClick={() => edit.mutate({ threadId, videoIndex: index, hook, cta, transition })}>
+        {edit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {edit.isPending ? "Editando… (1 a 3 min)" : video.editedUrl ? "Editar de novo" : "Editar para Reels"}
+      </Button>
+    </div>
   );
 }

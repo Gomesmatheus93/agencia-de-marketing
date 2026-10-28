@@ -9,6 +9,8 @@ import * as store from "./store";
 import { persistGeneratedImage } from "../_core/imageGeneration";
 import { DESIGN_FORMATS, DesignError, renderDesign } from "./design/render";
 import { findSvgForImage, formatOf } from "./design/edit";
+import { editForReels } from "./video/reelsEdit";
+import { getHeyGenSubtitle } from "../_core/heyGenAvatarAgent";
 
 const filePath = z.string().regex(/^[a-z0-9][a-z0-9_\-./]{0,99}\.(md|txt|tsv|json)$/i).refine((p) => !p.includes(".."));
 
@@ -240,6 +242,42 @@ export const agentsRouter = router({
       const videos = Array.isArray(result.videos) ? result.videos : [];
       await store.setThreadResult(thread.id, { ...result, script: input.script, videos: [{ ...input.video, createdAt: new Date().toISOString() }, ...videos].slice(0, 10) });
       return { ok: true };
+    }),
+
+  /** Edição para Reels (legenda viral, cortes, transição, gancho e CTA) de um vídeo da tarefa. */
+  editVideoForReels: protectedProcedure
+    .input(z.object({
+      threadId: z.number().int(),
+      videoIndex: z.number().int().min(0),
+      hook: z.string().trim().max(80),
+      cta: z.string().trim().max(60),
+      transition: z.boolean().default(true),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const result = thread.result as Record<string, any> | null;
+      const videos = Array.isArray(result?.videos) ? [...result!.videos] : [];
+      const video = videos[input.videoIndex];
+      if (!result || thread.agentSlug !== "video-ia" || !video?.url) throw new TRPCError({ code: "BAD_REQUEST", message: "Vídeo não encontrado nesta tarefa." });
+      const record = (await db.getAvatarVideos(ctx.user.id)).find((v) => v.id === video.id);
+      const srt = record?.providerJobId ? await getHeyGenSubtitle(record.providerJobId) : null;
+      const caption = String(result.caption ?? "");
+      const footnote = /15%/.test(String(result.script ?? "") + caption) || /quinze por cento/i.test(String(result.script ?? ""))
+        ? "*Até 15% de desconto, sujeito à análise da fatura e às condições do benefício."
+        : null;
+      try {
+        const { url } = await editForReels({
+          videoUrl: video.url, script: String(result.script ?? ""), srt,
+          hook: input.hook, cta: input.cta, footnote, transition: input.transition,
+          storageKey: `videos/${ctx.user.id}/reels-${thread.id}-${input.videoIndex}-${Date.now()}.mp4`,
+        });
+        videos[input.videoIndex] = { ...video, editedUrl: url, editedAt: new Date().toISOString(), edit: { hook: input.hook, cta: input.cta, transition: input.transition } };
+        await store.setThreadResult(thread.id, { ...result, videos });
+        return { url };
+      } catch (err) {
+        console.error("[Reels] edição falhou:", err);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Não consegui editar o vídeo: ${err instanceof Error ? err.message.slice(0, 300) : "erro"}` });
+      }
     }),
 
   threads: protectedProcedure

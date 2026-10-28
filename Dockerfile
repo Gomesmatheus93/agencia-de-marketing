@@ -34,7 +34,8 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # python3 roda as ferramentas das skills dos agentes (server/agents/skills/*/*.py, só biblioteca padrão).
-RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+# ffmpeg edita os vídeos do agente de vídeo para Reels (server/agents/video/reelsEdit.ts).
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
@@ -46,6 +47,8 @@ COPY --from=build --chown=node:node /app/server/agents/skills ./server/agents/sk
 # Fontes e logos usados pelos agentes para renderizar as artes (server/agents/design/render.ts).
 COPY --from=build --chown=node:node /app/server/agents/design/fonts ./server/agents/design/fonts
 COPY --from=build --chown=node:node /app/server/agents/design/assets ./server/agents/design/assets
+# Transições usadas na edição para Reels.
+COPY --from=build --chown=node:node /app/server/agents/video/assets ./server/agents/video/assets
 
 # Os COPY acima já usam --chown. Um chown -R aqui reescreveria todo o node_modules
 # numa camada nova (lento e pesado; derrubava o build no Easypanel).

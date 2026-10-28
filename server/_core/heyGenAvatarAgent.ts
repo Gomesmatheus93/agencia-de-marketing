@@ -399,6 +399,8 @@ export async function generateDigitalTwinVideo(input: {
           aspect_ratio: "9:16",
           engine,
           voice_settings: { speed: 1.0 },
+          // SRT com os tempos da fala: usado na edição para Reels (legenda palavra a palavra).
+          caption: { file_format: "srt" },
         }),
       });
 
@@ -446,6 +448,7 @@ async function generateV3Video(input: {
       motion_prompt:
         "natural upper body movement, direct eye contact with camera, conversational hand gestures, warm engaging expression",
       voice_settings: { speed: 1.0 },
+      caption: { file_format: "srt" },
     }),
   });
 
@@ -581,7 +584,7 @@ const VERTICAL_SUFFIX = "(vertical)";
 /**
  * Os vídeos são sempre 1080x1920 (Reels). Um photo avatar horizontal (ex.: os cenários
  * de podcast do HeyGen) sai com faixas brancas em 9:16, porque o HeyGen não recorta.
- * Aqui criamos uma vez a versão vertical do cenário (recorte 9:16 centrado na pessoa),
+ * Aqui criamos uma vez a versão vertical do cenário (câmera aberta, ver widePortrait),
  * no mesmo personagem, e reaproveitamos nas próximas vezes.
  */
 export async function ensurePortraitLook(lookId: string): Promise<string> {
@@ -593,11 +596,7 @@ export async function ensurePortraitLook(lookId: string): Promise<string> {
 
   const src = await fetchWithRetry(look.preview_image_url, {});
   if (!src.ok) throw new Error(`Não consegui baixar o cenário ${look.name} (${src.status}).`);
-  const img = sharp(Buffer.from(await src.arrayBuffer()));
-  const { width = 0, height = 0 } = await img.metadata();
-  const cropW = Math.min(width, Math.round((height * 9) / 16));
-  // "attention" centra o recorte no que mais chama atenção (o rosto da pessoa).
-  const portrait = await img.resize({ width: cropW, height, fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 92 }).toBuffer();
+  const portrait = await widePortrait(Buffer.from(await src.arrayBuffer()));
   const { url } = await storagePut(`heygen/looks/${lookId}-vertical-${Date.now()}.jpg`, portrait, "image/jpeg");
 
   const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars`, {
@@ -609,6 +608,28 @@ export async function ensurePortraitLook(lookId: string): Promise<string> {
   const newId = body.data?.avatar_item?.id ?? body.data?.id;
   if (!newId) throw new Error(`HeyGen não devolveu o look vertical: ${JSON.stringify(body).slice(0, 200)}`);
   return waitLook(newId);
+}
+
+/**
+ * Enquadramento vertical "câmera aberta": pega um recorte largo do cenário (pessoa com os
+ * braços, microfone e mesa), ajusta à largura de 1080 e completa o alto com a própria
+ * parede do cenário esticada e desfocada (fica espaço para título e legenda) e o pé com
+ * a mesa. Resultado 1080x1920.
+ */
+async function widePortrait(image: Buffer): Promise<Buffer> {
+  const OUT_W = 1080, OUT_H = 1920;
+  const { width = 0, height = 0 } = await sharp(image).metadata();
+  const cropW = Math.min(width, Math.round(height * 1.14));
+  const scene = await sharp(image).extract({ left: Math.round((width - cropW) / 2), top: 0, width: cropW, height }).resize({ width: OUT_W }).toBuffer();
+  const sh = Math.round((height * OUT_W) / cropW);
+  const free = Math.max(0, OUT_H - sh), top = Math.round(free * 0.72), bottom = free - top;
+  const topBand = await sharp(scene).extract({ left: 0, top: 0, width: OUT_W, height: 60 }).resize({ width: OUT_W, height: top + 120, fit: "fill" }).blur(30).toBuffer();
+  const botBand = await sharp(scene).extract({ left: 0, top: sh - 30, width: OUT_W, height: 30 }).resize({ width: OUT_W, height: bottom + 60, fit: "fill" }).blur(8).toBuffer();
+  const fade = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${OUT_W}" height="${sh}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.12" stop-color="#fff" stop-opacity="1"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  const sceneFaded = await sharp(scene).ensureAlpha().composite([{ input: await sharp(fade).png().toBuffer(), blend: "dest-in" }]).png().toBuffer();
+  return sharp({ create: { width: OUT_W, height: OUT_H, channels: 3, background: "#808080" } })
+    .composite([{ input: topBand, top: 0, left: 0 }, { input: botBand, top: top + sh - 30, left: 0 }, { input: sceneFaded, top, left: 0 }])
+    .jpeg({ quality: 92 }).toBuffer();
 }
 
 async function getLook(id: string): Promise<V3Look & { status?: string | null; error?: { message?: string } | null }> {
@@ -755,4 +776,17 @@ export async function downloadAndStoreHeyGenVideo(input: {
     "video/mp4"
   );
   return { videoUrl: url };
+}
+
+/** Legenda SRT de um vídeo do HeyGen (só existe se ele foi gerado pedindo a legenda). */
+export async function getHeyGenSubtitle(videoId: string): Promise<string | null> {
+  try {
+    const res = await heyGenFetch(`${HEYGEN_API}/v3/videos/${videoId}`, { method: "GET" });
+    const url = ((await res.json()) as { data?: { subtitle_url?: string | null } }).data?.subtitle_url;
+    if (!url) return null;
+    const srt = await fetchWithRetry(url, {});
+    return srt.ok ? await srt.text() : null;
+  } catch {
+    return null;
+  }
 }
