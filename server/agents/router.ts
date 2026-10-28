@@ -226,6 +226,22 @@ export const agentsRouter = router({
       return { ok: true };
     }),
 
+  /** Guarda no resultado da tarefa de vídeo o vídeo gerado no HeyGen e o roteiro usado. */
+  attachVideo: protectedProcedure
+    .input(z.object({
+      threadId: z.number().int(),
+      script: z.string().trim().min(10).max(5000),
+      video: z.object({ id: z.number().int(), url: z.string().url().nullable(), avatarName: z.string().max(200), voiceId: z.string().max(256) }),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const result = thread.result as Record<string, any> | null;
+      if (!result || thread.agentSlug !== "video-ia") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa não é de vídeo." });
+      const videos = Array.isArray(result.videos) ? result.videos : [];
+      await store.setThreadResult(thread.id, { ...result, script: input.script, videos: [{ ...input.video, createdAt: new Date().toISOString() }, ...videos].slice(0, 10) });
+      return { ok: true };
+    }),
+
   threads: protectedProcedure
     .input(z.object({ agentSlug: z.string() }))
     .query(({ ctx, input }) => store.listThreads(ctx.user.id, input.agentSlug)),

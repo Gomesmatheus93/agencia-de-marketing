@@ -66,6 +66,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "agentPost", icon: Image, path: "/dashboard/criar/post", color: "from-alle-purple to-alle-orange", labelKey: "createPost" as const, descKey: "createPostDesc" as const, group: "create" as const },
   { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },
   { id: "agentReels", icon: Clapperboard, path: "/dashboard/agents/reels", color: "from-alle-purple to-alle-orange", labelKey: "createReels" as const, descKey: "createReelsDesc" as const, group: "create" as const },
+  { id: "agentVideo", icon: Clapperboard, path: "/dashboard/criar/video", color: "from-alle-purple to-alle-orange", labelKey: "createVideoAgent" as const, descKey: "createVideoAgentDesc" as const, group: "create" as const },
   { id: "videos", icon: Video, path: "/dashboard/videos", color: "from-alle-purple to-alle-orange", labelKey: "createVideo" as const, descKey: "createVideoDesc" as const, group: "create" as const },
   { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-slate-500 to-slate-600", labelKey: "moreTools" as const, descKey: "moreToolsDesc" as const, group: "create" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-alle-orange to-alle-orange-light", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "publish" as const },

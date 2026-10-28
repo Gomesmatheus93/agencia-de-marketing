@@ -317,6 +317,49 @@ TAREFA: criar a sequência de stories do dia da Alle Energia, com as artes pront
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 };
 
+// ─── Vídeo com avatar (HeyGen) ────────────────────────────────────────────────
+
+const videoInput = z.object({
+  topic: z.string().trim().min(3).max(3000),
+  durationSec: z.union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)]).default(30),
+  avatarName: z.string().trim().max(200).optional(),
+  notes: z.string().trim().max(3000).optional(),
+});
+
+const videoResult = z.object({
+  title: z.string(),
+  hooks: z.array(z.object({ text: z.string(), score: z.number().min(1).max(10), why: z.string() })).min(1).max(3),
+  script: z.string().describe("Fala completa, pronta para a voz do HeyGen: números por extenso, sem símbolos, sem marcações de cena."),
+  wordCount: z.number().int(),
+  scenes: z.array(z.object({
+    time: z.string().describe("Ex.: 0-3s"),
+    speech: z.string(),
+    onScreen: z.string().describe("Texto curto na tela, até 6 palavras."),
+    broll: z.string().nullable(),
+  })).min(2).max(15),
+  caption: z.string().describe("Legenda final (ig-caption Job B), humanizada, com a ressalva do 15% quando houver."),
+  hashtags: z.array(z.string()).max(5),
+  assumptions: z.array(z.string()),
+});
+
+export const videoTask: TaskDefinition<typeof videoInput, typeof videoResult> = {
+  agentSlug: "video-ia",
+  input: videoInput,
+  result: videoResult,
+  title: (i) => `Vídeo IA: ${i.topic.split("\n")[0].slice(0, 60)}`,
+  brief: (i) => `${TASK_RULES}
+
+TAREFA: escrever o roteiro de um vídeo vertical falado por um avatar do HeyGen para o Instagram da Alle Energia.
+- Pauta: ${i.topic}
+- Duração alvo: ${i.durationSec} segundos (respeite a tabela de palavras da skill).${i.avatarName ? `\n- Avatar escolhido pela equipe: ${i.avatarName}. Escreva para essa pessoa falar.` : ""}
+- Siga a sua skill (alle-video) e leia skills/alle-video/referencias.md se existir: é o estilo dos vídeos que a equipe quer imitar.
+- Leia a memória (estrategia.md, voice.md, plan.md) e a identidade da marca.
+- Escreva 3 ganchos, use o melhor, e passe a fala pela skill ig-human. Confira a contagem de palavras.
+- Escreva a legenda pela skill ig-caption (Job B) e confira com run_script caption.
+- Não gere o vídeo: a equipe escolhe o avatar e a voz e gera a partir do seu roteiro.
+${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
+};
+
 // ─── Marca (estudar / conferir o padrão) ──────────────────────────────────────
 
 const brandInput = z.object({
@@ -384,6 +427,7 @@ export const TASKS: Record<string, TaskDefinition> = {
   [carouselTask.agentSlug]: carouselTask,
   [postTask.agentSlug]: postTask,
   [storiesTask.agentSlug]: storiesTask,
+  [videoTask.agentSlug]: videoTask,
   [brandTask.agentSlug]: brandTask,
 };
 

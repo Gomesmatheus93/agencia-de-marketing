@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle, ArrowLeft, AtSign, Bot, CalendarRange, Check, CircleDashed, ClipboardCheck, Clapperboard, Copy,
   FileText, Flame, GalleryHorizontal, Loader2, MessageCircle, Plus, Recycle, Reply, Send, Trash2, Type, UserRound,
-  ShieldCheck, Wand2, Wrench, X,
+  ShieldCheck, Video, Wand2, Wrench, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ const AGENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
   legendas: Type,
   carrossel: GalleryHorizontal,
   reels: Clapperboard,
+  "video-ia": Video,
   stories: CircleDashed,
   "pesquisa-viral": Flame,
   perfil: UserRound,

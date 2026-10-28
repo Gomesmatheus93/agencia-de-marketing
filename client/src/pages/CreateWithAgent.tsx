@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Bot, Camera, Copy, Download, GalleryHorizontal, ImageIcon, Loader2, Pencil, Smartphone, Sparkles } from "lucide-react";
+import { Bot, Camera, Clapperboard, Copy, Download, GalleryHorizontal, ImageIcon, Loader2, Pencil, Smartphone, Sparkles, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -420,6 +421,149 @@ export function CreateStories() {
                 </div>
               </div>
             ))}
+          </section>
+          <Assumptions items={result.assumptions} />
+        </>
+      )}
+    </Shell>
+  );
+}
+
+// ─── Vídeo com avatar (HeyGen) ────────────────────────────────────────────────
+
+type VideoResult = {
+  title: string;
+  hooks: Array<{ text: string; score: number; why: string }>;
+  script: string;
+  wordCount: number;
+  scenes: Array<{ time: string; speech: string; onScreen: string; broll: string | null }>;
+  caption: string; hashtags: string[]; assumptions: string[];
+  videos?: Array<{ id: number; url: string | null; avatarName: string; voiceId: string; createdAt: string }>;
+};
+
+/** A voz do HeyGen fala cerca de 2,3 palavras por segundo (mesma conta da skill alle-video). */
+const speechSeconds = (text: string) => Math.round(text.trim().split(/\s+/).filter(Boolean).length / 2.3);
+
+export function CreateVideoAgent() {
+  const t = useAgentTask<VideoResult>("video-ia");
+  const prefill = usePrefill("video-ia");
+  const [topic, setTopic] = useState(prefill);
+  const [duration, setDuration] = useState(30);
+  const [notes, setNotes] = useState("");
+  const [avatarId, setAvatarId] = useState("");
+  const [voiceId, setVoiceId] = useState("");
+  const [script, setScript] = useState("");
+  const result = t.result;
+
+  const { data: avatars = [], isLoading: loadingAvatars } = trpc.videos.getAccountAvatars.useQuery();
+  const { data: voices = [] } = trpc.videos.getVoices.useQuery({ provider: "heygen", language: "Portuguese" });
+  const avatar = avatars.find((a) => a.id === avatarId);
+  useEffect(() => { if (!avatarId && avatars.length) setAvatarId(avatars[0].id); }, [avatars, avatarId]);
+  // Ao trocar de avatar, usa a voz padrão dele (a equipe pode trocar depois).
+  useEffect(() => { if (avatar?.defaultVoiceId) setVoiceId(avatar.defaultVoiceId); }, [avatar?.id]);
+  useEffect(() => { setScript(result?.script ?? ""); }, [t.threadId, result?.script]);
+
+  const attach = trpc.agents.attachVideo.useMutation({ onSuccess: () => t.refetch() });
+  const generate = trpc.videos.generate.useMutation({
+    onSuccess: (video) => {
+      toast.success("Vídeo gerado e salvo.");
+      if (t.threadId) attach.mutate({ threadId: t.threadId, script, video: { id: video.id, url: video.videoUrl ?? null, avatarName: avatar?.name ?? "", voiceId } });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const canGenerate = Boolean(avatarId && voiceId && script.trim().length >= 10) && !generate.isPending;
+
+  return (
+    <Shell active="agentVideo" agentLabel="Agente de Vídeo IA" title="Criar vídeo com IA" description="O agente escreve o roteiro falado no estilo dos vídeos de referência da equipe. Você revisa, escolhe o avatar e a voz do HeyGen e gera o vídeo vertical, que fica salvo junto do roteiro.">
+      <Card><CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
+        <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: a Ane explica em 30 segundos o que é energia digital e por que não precisa de obra" />
+        <div className="grid gap-3 md:grid-cols-[120px_220px_220px_1fr_auto] md:items-end">
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Duração</span>
+            <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[15, 30, 45, 60].map((n) => <option key={n} value={n}>{n} s</option>)}</select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Avatar</span>
+            <select value={avatarId} onChange={(e) => setAvatarId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" disabled={loadingAvatars}>
+              {!avatars.length && <option value="">{loadingAvatars ? "Carregando…" : "Nenhum avatar na conta HeyGen"}</option>}
+              {avatars.map((a) => <option key={a.id} value={a.id}>{a.name}{a.type === "digital_twin" ? " (gêmeo digital)" : ""}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Voz</span>
+            <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
+              <option value="">Escolha a voz</option>
+              {voices.map((v) => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" placeholder="Ex.: tom descontraído; terminar pedindo para comentar ENERGIA" /></label>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, durationSec: duration, avatarName: avatar?.name, notes: notes || undefined })}>
+            {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar roteiro
+          </Button>
+        </div>
+      </CardContent></Card>
+
+      {t.running && <TaskProgress agentName="Agente de Vídeo IA" activity={t.activity} startedAt={t.thread?.createdAt} />}
+      {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}
+      {!t.thread && !t.running && <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground"><Clapperboard className="mx-auto mb-3 h-8 w-8 text-primary/60" />Descreva a pauta e clique em Criar roteiro.</div>}
+
+      {result && !t.running && (
+        <>
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <Card><CardContent className="space-y-3 p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">Fala do avatar</p>
+                  <Badge variant="outline">{script.trim().split(/\s+/).filter(Boolean).length} palavras · ~{speechSeconds(script)} s</Badge>
+                </div>
+                <Textarea rows={10} value={script} onChange={(e) => setScript(e.target.value)} className="text-sm leading-relaxed" />
+                <p className="text-xs text-muted-foreground">É exatamente isto que a voz vai falar. Pode editar antes de gerar: números por extenso e sem símbolos.</p>
+                <Button className="w-full gap-2" disabled={!canGenerate} onClick={() => generate.mutate({ title: result.title, topic, script, accountAvatarId: avatarId, voiceId })}>
+                  {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                  {generate.isPending ? "Gerando no HeyGen… pode levar alguns minutos" : `Gerar vídeo no HeyGen${avatar ? ` com ${avatar.name}` : ""}`}
+                </Button>
+              </CardContent></Card>
+
+              {!!result.videos?.length && (
+                <Card><CardContent className="space-y-3 p-5">
+                  <p className="font-semibold">Vídeos gerados</p>
+                  <div className="flex gap-4 overflow-x-auto pb-1">
+                    {result.videos.map((v) => (
+                      <div key={`${v.id}-${v.createdAt}`} className="w-[220px] shrink-0 space-y-1.5">
+                        {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-xl border text-xs text-muted-foreground">Sem arquivo</div>}
+                        <p className="text-xs text-muted-foreground">{v.avatarName} · {new Date(v.createdAt).toLocaleString("pt-BR")}</p>
+                        {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent></Card>
+              )}
+
+              <Card><CardContent className="space-y-2 p-5">
+                <p className="font-semibold">Ganchos</p>
+                {result.hooks.map((h, i) => (
+                  <div key={i} className="rounded-lg bg-muted/40 p-3 text-sm">
+                    <p><Badge variant="outline" className="mr-2">{h.score}/10</Badge><b>{h.text}</b></p>
+                    <p className="mt-1 text-xs text-muted-foreground">{h.why}</p>
+                  </div>
+                ))}
+              </CardContent></Card>
+            </div>
+
+            <div className="space-y-4">
+              <Card><CardContent className="p-5">
+                <p className="mb-3 font-semibold">{result.title} · cenas</p>
+                <ol className="space-y-2 text-sm">
+                  {result.scenes.map((s, i) => (
+                    <li key={i} className="rounded-lg border p-3">
+                      <p className="mb-1 font-mono text-xs text-muted-foreground">{s.time}</p>
+                      <p>{s.speech}</p>
+                      <p className="mt-1.5 text-xs"><b>Na tela:</b> {s.onScreen}</p>
+                      {s.broll && <p className="text-xs text-muted-foreground"><b>B-roll:</b> {s.broll}</p>}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent></Card>
+              <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={`Vídeo vertical: ${result.title}`} threadId={t.threadId} onSaved={() => t.refetch()} />
+            </div>
           </section>
           <Assumptions items={result.assumptions} />
         </>

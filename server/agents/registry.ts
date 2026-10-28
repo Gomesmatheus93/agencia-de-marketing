@@ -81,6 +81,17 @@ export const AGENTS: AgentDefinition[] = [
     ],
   },
   {
+    slug: "video-ia",
+    name: "Agente de Vídeo IA",
+    role: "Vídeos com avatar (HeyGen)",
+    description: "Escreve o roteiro falado para um avatar do HeyGen (gancho, fala pronta para a voz, textos na tela e legenda), no estilo dos vídeos de referência da equipe. A equipe escolhe o avatar e a voz e gera o vídeo.",
+    skill: "alle-video",
+    starters: [
+      "Crie um vídeo de 30 segundos explicando a energia digital",
+      "Roteiro de vídeo com a Ane respondendo se tem fidelidade",
+    ],
+  },
+  {
     slug: "stories",
     name: "Agente de Stories",
     role: "Sequência diária",

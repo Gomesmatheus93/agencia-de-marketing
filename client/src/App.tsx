@@ -36,7 +36,7 @@ import AgentOffice from "./pages/AgentOffice";
 import Planning from "./pages/Planning";
 import AuditPage from "./pages/Audit";
 import Brand from "./pages/Brand";
-import { CreateCarousel, CreatePost, CreateStories } from "./pages/CreateWithAgent";
+import { CreateCarousel, CreatePost, CreateStories, CreateVideoAgent } from "./pages/CreateWithAgent";
 
 function AppRoutes() {
   return (
@@ -56,6 +56,7 @@ function AppRoutes() {
       <Route path="/dashboard/marca" component={Brand} />
       <Route path="/dashboard/criar/carrossel" component={CreateCarousel} />
       <Route path="/dashboard/criar/post" component={CreatePost} />
+      <Route path="/dashboard/criar/video" component={CreateVideoAgent} />
       <Route path="/dashboard/criar/stories" component={CreateStories} />
       <Route path="/dashboard/agents" component={Agents} />
       <Route path="/dashboard/agents/:slug" component={Agents} />

@@ -39,6 +39,7 @@ const AGENT_SHORTCUTS = [
   { label: "Carrossel", path: "/dashboard/criar/carrossel" },
   { label: "Post", path: "/dashboard/criar/post" },
   { label: "Stories", path: "/dashboard/criar/stories" },
+  { label: "Vídeo com IA", path: "/dashboard/criar/video" },
   { label: "Reels", path: "/dashboard/agents/reels" },
 ];
 
