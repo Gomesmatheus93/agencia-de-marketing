@@ -527,7 +527,7 @@ export async function listHeyGenVoices(language?: string): Promise<HeyGenVoice[]
 }
 
 type V3Look = {
-  id: string; name: string; avatar_type: string; preview_image_url?: string | null;
+  id: string; name: string; avatar_type: string; preview_image_url?: string | null; group_id?: string | null;
   default_voice_id?: string | null; status?: string | null; preferred_orientation?: string | null;
 };
 
@@ -539,11 +539,23 @@ export type AccountAvatar = { id: string; name: string; type: "photo_avatar" | "
 
 /** Avatares prontos da própria conta HeyGen (feitos pela equipe), sem os temporários do app. */
 export async function listAccountAvatars(): Promise<AccountAvatar[]> {
-  const looks = await listLooks({ ownership: "private" });
-  return looks
+  const looks = (await listLooks({ ownership: "private" }))
     .filter((l) => (l.status ?? "completed") === "completed" && !/^av-\d+-\d+$/.test(l.name))
-    .filter((l): l is V3Look & { avatar_type: AccountAvatar["type"] } => l.avatar_type === "photo_avatar" || l.avatar_type === "digital_twin")
-    .map((l) => ({ id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null, defaultVoiceId: l.default_voice_id ?? null }));
+    .filter((l): l is V3Look & { avatar_type: AccountAvatar["type"] } => l.avatar_type === "photo_avatar" || l.avatar_type === "digital_twin");
+  // A voz padrão do personagem (grupo) vale para todos os looks dele: é onde a equipe
+  // troca a voz (ex.: a voz clonada com o sotaque certo). A do look fica como reserva.
+  const groupVoice = new Map<string, string | null>();
+  await Promise.all([...new Set(looks.map((l) => l.group_id).filter(Boolean))].map(async (g) => {
+    try {
+      const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/${g}`, { method: "GET" });
+      const body = (await res.json()) as { data?: { default_voice_id?: string | null } };
+      groupVoice.set(g as string, body.data?.default_voice_id ?? null);
+    } catch { /* sem a voz do grupo, usa a do look */ }
+  }));
+  return looks.map((l) => ({
+    id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null,
+    defaultVoiceId: (l.group_id && groupVoice.get(l.group_id)) || l.default_voice_id || null,
+  }));
 }
 
 /** Gera o vídeo com um avatar que já existe na conta (não cria nem apaga nada). */

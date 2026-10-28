@@ -478,15 +478,22 @@ export function CreateVideoAgent() {
       <Card><CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
         <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: a Ane explica em 30 segundos o que é energia digital e por que não precisa de obra" />
-        <div className="grid gap-3 md:grid-cols-[120px_220px_220px_1fr_auto] md:items-end">
+        <div className="space-y-1.5 text-sm">
+          <span className="font-medium">Modelo e cenário</span>
+          {!avatars.length && <p className="text-xs text-muted-foreground">{loadingAvatars ? "Carregando os avatares da conta HeyGen…" : "Nenhum avatar na conta HeyGen."}</p>}
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {avatars.map((a) => (
+              <button key={a.id} type="button" onClick={() => setAvatarId(a.id)} className={cn("w-[132px] shrink-0 overflow-hidden rounded-xl border-2 text-left transition", avatarId === a.id ? "border-primary" : "border-transparent bg-muted/40 opacity-80 hover:opacity-100")}>
+                {a.previewImageUrl ? <img src={a.previewImageUrl} alt="" loading="lazy" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-muted" />}
+                <p className="px-2 py-1.5 text-xs font-medium leading-tight">{a.name}{a.type === "digital_twin" ? <span className="block font-normal text-muted-foreground">gêmeo digital</span> : null}</p>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Novos cenários (podcast, academia, escritório…) são criados como looks do avatar no HeyGen e aparecem aqui sozinhos.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[120px_260px_1fr_auto] md:items-end">
           <label className="space-y-1.5 text-sm"><span className="font-medium">Duração</span>
             <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[15, 30, 45, 60].map((n) => <option key={n} value={n}>{n} s</option>)}</select>
-          </label>
-          <label className="space-y-1.5 text-sm"><span className="font-medium">Avatar</span>
-            <select value={avatarId} onChange={(e) => setAvatarId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" disabled={loadingAvatars}>
-              {!avatars.length && <option value="">{loadingAvatars ? "Carregando…" : "Nenhum avatar na conta HeyGen"}</option>}
-              {avatars.map((a) => <option key={a.id} value={a.id}>{a.name}{a.type === "digital_twin" ? " (gêmeo digital)" : ""}</option>)}
-            </select>
           </label>
           <label className="space-y-1.5 text-sm"><span className="font-medium">Voz</span>
             <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
