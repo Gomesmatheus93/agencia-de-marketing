@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
 import { ArtEditButton, CaptionEditor } from "@/components/agents/ArtEditor";
+import { ModelPicker } from "@/components/agents/ModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -146,6 +147,7 @@ export function CreateCarousel() {
   const [topic, setTopic] = useState(prefill);
   const [slides, setSlides] = useState(7);
   const [style, setStyle] = useState("auto");
+  const [model, setModel] = useState("");
   const [notes, setNotes] = useState("");
   const [current, setCurrent] = useState(0);
   const result = t.result;
@@ -156,7 +158,7 @@ export function CreateCarousel() {
       <Card><CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
         <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: as 4 linhas da conta de luz que não são energia — ensinar a ler a fatura e mostrar onde a Alle ajuda a pagar menos" />
-        <div className="grid gap-3 md:grid-cols-[160px_200px_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[120px_180px_260px_1fr_auto] md:items-end">
           <label className="space-y-1.5 text-sm"><span className="font-medium">Slides</span>
             <select value={slides} onChange={(e) => setSlides(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[5, 6, 7, 8, 9, 10].map((n) => <option key={n}>{n}</option>)}</select>
           </label>
@@ -165,8 +167,9 @@ export function CreateCarousel() {
               <option value="auto">Automático (alterna)</option><option value="roxo">Roxo</option><option value="laranja">Laranja</option><option value="claro">Claro</option>
             </select>
           </label>
+          <div className="space-y-1.5 text-sm"><span className="font-medium">Modelo</span><ModelPicker value={model} onChange={setModel} /></div>
           <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" placeholder="Ex.: usar foto de telhado com painel; CTA para o WhatsApp" /></label>
-          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, slides, style, notes: notes || undefined })}>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, slides, style, model: model || undefined, notes: notes || undefined })}>
             {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar carrossel
           </Button>
         </div>
@@ -223,6 +226,7 @@ export function CreatePost() {
   const prefill = usePrefill("legendas");
   const [topic, setTopic] = useState(prefill);
   const [format, setFormat] = useState("feed_4x5");
+  const [model, setModel] = useState("");
   const [notes, setNotes] = useState("");
   const result = t.result;
 
@@ -231,14 +235,15 @@ export function CreatePost() {
       <Card><CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-3"><p className="font-semibold">Pauta</p><TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} /></div>
         <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: bandeira tarifária de novembro — quanto ela soma na conta e como se proteger" />
-        <div className="grid gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[180px_260px_1fr_auto] md:items-end">
           <label className="space-y-1.5 text-sm"><span className="font-medium">Formato</span>
             <select value={format} onChange={(e) => setFormat(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
               <option value="feed_4x5">Feed 4:5</option><option value="feed_1x1">Feed quadrado</option><option value="story_9x16">Stories 9:16</option>
             </select>
           </label>
+          <div className="space-y-1.5 text-sm"><span className="font-medium">Modelo</span><ModelPicker value={model} onChange={setModel} /></div>
           <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" /></label>
-          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, format, notes: notes || undefined })}>
+          <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, format, model: model || undefined, notes: notes || undefined })}>
             {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Criar post
           </Button>
         </div>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DESIGN_MODEL_IDS, designModelById } from "../../shared/designModels";
 
 // Tarefas: o modo em que um agente roda a partir de uma tela da plataforma
 // (não do chat). A tela manda um `input`; o agente trabalha com as mesmas
@@ -180,10 +181,20 @@ ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE (obrigatório respeitar):\n${i.notes}` : 
 
 const artUrl = z.string().regex(/^(https?:\/\/|\/uploads\/)\S+$/, "Use a URL devolvida por render_design (ARTE_URL).");
 
+const designModel = z.enum(DESIGN_MODEL_IDS as [string, ...string[]]).optional();
+
+/** Linha do brief sobre o modelo visual da biblioteca de referências. */
+function modelLine(id: string | undefined) {
+  const m = designModelById(id);
+  if (!m) return "- Modelo visual: leia skills/alle-design/referencias.md e escolha você o modelo que combina com a pauta (diga qual usou em \"assumptions\").";
+  return `- Modelo visual OBRIGATÓRIO: ${m.id} · ${m.name} (${m.summary}). Leia a descrição completa do ${m.id} em skills/alle-design/referencias.md e siga a estrutura dele${m.id === "M07" ? " em todos os slides" : ""}. Se o estilo de cor pedido conflitar com o modelo, o modelo manda. Registre em "assumptions" que usou o ${m.id}.`;
+}
+
 const carouselInput = z.object({
   topic: z.string().trim().min(3).max(3000),
   slides: z.number().int().min(5).max(10).default(7),
   style: z.enum(["auto", "roxo", "laranja", "claro"]).default("auto"),
+  model: designModel,
   notes: z.string().trim().max(3000).optional(),
 });
 
@@ -211,6 +222,7 @@ export const carouselTask: TaskDefinition<typeof carouselInput, typeof carouselR
 TAREFA: criar um carrossel completo para o Instagram da Alle Energia, com as artes prontas.
 - Pauta: ${i.topic}
 - ${i.slides} slides, formato feed_4x5. Estilo visual: ${i.style === "auto" ? "escolha você entre roxo, laranja e claro, alternando com ritmo" : `predominantemente ${i.style}`}.
+${modelLine(i.model)}
 - Leia a memória (voice.md, plan.md) e a identidade da marca antes de escrever.
 - Escreva o texto seguindo a sua skill (capa de até 6 palavras, uma ideia por slide, slide de resumo, CTA único). Passe o texto pela skill ig-human (run_script humanize/detect).
 - Carregue a skill alle-design e desenhe cada slide com render_design, revisando cada PNG. Mantenha a unidade visual entre os slides.
@@ -224,6 +236,7 @@ ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 const postInput = z.object({
   topic: z.string().trim().min(3).max(3000),
   format: z.enum(["feed_4x5", "feed_1x1", "story_9x16"]).default("feed_4x5"),
+  model: designModel,
   notes: z.string().trim().max(3000).optional(),
 });
 
@@ -248,6 +261,7 @@ export const postTask: TaskDefinition<typeof postInput, typeof postResult> = {
 TAREFA: criar um post completo (arte + legenda) para o Instagram da Alle Energia.
 - Pauta: ${i.topic}
 - Formato da arte: ${i.format}.
+${modelLine(i.model)}
 - Leia a memória (voice.md, plan.md) e a identidade da marca.
 - Escreva a legenda pela sua skill (decida Job A ou B), humanize (ig-human) e confira com run_script caption até chegar a READY ou a um REVIEW justificado.
 - Carregue a skill alle-design e desenhe a arte com render_design (o texto da arte é curto: o gancho, não a legenda). Revise o PNG.
