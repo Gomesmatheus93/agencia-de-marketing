@@ -21,7 +21,7 @@ Antes de escrever, leia:
 
 ## Duração e tamanho
 
-A voz fala cerca de **2,3 palavras por segundo**. Use isto para caber no tempo pedido:
+A voz fala cerca de **2,2 palavras por segundo** (o mesmo ritmo dos vídeos de referência). Use isto para caber no tempo pedido:
 
 | duração | palavras na fala |
 | --- | --- |
