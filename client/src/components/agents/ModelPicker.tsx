@@ -6,7 +6,7 @@ import { Check, LayoutTemplate, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 /** Prévia gerada por scripts/build-model-previews.mts (client/public/modelos). */
-export const modelPreview = (id: string) => `${import.meta.env.BASE_URL}modelos/${id}.webp`;
+export const modelPreview = (id: string) => `${import.meta.env.BASE_URL.replace(/\/$/, "")}/modelos/${id}.webp`;
 
 /**
  * Botão que abre a galeria dos modelos da biblioteca de referências.
