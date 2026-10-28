@@ -524,6 +524,22 @@ async function startServer() {
     void handleAggregatorWebhook(req, res);
   });
 
+  /** Deixa a segunda mensagem pendente, se a automação tiver uma. */
+  async function queueFollowup(automationId: number | undefined, igAccountId: string | null | undefined, recipientId: string) {
+    if (!igAccountId) return;
+    try {
+      // Sem automation_id na chamada: usa a automação ativa da conta, se só houver uma.
+      const id = automationId ?? (await db.getSingleActiveAutomationId(igAccountId));
+      if (!id) return;
+      const automation = await db.getCommentAutomationById(id);
+      if (automation && (automation.dmFollowupMessage?.trim() || automation.dmLink?.trim())) {
+        await db.createDmFollowup(id, igAccountId, recipientId);
+      }
+    } catch (err) {
+      console.warn("[send-dm] não consegui registrar a segunda mensagem:", err);
+    }
+  }
+
   // ── n8n: match comment against active automations ────────────────────────
   // Called by n8n when Instagram sends a comment webhook.
   // Auth: X-Api-Key header must match N8N_SECRET env var.
@@ -653,6 +669,7 @@ async function startServer() {
         if (igRes.ok) {
           console.log(`[send-dm] IG comment entry succeeded`, igData);
           void db.incrementDmsSentCount(automationId ?? 0);
+          void queueFollowup(automationId, igConnection.instagramAccountId, recipient_id);
           res.json({ success: true, message_id: igData.message_id, method: "ig_comment" });
           return;
         }
@@ -683,9 +700,68 @@ async function startServer() {
       void db.incrementDmsSentCount(
         (req.body as { automation_id?: number }).automation_id ?? 0
       );
+      void queueFollowup(automationId, igConnection.instagramAccountId ?? ig_account_id, recipient_id);
       res.json({ success: true, message_id: data.message_id });
     } catch (err) {
       console.error("[CommentAutomations] send-dm error:", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ── n8n: a pessoa respondeu a DM → manda a segunda mensagem ─────────────
+  // A primeira DM sai como resposta privada ao comentário; o Instagram só
+  // deixa mandar outra mensagem depois que a pessoa responde. O n8n chama este
+  // endpoint ao receber o evento "messages" do webhook do Instagram.
+  app.post("/api/automations/dm-received", express.json(), async (req, res) => {
+    if (!isValidN8nApiKey(req.headers["x-api-key"])) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { ig_account_id, sender_id, is_echo } = req.body as { ig_account_id?: string; sender_id?: string; is_echo?: boolean };
+    if (!ig_account_id || !sender_id) {
+      res.status(400).json({ error: "Campos obrigatórios: ig_account_id, sender_id" });
+      return;
+    }
+    // Mensagens enviadas pela própria conta (eco) não disparam nada.
+    if (is_echo || sender_id === ig_account_id) {
+      res.json({ sent: false, reason: "echo" });
+      return;
+    }
+    try {
+      const pending = await db.getPendingDmFollowup(ig_account_id, sender_id);
+      if (!pending) {
+        res.json({ sent: false, reason: "no_pending_followup" });
+        return;
+      }
+      const { followup, automation } = pending;
+      const text = [automation.dmFollowupMessage, automation.dmLink].filter((t) => t && String(t).trim()).join("\n");
+      if (!text) {
+        await db.markDmFollowupSent(followup.id);
+        res.json({ sent: false, reason: "automation_has_no_followup" });
+        return;
+      }
+      const igConnection = await db.getInstagramConnectionByIgId(ig_account_id);
+      if (!igConnection?.accessToken) {
+        res.status(404).json({ error: "Instagram connection not found" });
+        return;
+      }
+      const sender = igConnection.instagramAccountId ?? ig_account_id;
+      const apiRes = await fetch(`https://graph.facebook.com/v25.0/${sender}/messages?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient: { id: sender_id }, message: { text } }),
+      });
+      const data = await apiRes.json() as Record<string, unknown>;
+      if (!apiRes.ok) {
+        console.error("[dm-received] erro ao enviar a segunda mensagem:", JSON.stringify(data));
+        res.status(apiRes.status).json({ sent: false, error: data });
+        return;
+      }
+      await db.markDmFollowupSent(followup.id);
+      console.log(`[dm-received] segunda mensagem enviada: automation=${automation.id}, recipient=${sender_id}`);
+      res.json({ sent: true, message_id: data.message_id, automationId: automation.id });
+    } catch (err) {
+      console.error("[dm-received] erro:", err);
       res.status(500).json({ error: "Internal error" });
     }
   });

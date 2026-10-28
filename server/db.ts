@@ -1,4 +1,4 @@
-import { eq, desc, asc, and, or, isNull, lte, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, asc, and, or, isNull, lte, gte, sql, count, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { SQL } from "drizzle-orm";
 import postgres from "postgres";
@@ -83,6 +83,8 @@ import {
   type InsertAuditLog,
   emailTokens,
   type EmailToken,
+  commentAutomations,
+  commentDmFollowups,
 } from "../drizzle/schema";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 
@@ -2327,6 +2329,49 @@ export async function incrementCommentMatchedCount(id: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await execute(db, sql`UPDATE comment_automations SET "commentsMatchedCount" = "commentsMatchedCount" + 1 WHERE id = ${id}`);
+}
+
+export async function getCommentAutomationById(id: number): Promise<CommentAutomation | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(commentAutomations).where(eq(commentAutomations.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function getSingleActiveAutomationId(igAccountId: string): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ id: commentAutomations.id }).from(commentAutomations)
+    .where(and(eq(commentAutomations.igAccountId, igAccountId), eq(commentAutomations.status, "active"))).limit(2);
+  return rows.length === 1 ? rows[0].id : null;
+}
+
+export async function createDmFollowup(automationId: number, igAccountId: string, recipientId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Uma pendência por pessoa e automação: um comentário novo não duplica.
+  await db.update(commentDmFollowups).set({ status: "replaced" })
+    .where(and(eq(commentDmFollowups.automationId, automationId), eq(commentDmFollowups.recipientId, recipientId), eq(commentDmFollowups.status, "pending")));
+  await db.insert(commentDmFollowups).values({ automationId, igAccountId, recipientId });
+}
+
+/** Pendência mais recente (últimos 7 dias) da pessoa nesta conta, com a automação. */
+export async function getPendingDmFollowup(igAccountId: string, recipientId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [row] = await db.select().from(commentDmFollowups)
+    .where(and(eq(commentDmFollowups.igAccountId, igAccountId), eq(commentDmFollowups.recipientId, recipientId), eq(commentDmFollowups.status, "pending"), gte(commentDmFollowups.createdAt, since)))
+    .orderBy(desc(commentDmFollowups.createdAt)).limit(1);
+  if (!row) return null;
+  const [automation] = await db.select().from(commentAutomations).where(eq(commentAutomations.id, row.automationId)).limit(1);
+  return automation ? { followup: row, automation } : null;
+}
+
+export async function markDmFollowupSent(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(commentDmFollowups).set({ status: "sent", sentAt: new Date() }).where(eq(commentDmFollowups.id, id));
 }
 
 export async function incrementDmsSentCount(id: number): Promise<void> {

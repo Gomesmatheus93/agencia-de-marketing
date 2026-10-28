@@ -576,6 +576,23 @@ export const commentAutomations = pgTable(
 export type CommentAutomation = typeof commentAutomations.$inferSelect;
 export type InsertCommentAutomation = typeof commentAutomations.$inferInsert;
 
+// Segunda mensagem da automação: fica pendente quando a primeira DM sai (pela
+// resposta privada ao comentário) e é enviada quando a pessoa responde a DM.
+// O Instagram só libera mensagens livres depois que a pessoa responde.
+export const commentDmFollowups = pgTable(
+  "comment_dm_followups",
+  {
+    id: serial("id").primaryKey(),
+    automationId: integer("automationId").notNull(),
+    igAccountId: varchar("igAccountId", { length: 64 }).notNull(),
+    recipientId: varchar("recipientId", { length: 64 }).notNull(),
+    status: varchar("status", { length: 16 }).default("pending").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    sentAt: timestamp("sentAt"),
+  },
+  (t) => [index("idx_comment_dm_followups_lookup").on(t.igAccountId, t.recipientId, t.status)]
+);
+
 // ─── Radar de Temas (Module 1.1) ─────────────────────────────────────────────
 export const trendingTopics = pgTable(
   "trending_topics",

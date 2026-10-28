@@ -282,7 +282,7 @@ export function registerOAuthRoutes(app: Express) {
       // 6. Subscribe to comment webhooks for this account
       try {
         const subRes = await fetch(
-          `https://graph.facebook.com/v25.0/${userData.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(accessToken)}`,
+          `https://graph.facebook.com/v25.0/${userData.id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(accessToken)}`,
           { method: "POST" }
         );
         const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
@@ -480,7 +480,7 @@ export function registerOAuthRoutes(app: Express) {
           // Subscribe to comment webhooks
           try {
             const subRes = await fetch(
-              `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(resolvedToken)}`,
+              `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(resolvedToken)}`,
               { method: "POST" }
             );
             const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
@@ -665,7 +665,7 @@ export function registerOAuthRoutes(app: Express) {
       // Subscribe to comment webhooks
       try {
         const subRes = await fetch(
-          `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments&access_token=${encodeURIComponent(resolvedToken)}`,
+          `https://graph.facebook.com/v25.0/${resolvedIg.id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(resolvedToken)}`,
           { method: "POST" }
         );
         const subData = await subRes.json() as { success?: boolean; error?: { message?: string } };
