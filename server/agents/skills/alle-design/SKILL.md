@@ -119,6 +119,16 @@ Sem numeração: nada de `n/N` no canto nem número grande ao fundo (pedido da
 equipe). Se a ordem importar (passo a passo, lista), use um selo pequeno
 "PASSO 2 DE 3" ou o número dentro de um círculo ao lado do título.
 
+## Modelos de referência (leia antes de desenhar)
+
+Antes de desenhar qualquer post, carrossel ou capa, leia a biblioteca de modelos com
+`read_file("skills/alle-design/referencias.md")`. São 30 modelos (M01–M30) estudados das
+referências do setor e já adaptados à identidade Alle: número gigante, linha contínua entre slides,
+documento anotado, mito ou verdade, prós e contras, simulação de economia, série emocional etc.
+Escolha um modelo que combine com o objetivo do card, varie em relação à última peça e diga na
+entrega qual modelo usou. Se o usuário pedir "outro modelo" ou "outra opção", escolha um modelo
+diferente da tabela, não só outra cor.
+
 ## Layout da parceria com a Allp Fit (padrão da equipe)
 
 Todo post, capa ou arte que fala da parceria Alle + Allp Fit segue o estilo do
