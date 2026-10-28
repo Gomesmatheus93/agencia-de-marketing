@@ -64,8 +64,13 @@ Para cada trecho da fala, proponha:
 - **broll:** a imagem de apoio opcional (ex.: "conta de luz na mão", "casa iluminada à
   noite"). O avatar continua falando; o b-roll é para a edição.
 
-Os vídeos do HeyGen saem **na vertical (9:16)** para Reels. Pense em legenda grande
-palavra a palavra na edição: escreva frases que funcionem lidas na tela.
+**Formato obrigatório: vertical 1080×1920 (9:16), para Reels do Instagram.** Todo vídeo
+sai assim; nunca proponha vídeo horizontal ou quadrado. Planeje as cenas para a tela em
+pé: a pessoa ocupa o centro, o texto na tela fica entre y=250 e y=1600 (fora da área da
+legenda e dos botões do Instagram) e o b-roll sugerido também precisa funcionar na vertical.
+Se o cenário escolhido for horizontal, a plataforma cria sozinha a versão vertical dele
+antes de gerar. Pense em legenda grande palavra a palavra na edição: escreva frases que
+funcionem lidas na tela.
 
 ## Regras da Alle (obrigatórias)
 

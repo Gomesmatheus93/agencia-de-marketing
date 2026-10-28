@@ -539,7 +539,13 @@ export type AccountAvatar = { id: string; name: string; type: "photo_avatar" | "
 
 /** Avatares prontos da própria conta HeyGen (feitos pela equipe), sem os temporários do app. */
 export async function listAccountAvatars(): Promise<AccountAvatar[]> {
-  const looks = (await listLooks({ ownership: "private" }))
+  // A listagem "private" do HeyGen demora a incluir looks recém-criados: completa com
+  // os looks de cada personagem (grupo) da conta.
+  const priv = await listLooks({ ownership: "private" });
+  const byGroup = await Promise.all([...new Set(priv.map((l) => l.group_id).filter(Boolean))].map((g) => listLooks({ group_id: g as string }).catch(() => [] as V3Look[])));
+  const all = new Map<string, V3Look>();
+  for (const l of [...priv, ...byGroup.flat()]) all.set(l.id, l);
+  const looks = [...all.values()]
     .filter((l) => (l.status ?? "completed") === "completed" && !/^av-\d+-\d+$/.test(l.name))
     .filter((l): l is V3Look & { avatar_type: AccountAvatar["type"] } => l.avatar_type === "photo_avatar" || l.avatar_type === "digital_twin");
   // A voz padrão do personagem (grupo) vale para todos os looks dele: é onde a equipe
@@ -552,7 +558,10 @@ export async function listAccountAvatars(): Promise<AccountAvatar[]> {
       groupVoice.set(g as string, body.data?.default_voice_id ?? null);
     } catch { /* sem a voz do grupo, usa a do look */ }
   }));
-  return looks.map((l) => ({
+  // Reels são sempre 1080x1920: um cenário horizontal que já ganhou versão vertical
+  // ("<nome> (vertical)") some da lista e fica só a versão vertical.
+  const names = new Set(looks.map((l) => l.name));
+  return looks.filter((l) => !(l.preferred_orientation === "landscape" && names.has(`${l.name} ${VERTICAL_SUFFIX}`))).map((l) => ({
     id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null,
     defaultVoiceId: (l.group_id && groupVoice.get(l.group_id)) || l.default_voice_id || null,
   }));
@@ -560,9 +569,61 @@ export async function listAccountAvatars(): Promise<AccountAvatar[]> {
 
 /** Gera o vídeo com um avatar que já existe na conta (não cria nem apaga nada). */
 export async function generateAccountAvatarVideo(input: { avatar: AccountAvatar; script: string; voiceId: string }): Promise<string> {
-  return input.avatar.type === "digital_twin"
-    ? generateDigitalTwinVideo({ avatarId: input.avatar.id, script: input.script, voiceId: input.voiceId })
-    : generateV3Video({ avatarId: input.avatar.id, script: input.script, voiceId: input.voiceId });
+  if (input.avatar.type === "digital_twin") {
+    return generateDigitalTwinVideo({ avatarId: input.avatar.id, script: input.script, voiceId: input.voiceId });
+  }
+  const avatarId = await ensurePortraitLook(input.avatar.id);
+  return generateV3Video({ avatarId, script: input.script, voiceId: input.voiceId });
+}
+
+const VERTICAL_SUFFIX = "(vertical)";
+
+/**
+ * Os vídeos são sempre 1080x1920 (Reels). Um photo avatar horizontal (ex.: os cenários
+ * de podcast do HeyGen) sai com faixas brancas em 9:16, porque o HeyGen não recorta.
+ * Aqui criamos uma vez a versão vertical do cenário (recorte 9:16 centrado na pessoa),
+ * no mesmo personagem, e reaproveitamos nas próximas vezes.
+ */
+export async function ensurePortraitLook(lookId: string): Promise<string> {
+  const look = await getLook(lookId);
+  if (look.preferred_orientation !== "landscape" || !look.preview_image_url) return lookId;
+  const verticalName = `${look.name} ${VERTICAL_SUFFIX}`;
+  const existing = (await listLooks({ ownership: "private" })).find((l) => l.name === verticalName && (l.status ?? "completed") !== "failed");
+  if (existing) return existing.status === "processing" ? waitLook(existing.id) : existing.id;
+
+  const src = await fetchWithRetry(look.preview_image_url, {});
+  if (!src.ok) throw new Error(`Não consegui baixar o cenário ${look.name} (${src.status}).`);
+  const img = sharp(Buffer.from(await src.arrayBuffer()));
+  const { width = 0, height = 0 } = await img.metadata();
+  const cropW = Math.min(width, Math.round((height * 9) / 16));
+  // "attention" centra o recorte no que mais chama atenção (o rosto da pessoa).
+  const portrait = await img.resize({ width: cropW, height, fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 92 }).toBuffer();
+  const { url } = await storagePut(`heygen/looks/${lookId}-vertical-${Date.now()}.jpg`, portrait, "image/jpeg");
+
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "photo", name: verticalName, file: { type: "url", url }, ...(look.group_id ? { avatar_group_id: look.group_id } : {}) }),
+  });
+  const body = (await res.json()) as { data?: { avatar_item?: { id?: string }; id?: string } };
+  const newId = body.data?.avatar_item?.id ?? body.data?.id;
+  if (!newId) throw new Error(`HeyGen não devolveu o look vertical: ${JSON.stringify(body).slice(0, 200)}`);
+  return waitLook(newId);
+}
+
+async function getLook(id: string): Promise<V3Look & { status?: string | null; error?: { message?: string } | null }> {
+  const res = await heyGenFetch(`${HEYGEN_API}/v3/avatars/looks/${id}`, { method: "GET" });
+  return ((await res.json()) as { data: V3Look & { status?: string | null } }).data;
+}
+
+async function waitLook(id: string): Promise<string> {
+  for (let i = 0; i < 60; i++) {
+    const l = await getLook(id);
+    if (l.status === "completed") return id;
+    if (l.status === "failed") throw new Error(`HeyGen não criou o cenário vertical: ${l.error?.message ?? "falhou"}`);
+    await sleep(5000);
+  }
+  throw new Error("HeyGen demorou demais para criar o cenário vertical.");
 }
 
 export type CreateHeyGenVideoInput = {

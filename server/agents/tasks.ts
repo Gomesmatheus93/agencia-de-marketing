@@ -349,7 +349,7 @@ export const videoTask: TaskDefinition<typeof videoInput, typeof videoResult> = 
   title: (i) => `Vídeo IA: ${i.topic.split("\n")[0].slice(0, 60)}`,
   brief: (i) => `${TASK_RULES}
 
-TAREFA: escrever o roteiro de um vídeo vertical falado por um avatar do HeyGen para o Instagram da Alle Energia.
+TAREFA: escrever o roteiro de um vídeo falado por um avatar do HeyGen para o Instagram da Alle Energia, sempre na vertical 1080x1920 (9:16, Reels).
 - Pauta: ${i.topic}
 - Duração alvo: ${i.durationSec} segundos (respeite a tabela de palavras da skill).${i.avatarName ? `\n- Avatar escolhido pela equipe: ${i.avatarName}. Escreva para essa pessoa falar.` : ""}
 - Siga a sua skill (alle-video) e leia skills/alle-video/referencias.md se existir: é o estilo dos vídeos que a equipe quer imitar.
