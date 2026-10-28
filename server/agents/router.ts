@@ -269,6 +269,7 @@ export const agentsRouter = router({
         const { url } = await editForReels({
           videoUrl: video.url, script: String(result.script ?? ""), srt,
           hook: input.hook, cta: input.cta, footnote, transition: input.transition,
+          framing: /\(vertical\)/.test(String(video.avatarName ?? "")) ? "aberto" : "fechado",
           storageKey: `videos/${ctx.user.id}/reels-${thread.id}-${input.videoIndex}-${Date.now()}.mp4`,
         });
         videos[input.videoIndex] = { ...video, editedUrl: url, editedAt: new Date().toISOString(), edit: { hook: input.hook, cta: input.cta, transition: input.transition } };

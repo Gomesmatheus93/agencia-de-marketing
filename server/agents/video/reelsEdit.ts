@@ -29,6 +29,8 @@ export type ReelsEditOptions = {
   cta: string;
   footnote?: string | null;
   transition: boolean;
+  /** "aberto": cenário vertical com câmera aberta (pessoa mais baixa, parede livre no alto). */
+  framing?: "aberto" | "fechado";
   storageKey: string;
 };
 
@@ -100,7 +102,9 @@ const assTime = (t: number) => {
 };
 const assText = (s: string) => s.replace(/[{}\\]/g, "").replace(/\n/g, " ");
 
-export function buildAss(words: Word[], duration: number, hook: string, cta: string, footnote?: string | null) {
+export function buildAss(words: Word[], duration: number, hook: string, cta: string, footnote?: string | null, framing: "aberto" | "fechado" = "fechado") {
+  // Câmera aberta: gancho e chamada na parede livre do alto; fechada: na altura do peito.
+  const topV = framing === "aberto" ? 380 : 1000;
   // "15" + "%" viram uma palavra só.
   const ws: Word[] = [];
   for (const w of words) {
@@ -139,8 +143,8 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,Montserrat Black,92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,7,4,2,70,70,560,1
-Style: Hook,Montserrat Black,86,&H00FFFFFF,&H00FFFFFF,&H00AE007C,&H00AE007C,0,0,0,0,100,100,0,0,3,26,0,8,90,90,1000,1
-Style: Cta,Montserrat Black,72,&H00FFFFFF,&H00FFFFFF,&H000073FF,&H000073FF,0,0,0,0,100,100,0,0,3,24,0,8,90,90,1000,1
+Style: Hook,Montserrat Black,86,&H00FFFFFF,&H00FFFFFF,&H00AE007C,&H00AE007C,0,0,0,0,100,100,0,0,3,26,0,8,90,90,${topV},1
+Style: Cta,Montserrat Black,72,&H00FFFFFF,&H00FFFFFF,&H000073FF,&H000073FF,0,0,0,0,100,100,0,0,3,24,0,8,90,90,${topV},1
 Style: Foot,Montserrat SemiBold,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,3,10,0,2,90,90,300,1
 
 [Events]
@@ -172,20 +176,32 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
     const words = opts.srt ? wordsFromSrt(opts.srt) : await wordsFromScript(src, opts.script, duration);
     if (!words.length) throw new Error("Não encontrei a fala para montar a legenda.");
     const assPath = path.join(tmp, "caps.ass");
-    await writeFile(assPath, buildAss(words, duration, opts.hook, opts.cta, opts.footnote));
+    const framing = opts.framing ?? "fechado";
+    await writeFile(assPath, buildAss(words, duration, opts.hook, opts.cta, opts.footnote, framing));
 
     const cuts = cutPoints(words);
-    let zoom = "1.0";
-    cuts.slice(1).forEach((c, i) => { zoom = `if(gte(t,${c}),${i % 2 === 0 ? 1.22 : 1.0},${zoom})`; });
-    zoom = `(${zoom})*(1+0.012*sin(t*0.9))`;
-
     const burns = opts.transition ? cuts.slice(1, 3) : [];
     const inputs = ["-i", src, "-loop", "1", "-i", LOGO];
     burns.forEach((_, k) => inputs.push("-i", TRANSITIONS[k % TRANSITIONS.length]));
 
-    const fc: string[] = [
-      `[0:v]scale=w='1080*(${zoom})':h='1920*(${zoom})':eval=frame,crop=1080:1920:x='(iw-1080)/2':y='(ih-1920)*0.32',setsar=1,format=yuv420p[base]`,
-    ];
+    // Cada plano (entre dois cortes) tem enquadramento fixo: aberto ou fechado (zoom no
+    // rosto). Recorta trecho a trecho e emenda, como numa edição com duas câmeras.
+    const bounds = [...cuts, duration];
+    const zoomIn = framing === "aberto" ? 1.45 : 1.22;
+    // Posição vertical do recorte no zoom (0 = topo, 1 = base): na câmera aberta a pessoa
+    // fica mais baixa, então o recorte desce para o rosto subir na tela.
+    const yPos = framing === "aberto" ? 0.62 : 0.3;
+    const n = bounds.length - 1;
+    const fc: string[] = [`[0:v]split=${n}${Array.from({ length: n }, (_, i) => `[in${i}]`).join("")}`];
+    const segs = bounds.slice(0, -1).map((a, i) => {
+      const b = bounds[i + 1];
+      const z = i % 2 === 1 ? zoomIn : 1;
+      const w = Math.round((1080 * z) / 2) * 2, h = Math.round((1920 * z) / 2) * 2;
+      const x = Math.round((w - 1080) / 4) * 2, y = Math.round(((h - 1920) * yPos) / 2) * 2;
+      fc.push(`[in${i}]trim=start=${a.toFixed(3)}:end=${b.toFixed(3)},setpts=PTS-STARTPTS,scale=${w}:${h},crop=1080:1920:${x}:${y},setsar=1,fps=30,format=yuv420p[p${i}]`);
+      return `[p${i}]`;
+    });
+    fc.push(`${segs.join("")}concat=n=${segs.length}:v=1:a=0[base]`);
     let last = "base";
     burns.forEach((t, k) => {
       const i = 2 + k;
