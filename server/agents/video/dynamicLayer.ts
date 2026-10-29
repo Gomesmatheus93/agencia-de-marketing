@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import { spawn } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import type { Word } from "./reelsEdit";
@@ -109,37 +109,47 @@ export function planOverlays(words: Word[], duration: number, hook: string): Ove
 
 // ─── Desenho (SVG → RGBA) ─────────────────────────────────────────────────────
 
-const ICON_SVG: Record<IconName, string> = {
-  fatura: `<rect x="28" y="14" width="44" height="72" rx="6"/><path d="M38 32h24M38 44h16"/><path d="M52 52 42 68h9l-3 12 12-18h-9l3-10z" fill="#fff" stroke-width="2"/>`,
-  desconto: `<circle cx="34" cy="34" r="9"/><circle cx="66" cy="66" r="9"/><path d="M72 26 28 74"/>`,
-  obra: `<path d="M24 62a26 26 0 0 1 52 0z"/><path d="M16 66h68"/><path d="M50 36v-8M40 40l-3-6M60 40l3-6"/>`,
-  placa: `<path d="M22 32h56l-8 34H14z"/><path d="M19 49h55M41 32l-5 34M60 32l-5 34"/><path d="M42 66v14M30 80h24"/>`,
-  torre: `<path d="M50 12 30 88M50 12l20 76M36 50h28M40 32h20M32 70h36M36 50l32 20M64 50 32 70"/>`,
-  qr: `<rect x="18" y="18" width="24" height="24" rx="3"/><rect x="58" y="18" width="24" height="24" rx="3"/><rect x="18" y="58" width="24" height="24" rx="3"/><path d="M58 58h8v8h-8zM74 58h8M58 74h8M74 70v12h8"/>`,
-  haltere: `<path d="M30 50h40"/><rect x="16" y="34" width="12" height="32" rx="3"/><rect x="72" y="34" width="12" height="32" rx="3"/><path d="M10 42v16M90 42v16"/>`,
-  chat: `<path d="M18 24h64v40H44L30 78V64H18z"/><circle cx="36" cy="44" r="2" fill="#fff"/><circle cx="50" cy="44" r="2" fill="#fff"/><circle cx="64" cy="44" r="2" fill="#fff"/>`,
-  casa: `<path d="M16 50 50 20l34 30"/><path d="M26 42v40h48V42"/><path d="M44 82V62h12v20"/>`,
-  calendario: `<rect x="18" y="24" width="64" height="58" rx="6"/><path d="M18 40h64M34 16v14M66 16v14"/><path d="M38 60l8 8 16-16"/>`,
-  raio: `<path d="M56 12 26 56h22l-6 32 32-46H52z" fill="#fff" stroke-width="3"/>`,
-  dinheiro: `<rect x="14" y="30" width="72" height="40" rx="6"/><circle cx="50" cy="50" r="10"/><path d="M24 40v20M76 40v20"/>`,
-  contrato: `<path d="M26 12h34l14 14v62H26z"/><path d="M60 12v14h14M36 40h28M36 52h20"/><path d="M34 74c6-8 10 4 16-2s6 2 12-2"/>`,
-  sol: `<circle cx="50" cy="50" r="14"/><path d="M50 18v10M50 72v10M18 50h10M72 50h10M27 27l7 7M66 66l7 7M73 27l-7 7M34 66l-7 7"/>`,
-  celular: `<rect x="32" y="12" width="36" height="76" rx="8"/><path d="M44 78h12"/>`,
+// Ícones da biblioteca Lucide (lucide-static, licença ISC), mais o painel solar no mesmo
+// traço (a Lucide não tem). Cada ícone tem um rótulo curto para ser entendido de relance.
+const LUCIDE: Record<IconName, string> = {
+  fatura: "receipt-text", desconto: "badge-percent", obra: "hard-hat", placa: "", torre: "utility-pole",
+  qr: "qr-code", haltere: "dumbbell", chat: "message-circle-more", casa: "house", calendario: "calendar-check",
+  raio: "zap", dinheiro: "piggy-bank", contrato: "file-pen-line", sol: "sun", celular: "smartphone",
+};
+const SOLAR_PANEL = `<path d="M4 4h16l-2 10H2z"/><path d="M3 9h16M8 4l-1.5 10M14 4l-1.5 10"/><path d="M10 14v5M6 19h8"/>`;
+const ICON_LABEL: Record<IconName, [string, string]> = {
+  // [rótulo normal, rótulo quando vem depois de "sem"/"não"]
+  fatura: ["FATURA", "FATURA"], desconto: ["DESCONTO", "DESCONTO"], obra: ["OBRA", "SEM OBRA"],
+  placa: ["PLACA SOLAR", "SEM PLACA"], torre: ["DISTRIBUIDORA", "DISTRIBUIDORA"], qr: ["QR CODE", "QR CODE"],
+  haltere: ["ACADEMIA", "ACADEMIA"], chat: ["FALE COM A ANE", "FALE COM A ANE"], casa: ["SUA CASA", "SUA CASA"],
+  calendario: ["TODO MÊS", "TODO MÊS"], raio: ["ENERGIA", "ENERGIA"], dinheiro: ["ECONOMIA", "ECONOMIA"],
+  contrato: ["CONTRATO", "SEM FIDELIDADE"], sol: ["ENERGIA LIMPA", "ENERGIA LIMPA"], celular: ["PELO CELULAR", "PELO CELULAR"],
+};
+const LUCIDE_DIR = path.resolve(process.cwd(), "node_modules/lucide-static/icons");
+const iconBody = (icon: IconName) => {
+  if (icon === "placa") return SOLAR_PANEL;
+  const svg = readFileSync(path.join(LUCIDE_DIR, `${LUCIDE[icon]}.svg`), "utf8");
+  return svg.slice(svg.indexOf(">", svg.indexOf("<svg")) + 1, svg.lastIndexOf("</svg>"));
 };
 
-async function svgToRgba(svg: string): Promise<{ data: Buffer; width: number; height: number }> {
+export async function svgToRgba(svg: string): Promise<{ data: Buffer; width: number; height: number }> {
   const png = new Resvg(svg, { font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: "Montserrat" } }).render().asPng();
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height };
 }
 
-const ICON_SIZE = 220;
-function iconSvg(icon: IconName, slash: boolean, size: number) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 220 220">
-<circle cx="110" cy="114" r="98" fill="#000" opacity="0.18"/>
-<circle cx="110" cy="108" r="98" fill="${ORANGE}" stroke="#fff" stroke-width="6"/>
-<g transform="translate(50 48) scale(1.2)" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">${ICON_SVG[icon]}</g>
-${slash ? `<path d="M48 46 172 170" stroke="#fff" stroke-width="16" stroke-linecap="round"/><path d="M48 46 172 170" stroke="#E5484D" stroke-width="9" stroke-linecap="round"/>` : ""}
+const ICON_SIZE = 380;
+/** Card branco com sombra, ícone laranja grande e rótulo roxo; "sem" risca o ícone em vermelho. */
+export function iconSvg(icon: IconName, slash: boolean, size: number) {
+  const label = ICON_LABEL[icon][slash ? 1 : 0];
+  const fs = label.length > 12 ? 22 : label.length > 10 ? 25 : label.length > 8 ? 30 : 34;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 300 300">
+<defs><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1E0A01" flood-opacity="0.32"/></filter></defs>
+<rect x="22" y="14" width="256" height="262" rx="46" fill="#fff" filter="url(#sh)"/>
+<rect x="22" y="14" width="256" height="262" rx="46" fill="none" stroke="${ORANGE}" stroke-width="5"/>
+<g transform="translate(84 46) scale(5.5)" fill="none" stroke="${ORANGE}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${iconBody(icon)}</g>
+${slash ? `<circle cx="150" cy="112" r="68" fill="none" stroke="#E5484D" stroke-width="11"/><path d="M102 64 198 160" stroke="#E5484D" stroke-width="11" stroke-linecap="round"/>` : ""}
+<text x="150" y="${240 + (34 - fs) / 3}" text-anchor="middle" font-family="Montserrat" font-weight="900" font-size="${fs}" fill="#7c00ae">${label}</text>
 </svg>`;
 }
 
@@ -233,8 +243,8 @@ export async function applyDynamicLayer(input: string, output: string, overlays:
   const icons = await Promise.all(overlays.filter((o): o is Extract<Overlay, { kind: "icon" }> => o.kind === "icon").map(async (o) => ({
     o,
     frames: await Promise.all(SCALES.map((s) => svgToRgba(iconSvg(o.icon, o.slash, Math.round(ICON_SIZE * s))))),
-    cx: o.side === "left" ? 190 : W - 190,
-    cy: framing === "aberto" ? 520 : 420,
+    cx: o.side === "left" ? 215 : W - 215,
+    cy: framing === "aberto" ? 360 : 480,
   })));
 
   const dec = spawn("ffmpeg", ["-nostdin", "-v", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
