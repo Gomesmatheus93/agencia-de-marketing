@@ -52,7 +52,7 @@ const ICON_RULES: Array<{ re: RegExp; icon: IconName }> = [
 ];
 const BEHIND_RE = /^(desconto|economizar|economia|barata|sem obra|sem placa|todo mes|gratis|15%|sem fidelidade|digital)$/;
 
-export function planOverlays(words: Word[], duration: number, hook: string): Overlay[] {
+export function planOverlays(words: Word[], duration: number, hook: string, hasCta = true): Overlay[] {
   const out: Overlay[] = [];
   const hookEnd = Math.min(2.6, duration);
   if (hook.trim()) out.push({ kind: "behind", text: hook.trim(), start: 0, end: hookEnd });
@@ -90,7 +90,7 @@ export function planOverlays(words: Word[], duration: number, hook: string): Ove
   // Ícone não divide a tela com a palavra gigante nem com a chamada final (últimos 2,4 s):
   // espera a palavra sair (até 1 s) ou não entra.
   const behindSpans = out.filter((o) => o.kind === "behind").map((o) => [o.start, o.end] as const);
-  const ctaStart = duration - 2.4;
+  const ctaStart = hasCta ? duration - 2.4 : duration;
   const final: Overlay[] = [];
   for (const o of out) {
     if (o.kind !== "icon") { final.push(o); continue; }
@@ -210,6 +210,20 @@ const maskAt = (m: Float32Array, x: number, y: number) => {
   return top * (1 - ay) + bot * ay;
 };
 
+/** Quanto a palavra gigante desce sobre o topo da cabeça (px). */
+const HEAD_OVERLAP = 70;
+
+/** Linha (em px da tela) do topo da pessoa, olhando a faixa central do recorte. */
+function headTop(mask: Float32Array): number | null {
+  const x0 = Math.floor(MASK_W * 0.3), x1 = Math.ceil(MASK_W * 0.7);
+  for (let y = 0; y < MASK_H; y++) {
+    let hits = 0;
+    for (let x = x0; x < x1; x++) if (mask[y * MASK_W + x] > 0.5) hits++;
+    if (hits >= 3) return Math.round((y / MASK_H) * H);
+  }
+  return null;
+}
+
 // ─── Composição quadro a quadro ───────────────────────────────────────────────
 
 /** Mistura uma imagem RGBA (opcionalmente atrás da pessoa) no quadro rgb24. */
@@ -237,7 +251,7 @@ export async function applyDynamicLayer(input: string, output: string, overlays:
     const { svg, height } = behindSvg(o.text);
     const img = await svgToRgba(svg);
     const cy = framing === "aberto" ? 700 : 560;
-    return { o, img, top: Math.round(cy - height / 2) };
+    return { o, img, top: Math.round(cy - height / 2), anchor: null as number | null };
   }));
   const SCALES = [0.35, 0.65, 0.92, 1.12, 1.06, 1.0];
   const icons = await Promise.all(overlays.filter((o): o is Extract<Overlay, { kind: "icon" }> => o.kind === "icon").map(async (o) => ({
@@ -264,11 +278,16 @@ export async function applyDynamicLayer(input: string, output: string, overlays:
     const activeBehind = behind.filter((b) => t >= b.o.start && t < b.o.end);
     if (activeBehind.length) {
       if (index - maskIndex >= 2 || !mask) { mask = await personMask(frame); maskIndex = index; }
+      // A palavra fica logo acima da cabeça (encostando só no topo do cabelo): o topo da
+      // pessoa sai do recorte e é atualizado quando o plano muda (corte com zoom).
+      const head = headTop(mask);
       for (const b of activeBehind) {
+        if (head !== null && (b.anchor === null || Math.abs(head - b.anchor) > 80)) b.anchor = head;
+        const top = b.anchor === null ? b.top : Math.max(140, Math.round(b.anchor + HEAD_OVERLAP - b.img.height));
         const local = t - b.o.start, left = b.o.end - t;
         const alpha = Math.min(1, local / 0.15, left / 0.2);
         const rise = Math.round(Math.max(0, 1 - local / 0.25) * 40);
-        blend(frame, b.img, 0, b.top + rise, alpha, mask);
+        blend(frame, b.img, 0, top + rise, alpha, mask);
       }
     }
     for (const ic of icons) {

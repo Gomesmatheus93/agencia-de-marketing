@@ -215,7 +215,7 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
     let video = reframed;
     if (opts.dynamic) {
       video = path.join(tmp, "dyn.mp4");
-      await applyDynamicLayer(reframed, video, planOverlays(words, duration, opts.hook), framing, middle);
+      await applyDynamicLayer(reframed, video, planOverlays(words, duration, opts.hook, Boolean(opts.cta.trim())), framing, middle);
     }
 
     const burns = opts.transition ? cuts.slice(1, 3) : [];

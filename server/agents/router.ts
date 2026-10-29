@@ -250,7 +250,7 @@ export const agentsRouter = router({
       threadId: z.number().int(),
       videoIndex: z.number().int().min(0),
       hook: z.string().trim().max(80),
-      cta: z.string().trim().max(60),
+      cta: z.string().trim().max(60).default(""),
       transition: z.boolean().default(true),
       dynamic: z.boolean().default(true),
     }))

@@ -592,7 +592,7 @@ export function CreateVideoAgent() {
 /** Formulário da edição para Reels: gancho, chamada final e transição. */
 function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threadId: number; index: number; video: NonNullable<VideoResult["videos"]>[number]; defaultHook: string; onDone: () => void }) {
   const [hook, setHook] = useState(video.edit?.hook ?? defaultHook);
-  const [cta, setCta] = useState(video.edit?.cta ?? "Chama a Ane na bio");
+  const [cta, setCta] = useState(video.edit?.cta ?? "");
   const [transition, setTransition] = useState(video.edit?.transition ?? true);
   const [dynamic, setDynamic] = useState(video.edit?.dynamic ?? true);
   const edit = trpc.agents.editVideoForReels.useMutation({
@@ -606,7 +606,7 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
       <label className="block space-y-1"><span className="text-xs font-medium">Gancho (primeiros 2 s)</span>
         <input value={hook} maxLength={80} onChange={(e) => setHook(e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm" />
       </label>
-      <label className="block space-y-1"><span className="text-xs font-medium">Chamada final</span>
+      <label className="block space-y-1"><span className="text-xs font-medium">Chamada final (opcional)</span>
         <input value={cta} maxLength={60} onChange={(e) => setCta(e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm" />
       </label>
       <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={dynamic} onChange={(e) => setDynamic(e.target.checked)} /><span><b>Legendas dinâmicas:</b> gancho e palavras-chave gigantes atrás do avatar e ícones animados pelo assunto (fatura, desconto, obra, QR code…)</span></label>
