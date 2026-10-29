@@ -70,6 +70,33 @@ do CTA. Nos slides do meio, só o raio pequeno (40–60 px de largura) ou nada.
 Em fundo laranja, o logo é **sempre** o `alle:logo-mono` e o raio é **sempre** o `alle:raio-mono` (o raio-branco tem
 metade laranja e essa metade some no fundo laranja).
 
+## A Ane nas artes (regra da equipe: sempre que couber)
+
+A **Ane** é a atendente virtual da Alle (a mesma do WhatsApp) e é o **rosto da marca**. Sempre
+que a arte tiver espaço, coloque a foto dela:
+
+| href | proporção | o que é |
+| --- | --- | --- |
+| `alle:ane` | 848×997 | PNG recortado (fundo transparente), braços cruzados, sorrindo, camiseta roxa com o logo da Alle; cortada na cintura |
+
+- **Onde entra:** capa e slide de CTA do carrossel, post de oferta, stories e posts que chamam
+  para falar com ela ("chama a Ane", "manda a fatura pra mim"). Num carrossel, no máximo 2 slides
+  (em geral capa e CTA); nos slides do meio, só se sobrar espaço de verdade.
+- **Como posicionar:** sempre **encostada na borda de baixo** da arte (o corte da cintura fica
+  rente ao pé da peça, nunca "flutuando"), no canto direito ou esquerdo, com 560 a 900 px de
+  altura. Mantenha a proporção: largura = altura × 0,85. Ela pode passar por cima do raio de
+  marca d'água e de formas decorativas, nunca por cima de texto, número, ícone ou botão: reserve
+  o lado dela e quebre o texto em linhas mais curtas do outro lado. O @ e a ressalva do 15%
+  ficam do lado oposto ou acima dela.
+- **Combina com:** fundo roxo `#7B2FBE`, laranja ou claro. Um balão curto ao lado do rosto
+  ("Fala comigo!", "Manda sua conta pra mim") reforça o CTA.
+- **Quando não usar:** arte com foto de outra pessoa (cliente, aluno, equipe), tabelas e
+  gráficos que ocupam a peça inteira, notícia do setor, data comemorativa sensível (luto,
+  Consciência Negra) e qualquer arte em que ela teria de ficar minúscula (menos de 520 px) ou
+  cobrir informação. Nesses casos, sem a Ane.
+- Nunca recorte o rosto, espelhe, distorça, mude a cor da camiseta ou coloque a Ane dizendo um
+  número ou depoimento: ela convida para a conversa, não dá prova.
+
 Sem numeração nos slides: nada de contador "2/7" no topo nem número gigante
 de marca d'água no fundo (pedido da equipe).
 
