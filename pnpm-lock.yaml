@@ -184,6 +184,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+      onnxruntime-node:
+        specifier: 1.20.1
+        version: 1.20.1
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -4074,6 +4077,13 @@ packages:
 
   oniguruma-to-es@4.3.3:
     resolution: {integrity: sha512-rPiZhzC3wXwE59YQMRDodUwwT9FZ9nNBwQQfsd1wfdtlKEyCdRV0avrTcSZ5xlIvGRVPd/cx6ZN45ECmS39xvg==}
+
+  onnxruntime-common@1.20.1:
+    resolution: {integrity: sha512-YiU0s0IzYYC+gWvqD1HzLc46Du1sXpSiwzKb63PACIJr6LfL27VsXSXQvt68EzD3V0D5Bc0vyJTjmMxp0ylQiw==}
+
+  onnxruntime-node@1.20.1:
+    resolution: {integrity: sha512-di/I4HDXRw+FLgq+TyHmQEDd3cEp9iFFZm0r4uJ1Wd7b/WE1VXtKWo8yemex347c6GNF/3Pv86ZfPhIWxORr0w==}
+    os: [win32, darwin, linux]
 
   package-manager-detector@1.5.0:
     resolution: {integrity: sha512-uBj69dVlYe/+wxj8JOpr97XfsxH/eumMt6HqjNTmJDf/6NO9s+0uxeOneIz3AsPt2m6y9PqzDzd3ATcU17MNfw==}
@@ -9216,6 +9226,13 @@ snapshots:
       oniguruma-parser: 0.12.1
       regex: 6.0.1
       regex-recursion: 6.0.2
+
+  onnxruntime-common@1.20.1: {}
+
+  onnxruntime-node@1.20.1:
+    dependencies:
+      onnxruntime-common: 1.20.1
+      tar: 7.5.1
 
   package-manager-detector@1.5.0: {}
 

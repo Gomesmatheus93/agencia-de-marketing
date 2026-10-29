@@ -38,6 +38,8 @@ ENV PORT=3000
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+# onnxruntime (recorte da pessoa na edição para Reels): só o binário Linux é usado.
+RUN rm -rf node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v3/darwin node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v3/win32 node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v3/linux/arm64
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/scripts ./scripts

@@ -252,6 +252,7 @@ export const agentsRouter = router({
       hook: z.string().trim().max(80),
       cta: z.string().trim().max(60),
       transition: z.boolean().default(true),
+      dynamic: z.boolean().default(true),
     }))
     .mutation(async ({ ctx, input }) => {
       const thread = await ownThread(ctx.user.id, input.threadId);
@@ -270,9 +271,10 @@ export const agentsRouter = router({
           videoUrl: video.url, script: String(result.script ?? ""), srt,
           hook: input.hook, cta: input.cta, footnote, transition: input.transition,
           framing: /\(vertical\)/.test(String(video.avatarName ?? "")) ? "aberto" : "fechado",
+          dynamic: input.dynamic,
           storageKey: `videos/${ctx.user.id}/reels-${thread.id}-${input.videoIndex}-${Date.now()}.mp4`,
         });
-        videos[input.videoIndex] = { ...video, editedUrl: url, editedAt: new Date().toISOString(), edit: { hook: input.hook, cta: input.cta, transition: input.transition } };
+        videos[input.videoIndex] = { ...video, editedUrl: url, editedAt: new Date().toISOString(), edit: { hook: input.hook, cta: input.cta, transition: input.transition, dynamic: input.dynamic } };
         await store.setThreadResult(thread.id, { ...result, videos });
         return { url };
       } catch (err) {

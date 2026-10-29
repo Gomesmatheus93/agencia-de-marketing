@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { storagePut } from "../../storage";
+import { applyDynamicLayer, planOverlays } from "./dynamicLayer";
 
 // Edição "viral" para Reels (1080x1920) do vídeo do avatar, no estilo dos vídeos de
 // referência da equipe: legenda palavra a palavra com a palavra falada em laranja,
@@ -31,6 +32,8 @@ export type ReelsEditOptions = {
   transition: boolean;
   /** "aberto": cenário vertical com câmera aberta (pessoa mais baixa, parede livre no alto). */
   framing?: "aberto" | "fechado";
+  /** Palavras gigantes atrás da pessoa (gancho e palavras-chave) e ícones animados pelo contexto. */
+  dynamic?: boolean;
   storageKey: string;
 };
 
@@ -177,12 +180,17 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
     if (!words.length) throw new Error("Não encontrei a fala para montar a legenda.");
     const assPath = path.join(tmp, "caps.ass");
     const framing = opts.framing ?? "fechado";
-    await writeFile(assPath, buildAss(words, duration, opts.hook, opts.cta, opts.footnote, framing));
+    // Na edição dinâmica o gancho vira a palavra gigante atrás da pessoa (sem a caixa roxa).
+    await writeFile(assPath, buildAss(words, duration, opts.dynamic ? "" : opts.hook, opts.cta, opts.footnote, framing));
+    const encoder = process.env.FFMPEG_VIDEO_ENCODER === "libopenh264"
+      ? ["-c:v", "libopenh264", "-b:v", "9M"]
+      : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"];
+    // Arquivos intermediários quase sem perda (o vídeo passa por mais de uma etapa).
+    const middle = process.env.FFMPEG_VIDEO_ENCODER === "libopenh264"
+      ? ["-c:v", "libopenh264", "-b:v", "30M"]
+      : ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "12"];
 
     const cuts = cutPoints(words);
-    const burns = opts.transition ? cuts.slice(1, 3) : [];
-    const inputs = ["-i", src, "-loop", "1", "-i", LOGO];
-    burns.forEach((_, k) => inputs.push("-i", TRANSITIONS[k % TRANSITIONS.length]));
 
     // Cada plano (entre dois cortes) tem enquadramento fixo: aberto ou fechado (zoom no
     // rosto). Recorta trecho a trecho e emenda, como numa edição com duas câmeras.
@@ -202,33 +210,43 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
       return `[p${i}]`;
     });
     fc.push(`${segs.join("")}concat=n=${segs.length}:v=1:a=0[base]`);
+    const reframed = path.join(tmp, "base.mp4");
+    await run("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", src, "-filter_complex", fc.join(";"), "-map", "[base]", ...middle, "-pix_fmt", "yuv420p", "-r", "30", reframed], { maxBuffer: 20 * 1024 * 1024, timeout: 10 * 60 * 1000 });
+    let video = reframed;
+    if (opts.dynamic) {
+      video = path.join(tmp, "dyn.mp4");
+      await applyDynamicLayer(reframed, video, planOverlays(words, duration, opts.hook), framing, middle);
+    }
+
+    const burns = opts.transition ? cuts.slice(1, 3) : [];
+    // 0 = vídeo editado, 1 = original (áudio), 2 = logo, 3+ = transições.
+    const inputs = ["-i", video, "-i", src, "-loop", "1", "-i", LOGO];
+    burns.forEach((_, k) => inputs.push("-i", TRANSITIONS[k % TRANSITIONS.length]));
+    const fc2: string[] = ["[0:v]setsar=1,format=yuv420p[base]"];
     let last = "base";
     burns.forEach((t, k) => {
-      const i = 2 + k;
-      fc.push(`[${i}:v]scale=1080:1920,format=yuv420p,trim=0.35:0.95,setpts=PTS-STARTPTS+${(t - 0.25).toFixed(2)}/TB[b${k}]`);
-      fc.push(`[${last}][b${k}]blend=all_mode=screen:all_opacity=0.45:shortest=0:repeatlast=0:eof_action=pass[v${k}]`);
+      const i = 3 + k;
+      fc2.push(`[${i}:v]scale=1080:1920,format=yuv420p,trim=0.35:0.95,setpts=PTS-STARTPTS+${(t - 0.25).toFixed(2)}/TB[b${k}]`);
+      fc2.push(`[${last}][b${k}]blend=all_mode=screen:all_opacity=0.45:shortest=0:repeatlast=0:eof_action=pass[v${k}]`);
       last = `v${k}`;
     });
-    fc.push(`[1:v]scale=230:-1,format=rgba,colorchannelmixer=aa=0.92[logo]`);
-    fc.push(`[${last}][logo]overlay=60:70:shortest=1[vl]`);
-    fc.push(`[vl]drawbox=x=0:y=0:w='iw*t/${duration.toFixed(2)}':h=12:color=0xff7300@1:t=fill[vb]`);
-    fc.push(`[vb]subtitles='${escapeFilterPath(assPath)}':fontsdir='${escapeFilterPath(FONTS)}'[vout]`);
+    fc2.push(`[2:v]scale=230:-1,format=rgba,colorchannelmixer=aa=0.92[logo]`);
+    fc2.push(`[${last}][logo]overlay=60:70:shortest=1[vl]`);
+    fc2.push(`[vl]drawbox=x=0:y=0:w='iw*t/${duration.toFixed(2)}':h=12:color=0xff7300@1:t=fill[vb]`);
+    fc2.push(`[vb]subtitles='${escapeFilterPath(assPath)}':fontsdir='${escapeFilterPath(FONTS)}'[vout]`);
 
-    const audio = ["[0:a]acompressor=threshold=-18dB:ratio=3[voice]"];
+    const audio = ["[1:a]acompressor=threshold=-18dB:ratio=3[voice]"];
     const labels = ["[voice]"];
     burns.forEach((t, k) => {
       const ms = Math.max(0, Math.round((t - 0.25) * 1000));
-      audio.push(`[${2 + k}:a]atrim=0.35:1.2,asetpts=PTS-STARTPTS,volume=0.45,adelay=${ms}|${ms}[s${k}]`);
+      audio.push(`[${3 + k}:a]atrim=0.35:1.2,asetpts=PTS-STARTPTS,volume=0.45,adelay=${ms}|${ms}[s${k}]`);
       labels.push(`[s${k}]`);
     });
     audio.push(labels.length > 1 ? `${labels.join("")}amix=inputs=${labels.length}:normalize=0:duration=first[aout]` : "[voice]anull[aout]");
 
-    const encoder = process.env.FFMPEG_VIDEO_ENCODER === "libopenh264"
-      ? ["-c:v", "libopenh264", "-b:v", "9M"]
-      : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"];
     const out = path.join(tmp, "out.mp4");
     await run("ffmpeg", [
-      "-nostdin", "-v", "error", "-y", ...inputs, "-filter_complex", [...fc, ...audio].join(";"),
+      "-nostdin", "-v", "error", "-y", ...inputs, "-filter_complex", [...fc2, ...audio].join(";"),
       "-map", "[vout]", "-map", "[aout]", "-t", duration.toFixed(2), ...encoder,
       "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out,
     ], { maxBuffer: 20 * 1024 * 1024, timeout: 10 * 60 * 1000 });

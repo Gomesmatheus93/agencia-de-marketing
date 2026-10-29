@@ -438,7 +438,7 @@ type VideoResult = {
   wordCount: number;
   scenes: Array<{ time: string; speech: string; onScreen: string; broll: string | null }>;
   caption: string; hashtags: string[]; assumptions: string[];
-  videos?: Array<{ id: number; url: string | null; avatarName: string; voiceId: string; createdAt: string; editedUrl?: string; editedAt?: string; edit?: { hook: string; cta: string; transition: boolean } }>;
+  videos?: Array<{ id: number; url: string | null; avatarName: string; voiceId: string; createdAt: string; editedUrl?: string; editedAt?: string; edit?: { hook: string; cta: string; transition: boolean; dynamic?: boolean } }>;
 };
 
 /** A voz do HeyGen fala cerca de 2,3 palavras por segundo (mesma conta da skill alle-video). */
@@ -594,6 +594,7 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
   const [hook, setHook] = useState(video.edit?.hook ?? defaultHook);
   const [cta, setCta] = useState(video.edit?.cta ?? "Chama a Ane na bio");
   const [transition, setTransition] = useState(video.edit?.transition ?? true);
+  const [dynamic, setDynamic] = useState(video.edit?.dynamic ?? true);
   const edit = trpc.agents.editVideoForReels.useMutation({
     onSuccess: () => { toast.success("Vídeo editado para Reels."); onDone(); },
     onError: (e) => toast.error(e.message),
@@ -608,11 +609,12 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
       <label className="block space-y-1"><span className="text-xs font-medium">Chamada final</span>
         <input value={cta} maxLength={60} onChange={(e) => setCta(e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm" />
       </label>
+      <label className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={dynamic} onChange={(e) => setDynamic(e.target.checked)} /><span><b>Legendas dinâmicas:</b> gancho e palavras-chave gigantes atrás do avatar e ícones animados pelo assunto (fatura, desconto, obra, QR code…)</span></label>
       <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={transition} onChange={(e) => setTransition(e.target.checked)} />Transição de queima de filme com som</label>
       <p className="text-xs text-muted-foreground">Trilha: escolha um áudio em alta no Instagram na hora de postar.</p>
-      <Button size="sm" className="w-full gap-1.5" disabled={edit.isPending} onClick={() => edit.mutate({ threadId, videoIndex: index, hook, cta, transition })}>
+      <Button size="sm" className="w-full gap-1.5" disabled={edit.isPending} onClick={() => edit.mutate({ threadId, videoIndex: index, hook, cta, transition, dynamic })}>
         {edit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        {edit.isPending ? "Editando… (1 a 3 min)" : video.editedUrl ? "Editar de novo" : "Editar para Reels"}
+        {edit.isPending ? (dynamic ? "Editando… (2 a 4 min)" : "Editando… (1 a 3 min)") : video.editedUrl ? "Editar de novo" : "Editar para Reels"}
       </Button>
     </div>
   );
