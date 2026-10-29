@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { storagePut } from "../../storage";
 import { applyDynamicLayer, planOverlays } from "./dynamicLayer";
+import { musicById } from "../../../shared/musicLibrary";
 
 // Edição "viral" para Reels (1080x1920) do vídeo do avatar, no estilo dos vídeos de
 // referência da equipe: legenda palavra a palavra com a palavra falada em laranja,
@@ -34,6 +35,9 @@ export type ReelsEditOptions = {
   framing?: "aberto" | "fechado";
   /** Palavras gigantes atrás da pessoa (gancho e palavras-chave) e ícones animados pelo contexto. */
   dynamic?: boolean;
+  /** Trilha da biblioteca (shared/musicLibrary.ts) e volume (0 a 1) com a voz ausente. */
+  musicId?: string | null;
+  musicVolume?: number;
   storageKey: string;
 };
 
@@ -219,9 +223,19 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
     }
 
     const burns = opts.transition ? cuts.slice(1, 3) : [];
-    // 0 = vídeo editado, 1 = original (áudio), 2 = logo, 3+ = transições.
+    // 0 = vídeo editado, 1 = original (áudio), 2 = logo, 3+ = transições, por último a trilha.
     const inputs = ["-i", video, "-i", src, "-loop", "1", "-i", LOGO];
     burns.forEach((_, k) => inputs.push("-i", TRANSITIONS[k % TRANSITIONS.length]));
+    const track = musicById(opts.musicId);
+    let musicIndex = -1;
+    if (track) {
+      const res = await fetch(track.url);
+      if (!res.ok) throw new Error(`Não consegui baixar a trilha (${res.status}).`);
+      const musicFile = path.join(tmp, "music.mp3");
+      await writeFile(musicFile, Buffer.from(await res.arrayBuffer()));
+      musicIndex = 3 + burns.length;
+      inputs.push("-i", musicFile);
+    }
     const fc2: string[] = ["[0:v]setsar=1,format=yuv420p[base]"];
     let last = "base";
     burns.forEach((t, k) => {
@@ -235,8 +249,15 @@ export async function editForReels(opts: ReelsEditOptions): Promise<{ url: strin
     fc2.push(`[vl]drawbox=x=0:y=0:w='iw*t/${duration.toFixed(2)}':h=12:color=0xff7300@1:t=fill[vb]`);
     fc2.push(`[vb]subtitles='${escapeFilterPath(assPath)}':fontsdir='${escapeFilterPath(FONTS)}'[vout]`);
 
-    const audio = ["[1:a]acompressor=threshold=-18dB:ratio=3[voice]"];
+    const audio = [track ? "[1:a]acompressor=threshold=-18dB:ratio=3,asplit=2[voice][side]" : "[1:a]acompressor=threshold=-18dB:ratio=3[voice]"];
     const labels = ["[voice]"];
+    if (track) {
+      // Trilha com "ducking": abaixa sozinha enquanto a voz fala e volta nas pausas.
+      const vol = Math.min(1, Math.max(0.05, opts.musicVolume ?? 0.35));
+      audio.push(`[${musicIndex}:a]aloop=loop=-1:size=2e9,atrim=0:${duration.toFixed(2)},asetpts=PTS-STARTPTS,volume=${vol.toFixed(2)},afade=t=in:d=0.4,afade=t=out:st=${Math.max(0, duration - 1.5).toFixed(2)}:d=1.5[mraw]`);
+      audio.push(`[mraw][side]sidechaincompress=threshold=0.03:ratio=6:attack=15:release=350:makeup=1[mus]`);
+      labels.push("[mus]");
+    }
     burns.forEach((t, k) => {
       const ms = Math.max(0, Math.round((t - 0.25) * 1000));
       audio.push(`[${3 + k}:a]atrim=0.35:1.2,asetpts=PTS-STARTPTS,volume=0.45,adelay=${ms}|${ms}[s${k}]`);
