@@ -57,6 +57,16 @@ Se passar, corte. Vídeo curto que prende vale mais que vídeo longo que perde g
 - **Fala em primeira pessoa do plural** quando for a marca ("a gente", "na Alle") e
   sempre "você" para o cliente. A Ane é a assistente da Alle e pode ser a personagem.
 
+## Personagens (avatares da conta)
+
+- **Flávio** (looks "Flávio · ..."): fala como especialista da Alle, sotaque nordestino.
+  Bom para explicar e responder dúvidas em tom de podcast.
+- **Ane** (looks "Ane · ...", escritório ou segurando o tablet com a fatura): a atendente
+  virtual da Alle, a mesma do WhatsApp. Quando ela for o avatar, escreva a fala **no
+  feminino** e em primeira pessoa ("eu sou a Ane", "tô aqui pra te ajudar", "obrigada"),
+  e o CTA vira falar com ela mesma ("me chama no WhatsApp", "manda sua fatura pra mim").
+  O look com tablet combina com roteiros sobre a fatura e o desconto na conta.
+
 ## Textos na tela e cenas
 
 Para cada trecho da fala, proponha:
