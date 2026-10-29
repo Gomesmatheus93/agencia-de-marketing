@@ -31,6 +31,7 @@ const BRAND_IMAGES = [
   { href: "alle:raio", label: "Raio colorido", w: 376, h: 600 },
   { href: "alle:raio-branco", label: "Raio branco e laranja", w: 376, h: 600 },
   { href: "alle:raio-mono", label: "Raio todo branco", w: 376, h: 600 },
+  { href: "alle:ane", label: "Ane (atendente, foto recortada)", w: 848, h: 997 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;
@@ -334,9 +335,15 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
       Object.entries({ cx: w / 2, cy: h / 2, r: 120, fill: "#7c00ae" }).forEach(([k, v]) => el.setAttribute(k, String(v)));
     } else {
       const asset = BRAND_IMAGES.find((b) => b.href === href) ?? BRAND_IMAGES[1];
-      const width = asset.w > asset.h ? 340 : 200;
       el = document.createElementNS(SVG_NS, "image") as SVGGraphicsElement;
-      Object.entries({ x: 80, y: 80, width, height: Math.round((width * asset.h) / asset.w) }).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      if (asset.href === "alle:ane") {
+        // A Ane entra encostada no pé da arte, no canto direito (regra da alle-design).
+        const height = Math.round(h * 0.53), width = Math.round((height * asset.w) / asset.h);
+        Object.entries({ x: w - width, y: h - height, width, height }).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      } else {
+        const width = asset.w > asset.h ? 340 : 200;
+        Object.entries({ x: 80, y: 80, width, height: Math.round((width * asset.h) / asset.w) }).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      }
       setImageHref(el, asset.href);
     }
     tag(el);
@@ -439,7 +446,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => add("rect")}><Square className="h-3.5 w-3.5" />Retângulo</Button>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={() => add("circle")}><Circle className="h-3.5 w-3.5" />Círculo</Button>
         <select className="h-8 rounded-md border bg-background px-2 text-sm" value="" onChange={(e) => { if (e.target.value) add("brand", e.target.value); }}>
-          <option value="">+ Logo / raio</option>
+          <option value="">+ Logo / raio / Ane</option>
           {BRAND_IMAGES.map((b) => <option key={b.href} value={b.href}>{b.label}</option>)}
         </select>
         <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-accent">
