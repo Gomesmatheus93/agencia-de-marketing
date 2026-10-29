@@ -209,6 +209,11 @@ async function startServer() {
       res.set("Accept-Ranges", "bytes");
       res.set("Cache-Control", "public, max-age=86400");
       res.set("Access-Control-Allow-Origin", "*");
+      // ?download=<nome.mp4>: o navegador salva o arquivo em vez de abrir o player.
+      if (typeof req.query.download === "string") {
+        const name = req.query.download.replace(/[^\w.\-]+/g, "-").slice(0, 120) || "video.mp4";
+        res.set("Content-Disposition", `attachment; filename="${name}"`);
+      }
       const contentRange = upstream.headers.get("content-range");
       const contentLength = upstream.headers.get("content-length");
       if (contentRange) res.set("Content-Range", contentRange);

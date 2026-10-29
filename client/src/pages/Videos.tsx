@@ -606,19 +606,13 @@ export default function Videos() {
     toast.success("Roteiro copiado.");
   };
 
-  const handleDownload = async (url: string, fileName: string) => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = blobUrl;
-      anchor.download = fileName;
-      anchor.click();
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      window.open(url, "_blank");
-    }
+  // Link direto pelo proxy da plataforma, que manda salvar como arquivo (o fetch no S3
+  // falhava por CORS em cache e a aba de reserva era bloqueada como pop-up).
+  const handleDownload = (url: string, fileName: string) => {
+    const anchor = document.createElement("a");
+    anchor.href = `/api/video-proxy?url=${encodeURIComponent(url)}&download=${encodeURIComponent(fileName)}`;
+    anchor.download = fileName;
+    anchor.click();
   };
 
   const HEYGEN_FALLBACK_VOICES = [

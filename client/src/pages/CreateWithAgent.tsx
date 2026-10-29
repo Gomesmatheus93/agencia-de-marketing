@@ -47,6 +47,18 @@ async function download(url: string, name: string) {
   }
 }
 
+/**
+ * Vídeo: link direto pelo proxy da plataforma, que manda salvar como arquivo. O fetch
+ * no S3 falhava (o player já deixou no cache a resposta sem CORS) e a aba de reserva,
+ * aberta depois do await, era bloqueada como pop-up.
+ */
+function downloadVideo(url: string, name: string) {
+  const a = document.createElement("a");
+  a.href = `/api/video-proxy?url=${encodeURIComponent(url)}&download=${encodeURIComponent(name)}`;
+  a.download = name;
+  a.click();
+}
+
 /** Baixa o arquivo original; se o navegador bloquear o acesso direto, passa pelo proxy da plataforma. */
 async function fetchOriginal(url: string): Promise<Blob> {
   try {
@@ -539,13 +551,13 @@ export function CreateVideoAgent() {
                         <div className="w-[200px] space-y-1.5">
                           {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-xl border text-xs text-muted-foreground">Sem arquivo</div>}
                           <p className="text-xs text-muted-foreground">Original · {v.avatarName}</p>
-                          {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
+                          {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
                         </div>
                         {v.editedUrl && (
                           <div className="w-[200px] space-y-1.5">
                             <video key={v.editedUrl} src={v.editedUrl} controls playsInline className="aspect-[9/16] w-full rounded-xl border-2 border-primary bg-black object-contain" />
                             <p className="text-xs font-medium text-primary">Editado para Reels</p>
-                            <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => download(v.editedUrl!, `${slug(result.title)}-reels.mp4`)}><Download className="h-3 w-3" />baixar</button>
+                            <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.editedUrl!, `${slug(result.title)}-reels.mp4`)}><Download className="h-3 w-3" />baixar</button>
                           </div>
                         )}
                         {v.url && t.threadId && <ReelsEditPanel threadId={t.threadId} index={i} video={v} defaultHook={result.scenes[0]?.onScreen ?? ""} onDone={() => t.refetch()} />}
