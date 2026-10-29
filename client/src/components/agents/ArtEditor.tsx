@@ -31,7 +31,10 @@ const BRAND_IMAGES = [
   { href: "alle:raio", label: "Raio colorido", w: 376, h: 600 },
   { href: "alle:raio-branco", label: "Raio branco e laranja", w: 376, h: 600 },
   { href: "alle:raio-mono", label: "Raio todo branco", w: 376, h: 600 },
-  { href: "alle:ane", label: "Ane (atendente, foto recortada)", w: 848, h: 997 },
+  { href: "alle:ane", label: "Ane · braços cruzados", w: 848, h: 997 },
+  { href: "alle:ane-solto", label: "Ane · cabelo solto", w: 880, h: 994 },
+  { href: "alle:ane-caneca", label: "Ane · com a caneca da Alle", w: 1016, h: 1020 },
+  { href: "alle:ane-ombro", label: "Ane · olhando por cima do ombro", w: 742, h: 1020 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;
@@ -336,7 +339,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
     } else {
       const asset = BRAND_IMAGES.find((b) => b.href === href) ?? BRAND_IMAGES[1];
       el = document.createElementNS(SVG_NS, "image") as SVGGraphicsElement;
-      if (asset.href === "alle:ane") {
+      if (asset.href.startsWith("alle:ane")) {
         // A Ane entra encostada no pé da arte, no canto direito (regra da alle-design).
         const height = Math.round(h * 0.53), width = Math.round((height * asset.w) / asset.h);
         Object.entries({ x: w - width, y: h - height, width, height }).forEach(([k, v]) => el.setAttribute(k, String(v)));

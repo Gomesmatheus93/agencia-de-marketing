@@ -19,7 +19,7 @@ export type DesignFormat = keyof typeof DESIGN_FORMATS;
 
 /** Arquivos da marca que o SVG pode referenciar com href="alle:<nome>". */
 const BRAND_ASSETS: Record<string, string> = {};
-for (const name of ["logo", "logo-branco", "logo-mono", "raio", "raio-branco", "raio-mono", "allpfit", "allpfit-branco", "allpfit-mono", "allpfit-roxo", "ane"]) {
+for (const name of ["logo", "logo-branco", "logo-mono", "raio", "raio-branco", "raio-mono", "allpfit", "allpfit-branco", "allpfit-mono", "allpfit-roxo", "ane", "ane-solto", "ane-caneca", "ane-ombro"]) {
   BRAND_ASSETS[`alle:${name}`] = `data:image/png;base64,${readFileSync(path.join(DESIGN_DIR, "assets", `${name}.png`)).toString("base64")}`;
 }
 
