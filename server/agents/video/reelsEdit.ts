@@ -80,11 +80,12 @@ function wordsFromSrt(srt: string): Word[] {
 
 /** Na legenda, número escrito por extenso (como a voz precisa) volta a ser número. */
 const NUMBERS: Record<string, string> = {
-  dez: "10", quinze: "15", vinte: "20", trinta: "30", quarenta: "40", cinquenta: "50", sessenta: "60",
+  "trinta e cinco": "35", dez: "10", quinze: "15", vinte: "20", trinta: "30", quarenta: "40", cinquenta: "50", sessenta: "60",
   noventa: "90", cem: "100", duzentos: "200", trezentos: "300", quinhentos: "500", mil: "1.000",
 };
 export function displayNumbers(text: string) {
-  const n = Object.keys(NUMBERS).join("|");
+  // Chaves mais longas primeiro: "trinta e cinco" antes de "trinta".
+  const n = Object.keys(NUMBERS).sort((a, b) => b.length - a.length).join("|");
   return text
     .replace(new RegExp(`\\b(${n}) por cento\\b`, "gi"), (_, a) => `${NUMBERS[a.toLowerCase()]}%`)
     .replace(new RegExp(`\\b(${n}) reais\\b`, "gi"), (_, a) => `R$${NUMBERS[a.toLowerCase()]}`)

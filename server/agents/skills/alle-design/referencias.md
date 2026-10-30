@@ -8,7 +8,7 @@ original é "REFERENCIA CONCORRENTES - IDEIAS".
 Cada modelo abaixo já está **traduzido para a identidade Alle**: roxo `#7B2FBE`/`#5B1D9A`/`#44015e`,
 laranja `#F47B20`/`#ff7300`, off-white `#FFF8F2`, Montserrat e os logos `alle:*`. Copie a
 **estrutura**, nunca as cores, os logos, os mascotes ou os textos dos concorrentes. As regras do
-SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7", ressalva do "até 15%".
+SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7", ressalva do "até 35%".
 
 ## Como escolher
 
@@ -34,16 +34,16 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 
 ## Dados e números
 
-**M01 · Número gigante.** Um número ocupa metade da arte (`até 15%`, `R$ 0`, `3 em 10`), em 900 com
+**M01 · Número gigante.** Um número ocupa metade da arte (`até 35%`, `R$ 0`, `3 em 10`), em 900 com
 220–320 px, laranja sobre roxo. Acima, uma linha de apoio fina (300). Abaixo, a frase que dá sentido
 ao número (500, 40 px). Variação: o número em contorno (`fill="none" stroke`) atrás do texto como
-marca d'água. Só número real e com fonte; o "até 15%" leva a ressalva.
+marca d'água. Só número real e com fonte; o "até 35%" leva a ressalva.
 *Referência: Bulbe "Custa R$0", Detronic "15% de desconto", Abraceel "36% / 76% / 96%".*
 
 **M10 · Simulação de economia.** Um card mostra "Sua conta de luz: R$ X" e, abaixo, quanto
-economiza em 1, 5 e 10 anos. Use valores claramente ilustrativos (conta de R$ 300, até 15% → até
-R$ 45/mês, até R$ 540/ano). É obrigatório o rodapé "Valores ilustrativos, simulação com desconto
-máximo de 15%. A economia real depende da sua conta." Visual: card branco de cantos rx 32 sobre
+economiza em 1, 5 e 10 anos. Use valores claramente ilustrativos (conta de R$ 300, até 35% → até
+R$ 105/mês, até R$ 1.260/ano). É obrigatório o rodapé "Valores ilustrativos, simulação com desconto
+máximo de 35%. A economia real depende da sua conta." Visual: card branco de cantos rx 32 sobre
 roxo, rótulos em 500, valores em 800 laranja, seta ou degraus subindo.
 *Referência: Pan Energy "Sua conta R$1.200 → 1/5/10 anos", NEX "Sem a NEX x Com a NEX".*
 
@@ -55,7 +55,7 @@ por estado.
 
 **M12 · Comparativo "Sem a Alle × Com a Alle".** Duas colunas lado a lado com cards de cantos
 arredondados. A da esquerda fica apagada (cinza/roxo escuro, ✗) e a da direita é a Alle (laranja,
-✓). Use 3 ou 4 linhas curtas por coluna: "paga a tarifa cheia" × "até 15% de desconto", "obra no
+✓). Use 3 ou 4 linhas curtas por coluna: "paga a tarifa cheia" × "até 35% de desconto", "obra no
 telhado" × "sem obra", "fidelidade" × "sem fidelidade". Variações: título "Troque isso → Por isso",
 com setas `>>>` entre as pílulas, ou polegar para cima/para baixo.
 *Referência: Click "Troque isso / Por isso", Maya "Cliente", Detronic "Assinatura × Painel solar",
@@ -132,7 +132,7 @@ assinatura).
 
 **M19 · "Você quis dizer:" (busca).** Uma barra de busca genérica desenhada (retângulo rx 40, lupa,
 cursor) com o termo errado ("placa solar") e, embaixo, "Você quis dizer: energia sem obra e com
-até 15% de desconto". Não use o logo do Google: faça uma busca genérica.
+até 35% de desconto". Não use o logo do Google: faça uma busca genérica.
 *Referência: Click "Placa Solar / Você quis dizer", Luzigás busca.*
 
 ## Dicas salváveis
@@ -203,7 +203,7 @@ texto ou com uma linha curta. O logo vai pequeno.
 curtir, comentar, enviar e salvar ficam no rodapé. Use como último slide de carrosséis educativos.
 *Referência: Simple "Você já tinha conhecimento disso?", Backoffice "CURTE · COMPARTILHA · SALVA".*
 
-**M25 · Comente e receba.** Último slide: "Comente ECONOMIA e receba no direct como ter até 15% de
+**M25 · Comente e receba.** Último slide: "Comente ECONOMIA e receba no direct como ter até 35% de
 desconto". A palavra-chave fica em destaque laranja numa pílula. Combina com a automação de
 comentários da plataforma, então use uma palavra-chave que exista numa automação ativa e confirme
 com a equipe.
@@ -272,5 +272,5 @@ genérico ou citar estudos reais com fonte, sem marca de jornal.
   autorização por escrito.
 - Prints de veículos de imprensa, de tweets de terceiros ou de apps com logo (Google, Tinder, CNN).
   Faça versões genéricas.
-- Números de mercado sem fonte, "economize até 20/30%" e qualquer promessa acima do "até 15%".
+- Números de mercado sem fonte, "economize até 50%" e qualquer promessa acima do "até 35%".
 - Memes com rosto de famosos ou personagens com direitos (Terry Crews, Joelma etc.).

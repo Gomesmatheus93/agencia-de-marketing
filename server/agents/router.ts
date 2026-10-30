@@ -292,8 +292,8 @@ export const agentsRouter = router({
       const record = (await db.getAvatarVideos(ctx.user.id)).find((v) => v.id === video.id);
       const srt = record?.providerJobId ? await getHeyGenSubtitle(record.providerJobId) : null;
       const caption = String(result.caption ?? "");
-      const footnote = /15%/.test(String(result.script ?? "") + caption) || /quinze por cento/i.test(String(result.script ?? ""))
-        ? "*Até 15% de desconto, sujeito à análise da fatura e às condições do benefício."
+      const footnote = /\b(35|15)%/.test(String(result.script ?? "") + caption) || /(trinta e cinco|quinze) por cento/i.test(String(result.script ?? ""))
+        ? "*Até 35% de desconto, sujeito à análise da fatura e às condições do benefício."
         : null;
       try {
         const { url } = await editForReels({

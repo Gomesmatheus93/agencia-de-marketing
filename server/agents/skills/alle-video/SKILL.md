@@ -40,15 +40,15 @@ Se passar, corte. Vídeo curto que prende vale mais que vídeo longo que perde g
 2. **Problema ou contexto (3 a 10 s):** a dor em uma ou duas frases, com "você".
 3. **Explicação (o miolo):** uma ideia por frase, na ordem em que a pessoa entenderia.
 4. **Prova ou benefício:** o que muda na vida da pessoa (sem obra, sem fidelidade, até
-   15% de desconto com a ressalva na legenda).
+   35% de desconto com a ressalva na legenda).
 5. **CTA único:** uma ação só ("chama a Ane pelo link da bio", "comenta ENERGIA").
 
 ## Como escrever a fala (texto que vai para a voz)
 
 - **Frases curtas**, de até 18 palavras. Ponto final é pausa; vírgula é respiro.
 - **Escreva como se fala:** "pra", "tá", "a gente" são bem-vindos se combinarem com a voz da marca.
-- **Números por extenso** quando forem lidos: "quinze por cento", "duzentos reais",
-  "noventa dias". Nada de "15%", "R$ 200", "90d".
+- **Números por extenso** quando forem lidos: "trinta e cinco por cento", "duzentos reais",
+  "noventa dias". Nada de "35%", "R$ 200", "90d".
 - **Sem símbolos nem abreviações:** nada de "/", "+", "&", "*", "kWh" (escreva
   "quilowatt-hora"), "etc.", emojis, hashtags ou @ na fala.
 - **Siglas:** escreva como devem soar. "ANEEL" lê bem; siglas soletradas viram
@@ -84,10 +84,10 @@ funcionem lidas na tela.
 
 ## Regras da Alle (obrigatórias)
 
-- Benefício: **até 15%** de desconto, sem fidelidade, sem custo, sem obra, mesma
+- Benefício: **até 35%** de desconto, sem fidelidade, sem custo, sem obra, mesma
   distribuidora. Nunca prometa valor exato nem percentual maior.
-- Na fala, diga "até quinze por cento". A **ressalva completa vai na legenda**:
-  "*Até 15% de desconto na fatura de energia, sujeito à análise da fatura e às condições do benefício."
+- Na fala, diga "até trinta e cinco por cento". A **ressalva completa vai na legenda**:
+  "*Até 35% de desconto na fatura de energia, sujeito à análise da fatura e às condições do benefício."
 - Só afirme o que está na base de conhecimento (`estrategia.md`). O que está como
   "a confirmar" não entra no vídeo.
 - Depoimento, nome de cliente ou número de resultado só se for real e autorizado.

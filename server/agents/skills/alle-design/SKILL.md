@@ -96,7 +96,7 @@ altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509
   rente ao pé da peça, nunca "flutuando"), no canto direito ou esquerdo, com 560 a 900 px de
   altura. Mantenha a proporção de cada foto (tabela acima). Ela pode passar por cima do raio de
   marca d'água e de formas decorativas, nunca por cima de texto, número, ícone ou botão: reserve
-  o lado dela e quebre o texto em linhas mais curtas do outro lado. O @ e a ressalva do 15%
+  o lado dela e quebre o texto em linhas mais curtas do outro lado. O @ e a ressalva do 35%
   ficam do lado oposto ou acima dela.
 - **Combina com:** fundo roxo `#7B2FBE`, laranja ou claro. Um balão curto ao lado do rosto
   ("Fala comigo!", "Manda sua conta pra mim") reforça o CTA.
@@ -186,12 +186,12 @@ post real em collab com a @allpfit:
 - **Card 1 (à esquerda, sobre a pessoa se precisar):** retângulo de cantos bem
   arredondados (rx ~34) em degradê de laranja para transparente da esquerda
   para a direita; linha de apoio em 500 (ex.: "Sua conta de luz pode") e o
-  título em 900, CAIXA ALTA, 2 linhas (ex.: "CUSTAR ATÉ / 15% MENOS.*").
+  título em 900, CAIXA ALTA, 2 linhas (ex.: "CUSTAR ATÉ / 35% MENOS.*").
 - **Card 2:** laranja sólido, cantos arredondados, "E O MELHOR:" em 900 e os
   benefícios em 600 (sem obras, mesma distribuidora, quem tem direito).
 - **Rodapé à esquerda:** selo escuro "ENERGIA DIGITAL" com o raio, o CTA em
   800 e uma seta branca para a direita (em carrossel, ela indica deslizar).
-- Ressalva do 15% sempre que o percentual aparecer, pequena, no rodapé.
+- Ressalva do 35% sempre que o percentual aparecer, pequena, no rodapé.
 - Texto nunca em cima do rosto da pessoa: mova a pessoa para a direita.
 
 ## Rotina de revisão (obrigatória)

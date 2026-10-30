@@ -51,7 +51,7 @@ nomes, os números ou a marca dos vídeos. Os números da Alle são os da base d
   (sublinhado roxo em um estilo, verde ou amarelo neon no outro). Na Alle: palavra-chave em
   **laranja #ff7300**.
 - **Tarja fixa (lower third)** com a marca e o slogan: "ENERGIA LIMPA E MAIS BARATA PARA VOCÊ!".
-  Na Alle: tarja roxa com o raio e "Alle Energia · até 15% de desconto na conta de luz*".
+  Na Alle: tarja roxa com o raio e "Alle Energia · até 35% de desconto na conta de luz*".
 - Em alguns trechos, "siga nosso insta! @..." na tarja: na Alle, "@alleenergia + @allpfit".
 - Emoji pontual na legenda para humor (💔).
 
@@ -78,13 +78,13 @@ O HeyGen gera **uma pessoa falando**. Para manter o formato de pergunta e respos
 > Olha só: a energia vem de uma cooperativa parceira, e você continua com a sua distribuidora.
 > Não tem obra, não tem placa no telhado.
 > É só mandar a fatura pra Ane.
-> E a conta pode vir com até quinze por cento de desconto, todo mês.
+> E a conta pode vir com até trinta e cinco por cento de desconto, todo mês.
 
-(Na legenda, a ressalva do 15% e @alleenergia + @allpfit.)
+(Na legenda, a ressalva do 35% e @alleenergia + @allpfit.)
 
 ## Cuidado com o que os vídeos de referência afirmam
 
-- Eles prometem "de 12 até 20% de desconto": **na Alle é só "até 15%"**, com a ressalva.
+- Eles prometem "de 12 até 20% de desconto": **na Alle é "até 35%"**, com a ressalva (nunca mais que isso).
 - Citam lei, usinas próprias e a regra de quem já tem energia solar própria: **não afirme
   nada disso pela Alle** se não estiver em `estrategia.md`.
 - Usam nomes de pessoas como exemplo (Isabel, João): pode usar nomes fictícios genéricos,

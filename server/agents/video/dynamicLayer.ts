@@ -35,7 +35,7 @@ const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 
 const ICON_RULES: Array<{ re: RegExp; icon: IconName }> = [
   { re: /^(fatura|faturas|conta de luz|conta de energia|boleto)$/, icon: "fatura" },
-  { re: /^(desconto|descontos|economia|economizar|economiza|barata|barato|15%|mais barata)$/, icon: "desconto" },
+  { re: /^(desconto|descontos|economia|economizar|economiza|barata|barato|35%|15%|mais barata)$/, icon: "desconto" },
   { re: /^(obra|obras|reforma)$/, icon: "obra" },
   { re: /^(placa|placas|painel|paineis|telhado|solar)$/, icon: "placa" },
   { re: /^(distribuidora|rede|enel|cpfl|energisa|neoenergia)$/, icon: "torre" },
@@ -50,7 +50,7 @@ const ICON_RULES: Array<{ re: RegExp; icon: IconName }> = [
   { re: /^(celular|app|aplicativo|link)$/, icon: "celular" },
   { re: /^(energia|luz|digital|eletrica)$/, icon: "raio" },
 ];
-const BEHIND_RE = /^(desconto|economizar|economia|barata|sem obra|sem placa|todo mes|gratis|15%|sem fidelidade|digital)$/;
+const BEHIND_RE = /^(desconto|economizar|economia|barata|sem obra|sem placa|todo mes|gratis|35%|15%|sem fidelidade|digital)$/;
 
 export function planOverlays(words: Word[], duration: number, hook: string, hasCta = true): Overlay[] {
   const out: Overlay[] = [];

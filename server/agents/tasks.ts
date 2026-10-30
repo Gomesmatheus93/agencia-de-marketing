@@ -337,7 +337,7 @@ const videoResult = z.object({
     onScreen: z.string().describe("Texto curto na tela, até 6 palavras."),
     broll: z.string().nullable(),
   })).min(2).max(15),
-  caption: z.string().describe("Legenda final (ig-caption Job B), humanizada, com a ressalva do 15% quando houver."),
+  caption: z.string().describe("Legenda final (ig-caption Job B), humanizada, com a ressalva do 35% quando houver."),
   hashtags: z.array(z.string()).max(5),
   assumptions: z.array(z.string()),
 });
