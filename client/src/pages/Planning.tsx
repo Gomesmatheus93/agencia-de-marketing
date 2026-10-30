@@ -224,7 +224,7 @@ export default function Planning() {
                           draggable
                           onDragStart={(e) => { setDragging(index); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); }}
                           onDragEnd={() => { setDragging(null); setOverDay(null); }}
-                          className={cn("cursor-grab rounded-xl border bg-background p-2.5 text-xs shadow-sm active:cursor-grabbing", selected.has(index) && "ring-2 ring-primary", sent.has(index) && "opacity-70", dragging === index && "opacity-40")}
+                          className={cn("cursor-grab rounded-xl border bg-background p-2.5 text-xs shadow-sm active:cursor-grabbing", selected.has(index) && "ring-2 ring-primary", dragging === index && "opacity-40")}
                         >
                           <div className="mb-1.5 flex items-center gap-1.5">
                             <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
