@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { agentFiles, agentMessages, agentThreads, type AgentMessage, type AgentThread } from "../../drizzle/schema";
 import { getDb } from "../db";
 
@@ -30,6 +30,18 @@ export async function listThreads(userId: number, agentSlug: string, mode: Agent
     .where(and(eq(agentThreads.userId, userId), eq(agentThreads.agentSlug, agentSlug), eq(agentThreads.mode, mode)))
     // Tarefas em ordem de criação: editar o resultado (texto, arte) não muda a posição.
     .orderBy(desc(mode === "task" ? agentThreads.createdAt : agentThreads.updatedAt));
+}
+
+/** Conteúdos criados a partir das pautas de um planejamento (taskInput.planLink.threadId). */
+export async function listPlanOutputs(userId: number, planThreadId: number): Promise<AgentThread[]> {
+  const db = await requireDb();
+  return db.select().from(agentThreads)
+    .where(and(
+      eq(agentThreads.userId, userId),
+      eq(agentThreads.mode, "task"),
+      sql`(${agentThreads.taskInput}->'planLink'->>'threadId')::int = ${planThreadId}`,
+    ))
+    .orderBy(asc(agentThreads.createdAt));
 }
 
 export async function getThread(userId: number, threadId: number): Promise<AgentThread | undefined> {

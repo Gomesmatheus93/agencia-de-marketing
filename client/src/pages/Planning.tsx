@@ -31,6 +31,10 @@ const FORMAT_STYLE: Record<PlanItem["format"], { label: string; className: strin
   imagem: { label: "Imagem", className: "bg-sky-500/15 text-sky-700 dark:text-sky-300", agent: "legendas", screen: "/dashboard/criar/post" },
   stories: { label: "Stories", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", agent: "stories", screen: "/dashboard/criar/stories" },
 };
+// Tela onde abrir um conteúdo já criado, por agente.
+const OUTPUT_SCREEN: Record<string, string> = {
+  carrossel: "/dashboard/criar/carrossel", legendas: "/dashboard/criar/post", stories: "/dashboard/criar/stories", "video-ia": "/dashboard/criar/video",
+};
 const GROUP_LABEL = { alcance: "Alcance", pares: "Pares", compradores: "Compradores" } as const;
 const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
@@ -90,6 +94,13 @@ export default function Planning() {
   };
 
   const plan = t.result;
+  const outputs = trpc.agents.planOutputs.useQuery({ threadId: t.threadId ?? 0 }, { enabled: Boolean(t.threadId && plan) });
+  const openOutput = (agentSlug: string, threadId: number) => {
+    const screen = OUTPUT_SCREEN[agentSlug];
+    if (!screen) return;
+    sessionStorage.setItem(`task_open_${agentSlug}`, String(threadId));
+    navigate(screen);
+  };
   const sent = new Set(plan?.calendarSent ?? []);
   const toCalendar = trpc.agents.planToCalendar.useMutation({
     onSuccess: ({ added }) => { toast.success(`${added} pauta(s) enviada(s) ao calendário`); setSelected(new Set()); t.refetch(); utils.editorialPlan.invalidate(); },
@@ -105,8 +116,9 @@ export default function Planning() {
   // Dias do período mais qualquer dia para onde uma pauta tenha sido movida fora dele.
   const days = plan ? [...new Set([...daysBetween(plan.startDate, plan.endDate), ...plan.items.map((it) => it.date)])].sort() : [];
 
-  const createWithAgent = (item: PlanItem) => {
+  const createWithAgent = (item: PlanItem, index: number) => {
     const { agent, screen } = FORMAT_STYLE[item.format];
+    if (screen && t.threadId) sessionStorage.setItem(`task_planlink_${agent}`, JSON.stringify({ threadId: t.threadId, index }));
     sessionStorage.setItem(screen ? `task_prefill_${agent}` : `agent_prefill_${agent}`, [
       `Crie este conteúdo do planejamento da Alle Energia:`,
       `- ${FORMAT_STYLE[item.format].label} em ${fmtDay(item.date)} às ${item.time}${item.collab ? `, collab com ${item.collab}` : ""}`,
@@ -223,6 +235,32 @@ export default function Planning() {
                           <p className="font-semibold leading-snug">{item.title}</p>
                           <p className="mt-0.5 text-[11px] text-primary">{item.type}</p>
                           {item.collab && <p className="mt-1 inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"><Handshake className="h-3 w-3" />{item.collab}</p>}
+                          {outputs.data?.[index]?.slice(-1).map((o) => (
+                            <button
+                              key={o.threadId}
+                              type="button"
+                              draggable={false}
+                              onClick={() => openOutput(o.agentSlug, o.threadId)}
+                              className="group mt-2 block w-full overflow-hidden rounded-lg border bg-muted/40 text-left"
+                              title={`Abrir: ${o.title}`}
+                            >
+                              {o.status === "running" ? (
+                                <span className="flex aspect-[4/5] items-center justify-center gap-1.5 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />criando…</span>
+                              ) : o.images[0] ? (
+                                <span className="relative block">
+                                  <img src={o.images[0]} alt={o.title} loading="lazy" draggable={false} className="aspect-[4/5] w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                                  {o.total > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{o.total} artes</span>}
+                                </span>
+                              ) : o.videoUrl ? (
+                                <video src={o.videoUrl} muted playsInline preload="metadata" className="aspect-[9/16] w-full bg-black object-cover" />
+                              ) : (
+                                <span className="flex aspect-[4/5] items-center justify-center text-muted-foreground">{o.status === "failed" ? "falhou" : "sem arte"}</span>
+                              )}
+                              <span className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                                <Check className="h-3 w-3" />criado · abrir{(outputs.data?.[index]?.length ?? 0) > 1 ? ` (${outputs.data![index].length} versões)` : ""}
+                              </span>
+                            </button>
+                          ))}
                           <details className="mt-1.5">
                             <summary className="cursor-pointer text-muted-foreground">detalhes</summary>
                             {item.addresses && <p className="mt-1 rounded bg-primary/5 px-1.5 py-1 text-primary"><b>Por quê:</b> {item.addresses}</p>}
@@ -238,7 +276,7 @@ export default function Planning() {
                             {!sent.has(index) && (
                               <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setRedoing({ index, item })}><RefreshCw className="h-3 w-3" />refazer</button>
                             )}
-                            <button className="ml-auto inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item)}><MessageSquareText className="h-3 w-3" />criar com agente</button>
+                            <button className="ml-auto inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item, index)}><MessageSquareText className="h-3 w-3" />{outputs.data?.[index]?.length ? "criar outra versão" : "criar com agente"}</button>
                           </div>
                         </div>
                       ))}

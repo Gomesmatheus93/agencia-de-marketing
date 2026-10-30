@@ -7,6 +7,18 @@ import { AlertTriangle, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+/** Lê e apaga um valor deixado por outra tela; undefined se não houver ou estiver inválido. */
+function takeSession<T>(key: string, parse: (v: string) => T): T | undefined {
+  try {
+    const v = sessionStorage.getItem(key);
+    if (v === null) return undefined;
+    sessionStorage.removeItem(key);
+    return parse(v) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Dispara e acompanha a tarefa de um agente a partir de uma tela. Mostra a
  * rodada mais recente por padrão e deixa escolher as anteriores.
@@ -14,7 +26,10 @@ import { toast } from "sonner";
 export function useAgentTask<R>(agentSlug: string) {
   const utils = trpc.useUtils();
   const tasks = trpc.agents.tasks.useQuery({ agentSlug });
-  const [threadId, setThreadId] = useState<number | null>(null);
+  // Vindo do planejamento: "task_open_<agente>" abre um conteúdo já criado e
+  // "task_planlink_<agente>" liga o próximo conteúdo à pauta (preview no card do plano).
+  const [threadId, setThreadId] = useState<number | null>(() => takeSession(`task_open_${agentSlug}`, Number) ?? null);
+  const [planLink, setPlanLink] = useState(() => takeSession(`task_planlink_${agentSlug}`, (v) => JSON.parse(v) as { threadId: number; index: number }));
   useEffect(() => {
     if (threadId === null && tasks.data?.length) setThreadId(tasks.data[0].id);
   }, [tasks.data, threadId]);
@@ -27,7 +42,7 @@ export function useAgentTask<R>(agentSlug: string) {
   useEffect(() => { if (!running) utils.agents.tasks.invalidate({ agentSlug }); }, [running, agentSlug, utils]);
 
   const start = trpc.agents.startTask.useMutation({
-    onSuccess: ({ threadId: id }) => { setThreadId(id); utils.agents.tasks.invalidate({ agentSlug }); },
+    onSuccess: ({ threadId: id }) => { setThreadId(id); setPlanLink(undefined); utils.agents.tasks.invalidate({ agentSlug }); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -39,7 +54,7 @@ export function useAgentTask<R>(agentSlug: string) {
     activity: task.data?.activity,
     result: (task.data?.thread.result ?? null) as R | null,
     running,
-    start: (input: Record<string, unknown>) => start.mutate({ agentSlug, input }),
+    start: (input: Record<string, unknown>) => start.mutate({ agentSlug, input, planLink }),
     starting: start.isPending,
     refetch: () => task.refetch(),
   };

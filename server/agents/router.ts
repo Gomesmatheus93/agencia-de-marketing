@@ -63,13 +63,20 @@ export const agentsRouter = router({
   // ─── Tarefas de tela (auditoria, planejamento…) ─────────────────────────────
 
   startTask: protectedProcedure
-    .input(z.object({ agentSlug: z.string(), input: z.record(z.string(), z.unknown()) }))
+    .input(z.object({
+      agentSlug: z.string(),
+      input: z.record(z.string(), z.unknown()),
+      // Pauta do planejamento que originou este conteúdo (para o preview no card do plano).
+      planLink: z.object({ threadId: z.number().int(), index: z.number().int().min(0) }).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const task = TASKS[input.agentSlug];
       if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Este agente não tem tarefa de tela." });
       const parsed = task.input.safeParse(input.input);
       if (!parsed.success) throw new TRPCError({ code: "BAD_REQUEST", message: parsed.error.issues[0]?.message ?? "Dados inválidos" });
-      const thread = await store.createThread(ctx.user.id, task.agentSlug, task.title(parsed.data), { input: parsed.data as Record<string, unknown> });
+      const thread = await store.createThread(ctx.user.id, task.agentSlug, task.title(parsed.data), {
+        input: { ...(parsed.data as Record<string, unknown>), ...(input.planLink ? { planLink: input.planLink } : {}) },
+      });
       const context = task.context ? await task.context(ctx.user.id) : null;
       const brief = task.brief(parsed.data) + (context ? `\n\nDADOS DA CONTA:\n${context}` : "");
       await sendUserMessage(ctx.user.id, thread.id, brief);
@@ -138,6 +145,26 @@ export const agentsRouter = router({
       pick.forEach((i) => sent.add(i));
       await store.setThreadResult(thread.id, { ...plan, calendarSent: [...sent] });
       return { added: pick.length };
+    }),
+
+  /** O que já foi criado para cada pauta do plano: capa, quantidade de artes e vídeo. */
+  planOutputs: protectedProcedure
+    .input(z.object({ threadId: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const threads = await store.listPlanOutputs(ctx.user.id, input.threadId);
+      const out: Record<number, Array<{ threadId: number; agentSlug: string; title: string; status: string; images: string[]; total: number; videoUrl: string | null }>> = {};
+      for (const t of threads) {
+        const index = Number((t.taskInput as { planLink?: { index?: number } } | null)?.planLink?.index);
+        if (!Number.isInteger(index)) continue;
+        const r = (t.result ?? {}) as Record<string, any>;
+        const arts: string[] = r.slides?.map((s: any) => s.imageUrl) ?? r.frames?.map((f: any) => f.imageUrl) ?? (r.imageUrl ? [r.imageUrl] : []);
+        const video = r.videos?.[0];
+        (out[index] ??= []).push({
+          threadId: t.id, agentSlug: t.agentSlug, title: r.title ?? t.title, status: t.status,
+          images: arts.filter(Boolean).slice(0, 4), total: arts.length, videoUrl: video ? (video.editedUrl ?? video.url ?? null) : null,
+        });
+      }
+      return out;
     }),
 
   /** Edição manual de uma pauta do plano (mover de dia, mudar o conteúdo). */
