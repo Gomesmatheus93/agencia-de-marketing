@@ -575,31 +575,6 @@ function DetailPanel({
         )}
       </div>
 
-        {/* Themes section */}
-        <div className="px-5 py-4 border-t border-border/30">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
-            <Sparkles className="w-3 h-3" />
-            Criar por tema
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {THEMES.map((theme) => (
-              <button
-                key={theme.id}
-                onClick={() => onCreatePost({
-                  id: theme.id,
-                  name: theme.label,
-                  type: 'commemorative',
-                  description: theme.description,
-                  marketingTip: theme.marketingTip,
-                })}
-                className={`flex items-center gap-2.5 rounded-xl border bg-gradient-to-br ${theme.color} px-3 py-2.5 text-left transition-all hover:shadow-sm`}
-              >
-                <span className="text-xl leading-none shrink-0">{theme.emoji}</span>
-                <span className="text-[11px] font-medium text-foreground leading-tight">{theme.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
 
       {/* Footer */}
       <div className="px-5 py-3.5 border-t border-border/50">

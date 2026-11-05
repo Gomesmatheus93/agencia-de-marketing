@@ -248,7 +248,9 @@ export default function Planning() {
                                 <span className="flex aspect-[4/5] items-center justify-center gap-1.5 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />criando…</span>
                               ) : o.images[0] ? (
                                 <span className="relative block">
-                                  <img src={o.images[0]} alt={o.title} loading="lazy" draggable={false} className="aspect-[4/5] w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                                  <img src={o.images[0]} alt={o.title} loading="lazy" draggable={false} 
+                                  className="aspect-[4/5] w-full object-cover 
+                                  transition-transform group-hover:scale-[1.02]" />
                                   {o.total > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{o.total} artes</span>}
                                 </span>
                               ) : o.videoUrl ? (
@@ -284,7 +286,14 @@ export default function Planning() {
                   </div>
                 ))}
               </section>
+              <details className="rounded-2x1 border bg-card/60 p-4">
+              <summary className="cursor-pointer text-sm font-semibold">
+                Stories, perfis para interagir e Observações do agente
+              </summary>
+              <div className="mt-4">
 
+              </div>
+              </details>
               <section className="grid gap-4 lg:grid-cols-2">
                 <Card><CardContent className="p-5">
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -319,6 +328,7 @@ export default function Planning() {
         </div>
       </main>
       <Dialog open={redoing !== null} onOpenChange={(o) => { if (!o && !regenerate.isPending) setRedoing(null); }}>
+      
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Refazer pauta</DialogTitle></DialogHeader>
           {redoing && (

@@ -106,7 +106,7 @@ export function TaskHistory({ tasks, threadId, onSelect }: {
       <select
         value={threadId ?? ""}
         onChange={(e) => onSelect(Number(e.target.value))}
-        className={cn("rounded-lg border bg-background px-2 py-1.5 text-sm text-foreground")}
+        className={cn("w-full max-w-[320px] truncate rounded-lg border bg-background px-2 py-1.5 text-sm text-foreground")}
       >
         {tasks.map((t) => (
           <option key={t.id} value={t.id}>
