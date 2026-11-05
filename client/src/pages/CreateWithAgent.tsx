@@ -209,6 +209,7 @@ export function CreateCarousel() {
                 <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.slides[current].imageUrl, `slide-${current + 1}.png`)}><Download className="h-3.5 w-3.5" />Baixar este</Button>
                 <Button size="sm" className="flex-1 gap-1.5" onClick={() => downloadZip(result.slides.map((s, i) => ({ url: s.imageUrl, name: `slide-${String(i + 1).padStart(2, "0")}.png` })), `${slug(result.title)}.zip`)}><Download className="h-3.5 w-3.5" />Baixar todos em .zip ({result.slides.length})</Button>
               </div>
+              {t.threadId && <PublishPanel threadId={t.threadId} />}
               {t.threadId && <ArtEditButton key={current} threadId={t.threadId} target={{ kind: "slide", index: current }} onSaved={() => t.refetch()} className="w-full gap-1.5" />}
             </div>
             <div className="space-y-4">
@@ -276,6 +277,7 @@ export function CreatePost() {
                 <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => download(result.imageUrl, "post.png")}><Download className="h-3.5 w-3.5" />Baixar arte</Button>
                 {t.threadId && <ArtEditButton threadId={t.threadId} target={{ kind: "post" }} onSaved={() => t.refetch()} className="flex-1 gap-1.5" />}
               </div>
+              {t.threadId && <PublishPanel threadId={t.threadId} />}
             </div>
             <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} firstComment={result.firstComment} verdict={result.linterVerdict} threadId={t.threadId} onSaved={() => t.refetch()} />
           </section>
@@ -652,6 +654,30 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
         {edit.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
         {edit.isPending ? (dynamic ? "Editando… (2 a 4 min)" : "Editando… (1 a 3 min)") : video.editedUrl ? "Editar de novo" : "Editar para Reels"}
       </Button>
+    </div>
+  );
+}
+
+/** Agenda ou publica no Instagram um carrossel/post já criado. */
+function PublishPanel({ threadId }: { threadId: number }) {
+  const [when, setWhen] = useState("");
+  const publish = trpc.agents.publishOutput.useMutation({
+    onSuccess: (r) => toast.success(r.status === "published" ? "Publicado no Instagram!" : "Agendado! Ele aparece no Calendário."),
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <div className="space-y-2 rounded-xl border p-3">
+      <p className="text-sm font-semibold">Publicar no Instagram</p>
+      <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
+        className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="flex-1" disabled={!when || publish.isPending}
+          onClick={() => publish.mutate({ threadId, when: new Date(when).toISOString() })}>Agendar</Button>
+        <Button size="sm" className="flex-1" disabled={publish.isPending}
+          onClick={() => { if (confirm("Publicar agora no Instagram?")) publish.mutate({ threadId, when: null }); }}>
+          {publish.isPending ? "Enviando…" : "Postar agora"}
+        </Button>
+      </div>
     </div>
   );
 }

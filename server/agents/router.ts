@@ -11,6 +11,7 @@ import { DESIGN_FORMATS, DesignError, renderDesign } from "./design/render";
 import { findSvgForImage, formatOf } from "./design/edit";
 import { editForReels } from "./video/reelsEdit";
 import { getHeyGenSubtitle } from "../_core/heyGenAvatarAgent";
+import { buildScheduledInstagramCarouselMetadata, publishInstagramSocialPost } from "../_core/instagramSocialPostPublisher";
 
 const filePath = z.string().regex(/^[a-z0-9][a-z0-9_\-./]{0,99}\.(md|txt|tsv|json)$/i).refine((p) => !p.includes(".."));
 
@@ -148,6 +149,46 @@ export const agentsRouter = router({
     }),
 
   /** O que já foi criado para cada pauta do plano: capa, quantidade de artes e vídeo. */
+  /** Agenda (when = data ISO) ou publica agora (when = null) um carrossel/post já criado. */
+  publishOutput: protectedProcedure
+    .input(z.object({ threadId: z.number().int(), when: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const thread = await ownThread(ctx.user.id, input.threadId);
+      const r = thread.result as Record<string, any> | null;
+      if (!r?.caption) throw new TRPCError({ code: "BAD_REQUEST", message: "Esse conteúdo ainda não tem legenda." });
+
+      const caption = r.hashtags?.length ? `${r.caption}\n\n${r.hashtags.join(" ")}` : r.caption;
+      const isCarousel = Array.isArray(r.slides);
+      const scheduledAt = input.when ? new Date(input.when) : undefined;
+      if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha um horário no futuro." });
+      }
+
+      const post = await db.saveSocialPost(ctx.user.id, {
+        channel: "instagram",
+        title: r.title,
+        content: caption,
+        imageUrl: isCarousel ? r.slides[0].imageUrl : r.imageUrl,
+        metadata: isCarousel
+          ? buildScheduledInstagramCarouselMetadata({
+              topic: r.title,
+              caption,
+              slides: r.slides.map((s: any) => ({ title: s.heading, body: s.body, imageUrl: s.imageUrl })),
+            })
+          : undefined,
+        scheduledAt,
+      });
+
+      if (!scheduledAt) {
+        const { result, publicImageUrl } = await publishInstagramSocialPost(post);
+        await db.updateSocialPost(post.id, ctx.user.id, {
+          status: "published", publishedAt: new Date(), imageUrl: publicImageUrl, igMediaId: result.mediaId ?? null,
+        });
+        return { status: "published" as const };
+      }
+      return { status: "scheduled" as const, scheduledAt };
+    }),
+
   planOutputs: protectedProcedure
     .input(z.object({ threadId: z.number().int() }))
     .query(async ({ ctx, input }) => {
