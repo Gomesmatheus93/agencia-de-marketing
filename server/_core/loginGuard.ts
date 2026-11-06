@@ -5,7 +5,7 @@
 import { redisDel, redisGetInt, redisIncr, redisPexpire } from "./redis";
 
 const WINDOW_MS = 15 * 60 * 1000; // 15 min
-const MAX_FAILS = 5;
+const MAX_FAILS = 10; // por IP e por e-mail, em 15 min (decisão da equipe: no máximo 10)
 
 type Entry = { count: number; resetAt: number };
 const memory = new Map<string, Entry>();

@@ -15,7 +15,9 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Em desenvolvimento a CSP é desligada (o Vite injeta scripts inline + HMR).
 // Em produção ela entra em **report-only** primeiro (não quebra nada, só loga
 // em /api/csp-report). Depois de validar, trocar `reportOnly` para false.
-const CSP_REPORT_ONLY = process.env.CSP_ENFORCE !== "true";
+// Bloqueia por padrão em produção; CSP_REPORT_ONLY=true volta ao modo só-relatório
+// (útil para diagnosticar antes de fechar a lista de domínios).
+const CSP_REPORT_ONLY = process.env.CSP_REPORT_ONLY === "true";
 
 export function securityHeaders(): RequestHandler {
   return helmet({
@@ -31,7 +33,7 @@ export function securityHeaders(): RequestHandler {
             "media-src": ["'self'", "blob:", "https:"],
             "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
             "connect-src": ["'self'", "https:"],
-            "frame-ancestors": ["'self'"],
+            "frame-ancestors": ["'none'"],
             "object-src": ["'none'"],
             "base-uri": ["'self'"],
             "form-action": ["'self'"],
@@ -43,10 +45,20 @@ export function securityHeaders(): RequestHandler {
     hsts: ENV.isProduction
       ? { maxAge: 15552000, includeSubDomains: true, preload: false }
       : false,
+    frameguard: { action: "deny" },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   });
+}
+
+// Desliga recursos do navegador que o app não usa.
+export function permissionsPolicy(): RequestHandler {
+  const value = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()";
+  return (_req, res, next) => {
+    res.setHeader("Permissions-Policy", value);
+    next();
+  };
 }
 
 // ─── CSRF double-submit ──────────────────────────────────────────────────────

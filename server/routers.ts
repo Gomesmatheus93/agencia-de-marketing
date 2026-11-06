@@ -74,6 +74,7 @@ import { getCalibrationBlock } from "./_core/calibration";
 import { sdk } from "./_core/sdk";
 import { hashPassword, needsRehash, verifyPassword } from "./_core/password";
 import { blindIndex } from "./_core/crypto";
+import { timingSafeEqual } from "node:crypto";
 import {
   passwordResetEmail,
   sendEmail,
@@ -4563,13 +4564,13 @@ const artStudioRouter = router({
   myAccess: protectedProcedure.query(async ({ ctx }) => {
     const company = await getUserCompany(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
     if (company) return { companyId: company.id, companyName: company.name };
-    if (ctx.user.role === "admin") return { companyId: null, companyName: "Admin" };
+    if (ctx.actualUser?.role === "admin") return { companyId: null, companyName: "Admin" };
     return null;
   }),
 
   templates: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      if (ctx.user.role === "admin") {
+      if (ctx.actualUser?.role === "admin") {
         return db.listArtTemplates();
       }
       const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
@@ -4592,7 +4593,7 @@ const artStudioRouter = router({
         const template = await db.getArtTemplate(input.templateId);
         if (!template) throw new TRPCError({ code: "NOT_FOUND", message: "Arte não encontrada." });
 
-        if (ctx.user.role !== "admin") {
+        if (ctx.actualUser?.role !== "admin") {
           const company = await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
           const visible = template.companyId === null || template.companyId === company?.id;
           if (!visible) throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a essa arte." });
@@ -4625,7 +4626,7 @@ const artStudioRouter = router({
     analyze: aiProcedure
       .input(z.object({ imageDataUrl: z.string().min(1).max(8_000_000) }))
       .mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") {
+        if (ctx.actualUser?.role !== "admin") {
           await requireCompanyAccess(ctx.user as { email: string | null; role?: string | null; loginMethod?: string | null });
         }
         const { analyzeMagicLayers } = await import("./_core/magicLayersAgent");
@@ -5854,7 +5855,7 @@ export const appRouter = router({
       };
     }),
 
-    upgradePlan: publicProcedure
+    upgradePlan: publicRateLimitedProcedure
       .input(z.object({
         webhookSecret: z.string(),
         userEmail: z.string().email(),
@@ -5863,7 +5864,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const secret = process.env.PAYMENT_WEBHOOK_SECRET;
-        if (!secret || input.webhookSecret !== secret) {
+        // Comparação em tempo constante (um !== simples vaza o segredo pelo tempo de resposta).
+        const given = Buffer.from(input.webhookSecret);
+        const expected = Buffer.from(secret ?? "");
+        if (!secret || given.length !== expected.length || !timingSafeEqual(given, expected)) {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Webhook secret inválido.' });
         }
         const user = await db.getUserByEmail(input.userEmail);

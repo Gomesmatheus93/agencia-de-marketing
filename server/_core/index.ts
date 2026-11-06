@@ -21,7 +21,7 @@ import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWeb
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
-import { securityHeaders, csrfCookieSetter, csrfGuard } from "./httpSecurity";
+import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy } from "./httpSecurity";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
@@ -117,6 +117,13 @@ async function startServer() {
   app.use(securityHeaders());
   // Cookie CSRF legível pelo cliente (double-submit).
   app.use(csrfCookieSetter());
+  app.use(permissionsPolicy());
+  // Respostas da API não vão para cache (dados da conta). Os proxies de mídia
+  // definem o próprio Cache-Control depois; fontes e logos da marca ficam fora.
+  app.use("/api", (req, res, next) => {
+    if (!req.path.startsWith("/design-assets")) res.setHeader("Cache-Control", "no-store");
+    next();
+  });
 
   // Recebe relatórios de violação de CSP (report-only) para ajuste antes do enforce.
   app.post("/api/csp-report", express.json({ type: ["application/csp-report", "application/json"], limit: "64kb" }), (req, res) => {

@@ -1,4 +1,5 @@
 import type { CookieOptions, Request } from "express";
+import { ENV } from "./env";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -39,7 +40,8 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
-  const secure = isSecureRequest(req);
+  // Em produção o cookie é sempre Secure, mesmo se o proxy não repassar o https.
+  const secure = ENV.isProduction || isSecureRequest(req);
   return {
     httpOnly: true,
     path: "/",
