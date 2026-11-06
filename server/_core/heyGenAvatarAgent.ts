@@ -538,7 +538,7 @@ async function listLooks(params: Record<string, string>): Promise<V3Look[]> {
   return listPaged<V3Look>(`/v3/avatars/looks?${new URLSearchParams({ ...params, limit: "50" })}`);
 }
 
-export type AccountAvatar = { id: string; name: string; type: "photo_avatar" | "digital_twin"; previewImageUrl: string | null; defaultVoiceId: string | null };
+export type AccountAvatar = { id: string; name: string; type: "photo_avatar" | "digital_twin"; previewImageUrl: string | null; defaultVoiceId: string | null; groupId: string | null };
 
 /** Avatares prontos da própria conta HeyGen (feitos pela equipe), sem os temporários do app. */
 export async function listAccountAvatars(): Promise<AccountAvatar[]> {
@@ -565,7 +565,7 @@ export async function listAccountAvatars(): Promise<AccountAvatar[]> {
   // ("<nome> (vertical)") some da lista e fica só a versão vertical.
   const names = new Set(looks.map((l) => l.name));
   return looks.filter((l) => !(l.preferred_orientation === "landscape" && names.has(`${l.name} ${VERTICAL_SUFFIX}`))).map((l) => ({
-    id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null,
+    id: l.id, name: l.name, type: l.avatar_type, previewImageUrl: l.preview_image_url ?? null, groupId: l.group_id ?? null,
     defaultVoiceId: (l.group_id && groupVoice.get(l.group_id)) || l.default_voice_id || null,
   }));
 }

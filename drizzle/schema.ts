@@ -455,6 +455,19 @@ export const heygenDigitalTwins = pgTable(
   (t) => [index("idx_heygen_digital_twins_userId").on(t.userId)]
 );
 
+// Personagens (grupos de avatar) da conta HeyGen que cada usuário pode usar.
+// A conta HeyGen é única na plataforma; sem esta tabela todos veriam os avatares de todos.
+export const heygenAvatarGroups = pgTable(
+  "heygen_avatar_groups",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    groupId: varchar("groupId", { length: 128 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("uq_heygen_avatar_groups_user_group").on(t.userId, t.groupId)]
+);
+
 export type HeygenDigitalTwin = typeof heygenDigitalTwins.$inferSelect;
 export type InsertHeygenDigitalTwin = typeof heygenDigitalTwins.$inferInsert;
 

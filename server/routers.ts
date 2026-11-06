@@ -546,7 +546,8 @@ const videosRouter = router({
 
       // === Caminho avatar da conta: usa um avatar pronto da HeyGen, sem criar nem apagar nada ===
       if (input.accountAvatarId) {
-        const avatar = (await listAccountAvatars()).find((a) => a.id === input.accountAvatarId);
+        // Só os personagens do próprio usuário (a conta HeyGen é compartilhada pela plataforma).
+        const avatar = (await listUserAvatars(ctx)).find((a) => a.id === input.accountAvatarId);
         if (!avatar) throw new TRPCError({ code: "BAD_REQUEST", message: "Avatar não encontrado na conta HeyGen." });
         const voiceId = input.voiceId || avatar.defaultVoiceId;
         if (!voiceId) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma voz para continuar." });
@@ -796,9 +797,9 @@ const videosRouter = router({
       }
     }),
 
-  getAccountAvatars: protectedProcedure.query(async () => {
+  getAccountAvatars: protectedProcedure.query(async ({ ctx }) => {
     try {
-      return await listAccountAvatars();
+      return await listUserAvatars(ctx);
     } catch (err) {
       console.warn("[Videos] Falha ao listar avatares da conta HeyGen:", err);
       return [];
@@ -3121,6 +3122,14 @@ Retorne APENAS JSON válido:
       }
     }),
 });
+
+/** Avatares da conta HeyGen que este usuário pode usar; admin vê todos. */
+async function listUserAvatars(ctx: { user: { id: number }; actualUser?: { role?: string | null } | null }) {
+  const all = await listAccountAvatars();
+  if (ctx.actualUser?.role === "admin") return all;
+  const allowed = await db.getHeygenAvatarGroupIds(ctx.user.id);
+  return all.filter((a) => a.groupId && allowed.has(a.groupId));
+}
 
 const postsRouter = router({
   getAll: protectedProcedure

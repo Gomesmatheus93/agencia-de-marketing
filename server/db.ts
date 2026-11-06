@@ -49,6 +49,7 @@ import {
   type LinkedInConnection,
   type InsertLinkedInConnection,
   heygenDigitalTwins,
+  heygenAvatarGroups,
   type HeygenDigitalTwin,
   type InsertHeygenDigitalTwin,
   searchConsoleConnections,
@@ -1174,6 +1175,17 @@ export async function getDueScheduledInstagramPosts(
     )
     .orderBy(asc(socialPosts.scheduledAt))
     .limit(limit);
+}
+
+/** Personagens da conta HeyGen liberados para o usuário (tabela + o próprio gêmeo digital). */
+export async function getHeygenAvatarGroupIds(userId: number): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+  const [groups, twins] = await Promise.all([
+    db.select({ groupId: heygenAvatarGroups.groupId }).from(heygenAvatarGroups).where(eq(heygenAvatarGroups.userId, userId)),
+    db.select({ groupId: heygenDigitalTwins.groupId }).from(heygenDigitalTwins).where(eq(heygenDigitalTwins.userId, userId)),
+  ]);
+  return new Set([...groups, ...twins].map((g) => g.groupId));
 }
 
 export async function saveSocialPost(
