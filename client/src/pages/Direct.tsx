@@ -5,7 +5,8 @@ import { ArrowLeft, ExternalLink, Instagram, Loader2, MessageCircle, RefreshCw, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const REFRESH_MS = 15_000;
+const LIST_REFRESH_MS = 30_000;
+const THREAD_REFRESH_MS = 15_000;
 
 function sameDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
@@ -48,7 +49,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
 export default function Direct() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const list = trpc.inbox.conversations.useQuery(undefined, { refetchInterval: REFRESH_MS });
+  const list = trpc.inbox.conversations.useQuery(undefined, { refetchInterval: LIST_REFRESH_MS, staleTime: 20_000 });
   const conversations = list.data?.conversations ?? [];
   const filtered = useMemo(
     () => conversations.filter((c) => (c.customer?.username ?? "").toLowerCase().includes(query.trim().toLowerCase().replace(/^@/, ""))),
@@ -159,7 +160,7 @@ function Thread({ conversationId, fallbackName, onBack }: { conversationId: stri
   const [text, setText] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  const thread = trpc.inbox.messages.useQuery({ conversationId }, { refetchInterval: REFRESH_MS });
+  const thread = trpc.inbox.messages.useQuery({ conversationId }, { refetchInterval: THREAD_REFRESH_MS, staleTime: 8_000 });
   const reply = trpc.inbox.reply.useMutation({
     onSuccess: () => { setText(""); thread.refetch(); utils.inbox.conversations.invalidate(); input.current?.focus(); },
     onError: (e) => toast.error(e.message),

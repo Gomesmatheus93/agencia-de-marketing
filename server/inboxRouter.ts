@@ -49,16 +49,40 @@ async function ownConversation(conn: { token: string; igId: string }, conversati
   return { conv, customer };
 }
 
+// ─── Cache em memória ────────────────────────────────────────────────────────
+// A API da Meta leva de 3 a 11 s para listar conversas. Guardamos a última
+// resposta por usuário: dentro do prazo ela volta na hora; depois do prazo ela
+// ainda volta na hora (por até STALE_MAX_MS) e uma busca nova roda por trás.
+const STALE_MAX_MS = 10 * 60 * 1000;
+type Entry = { at: number; value: unknown; pending?: Promise<unknown> };
+const cache = new Map<string, Entry>();
+
+async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  const age = hit ? Date.now() - hit.at : Infinity;
+  if (hit && age < ttlMs) return hit.value as T;
+  if (hit && age < STALE_MAX_MS) {
+    hit.pending ??= load()
+      .then((value) => { cache.set(key, { at: Date.now(), value }); return value; })
+      .catch(() => { hit.pending = undefined; return hit.value; });
+    return hit.value as T;
+  }
+  const value = await load();
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > 500) for (const [k, e] of cache) if (Date.now() - e.at > STALE_MAX_MS) cache.delete(k);
+  return value;
+}
+
 const conversationId = z.string().regex(/^[\w-]{5,200}$/, "Conversa inválida.");
 
 export const inboxRouter = router({
   conversations: protectedProcedure.query(async ({ ctx }) => {
     const conn = await ownConnection(ctx.user.id);
     if (!conn) return { connected: false as const, conversations: [] };
-    const res = await graph<{ data?: GraphConversation[] }>(
-      `/${conn.pageId}/conversations?platform=instagram&limit=30&fields=updated_time,participants,messages.limit(1){message,from,created_time}`,
+    const res = await cached(`list:${ctx.user.id}`, 20_000, () => graph<{ data?: GraphConversation[] }>(
+      `/${conn.pageId}/conversations?platform=instagram&limit=25&fields=updated_time,participants,messages.limit(1){message,from,created_time}`,
       conn.token,
-    );
+    ));
     return {
       connected: true as const,
       account: conn.username,
@@ -80,7 +104,7 @@ export const inboxRouter = router({
     .input(z.object({ conversationId }))
     .query(async ({ ctx, input }) => {
       const conn = await requireConnection(ctx.user.id);
-      const { conv, customer } = await ownConversation(conn, input.conversationId);
+      const { conv, customer } = await cached(`conv:${ctx.user.id}:${input.conversationId}`, 8_000, () => ownConversation(conn, input.conversationId));
       const messages = (conv.messages?.data ?? [])
         .map((m) => {
           const att = m.attachments?.data?.[0];
@@ -109,6 +133,9 @@ export const inboxRouter = router({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipient: { id: customer.id }, message: { text: input.text }, messaging_type: "RESPONSE" }),
       });
+      // A mensagem nova precisa aparecer já: descarta o que estava guardado.
+      cache.delete(`conv:${ctx.user.id}:${input.conversationId}`);
+      cache.delete(`list:${ctx.user.id}`);
       return { messageId: sent.message_id ?? null };
     }),
 });
