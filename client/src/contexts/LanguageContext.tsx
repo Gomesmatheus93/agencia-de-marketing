@@ -327,7 +327,7 @@ export const translations = {
     createPostDesc: "Arte + legenda, feitas por agente",
     createStories: "Stories",
     createStoriesDesc: "Sequência do dia em 9:16",
-    createReels: "Reels",
+    createReels: "Roteiro de Reels",
     createReelsDesc: "Roteiro com ganchos pontuados",
     createVideo: "Vídeo com avatar",
     createVideoDesc: "Avatar fala o roteiro (HeyGen)",
