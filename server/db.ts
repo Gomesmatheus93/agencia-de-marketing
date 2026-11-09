@@ -94,9 +94,13 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      // max: 20 conexões no pool; prepare: false mantém compatibilidade com o
-      // pooler do Supabase em modo transaction.
-      const client = postgres(process.env.DATABASE_URL, { max: 20, prepare: false });
+      // prepare: false mantém compatibilidade com o pooler do Supabase em modo
+      // transaction (porta 6543). Em modo session (5432) o limite é 15 conexões.
+      const client = postgres(process.env.DATABASE_URL, {
+        max: Number(process.env.DB_POOL_MAX ?? 10), // abaixo do limite do pooler do Supabase
+        idle_timeout: 20, // devolve conexões paradas depois de 20 s
+        prepare: false,
+      });
       _db = drizzle(client);
       // O drizzle desliga a conversão de timestamptz (OID 1184) do driver porque
       // converte por conta própria nas colunas tipadas. O SQL cru deste arquivo
