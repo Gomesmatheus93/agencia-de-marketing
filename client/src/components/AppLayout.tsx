@@ -22,7 +22,6 @@ import {
   BarChart2,
   Wand2,
   CalendarDays,
-  Globe,
   MessageCircle,
   Lock,
   Crown,
@@ -31,13 +30,9 @@ import {
   FileBarChart2,
   LayoutGrid,
   Users,
-  PanelsTopLeft,
-  Bot,
   CalendarRange,
   ClipboardCheck,
-  Building2,
   ShieldCheck,
-  Video,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -58,8 +53,6 @@ import UpgradeModal from "@/components/UpgradeModal";
 // criar → publicar → medir.
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
-  { id: "office", icon: Building2, path: "/escritorio", color: "from-alle-purple to-alle-orange", labelKey: "office" as const, descKey: "officeDesc" as const, group: "agency" as const },
-  { id: "agents", icon: Bot, path: "/dashboard/agents", color: "from-alle-purple to-alle-orange", labelKey: "agents" as const, descKey: "agentsDesc" as const, group: "agency" as const },
   { id: "planning", icon: CalendarRange, path: "/dashboard/planejamento", color: "from-alle-purple to-alle-purple-light", labelKey: "planning" as const, descKey: "planningDesc" as const, group: "plan" as const },
   { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-alle-purple to-alle-purple-light", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "plan" as const },
   { id: "agentCarousel", icon: GalleryHorizontal, path: "/dashboard/criar/carrossel", color: "from-alle-purple to-alle-orange", labelKey: "createCarousel" as const, descKey: "createCarouselDesc" as const, group: "create" as const },
@@ -67,8 +60,6 @@ const NAV_ITEMS_CONFIG = [
   { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },
   { id: "agentReels", icon: Clapperboard, path: "/dashboard/agents/reels", color: "from-alle-purple to-alle-orange", labelKey: "createReels" as const, descKey: "createReelsDesc" as const, group: "create" as const },
   { id: "agentVideo", icon: Clapperboard, path: "/dashboard/criar/video", color: "from-alle-purple to-alle-orange", labelKey: "createVideoAgent" as const, descKey: "createVideoAgentDesc" as const, group: "create" as const },
-  { id: "videos", icon: Video, path: "/dashboard/videos", color: "from-alle-purple to-alle-orange", labelKey: "createVideo" as const, descKey: "createVideoDesc" as const, group: "create" as const },
-  { id: "studio", icon: PanelsTopLeft, path: "/dashboard/studio", color: "from-slate-500 to-slate-600", labelKey: "moreTools" as const, descKey: "moreToolsDesc" as const, group: "create" as const },
   { id: "posts", icon: Share2, path: "/dashboard/posts", color: "from-alle-orange to-alle-orange-light", labelKey: "posts" as const, descKey: "postsDesc" as const, group: "publish" as const },
   { id: "commentAutomations", icon: MessageCircle, path: "/dashboard/comment-automations", color: "from-alle-orange to-alle-orange-light", labelKey: "commentAutomations" as const, descKey: "commentAutomationsDesc" as const, group: "publish" as const },
   { id: "direct", icon: MessageCircle, path: "/dashboard/direct", color: "from-alle-orange to-alle-orange-light", labelKey: "direct" as const, descKey: "directDesc" as const, group: "publish" as const },
@@ -77,6 +68,16 @@ const NAV_ITEMS_CONFIG = [
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-alle-orange to-alle-orange-light", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "measure" as const },
   { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-alle-orange to-alle-orange-light", labelKey: "report" as const, descKey: "reportDesc" as const, group: "measure" as const },
 ];
+
+// A barra lateral é montada de novo a cada página: guarda a rolagem para não voltar ao topo.
+const NAV_SCROLL_KEY = "sidebar_nav_scroll";
+function saveNavScroll(e: React.UIEvent<HTMLElement>) {
+  try { sessionStorage.setItem(NAV_SCROLL_KEY, String(e.currentTarget.scrollTop)); } catch { /* sem storage */ }
+}
+function restoreNavScroll(el: HTMLElement | null) {
+  if (!el) return;
+  try { el.scrollTop = Number(sessionStorage.getItem(NAV_SCROLL_KEY) ?? 0); } catch { /* sem storage */ }
+}
 
 const NAV_GROUP_LABEL_KEYS = {
   agency: "navGroupAgency",
@@ -110,6 +111,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { user, isAuthenticated, loading } = useAuth();
   const { theme, toggleTheme, switchable } = useTheme();
   const { t, language, setLanguage } = useLanguage();
+  // Sem o seletor de idioma, quem tinha escolhido inglês volta para o português.
+  useEffect(() => { if (language !== "pt") setLanguage("pt"); }, [language, setLanguage]);
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; featureName?: string }>({ open: false });
@@ -277,7 +280,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
   const activeLabel = navItems.find((n) => n.id === activeModule)?.label;
 
-  const SidebarContent = () => (
+  const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-5 border-b border-border/30">
@@ -301,7 +304,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto scrollbar-thin">
+      <nav ref={restoreNavScroll} onScroll={saveNavScroll} className="flex-1 p-3 space-y-0.5 overflow-y-auto scrollbar-thin">
         <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
           {t("modules")}
         </div>
@@ -382,42 +385,6 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
       {/* User profile */}
       <div className="p-3 border-t border-border/30">
-        {/* Language switcher */}
-        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
-          <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
-            <Globe className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{t("language")}</div>
-          </div>
-          <div className="flex rounded-lg overflow-hidden border border-border/50">
-            <button
-              type="button"
-              onClick={() => setLanguage("pt")}
-              className={cn(
-                "px-2.5 py-1 text-xs font-semibold transition-colors duration-150",
-                language === "pt"
-                  ? "bg-primary text-white"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              PT
-            </button>
-            <button
-              type="button"
-              onClick={() => setLanguage("en")}
-              className={cn(
-                "px-2.5 py-1 text-xs font-semibold transition-colors duration-150",
-                language === "en"
-                  ? "bg-primary text-white"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              EN
-            </button>
-          </div>
-        </div>
-
         {/* Theme toggle */}
         <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
           <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
@@ -497,7 +464,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col glass-sidebar fixed left-0 top-0 bottom-0 z-30">
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Mobile Sidebar Overlay */}
@@ -525,7 +492,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <X className="w-4 h-4" />
           </Button>
         </div>
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Main content */}
