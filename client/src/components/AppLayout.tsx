@@ -24,6 +24,8 @@ import {
   CalendarDays,
   MessageCircle,
   Lock,
+  PanelLeftClose,
+  PanelLeftOpen,
   Crown,
   Layers,
   Crop,
@@ -115,6 +117,14 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   useEffect(() => { if (language !== "pt") setLanguage("pt"); }, [language, setLanguage]);
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Barra lateral recolhida (só ícones) no computador; a escolha fica no navegador.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar_collapsed") === "1"; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    try { localStorage.setItem("sidebar_collapsed", c ? "0" : "1"); } catch { /* sem storage */ }
+    return !c;
+  });
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; featureName?: string }>({ open: false });
   const { isLocked, isExpired, isTrialActive, isLegacy, isPaid, daysLeft } = usePlan();
   const isDarkTheme = theme === "dark";
@@ -169,7 +179,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     : "U";
 
   type NavItem = { id: string; label: string; description: string; icon: React.ComponentType<{ className?: string }>; path: string; color: string };
-  const NavButton = ({ item }: { item: NavItem }) => {
+  const NavButton = ({ item, mini = false }: { item: NavItem; mini?: boolean }) => {
     const Icon = item.icon;
     const isActive = activeModule === item.id || (item.id === "studio" && !!activeModule && CREATIVE_MODULE_IDS.has(activeModule));
     const locked = isLocked(item.id);
@@ -184,8 +194,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           navigate(item.path);
           setSidebarOpen(false);
         }}
+        title={mini ? item.label : undefined}
         className={cn(
           "w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl text-[15px] font-medium transition-all duration-200 group",
+          mini && "justify-center px-0",
           isActive
             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
             : locked
@@ -194,8 +206,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
         )}
       >
         <Icon className={cn("w-5 h-5 flex-shrink-0", isActive ? "text-primary-foreground" : locked ? "text-muted-foreground/40" : "text-muted-foreground group-hover:text-foreground")} />
-        <span className="flex-1 text-left truncate">{item.label}</span>
-        {locked && !isActive && (
+        {!mini && <span className="flex-1 text-left truncate">{item.label}</span>}
+        {locked && !isActive && !mini && (
           <Lock className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
         )}
       </button>
@@ -258,11 +270,11 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
   const activeLabel = navItems.find((n) => n.id === activeModule)?.label;
 
-  const sidebarContent = (
+  const renderSidebar = (mini: boolean) => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-7 pt-8 pb-6">
-        <div className="flex items-center gap-3">
+      <div className={cn("pt-8 pb-6", mini ? "px-4" : "px-7")}>
+        <div className={cn("flex items-center gap-3", mini && "flex-col")}>
           <div className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden p-1.5">
             <img
               src="/logo.png"
@@ -274,63 +286,76 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               }}
             />
           </div>
-          <div className="min-w-0">
-            <div className="font-bold text-lg text-foreground tracking-tight truncate">Alle Energia</div>
-            <div className="text-[11px] text-muted-foreground truncate">{t("platformName")}</div>
-          </div>
+          {!mini && (
+            <div className="min-w-0 flex-1">
+              <div className="font-bold text-lg text-foreground tracking-tight truncate">Alle Energia</div>
+              <div className="text-[11px] text-muted-foreground truncate">{t("platformName")}</div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            title={mini ? "Expandir menu" : "Recolher menu"}
+            className="hidden lg:flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {mini ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav ref={restoreNavScroll} onScroll={saveNavScroll} className="flex-1 px-5 pb-4 space-y-1 overflow-y-auto scrollbar-thin">
-        <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2">
-          {t("modules")}
-        </div>
+      <nav ref={restoreNavScroll} onScroll={saveNavScroll} className={cn("flex-1 pb-4 space-y-1 overflow-y-auto scrollbar-thin", mini ? "px-3" : "px-5")}>
+        {!mini && (
+          <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2">
+            {t("modules")}
+          </div>
+        )}
         {navItems.map((item, i) => {
           const prevGroup = i > 0 ? navItems[i - 1].group : null;
           const showGroupHeader = item.group && item.group !== prevGroup;
           return (
             <div key={item.id}>
-              {showGroupHeader && (
+              {showGroupHeader && mini && <div className="mx-auto my-3 h-px w-8 bg-border" />}
+              {showGroupHeader && !mini && (
                 <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 pt-5 pb-2">
                   {t(NAV_GROUP_LABEL_KEYS[item.group as keyof typeof NAV_GROUP_LABEL_KEYS])}
                 </div>
               )}
-              <NavButton item={item} />
+              <NavButton item={item} mini={mini} />
             </div>
           );
         })}
 
         {user?.role === "admin" && (
           <>
-            <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3">
+            <div className={cn("text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3", mini && "hidden")}>
               {t("system")}
             </div>
-            <NavButton item={settingsItem} />
+            <NavButton item={settingsItem} mini={mini} />
           </>
         )}
 
         {hasCompanyAccess && (
           <>
-            <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3">
+            <div className={cn("text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3", mini && "hidden")}>
               {t("company")}
             </div>
-            <NavButton item={artStudioItem} />
+            <NavButton item={artStudioItem} mini={mini} />
           </>
         )}
 
         {user?.canManageTeam && (
           <>
-            <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3">
+            <div className={cn("text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3", mini && "hidden")}>
               {t("teamSection")}
             </div>
-            <NavButton item={teamItem} />
+            <NavButton item={teamItem} mini={mini} />
           </>
         )}
       </nav>
 
       {/* Trial / Upgrade banner */}
-      {!isPaid && !isLegacy && (isTrialActive || isExpired) && (
+      {!mini && !isPaid && !isLegacy && (isTrialActive || isExpired) && (
         <div className="px-3 pb-2">
           {isExpired ? (
             <button
@@ -362,9 +387,9 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
 
       {/* User profile */}
-      <div className="px-5 py-4 border-t border-border/40">
+      <div className={cn("py-4 border-t border-border/40", mini ? "px-3" : "px-5")}>
         {/* Theme toggle */}
-        <div className="mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg">
+        <div className={cn("mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg", mini && "hidden")}>
           <div className="w-8 h-8 rounded-lg bg-muted/70 flex items-center justify-center flex-shrink-0">
             <ThemeToggleIcon className="w-4 h-4 text-muted-foreground" />
           </div>
@@ -393,13 +418,13 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200 group">
+            <button title={mini ? user?.name || "Usuário" : undefined} className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200 group", mini && "justify-center px-0")}>
               <Avatar className="w-8 h-8 flex-shrink-0">
                 <AvatarFallback className="gradient-primary text-white text-xs font-semibold">
                   {userInitials}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 text-left min-w-0">
+              <div className={cn("flex-1 text-left min-w-0", mini && "hidden")}>
                 <div className="text-sm font-medium text-foreground truncate">{user?.name || "Usuário"}</div>
                 <div className="text-[11px] text-muted-foreground truncate">{user?.email || ""}</div>
               </div>
@@ -438,8 +463,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
       />
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 flex-col glass-sidebar fixed left-0 top-0 bottom-0 z-30">
-        {sidebarContent}
+      <aside className={cn("hidden lg:flex flex-col glass-sidebar fixed left-0 top-0 bottom-0 z-30 transition-[width] duration-200", collapsed ? "w-20" : "w-72")}>
+        {renderSidebar(collapsed)}
       </aside>
 
       {/* Mobile Sidebar Overlay */}
@@ -467,11 +492,11 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <X className="w-4 h-4" />
           </Button>
         </div>
-        {sidebarContent}
+        {renderSidebar(false)}
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 lg:ml-72 flex flex-col min-h-screen relative z-10">
+      <main className={cn("flex-1 flex flex-col min-h-screen relative z-10 transition-[margin] duration-200", collapsed ? "lg:ml-20" : "lg:ml-72")}>
         {/* Mobile header */}
         <header className="lg:hidden sticky top-0 z-20 glass border-b border-border/30 px-4 py-3 flex items-center justify-between">
           <Button
