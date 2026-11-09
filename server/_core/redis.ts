@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import Redis from "ioredis";
 
 // Estado compartilhado entre réplicas do container. Sem REDIS_URL configurado,
@@ -86,12 +87,19 @@ export async function redisDel(...keys: string[]): Promise<void> {
 // ciclo. Sem Redis configurado (ou se o Redis falhar), sempre retorna true —
 // fail-open, porque rodar em duplicidade uma vez é bem menos grave do que
 // nenhuma réplica rodar nunca.
+// Escopo da trava pelo banco de dados: outro app que use o mesmo Redis (ex.: outro
+// projeto no Easypanel) não pode segurar a trava deste. Containers do mesmo app
+// (mesmo banco) continuam dividindo a trava, então nada é publicado duas vezes.
+const LOCK_SCOPE =
+  process.env.SCHEDULER_LOCK_SCOPE ??
+  createHash("sha256").update(process.env.DATABASE_URL ?? "").digest("hex").slice(0, 12);
+
 export async function acquireSchedulerLock(name: string, ttlMs: number): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return true;
 
   try {
-    const result = await redis.set(`lock:scheduler:${name}`, "1", "PX", ttlMs, "NX");
+    const result = await redis.set(`lock:scheduler:${LOCK_SCOPE}:${name}`, "1", "PX", ttlMs, "NX");
     return result === "OK";
   } catch (err) {
     console.warn(`[Redis] Lock '${name}' falhou, executando localmente:`, (err as Error).message);
