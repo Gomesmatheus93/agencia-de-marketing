@@ -22,17 +22,28 @@ type ScheduledInstagramCarouselPayload = {
   slides: InstagramPostingSlide[];
 };
 
-function parseScheduledCarouselPayload(metadata?: string | null) {
+function parseScheduledCarouselPayload(metadata?: string | null): ScheduledInstagramCarouselPayload | undefined {
   if (!metadata?.trim()) return undefined;
 
   try {
-    const parsed = JSON.parse(metadata) as ScheduledInstagramCarouselPayload;
-    if (
-      parsed.kind === "instagram_carousel" &&
-      Array.isArray(parsed.slides) &&
-      parsed.slides.length > 0
-    ) {
+    const parsed = JSON.parse(metadata) as ScheduledInstagramCarouselPayload & { imageUrls?: string[] };
+
+    // Formato da aba Carrossel / agentes: { kind: "instagram_carousel", slides: [...] }
+    if (parsed.kind === "instagram_carousel" && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
       return parsed;
+    }
+
+    // Formato do Calendário ("Criar post" com várias imagens): { imageUrls: [...] }
+    const urls = (parsed.imageUrls ?? []).filter((u) => typeof u === "string" && u.trim());
+    if (urls.length > 1) {
+      return {
+        kind: "instagram_carousel",
+        topic: "",
+        slides: urls.map((url, i) => ({
+          title: `Slide ${i + 1}`,
+          ...(url.startsWith("data:image/") ? { imageDataUrl: url } : { imageUrl: url }),
+        })),
+      } satisfies ScheduledInstagramCarouselPayload;
     }
   } catch {
     return undefined;
@@ -40,6 +51,7 @@ function parseScheduledCarouselPayload(metadata?: string | null) {
 
   return undefined;
 }
+
 
 export async function publishInstagramSocialPost(post: SocialPost) {
   if (post.channel !== "instagram") {
