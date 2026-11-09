@@ -10,7 +10,7 @@ Regras:
 - Quando nao houver dados reais, deixe claro que os volumes/dificuldade sao estimativas e nao numeros medidos.
 - Distinga claramente a intencao de busca de cada palavra-chave: informational (aprender), commercial (comparar/pesquisar antes de comprar), transactional (pronto para agir), navigational (procurando uma marca/pagina especifica).
 - Priorize palavras-chave com potencial real de trafego qualificado para o nicho informado, nao apenas volume.
-- Cada ideia de conteudo deve indicar o formato mais adequado dentro do que a agencia ja produz: artigo, carrossel, reels, stories ou newsletter.
+- Cada ideia de conteudo deve indicar o formato mais adequado dentro do que a agencia ja produz: artigo, carrossel, reels ou stories.
 - Escreva tudo em portugues do Brasil, direto e sem enrolacao.
 - Nao invente numeros de volume de busca precisos; use faixas qualitativas (alto/medio/baixo) quando nao houver dado real.`;
 
@@ -38,7 +38,7 @@ export type SeoKeywordCluster = {
 export type SeoContentIdea = {
   title: string;
   targetKeyword: string;
-  contentType: "artigo" | "carrossel" | "reels" | "stories" | "newsletter";
+  contentType: "artigo" | "carrossel" | "reels" | "stories";
   funnelStage: "topo" | "meio" | "fundo";
   hook: string;
 };
@@ -112,7 +112,7 @@ const KEYWORD_STRATEGY_SCHEMA = {
           targetKeyword: { type: "string" },
           contentType: {
             type: "string",
-            enum: ["artigo", "carrossel", "reels", "stories", "newsletter"],
+            enum: ["artigo", "carrossel", "reels", "stories"],
           },
           funnelStage: { type: "string", enum: ["topo", "meio", "fundo"] },
           hook: { type: "string" },
@@ -169,7 +169,7 @@ export async function researchKeywordsWithAgent(
           contextLines.filter(Boolean).join("\n"),
           "",
           "Gere de 3 a 4 clusters de palavras-chave (um por intencao de busca relevante) com 3 a 5 palavras-chave cada,",
-          "e de 4 a 6 ideias de conteudo prontas para producao, distribuidas entre os formatos disponiveis (artigo, carrossel, reels, stories, newsletter)",
+          "e de 4 a 6 ideias de conteudo prontas para producao, distribuidas entre os formatos disponiveis (artigo, carrossel, reels, stories)",
           "e cobrindo topo, meio e fundo de funil.",
         ].join("\n"),
       },

@@ -103,7 +103,7 @@ export async function sendApprovalMessage(data: ApprovalMessageData): Promise<Wa
   }
 
   const to = ENV.whatsappRecipientNumber;
-  const channelLabel = data.channel === "instagram" ? "Instagram" : data.channel === "linkedin" ? "LinkedIn" : "Newsletter";
+  const channelLabel = "Instagram";
   const dateLabel = data.scheduledAt
     ? data.scheduledAt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Fortaleza" })
     : "Sem data definida";

@@ -19,7 +19,6 @@ import {
   Trash2,
   Send,
   Calendar,
-  Mail,
   Clock,
   CheckCircle2,
   XCircle,
@@ -41,15 +40,6 @@ function InstagramIcon({ className }: { className?: string }) {
   );
 }
 
-function LinkedinIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-      <rect x="2" y="9" width="4" height="12" />
-      <circle cx="4" cy="4" r="2" />
-    </svg>
-  );
-}
 import {
   Dialog,
   DialogContent,
@@ -71,7 +61,7 @@ function resolveImgUrl(url?: string | null): string | undefined {
   return url;
 }
 
-type Channel = "instagram" | "linkedin" | "newsletter";
+type Channel = "instagram";
 type PostStatus = "draft" | "pending_approval" | "scheduled" | "published" | "failed" | "rejected";
 
 type Post = {
@@ -108,28 +98,6 @@ const channelConfig: Record<Channel, {
     supportsImage: true,
     captionLabel: "Legenda",
     captionPlaceholder: "Legenda para o post no Instagram (emojis, hashtags, CTA)...",
-  },
-  linkedin: {
-    label: "LinkedIn",
-    icon: LinkedinIcon,
-    color: "text-blue-700",
-    gradient: "from-blue-600 to-blue-700",
-    bg: "bg-blue-50 dark:bg-blue-950/20",
-    maxChars: 3000,
-    supportsImage: true,
-    captionLabel: "Texto do post",
-    captionPlaceholder: "Escreva o conteúdo profissional para o LinkedIn...",
-  },
-  newsletter: {
-    label: "Newsletter",
-    icon: Mail,
-    color: "text-violet-600",
-    gradient: "from-alle-purple to-alle-purple-light",
-    bg: "bg-violet-50 dark:bg-violet-950/20",
-    maxChars: 10000,
-    supportsImage: false,
-    captionLabel: "Corpo do email",
-    captionPlaceholder: "Escreva o conteúdo completo da newsletter...",
   },
 };
 
@@ -373,29 +341,6 @@ export default function Posts() {
           </p>
         </div>
 
-        {/* Channel tabs */}
-        <div className="flex gap-2 p-1 glass-card rounded-2xl w-fit animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-          {(Object.entries(channelConfig) as [Channel, typeof channelConfig[Channel]][]).map(([channel, config]) => {
-            const Icon = config.icon;
-            const isActive = activeChannel === channel;
-            return (
-              <button
-                key={channel}
-                onClick={() => setActiveChannel(channel)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200",
-                  isActive
-                    ? `bg-gradient-to-r ${config.gradient} text-white shadow-md`
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{config.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
         {/* New post card — always visible, same style as carousel import */}
         <div
           className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-background/60 p-4 sm:flex-row sm:items-center sm:justify-between animate-fade-in-up"
@@ -440,7 +385,7 @@ export default function Posts() {
           ) : (
             posts.map((post, i) => {
               const StatusIcon = statusConfig[post.status].icon;
-              const postCfg = channelConfig[post.channel];
+              const postCfg = channelConfig[post.channel as Channel] ?? channelConfig.instagram;
               const PostChannelIcon = postCfg.icon;
               const isVideoPost = post.imageUrl ? /\.(mp4|mov|webm|avi)(\?|$)/i.test(post.imageUrl) : false;
               return (
@@ -704,21 +649,6 @@ export default function Posts() {
 
                 {/* Right — caption + schedule */}
                 <div className="flex-1 flex flex-col gap-5">
-                  {/* Newsletter subject */}
-                  {activeChannel === "newsletter" && (
-                    <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Assunto do email <span className="text-destructive">*</span>
-                      </label>
-                      <Input
-                        value={formTitle}
-                        onChange={(e) => setFormTitle(e.target.value)}
-                        placeholder="Ex: Newsletter semanal — Novidades de marketing"
-                        className="rounded-2xl border-border/50 bg-background/70"
-                      />
-                    </div>
-                  )}
-
                   {/* Caption */}
                   <div className="flex-1 flex flex-col">
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -793,7 +723,6 @@ export default function Posts() {
                 onClick={handleCreate}
                 disabled={
                   !formContent.trim() ||
-                  (activeChannel === "newsletter" && !formTitle.trim()) ||
                   createMutation.isPending ||
                   uploadingIdx !== null
                 }

@@ -36,7 +36,6 @@ import {
   RefreshCw,
   Send,
   Settings2,
-  Mail,
   Bell,
   Phone,
   Share2,
@@ -222,9 +221,6 @@ export default function Articles() {
   const [newsResults, setNewsResults] = useState<EnergyNewsItem[]>([]);
   const [selectedNews, setSelectedNews] = useState<EnergyNewsItem | null>(null);
 
-  const [newsletterHtml, setNewsletterHtml] = useState<string | null>(null);
-  const [newsletterSubject, setNewsletterSubject] = useState<string>("");
-  const [showNewsletterDialog, setShowNewsletterDialog] = useState(false);
 
   const { data: articles = [], isLoading } = trpc.articles.getAll.useQuery();
 
@@ -291,21 +287,6 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
 
-  const publishLinkedInMutation = trpc.articles.publishLinkedIn.useMutation({
-    onSuccess: (_result, variables) => {
-      utils.articles.getAll.invalidate();
-      utils.articles.getStats.invalidate();
-      utils.posts.getAll.invalidate();
-      utils.posts.getStats.invalidate();
-      toast.success("Artigo publicado no LinkedIn!");
-      setSelectedArticle((current) =>
-        current && current.id === variables.id
-          ? { ...current, status: "published" }
-          : current
-      );
-    },
-    onError: (err) => toast.error("Erro ao publicar no LinkedIn: " + err.message),
-  });
 
 
   const deleteMutation = trpc.articles.delete.useMutation({
@@ -318,14 +299,6 @@ export default function Articles() {
     onError: (err) => toast.error("Erro ao excluir: " + err.message),
   });
 
-  const generateNewsletterMutation = trpc.articles.generateNewsletter.useMutation({
-    onSuccess: (result) => {
-      setNewsletterHtml(result.htmlContent);
-      setNewsletterSubject(result.subject);
-      setShowNewsletterDialog(true);
-    },
-    onError: (err) => toast.error("Erro ao gerar newsletter: " + err.message),
-  });
 
   // ── Digest settings state ──────────────────────────────────────────────────
   const [showDigestDialog, setShowDigestDialog] = useState(false);
@@ -469,32 +442,6 @@ export default function Articles() {
     toast.success("Artigo baixado!");
   };
 
-  const handlePublishLinkedIn = (article: Article) => {
-    publishLinkedInMutation.mutate({ id: article.id });
-  };
-
-
-  const handleCreateNewsletter = (article: Article) => {
-    generateNewsletterMutation.mutate({ id: article.id });
-  };
-
-  const handleDownloadNewsletter = () => {
-    if (!newsletterHtml) return;
-    const blob = new Blob([newsletterHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${newsletterSubject.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-newsletter.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Newsletter baixada!");
-  };
-
-  const handleCopyNewsletterHtml = () => {
-    if (!newsletterHtml) return;
-    navigator.clipboard.writeText(newsletterHtml);
-    toast.success("HTML copiado!");
-  };
 
   const formatDate = (date: Date) => new Date(date).toLocaleDateString("pt-BR", {
     day: "2-digit", month: "short", year: "numeric",
@@ -647,37 +594,6 @@ export default function Articles() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleCreateNewsletter(selectedArticle)}
-                      disabled={generateNewsletterMutation.isPending}
-                      className="h-8 gap-1.5 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
-                    >
-                      {generateNewsletterMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Mail className="w-3.5 h-3.5" />
-                      )}
-                      Newsletter
-                    </Button>
-
-                    {selectedArticle.status !== "published" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handlePublishLinkedIn(selectedArticle)}
-                        disabled={publishLinkedInMutation.isPending}
-                        className="h-8 gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                      >
-                        {publishLinkedInMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Globe className="w-3.5 h-3.5" />
-                        )}{" "}
-                        Publicar
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
                       onClick={() => deleteMutation.mutate({ id: selectedArticle.id })}
                       className="h-8 text-destructive hover:text-destructive hover:bg-destructive/5"
                       disabled={deleteMutation.isPending}
@@ -719,7 +635,7 @@ export default function Articles() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-foreground">Este artigo ainda nao tem capa</p>
-                          <p className="text-xs text-muted-foreground">Gere uma imagem ultrarrealista para postar no LinkedIn.</p>
+                          <p className="text-xs text-muted-foreground">Gere uma imagem ultrarrealista para ilustrar o artigo.</p>
                         </div>
                       </div>
                       <Button
@@ -1072,51 +988,6 @@ export default function Articles() {
         </DialogContent>
       </Dialog>
 
-
-      {/* Newsletter preview dialog */}
-      <Dialog open={showNewsletterDialog} onOpenChange={setShowNewsletterDialog}>
-        <DialogContent className="glass-card flex flex-col h-[min(94vh,860px)] w-[min(96vw,780px)] max-w-none border-border/50 sm:max-w-none p-0 overflow-hidden">
-          <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/30 flex-shrink-0">
-            <div className="flex items-center justify-between gap-3">
-              <DialogTitle className="flex items-center gap-2 text-sm">
-                <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
-                  <Mail className="w-3.5 h-3.5 text-white" />
-                </div>
-                <span className="truncate">Newsletter — {newsletterSubject}</span>
-              </DialogTitle>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleCopyNewsletterHtml}
-                  className="h-8 gap-1.5 text-xs"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  Copiar HTML
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleDownloadNewsletter}
-                  className="h-8 gap-1.5 text-xs bg-violet-600 text-white hover:bg-violet-700 border-0"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Baixar .html
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 overflow-hidden bg-[#f1f5f9]">
-            {newsletterHtml && (
-              <iframe
-                srcDoc={newsletterHtml}
-                title="Preview da newsletter"
-                className="w-full h-full border-0"
-                sandbox="allow-same-origin"
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Digest settings dialog */}
       <Dialog open={showDigestDialog} onOpenChange={setShowDigestDialog}>

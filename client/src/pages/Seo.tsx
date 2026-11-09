@@ -46,7 +46,6 @@ const CONTENT_TYPE_META: Record<string, { label: string; icon: React.ReactNode; 
   carrossel: { label: "Carrossel", icon: <GalleryHorizontal className="w-3.5 h-3.5" />, path: "/dashboard/carousel" },
   reels: { label: "Reels", icon: <Film className="w-3.5 h-3.5" />, path: "/dashboard/reels" },
   stories: { label: "Stories", icon: <Layers className="w-3.5 h-3.5" />, path: "/dashboard/stories" },
-  newsletter: { label: "Newsletter", icon: <Mail className="w-3.5 h-3.5" /> },
 };
 
 const FUNNEL_META: Record<string, { label: string; color: string }> = {
@@ -254,7 +253,7 @@ export default function Seo() {
     const meta = CONTENT_TYPE_META[contentType];
     if (!meta?.path) {
       void navigator.clipboard.writeText(`${title}\n\n${hook}`);
-      toast.success("Ideia copiada — cole na newsletter em Artigos.");
+      toast.success("Ideia copiada.");
       return;
     }
     const prefill: ContentPrefill = { topic: title, hook, hookType: "curiosidade" };
@@ -297,7 +296,7 @@ export default function Seo() {
             Pesquisa de Palavras-chave (SEO)
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Descubra o que seu publico busca no Google e transforme em pautas de artigo, carrossel, reels, stories e newsletter.
+            Descubra o que seu publico busca no Google e transforme em pautas de artigo, carrossel, reels e stories.
           </p>
         </div>
 

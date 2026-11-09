@@ -27,7 +27,6 @@ import {
   socialPosts,
   instagramConnections,
   canvaConnections,
-  linkedinConnections,
   featureFlags,
   postMetrics,
   templatePerformance,
@@ -46,8 +45,6 @@ import {
   type InsertInstagramConnection,
   type CanvaConnection,
   type InsertCanvaConnection,
-  type LinkedInConnection,
-  type InsertLinkedInConnection,
   heygenDigitalTwins,
   heygenAvatarGroups,
   type HeygenDigitalTwin,
@@ -1151,7 +1148,7 @@ export async function getAvatarVideoCount(userId: number): Promise<number> {
 
 export async function getSocialPosts(
   userId: number,
-  channel?: "instagram" | "linkedin" | "newsletter"
+  channel?: "instagram"
 ): Promise<SocialPost[]> {
   const db = await getDb();
   if (!db) return [];
@@ -1195,7 +1192,7 @@ export async function getHeygenAvatarGroupIds(userId: number): Promise<Set<strin
 export async function saveSocialPost(
   userId: number,
   data: {
-    channel: "instagram" | "linkedin" | "newsletter";
+    channel: "instagram";
     title?: string;
     content: string;
     imageUrl?: string;
@@ -1413,51 +1410,6 @@ export async function deleteCanvaConnection(userId: number): Promise<void> {
     const db = await getDb();
     if (!db) return;
     await db.delete(canvaConnections).where(eq(canvaConnections.userId, userId));
-  } catch {
-    // table may not exist yet
-  }
-}
-
-// ─── LinkedIn Connections ──────────────────────────────────────────────────────
-
-export async function getLinkedInConnection(userId: number): Promise<LinkedInConnection | null> {
-  try {
-    const db = await getDb();
-    if (!db) return null;
-    const [row] = await db.select().from(linkedinConnections).where(eq(linkedinConnections.userId, userId));
-    return row ? decryptTokenRow(row) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function upsertLinkedInConnection(data: InsertLinkedInConnection): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  const existing = await getLinkedInConnection(data.userId);
-  if (existing) {
-    await db.update(linkedinConnections)
-      .set(encryptTokenWrite({
-        linkedinMemberId: data.linkedinMemberId,
-        authorUrn: data.authorUrn,
-        name: data.name,
-        email: data.email,
-        profilePictureUrl: data.profilePictureUrl,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        tokenExpiresAt: data.tokenExpiresAt,
-      }))
-      .where(eq(linkedinConnections.userId, data.userId));
-  } else {
-    await db.insert(linkedinConnections).values(encryptTokenWrite({ ...data }));
-  }
-}
-
-export async function deleteLinkedInConnection(userId: number): Promise<void> {
-  try {
-    const db = await getDb();
-    if (!db) return;
-    await db.delete(linkedinConnections).where(eq(linkedinConnections.userId, userId));
   } catch {
     // table may not exist yet
   }

@@ -92,7 +92,7 @@ export const translations = {
     videosModuleDesc: "Transforme a foto de uma pessoa em um video falado e mantenha tudo salvo na plataforma.",
     articlesModuleDesc: "Gere artigos completos e otimizados para SEO a partir de temas ou links de notícias.",
     carouselModuleDesc: "Crie carrosséis dinâmicos e atraentes para suas campanhas nas redes sociais.",
-    postsModuleDesc: "Organize textos, imagens e status de publicação para Instagram, LinkedIn e Newsletter.",
+    postsModuleDesc: "Organize textos, imagens e status de publicação para o Instagram.",
 
     // ── Common actions ──────────────────────────────────────────────────
     generate: "Gerar",
@@ -188,9 +188,7 @@ export const translations = {
     articlesStatusDraft: "Rascunho",
     articlesStatusPublished: "Publicado",
     articlesStatusArchived: "Arquivado",
-    articlesPublishLinkedIn: "Publicar no LinkedIn",
     articlesRegenerateCover: "Regenerar capa",
-    articlesGenerateNewsletter: "Gerar newsletter",
     articlesCopied: "Artigo copiado!",
 
     // ── Carousel ────────────────────────────────────────────────────────
@@ -213,8 +211,6 @@ export const translations = {
     postsSubtitle: "Gerencie e publique em múltiplos canais",
     postsNewPost: "Novo post",
     postsChannelInstagram: "Instagram",
-    postsChannelLinkedIn: "LinkedIn",
-    postsChannelNewsletter: "Newsletter",
     postsContentLabel: "Conteúdo",
     postsScheduleLabel: "Agendar para",
     postsGenerateContent: "Gerar com IA",
@@ -350,7 +346,6 @@ export const translations = {
     report: "Relatório",
     reportDesc: "Resultados para cliente",
     emailMarketing: "Email Marketing",
-    emailMarketingDesc: "Newsletter automática",
     storiesNewSet: "Novo conjunto de stories",
     storiesTopic: "Tema ou assunto",
     storiesTopicPlaceholder: "Ex: 3 erros que te impedem de crescer no Instagram",
@@ -474,7 +469,7 @@ export const translations = {
     videosModuleDesc: "Turn a person's photo into a talking video and keep everything saved on the platform.",
     articlesModuleDesc: "Generate complete, SEO-optimized articles from topics or news links.",
     carouselModuleDesc: "Create dynamic and attractive carousels for your social media campaigns.",
-    postsModuleDesc: "Organize text, images and publishing status for Instagram, LinkedIn and Newsletter.",
+    postsModuleDesc: "Organize text, images and publishing status for Instagram.",
 
     // ── Common actions ──────────────────────────────────────────────────
     generate: "Generate",
@@ -570,9 +565,7 @@ export const translations = {
     articlesStatusDraft: "Draft",
     articlesStatusPublished: "Published",
     articlesStatusArchived: "Archived",
-    articlesPublishLinkedIn: "Publish to LinkedIn",
     articlesRegenerateCover: "Regenerate cover",
-    articlesGenerateNewsletter: "Generate newsletter",
     articlesCopied: "Article copied!",
 
     // ── Carousel ────────────────────────────────────────────────────────
@@ -595,8 +588,6 @@ export const translations = {
     postsSubtitle: "Manage and publish across multiple channels",
     postsNewPost: "New post",
     postsChannelInstagram: "Instagram",
-    postsChannelLinkedIn: "LinkedIn",
-    postsChannelNewsletter: "Newsletter",
     postsContentLabel: "Content",
     postsScheduleLabel: "Schedule for",
     postsGenerateContent: "Generate with AI",
@@ -732,7 +723,6 @@ export const translations = {
     report: "Reports",
     reportDesc: "Client results",
     emailMarketing: "Email Marketing",
-    emailMarketingDesc: "Automated newsletter",
     storiesNewSet: "New story set",
     storiesTopic: "Topic or subject",
     storiesTopicPlaceholder: "E.g. 3 mistakes holding back your Instagram growth",

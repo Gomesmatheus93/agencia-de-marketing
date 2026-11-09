@@ -29,7 +29,7 @@ const GROUPS = [
   {
     title: "Conteúdo",
     tools: [
-      { id: "articles", title: "Artigos e SEO", description: "Artigos completos, newsletter e resumo diário por WhatsApp.", path: "/dashboard/articles", icon: FileText },
+      { id: "articles", title: "Artigos e SEO", description: "Artigos completos e resumo diário por WhatsApp.", path: "/dashboard/articles", icon: FileText },
       { id: "stories", title: "Sequências de Stories (manual)", description: "Narrativas rápidas montadas sem o agente.", path: "/dashboard/stories", icon: Layers3 },
     ],
   },

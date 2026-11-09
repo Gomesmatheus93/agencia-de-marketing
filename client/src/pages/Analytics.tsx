@@ -27,7 +27,6 @@ import {
   BarChart2,
   UserCheck,
   ImageIcon,
-  Linkedin,
   Instagram,
   FileText,
   Send,
@@ -1323,242 +1322,10 @@ function CommentAlertsPanel() {
   );
 }
 
-// ─── LinkedIn Tab ─────────────────────────────────────────────────────────────
-
-function LinkedInLoginPrompt() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-border/40 bg-gradient-to-br from-background to-muted/20 py-20 px-6 text-center">
-      <div className="relative">
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#0A66C2] shadow-lg shadow-[#0A66C2]/20">
-          <Linkedin className="h-10 w-10 text-white" />
-        </div>
-        <div className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-muted-foreground/20" />
-      </div>
-      <div>
-        <h3 className="text-lg font-bold text-foreground">Conecte seu LinkedIn</h3>
-        <p className="mt-1.5 text-sm text-muted-foreground max-w-sm">
-          Conecte sua conta pessoal do LinkedIn para publicar artigos e acompanhar métricas.
-        </p>
-      </div>
-      <Button
-        className="bg-[#0A66C2] text-white shadow-md shadow-[#0A66C2]/20 hover:bg-[#0A66C2]/90 hover:shadow-lg"
-        onClick={() => { window.location.href = "/api/oauth/linkedin/connect"; }}
-      >
-        <Linkedin className="h-4 w-4 mr-2" />
-        Conectar com LinkedIn
-      </Button>
-    </div>
-  );
-}
-
-function LinkedInTab() {
-  const connectionQuery = trpc.analytics.getLinkedInConnectionStatus.useQuery(undefined, { retry: 1 });
-  const isConnected = connectionQuery.data?.connected === true;
-  const profileQuery = trpc.analytics.getLinkedInProfile.useQuery(undefined, { enabled: isConnected, retry: 1 });
-  const statsQuery = trpc.analytics.getLinkedInStats.useQuery(undefined, { enabled: isConnected, retry: 1 });
-  const disconnectMutation = trpc.analytics.disconnectLinkedIn.useMutation({
-    onSuccess: () => { toast.success("LinkedIn desconectado."); void connectionQuery.refetch(); },
-  });
-
-  const refetchAll = () => {
-    void connectionQuery.refetch();
-    void profileQuery.refetch();
-    void statsQuery.refetch();
-  };
-
-  const profile = profileQuery.data;
-  const stats = statsQuery.data;
-  const isLoading = profileQuery.isLoading || statsQuery.isLoading;
-  const isFetching = profileQuery.isFetching || statsQuery.isFetching;
-  const notConnected = connectionQuery.isSuccess && !isConnected;
-
-  const linkedinConnectParam = new URLSearchParams(window.location.search).get("linkedin_connect");
-  useEffect(() => {
-    if (linkedinConnectParam === "success") {
-      toast.success("LinkedIn conectado com sucesso!");
-      void connectionQuery.refetch();
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (linkedinConnectParam === "denied") {
-      toast.error("Autorização negada pelo LinkedIn.");
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (linkedinConnectParam === "error") {
-      const detail = new URLSearchParams(window.location.search).get("detail") ?? "";
-      toast.error(`Erro ao conectar LinkedIn: ${detail}`);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [linkedinConnectParam]);
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0A66C2]">
-            <Linkedin className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-foreground">Analytics LinkedIn</h2>
-            <p className="text-xs text-muted-foreground/70">Histórico de publicações e métricas da conta</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {isConnected && (
-            <Button variant="ghost" size="sm" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="text-xs text-muted-foreground">
-              Desconectar
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching} className="gap-2 rounded-xl">
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-            Atualizar
-          </Button>
-        </div>
-      </div>
-
-      {notConnected && <LinkedInLoginPrompt />}
-
-      {isConnected && <>
-      {/* Profile card */}
-      <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/80">
-        <div className="h-28 bg-gradient-to-r from-[#0A66C2]/25 via-[#0A66C2]/10 to-transparent" />
-        <div className="px-5 pb-5">
-          <div className="flex items-end justify-between -mt-12 mb-4">
-            <div className="shrink-0">
-              {isLoading ? (
-                <Skeleton className="h-20 w-20 rounded-full" />
-              ) : profile?.picture ? (
-                <SafeImage src={profile.picture} alt="avatar" className="h-20 w-20 rounded-full border-4 border-background object-cover shadow-xl" fallbackClassName="rounded-full" />
-              ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-background bg-[#0A66C2] text-2xl font-bold text-white shadow-xl">
-                  {profile?.name?.[0]?.toUpperCase() ?? "L"}
-                </div>
-              )}
-            </div>
-          </div>
-          {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-40" />
-              <Skeleton className="h-3 w-56 mt-1" />
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-lg font-bold text-foreground leading-tight">{profile?.name || "LinkedIn"}</p>
-              {profile?.email && <p className="text-sm text-muted-foreground/70">{profile.email}</p>}
-              <p className="text-xs text-muted-foreground/50">
-                Perfil pessoal · {profile?.authorUrn}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-border/40 bg-background/80 p-5">
-              <Skeleton className="h-2.5 w-20" />
-              <Skeleton className="mt-2 h-8 w-16" />
-              <Skeleton className="mt-1.5 h-2.5 w-28" />
-            </div>
-          ))
-        ) : (
-          <>
-            <KpiCard
-              label="Posts Publicados"
-              value={stats?.totalPublished ?? 0}
-              icon={Send}
-              accentClass="bg-[#0A66C2]"
-              isEmpty={!stats?.totalPublished}
-              sub="Total acumulado"
-            />
-            <KpiCard
-              label="Este Mês"
-              value={stats?.publishedThisMonth ?? 0}
-              icon={TrendingUp}
-              accentClass="bg-gradient-to-br from-emerald-500 to-teal-600"
-              isEmpty={!stats?.publishedThisMonth}
-              sub="Posts publicados"
-            />
-            <KpiCard
-              label="Rascunhos"
-              value={stats?.totalDrafts ?? 0}
-              icon={FileText}
-              accentClass="bg-gradient-to-br from-slate-500 to-slate-600"
-              isEmpty={!stats?.totalDrafts}
-              sub="Aguardando publicação"
-            />
-          </>
-        )}
-      </div>
-
-      {/* Recent posts */}
-      <div className="rounded-2xl border border-border/40 bg-background/80 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-foreground">Publicações Recentes</p>
-            <p className="text-[11px] text-muted-foreground/60">Histórico de posts publicados pelo sistema</p>
-          </div>
-          {(stats?.recentPosts?.length ?? 0) > 0 && (
-            <span className="rounded-full border border-border/50 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-              {stats!.recentPosts!.length} posts
-            </span>
-          )}
-        </div>
-
-        {statsQuery.isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-3">
-                <Skeleton className="h-16 w-16 shrink-0 rounded-xl" />
-                <div className="flex-1 space-y-2 py-1">
-                  <Skeleton className="h-3 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : !stats?.recentPosts?.length ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-            <Linkedin className="h-10 w-10 text-muted-foreground/20" />
-            <p className="text-sm font-medium text-muted-foreground/50">Nenhuma publicação encontrada</p>
-            <p className="text-xs text-muted-foreground/40">As publicações feitas pelo sistema aparecerão aqui.</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {stats.recentPosts.map((post) => {
-              const date = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(post.publishedAt));
-              return (
-                <div key={post.id} className="flex gap-3 rounded-xl border border-border/30 bg-muted/20 p-3 transition-colors hover:bg-muted/40">
-                  {post.imageUrl ? (
-                    <SafeImage src={post.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" fallbackClassName="rounded-lg" />
-                  ) : (
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[#0A66C2]/10">
-                      <Linkedin className="h-6 w-6 text-[#0A66C2]" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    {post.title && <p className="mb-1 truncate text-sm font-semibold text-foreground">{post.title}</p>}
-                    <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/70">{post.content}</p>
-                    <p className="mt-1.5 text-[10px] text-muted-foreground/50">{date}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      </>}
-    </div>
-  );
-}
-
 // ─── Root component ───────────────────────────────────────────────────────────
-
-type Tab = "instagram" | "linkedin";
 
 export default function Analytics() {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<Tab>("instagram");
 
   return (
     <AppLayout activeModule="analytics">
@@ -1567,7 +1334,7 @@ export default function Analytics() {
 
           {/* Page header */}
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#7b00ae] to-[#0A66C2] shadow-md shadow-[#7b00ae]/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#7b00ae] to-[#fe6e00] shadow-md shadow-[#7b00ae]/20">
               <BarChart2 className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -1576,36 +1343,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          {/* Tab switcher */}
-          <div className="flex gap-1 rounded-xl border border-border/40 bg-muted/30 p-1 w-fit">
-            <button
-              onClick={() => setActiveTab("instagram")}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all",
-                activeTab === "instagram"
-                  ? "bg-gradient-to-r from-[#7b00ae] to-[#fe6e00] text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <Instagram className="h-4 w-4" />
-              Instagram
-            </button>
-            <button
-              onClick={() => setActiveTab("linkedin")}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all",
-                activeTab === "linkedin"
-                  ? "bg-[#0A66C2] text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <Linkedin className="h-4 w-4" />
-              LinkedIn
-            </button>
-          </div>
-
-          {activeTab === "instagram" && <InstagramTab />}
-          {activeTab === "linkedin" && <LinkedInTab />}
+          <InstagramTab />
 
           <PerformanceInsightsSection />
 

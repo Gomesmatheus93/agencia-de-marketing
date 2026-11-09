@@ -73,7 +73,7 @@ const STYLE_SUGGESTIONS: Record<ImageStyle, string[]> = {
   banner: [
     "Banner de promoção Black Friday, vermelho e preto, tipografia bold",
     "Header para site de agência criativa, gradiente roxo e azul",
-    "Banner LinkedIn para empresa de consultoria, profissional e clean",
+    "Post para Instagram de empresa de energia, profissional e clean",
   ],
   social: [
     "Post carrossel para lançamento de produto tech, estilo Apple",

@@ -9,7 +9,6 @@ import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publ
 import { ENV } from "./_core/env";
 import { assertPublicHttpUrl } from "./_core/ssrfGuard";
 import { invokeLLM } from "./_core/llm";
-import { buildNewsletterHtml } from "./_core/newsletterTemplate";
 import { generateImage, reformatImageToTarget, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
 import {
   generateCarouselWithAgent,
@@ -20,10 +19,6 @@ import {
 } from "./_core/carouselAgent";
 import { saveCarouselTemplateAsset } from "./_core/carouselTemplateAgent";
 import { generateArticleCoverWithDesigner } from "./_core/articleDesignerAgent";
-import {
-  diagnoseLinkedInAuth,
-  publishArticleToLinkedInWithAgent,
-} from "./_core/linkedinArticlePostingAgent";
 import { generateChatAgentReply } from "./_core/chatAgent";
 import { generateVideoScriptWithAgent } from "./_core/videoScriptAgent";
 import { generateReelsScript } from "./_core/reelsScriptAgent";
@@ -1607,7 +1602,7 @@ const articlesRouter = router({
         messages: [
           {
             role: "system",
-            content: `Voce e um agente redator especializado no setor de energia. Transforme uma noticia em um artigo claro, profissional e publicavel em portugues brasileiro. Este artigo sera publicado no LinkedIn, uma pagina publica indexada pelo Google e rastreada por buscadores de IA (ChatGPT, Perplexity, Google AI Overviews) — por isso, alem de bem escrito, o texto precisa ser facil de citar.
+            content: `Voce e um agente redator especializado no setor de energia. Transforme uma noticia em um artigo claro, profissional e publicavel em portugues brasileiro. Este artigo sera publicado no site, uma pagina publica indexada pelo Google e rastreada por buscadores de IA (ChatGPT, Perplexity, Google AI Overviews) — por isso, alem de bem escrito, o texto precisa ser facil de citar.
 
 Regras de conteudo:
 - Use somente informacoes presentes no material da noticia.
@@ -1744,10 +1739,10 @@ Regras de estrutura (para ficar citavel por buscadores de IA, sem prejudicar a l
           messages: [
             {
               role: "system",
-              content: `Atue como o ESCRITOR LINKEDIN
+              content: `Atue como o ESCRITOR DE ARTIGOS
 
 Seu Papel e Objetivo:
-Você é um redator especialista em mídias sociais, focado na criação de conteúdo para o LinkedIn que gera leads por meio de histórias autênticas. O seu objetivo não é apenas mostrar expertise técnica, mas criar uma conexão genuína por meio de experiências compartilhadas. Você transforma experiências comuns em narrativas envolventes que inspiram ação, atraem clientes ideais e otimizam visitas ao perfil (não apenas curtidas genéricas).
+Você é um redator especialista em mídias sociais, focado na criação de artigos que geram leads por meio de histórias autênticas. O seu objetivo não é apenas mostrar expertise técnica, mas criar uma conexão genuína por meio de experiências compartilhadas. Você transforma experiências comuns em narrativas envolventes que inspiram ação, atraem clientes ideais e otimizam visitas ao perfil (não apenas curtidas genéricas).
 
 Restrição Absoluta: Posicione o narrador como uma pessoa comum que superou um desafio, não como um "guru" ou especialista intocável.
 
@@ -1788,7 +1783,7 @@ Chamada para Ação (CTA): Finalize o post com uma pergunta específica para inc
 Estratégia Visual (Sempre que sugerir imagens ao usuário):
 Recomende o uso de fotos que mostrem rostos humanos autênticos (de preferência o do autor), exemplos de antes/depois, cores vibrantes que se destaquem no feed ou gráficos muito simples que ilustrem o ponto principal.
 
-Sempre que eu te passar um tema ou uma ideia, aplique todas essas regras e escreva o post perfeito para o LinkedIn. Responda apenas "Entendido. Estou pronto para escrever como o ESCRITOR LINKEDIN! Qual é o seu primeiro tema?" para confirmar.
+Sempre que eu te passar um tema ou uma ideia, aplique todas essas regras e escreva o artigo perfeito. Responda apenas "Entendido. Estou pronto para escrever como o ESCRITOR DE ARTIGOS! Qual é o seu primeiro tema?" para confirmar.
               
 Formato de resposta JSON:
 {
@@ -1847,67 +1842,6 @@ Formato de resposta JSON:
       return saved;
     }),
 
-  publishLinkedIn: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const article = await db.getArticle(input.id, ctx.user.id);
-      if (!article) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Artigo nao encontrado" });
-      }
-
-      const connection = await db.getLinkedInConnection(ctx.user.id);
-      if (!connection) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Conecte sua conta do LinkedIn em Analytics antes de publicar.",
-        });
-      }
-
-      const result = await publishArticleToLinkedInWithAgent(
-        {
-          title: article.title,
-          content: article.content,
-          summary: article.summary,
-          topic: article.topic,
-          sourceUrl: article.sourceUrl,
-          coverImageUrl: article.coverImageUrl,
-        },
-        { accessToken: connection.accessToken, authorUrn: connection.authorUrn }
-      );
-
-      await db.updateArticle(article.id, ctx.user.id, {
-        status: "published",
-      });
-
-      try {
-        const savedPost = await db.saveSocialPost(ctx.user.id, {
-          channel: "linkedin",
-          title: article.title,
-          content: result.commentary,
-          imageUrl: article.coverImageUrl ?? undefined,
-        });
-        await db.updateSocialPost(savedPost.id, ctx.user.id, {
-          status: "published",
-          publishedAt: new Date(),
-        });
-      } catch (err) {
-        console.warn("[Articles] LinkedIn publish succeeded but history save failed:", err);
-      }
-
-      return result;
-    }),
-
-  diagnoseLinkedIn: protectedProcedure.mutation(async ({ ctx }) => {
-    const connection = await db.getLinkedInConnection(ctx.user.id);
-    if (!connection) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Conecte sua conta do LinkedIn em Analytics antes de diagnosticar.",
-      });
-    }
-    return diagnoseLinkedInAuth({ accessToken: connection.accessToken, authorUrn: connection.authorUrn });
-  }),
-
   update: protectedProcedure
     .input(z.object({
       id: z.number(),
@@ -1927,72 +1861,6 @@ Formato de resposta JSON:
     .mutation(async ({ ctx, input }) => {
       await db.deleteArticle(input.id, ctx.user.id);
       return { success: true };
-    }),
-
-  generateNewsletter: protectedProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const article = await db.getArticle(input.id, ctx.user.id);
-      if (!article) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Artigo não encontrado" });
-      }
-
-      const llmResponse = await invokeLLM({
-        messages: [
-          {
-            role: "user",
-            content: `Você é um especialista em newsletters de e-mail. Transforme o artigo abaixo em conteúdo estruturado para uma newsletter visual em português brasileiro.
-
-Retorne APENAS um JSON válido (sem markdown, sem explicações) com esta estrutura:
-{
-  "preheader": "texto de preview curto (máx 90 caracteres)",
-  "intro": "parágrafo de abertura da newsletter (2-3 frases, tom próximo e direto com o leitor)",
-  "highlights": [
-    {"heading": "título do destaque", "text": "texto do destaque (2-3 frases)"}
-  ],
-  "conclusion": "parágrafo de fechamento com reflexão ou convite à leitura (2-3 frases)",
-  "ctaText": "texto do botão de CTA (ex: Leia o artigo completo)"
-}
-
-Inclua de 3 a 4 highlights com os pontos mais importantes do artigo. Use linguagem clara e envolvente.
-
-Título: ${article.title}
-Conteúdo: ${article.content.slice(0, 4000)}`,
-          },
-        ],
-        maxTokens: 1500,
-      });
-
-      const rawContent = llmResponse.choices[0]?.message?.content;
-      const llmText = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent ?? "");
-
-      let newsletterData: {
-        preheader: string;
-        intro: string;
-        highlights: { heading: string; text: string }[];
-        conclusion: string;
-        ctaText: string;
-      };
-
-      try {
-        const jsonMatch = llmText.match(/\{[\s\S]*\}/);
-        newsletterData = JSON.parse(jsonMatch?.[0] ?? llmText);
-      } catch {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Erro ao processar conteúdo da newsletter. Tente novamente.",
-        });
-      }
-
-      const { coverImageUrl } = await withSignedCover(article);
-      const htmlContent = buildNewsletterHtml({
-        title: article.title,
-        coverImageUrl,
-        sourceUrl: article.sourceUrl,
-        ...newsletterData,
-      });
-
-      return { subject: article.title, htmlContent };
     }),
 
   getStats: protectedProcedure.query(async ({ ctx }) => {
@@ -3135,7 +3003,7 @@ async function listUserAvatars(ctx: { user: { id: number }; actualUser?: { role?
 const postsRouter = router({
   getAll: protectedProcedure
     .input(z.object({
-      channel: z.enum(["instagram", "linkedin", "newsletter"]).optional(),
+      channel: z.enum(["instagram"]).optional(),
     }))
     .query(async ({ ctx, input }) => {
       return db.getSocialPosts(ctx.user.id, input.channel);
@@ -3145,7 +3013,7 @@ const postsRouter = router({
     .input(
       z
         .object({
-          channel: z.enum(["instagram", "linkedin", "newsletter"]),
+          channel: z.enum(["instagram"]),
           title: z.string().optional(),
           content: z.string().min(1),
           imageUrl: z
@@ -3210,7 +3078,7 @@ const postsRouter = router({
 
   generateContent: protectedProcedure
     .input(z.object({
-      channel: z.enum(["instagram", "linkedin", "newsletter"]),
+      channel: z.enum(["instagram"]),
       topic: z.string().min(3),
       tone: z.enum(["professional", "casual", "inspiring", "educational"]).optional().default("professional"),
     }))
@@ -3241,12 +3109,6 @@ ESTRUTURA OBRIGATÓRIA:
 4. HASHTAGS: no máximo 3-5 ao final — de preferência apenas 3. Priorize nichos específicos (50K-500K posts). Nunca mais que 5. Não repita como hashtag o que já é keyword no texto.
 Tamanho ideal: 800-1500 caracteres. Tom: ${toneGuide[effectiveTone]}.`,
 
-        linkedin: `post para LinkedIn em português brasileiro — tom profissional mas acessível, máx 3000 chars.
-Estrutura: gancho forte na primeira linha, desenvolvimento com insight real, no máximo 3 hashtags relevantes ao final.
-Tom: ${toneGuide[effectiveTone]}.`,
-
-        newsletter: `newsletter por email em português brasileiro — assunto atrativo, saudação, conteúdo de valor com seções claras, CTA final.
-Tom: ${toneGuide[effectiveTone]}.`,
       };
 
       const brandContext = brand?.companyName
@@ -3284,7 +3146,7 @@ Tom: ${toneGuide[effectiveTone]}.`,
 
 Responda em JSON:
 {
-  "title": "título ou assunto (para newsletter, ou gancho resumido para instagram/linkedin)",
+  "title": "gancho resumido do post",
   "content": "conteúdo completo pronto para publicar"
 }`,
           },
@@ -3316,13 +3178,11 @@ Responda em JSON:
   generateContentFromImage: aiProcedure
     .input(z.object({
       imageDataUrl: z.string().min(1),
-      channel: z.enum(["instagram", "linkedin", "newsletter"]),
+      channel: z.enum(["instagram"]),
     }))
     .mutation(async ({ input }) => {
       const channelGuide: Record<string, string> = {
         instagram: `uma legenda para Instagram em português brasileiro otimizada para SEO social (máx ~2000 chars). Estrutura: (1) gancho de 5-10 palavras na linha 1, SEM emoji; (2) desenvolvimento com 2-3 keywords primárias do tema distribuídas naturalmente no corpo do texto — keywords têm 3x mais impacto de descoberta que hashtags; (3) CTA pedindo salvamento ou compartilhamento, NUNCA curtida; (4) no máximo 3-5 hashtags de nicho ao final.`,
-        linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
-        newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
       };
 
       const response = await invokeLLM({
@@ -3353,13 +3213,11 @@ Responda em JSON:
   generateContentFromVideo: aiProcedure
     .input(z.object({
       videoUrl: z.string().url(),
-      channel: z.enum(["instagram", "linkedin", "newsletter"]),
+      channel: z.enum(["instagram"]),
     }))
     .mutation(async ({ input }) => {
       const channelGuide: Record<string, string> = {
         instagram: `uma legenda para Instagram em português brasileiro otimizada para SEO social (máx ~2000 chars). Estrutura: (1) gancho de 5-10 palavras na linha 1, SEM emoji; (2) desenvolvimento com 2-3 keywords primárias do tema distribuídas naturalmente no corpo do texto — keywords têm 3x mais impacto de descoberta que hashtags; (3) CTA pedindo salvamento ou compartilhamento, NUNCA curtida; (4) no máximo 3-5 hashtags de nicho ao final.`,
-        linkedin: "um post profissional para LinkedIn em português brasileiro, com insights valiosos, tom formal mas acessível e no máximo 2-3 hashtags relevantes (máx ~2500 chars)",
-        newsletter: "um texto de email marketing em português brasileiro, com saudação, parágrafo de corpo bem escrito e uma chamada para ação clara (máx ~500 chars de pré-visualização)",
       };
 
       // 1. Try Whisper audio transcription (only when OpenAI key is configured)
@@ -3736,7 +3594,6 @@ const brandKitFieldsSchema = {
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   instagramHandle: z.string().max(128).optional(),
-  linkedinUrl: z.string().max(255).optional(),
   nicheId: z.string().max(64).optional(),
   subNicheId: z.string().max(64).optional(),
 };
@@ -3963,27 +3820,6 @@ async function getInstagramCredentials(userId: number) {
   return { accessToken: ENV.metaAccessToken, igAccountId: ENV.metaInstagramAccountId };
 }
 
-async function linkedInGet<T>(endpoint: string, accessToken: string): Promise<T> {
-  const apiBase = (ENV.linkedinApiBaseUrl || "https://api.linkedin.com/rest").replace(/\/+$/, "");
-  const apiVersion = (ENV.linkedinApiVersion || "202601").trim();
-  const url = endpoint.startsWith("http") ? endpoint : `${apiBase}${endpoint}`;
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Linkedin-Version": apiVersion,
-      "X-Restli-Protocol-Version": "2.0.0",
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Erro na LinkedIn API (${res.status}): ${text || res.statusText}`,
-    });
-  }
-  const text = await res.text();
-  return text ? (JSON.parse(text) as T) : ({} as T);
-}
 
 // Confirms the caller actually controls `accessToken` for `instagramAccountId`
 // before we ever trust that pairing — without this, anyone could register
@@ -4158,75 +3994,6 @@ const analyticsRouter = router({
       // table may not exist yet
     }
     return { connected: false };
-  }),
-
-  getLinkedInConnectionStatus: protectedProcedure.query(async ({ ctx }) => {
-    const connection = await db.getLinkedInConnection(ctx.user.id);
-    if (connection) {
-      return {
-        connected: true,
-        name: connection.name,
-        email: connection.email,
-        profilePictureUrl: connection.profilePictureUrl,
-        authorUrn: connection.authorUrn,
-        tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,
-      };
-    }
-    return { connected: false };
-  }),
-
-  disconnectLinkedIn: protectedProcedure.mutation(async ({ ctx }) => {
-    await db.deleteLinkedInConnection(ctx.user.id);
-    return { success: true };
-  }),
-
-  getLinkedInProfile: protectedProcedure.query(async ({ ctx }) => {
-    const connection = await db.getLinkedInConnection(ctx.user.id);
-    if (!connection) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "Conecte sua conta do LinkedIn primeiro." });
-    }
-    const profile = await linkedInGet<{
-      sub?: string;
-      name?: string;
-      given_name?: string;
-      family_name?: string;
-      picture?: string;
-      email?: string;
-    }>("https://api.linkedin.com/v2/userinfo", connection.accessToken);
-
-    return {
-      sub: profile.sub,
-      name: profile.name || `${profile.given_name || ""} ${profile.family_name || ""}`.trim() || connection.name,
-      picture: profile.picture || connection.profilePictureUrl,
-      email: profile.email || connection.email,
-      authorUrn: connection.authorUrn,
-    };
-  }),
-
-  getLinkedInStats: protectedProcedure.query(async ({ ctx }) => {
-    const posts = await db.getSocialPosts(ctx.user.id, "linkedin");
-    const published = posts.filter((p) => p.status === "published");
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const publishedThisMonth = published.filter(
-      (p) => p.publishedAt && new Date(p.publishedAt) >= monthStart
-    );
-
-    const recent = published.slice(0, 12).map((p) => ({
-      id: p.id,
-      title: p.title,
-      content: p.content,
-      imageUrl: p.imageUrl,
-      publishedAt: p.publishedAt?.toISOString() ?? p.createdAt.toISOString(),
-      status: p.status,
-    }));
-
-    return {
-      totalPublished: published.length,
-      publishedThisMonth: publishedThisMonth.length,
-      totalDrafts: posts.filter((p) => p.status === "draft").length,
-      recentPosts: recent,
-    };
   }),
 
   getProfile: protectedProcedure.query(async ({ ctx }) => {
@@ -4951,7 +4718,7 @@ const editorialPlanRouter = router({
       month: z.number().int().min(1).max(12),
       postsPerWeek: z.number().int().min(1).max(14),
       formats: z.array(z.object({
-        format: z.enum(["carousel", "instagram", "linkedin", "newsletter"]),
+        format: z.enum(["carousel", "instagram"]),
         weight: z.number().int().min(0).max(100),
       })).min(1),
       categories: z.array(z.string().min(1).max(100)).min(1).max(20),
@@ -4975,8 +4742,6 @@ const editorialPlanRouter = router({
           const labels: Record<string, string> = {
             carousel: "Carrossel",
             instagram: "Post Instagram (estático)",
-            linkedin: "LinkedIn",
-            newsletter: "Newsletter",
           };
           return `${labels[f.format] ?? f.format}: ~${count} posts (${f.weight}%)`;
         })
@@ -5032,7 +4797,7 @@ const editorialPlanRouter = router({
               `  "items": [`,
               `    {`,
               `      "scheduledDate": "YYYY-MM-DD",`,
-              `      "format": "carousel|instagram|linkedin|newsletter",`,
+              `      "format": "carousel|instagram",`,
               `      "category": "categoria da lista acima",`,
               `      "suggestedTitle": "gancho ou título do post",`,
               `      "pauta": "briefing em 2-3 frases"`,
@@ -5121,7 +4886,7 @@ const editorialPlanRouter = router({
       month: z.number().int().min(1).max(12),
       items: z.array(z.object({
         scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        format: z.enum(["carousel", "instagram", "linkedin", "newsletter"]),
+        format: z.enum(["carousel", "instagram"]),
         category: z.string().min(1).max(255),
         suggestedTitle: z.string().min(1).max(512),
         pauta: z.string().min(1),
@@ -5246,10 +5011,8 @@ const editorialPlanRouter = router({
           contentType = "carousel";
           contentId = savedCarousel.id;
         } else {
-          const channelMap: Record<string, "instagram" | "linkedin" | "newsletter"> = {
+          const channelMap: Record<string, "instagram"> = {
             instagram: "instagram",
-            linkedin: "linkedin",
-            newsletter: "newsletter",
           };
           const channel = channelMap[found.format] ?? "instagram";
 

@@ -14,7 +14,6 @@ const PRO_FEATURES = [
   "Analytics do Instagram",
   "Calendário de conteúdo",
   "Automação de comentários",
-  "Posts no LinkedIn e Newsletter",
   "Sem limites diários de criação",
 ];
 

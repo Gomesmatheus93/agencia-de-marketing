@@ -715,7 +715,7 @@ function buildCarouselImagePrompt(input: {
 
   return [
     // ── Intent ──────────────────────────────────────────────────────────────
-    "Create a photorealistic hero image for an Instagram/LinkedIn carousel slide.",
+    "Create a photorealistic hero image for an Instagram carousel slide.",
     `Portrait orientation, 2:3 aspect ratio. Topic: ${input.topic}.`,
 
     // ── Slide context ────────────────────────────────────────────────────────

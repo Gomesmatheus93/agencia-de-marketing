@@ -1,7 +1,7 @@
 import { generateImage } from "./imageGeneration";
 import { invokeLLM } from "./llm";
 
-const ARTICLE_DESIGNER_AGENT_PROMPT = `Voce e um diretor de arte especializado em imagens para artigos de LinkedIn no setor de energia.
+const ARTICLE_DESIGNER_AGENT_PROMPT = `Voce e um diretor de arte especializado em imagens para artigos do site no setor de energia.
 
 Sua funcao e transformar uma noticia em uma capa ultrarrealista, profissional e editorial.
 
@@ -10,7 +10,7 @@ Regras:
 - A cena precisa estar relacionada ao tema da noticia.
 - Evite qualquer texto, letras, logotipos, marcas, selos ou watermark.
 - Evite pessoas posando para camera, a menos que o tema exija.
-- Use composicao forte para feed de LinkedIn, com assunto claro e acabamento premium.
+- Use composicao forte para capa de artigo, com assunto claro e acabamento premium.
 - Priorize infraestrutura de energia, tecnologia, redes eletricas, paineis solares, turbinas eolicas, usinas, baterias, transmissao, industria ou ambiente corporativo quando fizer sentido.`;
 
 export type ArticleDesignerAgentInput = {
@@ -37,7 +37,7 @@ function cleanText(value: unknown, fallback = "") {
 function buildFallbackPrompt(input: ArticleDesignerAgentInput) {
   return [
     "Use case: photorealistic-natural",
-    "Asset type: LinkedIn article cover image, square 1:1",
+    "Asset type: article cover image, square 1:1",
     `Primary request: ultrarealistic editorial photograph for an energy-sector article about "${input.newsTitle}".`,
     `Context: ${input.summary || input.articleTitle}`,
     "Scene/backdrop: real energy infrastructure related to the topic, modern and credible.",

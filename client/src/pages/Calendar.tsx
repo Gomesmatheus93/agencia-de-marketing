@@ -74,7 +74,7 @@ function resolveImgUrl(url?: string | null): string | undefined {
 
 // ── Channel config ────────────────────────────────────────────────────────────
 
-type Channel = "instagram" | "linkedin" | "newsletter";
+type Channel = "instagram";
 
 const CHANNEL_CONFIG: Record<Channel, { label: string; dot: string; bar: string; text: string }> = {
   instagram: {
@@ -82,18 +82,6 @@ const CHANNEL_CONFIG: Record<Channel, { label: string; dot: string; bar: string;
     dot: "bg-pink-500",
     bar: "border-l-pink-500",
     text: "text-pink-600 dark:text-pink-400",
-  },
-  linkedin: {
-    label: "LinkedIn",
-    dot: "bg-blue-600",
-    bar: "border-l-blue-600",
-    text: "text-blue-700 dark:text-blue-400",
-  },
-  newsletter: {
-    label: "Newsletter",
-    dot: "bg-emerald-500",
-    bar: "border-l-emerald-500",
-    text: "text-emerald-700 dark:text-emerald-400",
   },
 };
 
@@ -169,29 +157,10 @@ function InstagramIcon({ className }: { className?: string }) {
   );
 }
 
-function LinkedinIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-      <rect x="2" y="9" width="4" height="12" />
-      <circle cx="4" cy="4" r="2" />
-    </svg>
-  );
-}
 
-function MailIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-    </svg>
-  );
-}
 
 function ChannelIcon({ channel, className }: { channel: Channel; className?: string }) {
-  if (channel === "instagram") return <InstagramIcon className={className} />;
-  if (channel === "linkedin") return <LinkedinIcon className={className} />;
-  return <MailIcon className={className} />;
+  return <InstagramIcon className={className} />;
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────────
@@ -218,7 +187,7 @@ function Legend() {
         </div>
       ))}
       <div className="w-px h-3 bg-border mx-1 hidden sm:block" />
-      {(["instagram", "linkedin", "newsletter"] as Channel[]).map((ch) => (
+      {(["instagram"] as Channel[]).map((ch) => (
         <div key={ch} className="flex items-center gap-1.5">
           <span className={cn("w-2.5 h-2.5 rounded-sm flex-shrink-0", CHANNEL_CONFIG[ch].dot)} />
           <span className="text-xs text-muted-foreground">{CHANNEL_CONFIG[ch].label}</span>
@@ -240,8 +209,6 @@ const HOLIDAY_EVENT_COLORS: Record<HolidayType, string> = {
 
 const CHANNEL_EVENT_COLORS: Record<Channel, string> = {
   instagram: "border-l-pink-500 bg-pink-50 dark:bg-pink-950/20 text-pink-800 dark:text-pink-300",
-  linkedin: "border-l-blue-600 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300",
-  newsletter: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300",
 };
 
 type PlanItem = {
@@ -258,8 +225,6 @@ type PlanItem = {
 const PLAN_FORMAT_COLORS: Record<string, string> = {
   carousel: "border-l-violet-500 bg-violet-50 dark:bg-violet-950/20 text-violet-800 dark:text-violet-300",
   instagram: "border-l-fuchsia-500 bg-fuchsia-50 dark:bg-fuchsia-950/20 text-fuchsia-800 dark:text-fuchsia-300",
-  linkedin: "border-l-sky-500 bg-sky-50 dark:bg-sky-950/20 text-sky-800 dark:text-sky-300",
-  newsletter: "border-l-teal-500 bg-teal-50 dark:bg-teal-950/20 text-teal-800 dark:text-teal-300",
 };
 
 function DayCell({
@@ -596,17 +561,10 @@ function DetailPanel({
 
 const IMAGE_SIZE_BY_CHANNEL: Record<Channel, "1:1" | "4:5" | "16:9"> = {
   instagram: "4:5",
-  linkedin: "16:9",
-  newsletter: "16:9",
 };
 
 function buildImagePrompt(holidayName: string, holidayDescription: string, channel: Channel): string {
-  const format =
-    channel === "instagram"
-      ? "Instagram portrait post (4:5), visually impactful, thumb-stopping"
-      : channel === "linkedin"
-      ? "LinkedIn professional banner, wide format, corporate aesthetic"
-      : "email newsletter header, wide format, clean editorial style";
+  const format = "Instagram portrait post (4:5), visually impactful, thumb-stopping";
   return `Create a professional marketing visual for "${holidayName}". Context: ${holidayDescription}. Platform: ${format}. The image must feel designed by a senior art director — strong composition, intentional color palette, no generic stock-photo look. No text overlays unless critical. High production value.`;
 }
 
@@ -681,7 +639,7 @@ function CreatePostDialog({
   function handleGenerateImage() {
     const prompt = holiday
       ? buildImagePrompt(holiday.name, holiday.description, channel)
-      : `Create a professional marketing visual for ${channel === "instagram" ? "Instagram" : channel === "linkedin" ? "LinkedIn" : "newsletter"}. Strong composition, intentional color palette, senior art director quality. No generic stock photo look.`;
+      : `Create a professional marketing visual for Instagram. Strong composition, intentional color palette, senior art director quality. No generic stock photo look.`;
     generateImageMutation.mutate({
       prompt,
       style: "social",
@@ -713,7 +671,7 @@ function CreatePostDialog({
     });
   }
 
-  const maxChars = channel === "instagram" ? 2200 : channel === "linkedin" ? 3000 : 10000;
+  const maxChars = 2200;
   const isGeneratingImage = generateImageMutation.isPending;
   const isGeneratingCaption = generateCaptionMutation.isPending;
 
@@ -1028,7 +986,7 @@ function CampaignDialog({ open, date, onClose }: { open: boolean; date: Date; on
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Rede Social</label>
-                <Input placeholder="Instagram, LinkedIn, TikTok…" value={socialNetwork} onChange={(e) => setSocialNetwork(e.target.value)} disabled={isLoading} />
+                <Input placeholder="Instagram, TikTok…" value={socialNetwork} onChange={(e) => setSocialNetwork(e.target.value)} disabled={isLoading} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -1575,8 +1533,6 @@ const PLAN_STATUS_CONFIG: Record<string, { label: string; className: string }> =
 const FORMAT_LABELS: Record<string, string> = {
   carousel: "Carrossel",
   instagram: "Instagram",
-  linkedin: "LinkedIn",
-  newsletter: "Newsletter",
 };
 
 // ── Plan Wizard Dialog ────────────────────────────────────────────────────────
@@ -1598,9 +1554,7 @@ function PlanWizardDialog({
   const [categoriesText, setCategoriesText] = React.useState("Educativo, Vendas, Bastidores, Tendências");
   const [formatWeights, setFormatWeights] = React.useState({
     carousel: 50,
-    instagram: 30,
-    linkedin: 10,
-    newsletter: 10,
+    instagram: 50,
   });
 
   type GeneratedItem = {
@@ -1648,7 +1602,7 @@ function PlanWizardDialog({
     if (categories.length === 0) { toast.error("Adicione pelo menos uma categoria editorial."); return; }
     const formats = Object.entries(formatWeights)
       .filter(([, w]) => w > 0)
-      .map(([format, weight]) => ({ format: format as "carousel" | "instagram" | "linkedin" | "newsletter", weight }));
+      .map(([format, weight]) => ({ format: format as "carousel" | "instagram", weight }));
     generateMutation.mutate({ year, month, postsPerWeek, formats, categories });
   }
 
@@ -1657,7 +1611,7 @@ function PlanWizardDialog({
       .filter((i) => i.status !== "rejected")
       .map((i) => ({
         scheduledDate: i.scheduledDate,
-        format: i.format as "carousel" | "instagram" | "linkedin" | "newsletter",
+        format: i.format as "carousel" | "instagram",
         category: i.category,
         suggestedTitle: i.suggestedTitle,
         pauta: i.pauta,
@@ -1683,8 +1637,6 @@ function PlanWizardDialog({
   const formatConfig: Record<string, { icon: React.ReactNode; color: string; bar: string }> = {
     carousel:   { icon: <GalleryHorizontal className="h-4 w-4" />, color: "text-violet-600 dark:text-violet-400", bar: "bg-violet-500" },
     instagram:  { icon: <InstagramIcon className="h-4 w-4" />,     color: "text-pink-600 dark:text-pink-400",   bar: "bg-pink-500"   },
-    linkedin:   { icon: <LinkedinIcon className="h-4 w-4" />,      color: "text-blue-600 dark:text-blue-400",   bar: "bg-blue-500"   },
-    newsletter: { icon: <MailIcon className="h-4 w-4" />,          color: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500"  },
   };
 
   const totalWeight = Object.values(formatWeights).reduce((a, b) => a + b, 0);
@@ -1785,7 +1737,7 @@ function PlanWizardDialog({
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {(["carousel", "instagram", "linkedin", "newsletter"] as const).map((fmt) => {
+                {(["carousel", "instagram"] as const).map((fmt) => {
                   const cfg = formatConfig[fmt];
                   return (
                     <div key={fmt} className={cn(

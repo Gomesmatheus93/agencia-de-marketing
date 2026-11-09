@@ -5,7 +5,6 @@ import type { TrpcContext } from "./_core/context";
 import * as db from "./db";
 import { generateCarouselWithAgent } from "./_core/carouselAgent";
 import { saveCarouselTemplateAsset } from "./_core/carouselTemplateAgent";
-import { publishArticleToLinkedInWithAgent } from "./_core/linkedinArticlePostingAgent";
 import { publishInstagramCarouselWithAgent } from "./_core/instagramPostingAgent";
 
 // Mock db module
@@ -126,22 +125,6 @@ vi.mock("./db", () => ({
   getPostCount: vi.fn().mockResolvedValue(10),
   getUserByOpenId: vi.fn().mockResolvedValue({ id: 1, openId: "test-user" }),
   upsertUser: vi.fn().mockResolvedValue(undefined),
-  getLinkedInConnection: vi.fn().mockResolvedValue({
-    id: 1,
-    userId: 1,
-    linkedinMemberId: "real-id",
-    authorUrn: "urn:li:person:real-id",
-    name: "Pessoa Teste",
-    email: "pessoa@example.com",
-    profilePictureUrl: null,
-    accessToken: "AQS7fake-token-1234",
-    refreshToken: null,
-    tokenExpiresAt: null,
-    connectedAt: new Date(),
-    updatedAt: new Date(),
-  }),
-  upsertLinkedInConnection: vi.fn().mockResolvedValue(undefined),
-  deleteLinkedInConnection: vi.fn().mockResolvedValue(undefined),
   recordAudit: vi.fn().mockResolvedValue(undefined),
   bumpUserTokenVersion: vi.fn().mockResolvedValue(undefined),
   updateUserPassword: vi.fn().mockResolvedValue(undefined),
@@ -193,45 +176,6 @@ vi.mock("./_core/carouselTemplateAgent", () => ({
   saveCarouselTemplateAsset: vi.fn().mockResolvedValue({
     imageUrl: "/uploads/carousel-templates/1/template.png",
     styleBrief: "Visual editorial premium, contrastado, com fotografia limpa e elegante.",
-  }),
-}));
-
-vi.mock("./_core/linkedinArticlePostingAgent", () => ({
-  publishArticleToLinkedInWithAgent: vi.fn().mockResolvedValue({
-    success: true,
-    postUrn: "urn:li:share:123",
-    authorUrn: "urn:li:organization:5515715",
-    postType: "article",
-    commentary: "Texto pronto para LinkedIn",
-    articleTitle: "Titulo do artigo",
-    articleDescription: "Descricao do artigo",
-    imageAltText: "Capa do artigo",
-    imageUrn: "urn:li:image:123",
-    sourceUrl: "https://example.com/article",
-  }),
-  diagnoseLinkedInAuth: vi.fn().mockResolvedValue({
-    success: false,
-    apiBaseUrl: "https://api.linkedin.com/rest",
-    apiVersion: "202601",
-    tokenPresent: true,
-    tokenPreview: "AQS7****1234",
-    configuredAuthorUrn: "urn:li:person:outro-id",
-    configuredAuthorUrnType: "person",
-    configuredAuthorUrnLooksValid: true,
-    configuredAuthorUrnIsPlaceholder: false,
-    detectedPersonUrn: "urn:li:person:real-id",
-    detectedMemberId: "real-id",
-    detectedMemberName: "Pessoa Teste",
-    administeredOrganizationUrns: [],
-    recommendedAuthorUrns: ["urn:li:person:real-id"],
-    checks: [
-      {
-        name: "Validade do token",
-        ok: true,
-        detail: "Token valido.",
-      },
-    ],
-    nextSteps: ["Reconecte sua conta do LinkedIn para atualizar o author URN salvo."],
   }),
 }));
 
@@ -503,74 +447,6 @@ describe("articles", () => {
     expect(result.success).toBe(true);
   });
 
-  it("publishes an article to LinkedIn through the agent", async () => {
-    vi.mocked(db.getArticle).mockResolvedValueOnce({
-      id: 7,
-      userId: 1,
-      title: "Mercado livre de energia em 2026",
-      topic: "Energia",
-      sourceUrl: "https://example.com/article",
-      coverImageUrl: "https://example.com/cover.png",
-      content: "Conteudo do artigo",
-      summary: "Resumo do artigo",
-      status: "draft",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    vi.mocked(db.saveSocialPost).mockResolvedValueOnce({
-      id: 55,
-      userId: 1,
-      channel: "linkedin",
-      title: "Mercado livre de energia em 2026",
-      content: "Texto pronto para LinkedIn",
-      imageUrl: "https://example.com/cover.png",
-      scheduledAt: null,
-      publishedAt: null,
-      status: "draft",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    const { ctx } = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.articles.publishLinkedIn({ id: 7 });
-
-    expect(result.success).toBe(true);
-    expect(vi.mocked(publishArticleToLinkedInWithAgent)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Mercado livre de energia em 2026",
-        sourceUrl: "https://example.com/article",
-      }),
-      expect.objectContaining({
-        accessToken: "AQS7fake-token-1234",
-        authorUrn: "urn:li:person:real-id",
-      })
-    );
-    expect(vi.mocked(db.updateArticle)).toHaveBeenCalledWith(7, 1, {
-      status: "published",
-    });
-    expect(vi.mocked(db.saveSocialPost)).toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({
-        channel: "linkedin",
-        content: "Texto pronto para LinkedIn",
-      })
-    );
-    expect(vi.mocked(db.updateSocialPost)).toHaveBeenCalledWith(55, 1, {
-      status: "published",
-      publishedAt: expect.any(Date),
-    });
-  });
-
-  it("returns a LinkedIn diagnostic report", async () => {
-    const { ctx } = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.articles.diagnoseLinkedIn();
-
-    expect(result.success).toBe(false);
-    expect(result.detectedPersonUrn).toBe("urn:li:person:real-id");
-    expect(result.nextSteps[0]).toContain("Reconecte sua conta do LinkedIn");
-  });
 });
 
 // ─── Posts Tests ──────────────────────────────────────────────────────────────
