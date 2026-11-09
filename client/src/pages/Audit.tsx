@@ -177,12 +177,6 @@ export default function AuditPage() {
                 </CardContent></Card>
               )}
 
-              {audit.assumptions.length > 0 && (
-                <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-                  <p className="mb-1 font-medium text-foreground">O agente assumiu:</p>
-                  <ul className="list-disc space-y-0.5 pl-4">{audit.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
-                </div>
-              )}
             </>
           )}
         </div>

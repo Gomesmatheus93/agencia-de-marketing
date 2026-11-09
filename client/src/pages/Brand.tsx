@@ -189,12 +189,6 @@ export default function Brand() {
                   <ul className="list-disc space-y-1 pl-5 text-sm">{r.recommendations.map((x) => <li key={x}>{x}</li>)}</ul>
                 </CardContent></Card>
               )}
-              {r.assumptions.length > 0 && (
-                <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-                  <p className="mb-1 font-medium text-foreground">O agente assumiu:</p>
-                  <ul className="list-disc space-y-0.5 pl-4">{r.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
-                </div>
-              )}
             </>
           )}
         </div>

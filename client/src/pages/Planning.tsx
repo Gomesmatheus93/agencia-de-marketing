@@ -35,7 +35,6 @@ const FORMAT_STYLE: Record<PlanItem["format"], { label: string; className: strin
 const OUTPUT_SCREEN: Record<string, string> = {
   carrossel: "/dashboard/criar/carrossel", legendas: "/dashboard/criar/post", stories: "/dashboard/criar/stories", "video-ia": "/dashboard/criar/video",
 };
-const GROUP_LABEL = { alcance: "Alcance", pares: "Pares", compradores: "Compradores" } as const;
 const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
 function nextMonday() {
@@ -286,43 +285,6 @@ export default function Planning() {
                   </div>
                 ))}
               </section>
-              <details className="rounded-2x1 border bg-card/60 p-4">
-              <summary className="cursor-pointer text-sm font-semibold">
-                Stories, perfis para interagir e Observações do agente
-              </summary>
-              <div className="mt-4">
-
-              </div>
-              </details>
-              <section className="grid gap-4 lg:grid-cols-2">
-                <Card><CardContent className="p-5">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">Stories</p>
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
-                      sessionStorage.setItem("task_prefill_stories", `Stories do planejamento (${plan.periodLabel}):\n${plan.stories}`);
-                      navigate("/dashboard/criar/stories");
-                    }}><MessageSquareText className="h-3.5 w-3.5" />Criar estes stories</Button>
-                  </div>
-                  <p className="whitespace-pre-line text-sm text-muted-foreground">{plan.stories}</p>
-                </CardContent></Card>
-                <Card><CardContent className="p-5">
-                  <p className="mb-2 text-sm font-semibold">Perfis para interagir</p>
-                  {plan.engagement.length ? (
-                    <ul className="space-y-1.5 text-sm">
-                      {plan.engagement.map((e) => (
-                        <li key={e.handle} className="flex gap-2"><Badge variant="outline" className="shrink-0">{GROUP_LABEL[e.group]}</Badge><span><b>{e.handle}</b> — <span className="text-muted-foreground">{e.reason}</span></span></li>
-                      ))}
-                    </ul>
-                  ) : <p className="text-sm text-muted-foreground">Nenhum perfil sugerido.</p>}
-                </CardContent></Card>
-              </section>
-
-              {plan.assumptions.length > 0 && (
-                <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-                  <p className="mb-1 font-medium text-foreground">O agente assumiu:</p>
-                  <ul className="list-disc space-y-0.5 pl-4">{plan.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
-                </div>
-              )}
             </>
           )}
         </div>

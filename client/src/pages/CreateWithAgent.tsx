@@ -126,16 +126,6 @@ function CaptionBlock({ caption, hashtags, altText, firstComment, verdict, threa
   );
 }
 
-function Assumptions({ items }: { items: string[] }) {
-  if (!items.length) return null;
-  return (
-    <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-      <p className="mb-1 font-medium text-foreground">O agente assumiu:</p>
-      <ul className="list-disc space-y-0.5 pl-4">{items.map((a) => <li key={a}>{a}</li>)}</ul>
-    </div>
-  );
-}
-
 function Shell({ agentLabel, title, description, active, children }: { agentLabel: string; title: string; description: string; active: string; children: React.ReactNode }) {
   return (
     <AppLayout activeModule={active}>
@@ -227,7 +217,6 @@ export function CreateCarousel() {
               <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} threadId={t.threadId} onSaved={() => t.refetch()} />
             </div>
           </section>
-          <Assumptions items={result.assumptions} />
         </>
       )}
     </Shell>
@@ -281,7 +270,6 @@ export function CreatePost() {
             </div>
             <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={result.altText} firstComment={result.firstComment} verdict={result.linterVerdict} threadId={t.threadId} onSaved={() => t.refetch()} />
           </section>
-          <Assumptions items={result.assumptions} />
         </>
       )}
     </Shell>
@@ -437,7 +425,6 @@ export function CreateStories() {
               </div>
             ))}
           </section>
-          <Assumptions items={result.assumptions} />
         </>
       )}
     </Shell>
@@ -597,7 +584,6 @@ export function CreateVideoAgent() {
               <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={`Vídeo vertical: ${result.title}`} threadId={t.threadId} onSaved={() => t.refetch()} />
             </div>
           </section>
-          <Assumptions items={result.assumptions} />
         </>
       )}
     </Shell>
