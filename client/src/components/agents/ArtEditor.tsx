@@ -23,6 +23,7 @@ const ASSETS = "/api/design-assets/assets";
 const BRAND_IMAGES = [
   { href: "alle:logo", label: "Logo (fundo claro)", w: 1200, h: 353 },
   { href: "alle:logo-branco", label: "Logo branco (raio laranja)", w: 1200, h: 353 },
+  { href: "alle:logo-branco-limpo", label: "Logo branco sem a frase", w: 1200, h: 353 },
   { href: "alle:logo-mono", label: "Logo todo branco (fundo laranja)", w: 1200, h: 353 },
   { href: "alle:allpfit-mono", label: "Logo Allp Fit todo branco", w: 1271, h: 275 },
   { href: "alle:allpfit-branco", label: "Logo Allp Fit (fundo escuro)", w: 1271, h: 275 },
@@ -35,6 +36,7 @@ const BRAND_IMAGES = [
   { href: "alle:ane-solto", label: "Ane · cabelo solto", w: 880, h: 994 },
   { href: "alle:ane-caneca", label: "Ane · com a caneca da Alle", w: 1016, h: 1020 },
   { href: "alle:ane-ombro", label: "Ane · olhando por cima do ombro", w: 742, h: 1020 },
+  { href: "alle:ane-tablet", label: "Ane · com o tablet da fatura", w: 900, h: 1297 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;

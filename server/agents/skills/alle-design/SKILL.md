@@ -56,6 +56,7 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | --- | --- | --- |
 | `alle:logo` | 1200×353 | fundo claro |
 | `alle:logo-branco` | 1200×353 | fundo roxo ou foto escura (o raio tem metade laranja) |
+| `alle:logo-branco-limpo` | 1200×353 | igual ao logo branco, **sem a frase "autonomia e liberdade energética"** (que some no roxo): prefira este sobre fundo roxo |
 | `alle:logo-mono` | 1200×353 | logo todo branco: fundo laranja |
 | `alle:raio` | 376×600 | o raio sozinho, fundo claro |
 | `alle:raio-branco` | 376×600 | o raio sozinho (branco e laranja), fundo roxo ou escuro |
@@ -83,6 +84,7 @@ na cintura:
 | `alle:ane` | 848×997 | braços cruzados, sorrindo | confiança, oferta, capa |
 | `alle:ane-solto` | 880×994 | de frente, cabelo solto, sorrindo | convite, CTA, "fala comigo" |
 | `alle:ane-caneca` | 1016×1020 | segurando a caneca da Alle | dica, conversa leve, bastidor (a caneca fica do lado esquerdo dela: deixe espaço) |
+| `alle:ane-tablet` | 900×1297 | de frente, segurando o tablet com uma fatura da Alle (camisa polo roxa) | fatura, desconto, passo a passo, "manda a sua conta" |
 | `alle:ane-ombro` | 742×1020 | de costas, olhando por cima do ombro | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
 
 **Alterne as fotos:** não repita a mesma foto em dois posts seguidos do calendário e, num
