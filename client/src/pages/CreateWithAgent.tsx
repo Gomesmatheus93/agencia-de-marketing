@@ -516,73 +516,80 @@ export function CreateVideoAgent() {
 
       {result && !t.running && (
         <>
-          <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-4">
-              <Card><CardContent className="space-y-3 p-5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold">Fala do avatar</p>
-                  <Badge variant="outline">{script.trim().split(/\s+/).filter(Boolean).length} palavras · ~{speechSeconds(script)} s</Badge>
-                </div>
-                <Textarea rows={10} value={script} onChange={(e) => setScript(e.target.value)} className="text-sm leading-relaxed" />
-                <p className="text-xs text-muted-foreground">É exatamente isto que a voz vai falar. Pode editar antes de gerar: números por extenso e sem símbolos.</p>
-                <Button className="w-full gap-2" disabled={!canGenerate} onClick={() => generate.mutate({ title: result.title, topic, script, accountAvatarId: avatarId, voiceId })}>
-                  {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                  {generate.isPending ? "Gerando no HeyGen… pode levar alguns minutos" : `Gerar vídeo no HeyGen${avatar ? ` com ${avatar.name}` : ""}`}
-                </Button>
-              </CardContent></Card>
+          {/* 1. Criação: fala + gerar (prioridade) e cenas ao lado */}
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <Card><CardContent className="space-y-3 p-6">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-lg font-semibold">Fala do avatar</p>
+                <Badge variant="outline">{script.trim().split(/\s+/).filter(Boolean).length} palavras · ~{speechSeconds(script)} s</Badge>
+              </div>
+              <Textarea rows={9} value={script} onChange={(e) => setScript(e.target.value)} className="text-[15px] leading-relaxed" />
+              <p className="text-xs text-muted-foreground">É exatamente isto que a voz vai falar. Pode editar antes de gerar: números por extenso e sem símbolos.</p>
+              <Button size="lg" className="w-full gap-2" disabled={!canGenerate} onClick={() => generate.mutate({ title: result.title, topic, script, accountAvatarId: avatarId, voiceId })}>
+                {generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                {generate.isPending ? "Gerando no HeyGen… pode levar alguns minutos" : `Gerar vídeo no HeyGen${avatar ? ` com ${avatar.name}` : ""}`}
+              </Button>
+            </CardContent></Card>
 
-              {!!result.videos?.length && (
-                <Card><CardContent className="space-y-3 p-5">
-                  <p className="font-semibold">Vídeos gerados</p>
-                  <div className="flex gap-4 overflow-x-auto pb-1">
-                    {result.videos.map((v, i) => (
-                      <div key={`${v.id}-${v.createdAt}`} className="flex shrink-0 gap-3">
-                        <div className="w-[200px] space-y-1.5">
-                          {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-xl border text-xs text-muted-foreground">Sem arquivo</div>}
-                          <p className="text-xs text-muted-foreground">Original · {v.avatarName}</p>
-                          {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar</button>}
-                        </div>
-                        {v.editedUrl && (
-                          <div className="w-[200px] space-y-1.5">
-                            <video key={v.editedUrl} src={v.editedUrl} controls playsInline className="aspect-[9/16] w-full rounded-xl border-2 border-primary bg-black object-contain" />
-                            <p className="text-xs font-medium text-primary">Editado para Reels</p>
-                            <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.editedUrl!, `${slug(result.title)}-reels.mp4`)}><Download className="h-3 w-3" />baixar</button>
-                          </div>
-                        )}
-                        {v.url && t.threadId && <ReelsEditPanel threadId={t.threadId} index={i} video={v} defaultHook={result.scenes[0]?.onScreen ?? ""} onDone={() => t.refetch()} />}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent></Card>
-              )}
-
-              <Card><CardContent className="space-y-2 p-5">
-                <p className="font-semibold">Ganchos</p>
-                {result.hooks.map((h, i) => (
-                  <div key={i} className="rounded-lg bg-muted/40 p-3 text-sm">
-                    <p><Badge variant="outline" className="mr-2">{h.score}/10</Badge><b>{h.text}</b></p>
-                    <p className="mt-1 text-xs text-muted-foreground">{h.why}</p>
-                  </div>
+            <Card><CardContent className="p-6">
+              <p className="mb-3 font-semibold">Cenas</p>
+              <ol className="space-y-2 text-sm">
+                {result.scenes.map((s, i) => (
+                  <li key={i} className="rounded-xl border p-3">
+                    <p className="mb-1 font-mono text-xs text-muted-foreground">{s.time}</p>
+                    <p>{s.speech}</p>
+                    <p className="mt-1.5 text-xs"><b>Na tela:</b> {s.onScreen}</p>
+                    {s.broll && <p className="text-xs text-muted-foreground"><b>B-roll:</b> {s.broll}</p>}
+                  </li>
                 ))}
-              </CardContent></Card>
-            </div>
+              </ol>
+            </CardContent></Card>
+          </section>
 
-            <div className="space-y-4">
-              <Card><CardContent className="p-5">
-                <p className="mb-3 font-semibold">{result.title} · cenas</p>
-                <ol className="space-y-2 text-sm">
-                  {result.scenes.map((s, i) => (
-                    <li key={i} className="rounded-lg border p-3">
-                      <p className="mb-1 font-mono text-xs text-muted-foreground">{s.time}</p>
-                      <p>{s.speech}</p>
-                      <p className="mt-1.5 text-xs"><b>Na tela:</b> {s.onScreen}</p>
-                      {s.broll && <p className="text-xs text-muted-foreground"><b>B-roll:</b> {s.broll}</p>}
-                    </li>
-                  ))}
-                </ol>
-              </CardContent></Card>
-              <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={`Vídeo vertical: ${result.title}`} threadId={t.threadId} onSaved={() => t.refetch()} />
-            </div>
+          {/* 2. Vídeos gerados: largura inteira, sem rolagem lateral */}
+          {!!result.videos?.length && (
+            <Card><CardContent className="space-y-5 p-6">
+              <p className="text-lg font-semibold">Vídeos gerados</p>
+              {result.videos.map((v, i) => (
+                <div key={`${v.id}-${v.createdAt}`} className="grid gap-5 border-t pt-5 first:border-t-0 first:pt-0 sm:grid-cols-2 xl:grid-cols-[240px_240px_minmax(0,1fr)]">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Original · {v.avatarName}</p>
+                    {v.url ? <video src={v.url} controls playsInline className="aspect-[9/16] w-full rounded-2xl border bg-black object-contain" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-2xl border text-xs text-muted-foreground">Sem arquivo</div>}
+                    {v.url && <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.url!, `${slug(result.title)}.mp4`)}><Download className="h-3 w-3" />baixar original</button>}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-primary">Editado para Reels</p>
+                    {v.editedUrl ? (
+                      <>
+                        <video key={v.editedUrl} src={v.editedUrl} controls playsInline className="aspect-[9/16] w-full rounded-2xl border-2 border-primary bg-black object-contain" />
+                        <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline" onClick={() => downloadVideo(v.editedUrl!, `${slug(result.title)}-reels.mp4`)}><Download className="h-3 w-3" />baixar editado</button>
+                      </>
+                    ) : (
+                      <div className="flex aspect-[9/16] items-center justify-center rounded-2xl border-2 border-dashed p-4 text-center text-xs text-muted-foreground">Use o painel ao lado para editar com legendas, trilha e transições.</div>
+                    )}
+                  </div>
+                  {v.url && t.threadId && (
+                    <div className="sm:col-span-2 xl:col-span-1">
+                      <ReelsEditPanel threadId={t.threadId} index={i} video={v} defaultHook={result.scenes[0]?.onScreen ?? ""} onDone={() => t.refetch()} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent></Card>
+          )}
+
+          {/* 3. Apoio: legenda e ganchos */}
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <CaptionBlock caption={result.caption} hashtags={result.hashtags} altText={`Vídeo vertical: ${result.title}`} threadId={t.threadId} onSaved={() => t.refetch()} />
+            <Card><CardContent className="space-y-2 p-6">
+              <p className="font-semibold">Ganchos</p>
+              {result.hooks.map((h, i) => (
+                <div key={i} className="rounded-xl bg-muted/40 p-3 text-sm">
+                  <p><Badge variant="outline" className="mr-2">{h.score}/10</Badge><b>{h.text}</b></p>
+                  <p className="mt-1 text-xs text-muted-foreground">{h.why}</p>
+                </div>
+              ))}
+            </CardContent></Card>
           </section>
         </>
       )}
@@ -604,7 +611,7 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
     onError: (e) => toast.error(e.message),
   });
   return (
-    <div className="w-[240px] space-y-2 rounded-xl border p-3 text-sm">
+    <div className="w-full space-y-3 rounded-2xl border p-4 text-sm">
       <p className="font-semibold">Editar para Reels</p>
       <p className="text-xs text-muted-foreground">Legenda palavra a palavra com destaque laranja, cortes com zoom, logo, barra de progresso e chamada final. Sempre 1080×1920.</p>
       <label className="block space-y-1"><span className="text-xs font-medium">Gancho (primeiros 2 s)</span>
