@@ -8,7 +8,7 @@ import { usePlan } from "@/_core/hooks/usePlan";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
-  ArrowRight, Bot, Building2, CalendarRange, ClipboardCheck, Clock3, Crown, GalleryHorizontal, Image, Layers, Lock,
+  ArrowRight, Building2, CalendarRange, ClipboardCheck, Clock3, Crown, GalleryHorizontal, Image, Layers, Lock,
   Send, Sparkles,
 } from "lucide-react";
 import { useState } from "react";
@@ -57,17 +57,12 @@ export default function OperationalDashboard() {
   const { user } = useAuth();
   const { isExpired, isTrialActive, isLegacy, isPaid, daysLeft } = usePlan();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const office = trpc.agents.office.useQuery(undefined, { refetchInterval: 5000 });
   const recent = trpc.agents.recent.useQuery();
-  const agents = trpc.agents.list.useQuery();
   const postStats = trpc.posts.getStats.useQuery();
 
   const firstName = user?.name?.split(" ")[0] || "Usuário";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
-  const working = (office.data ?? []).filter((a) => a.state === "tool" || a.state === "thinking");
-  const waiting = (office.data ?? []).filter((a) => a.state === "waiting_approval");
-  const nameOf = (slug: string) => agents.data?.agents.find((a) => a.slug === slug)?.name ?? slug;
   const r = recent.data ?? {};
   const latestCreation = [r.carrossel, r.stories, r.legendas].filter(Boolean).sort((a, b) => +new Date(b!.createdAt) - +new Date(a!.createdAt))[0];
 
@@ -95,23 +90,6 @@ export default function OperationalDashboard() {
           )}
           <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} expired={isExpired} />
 
-          <Card className="border-primary/20 bg-gradient-to-r from-primary/[.06] to-alle-orange/[.05]">
-            <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-alle-purple to-alle-orange text-white"><Bot className="h-5 w-5" /></div>
-                <div>
-                  <p className="font-semibold">
-                    {working.length ? `${working.length} agente${working.length > 1 ? "s" : ""} trabalhando agora` : "Nenhum agente trabalhando agora"}
-                    {waiting.length > 0 && <span className="text-alle-orange"> · {waiting.length} aguardando sua aprovação</span>}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {working.length ? working.map((a) => nameOf(a.agentSlug)).join(", ") : "Mande uma tarefa pelo menu Criar ou converse com um agente."}
-                  </p>
-                </div>
-              </div>
-              <Button variant="ghost" size="sm" asChild><Link href="/dashboard/agents">Ver equipe<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
-            </CardContent>
-          </Card>
 
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Fluxo da semana</h2>
