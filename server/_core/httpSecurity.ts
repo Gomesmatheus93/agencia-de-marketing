@@ -52,6 +52,35 @@ export function securityHeaders(): RequestHandler {
   });
 }
 
+// A landing page (raiz do site) usa Tailwind via CDN, scripts no próprio HTML e
+// Font Awesome do cdnjs: ela ganha uma CSP própria, mais flexível. O app (/app) e
+// a API (/api) continuam com a CSP rígida do helmet.
+const LANDING_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+  "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "connect-src 'self' https:",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "report-uri /api/csp-report",
+].join("; ");
+
+export function landingCsp(): RequestHandler {
+  return (req, res, next) => {
+    if (ENV.isProduction && !req.path.startsWith("/app") && !req.path.startsWith("/api")) {
+      res.removeHeader("Content-Security-Policy");
+      res.removeHeader("Content-Security-Policy-Report-Only");
+      res.setHeader(CSP_REPORT_ONLY ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", LANDING_CSP);
+    }
+    next();
+  };
+}
+
 // Desliga recursos do navegador que o app não usa.
 export function permissionsPolicy(): RequestHandler {
   const value = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()";

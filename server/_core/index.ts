@@ -21,7 +21,7 @@ import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWeb
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
-import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy } from "./httpSecurity";
+import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
@@ -115,6 +115,7 @@ async function startServer() {
   app.set("trust proxy", 1);
   // Security headers (helmet) + CSP/HSTS em produção.
   app.use(securityHeaders());
+  app.use(landingCsp());
   // Cookie CSRF legível pelo cliente (double-submit).
   app.use(csrfCookieSetter());
   app.use(permissionsPolicy());
