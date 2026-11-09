@@ -75,6 +75,7 @@ import { sdk } from "./_core/sdk";
 import { hashPassword, needsRehash, verifyPassword } from "./_core/password";
 import { blindIndex } from "./_core/crypto";
 import { timingSafeEqual } from "node:crypto";
+import { inboxRouter } from "./inboxRouter";
 import {
   passwordResetEmail,
   sendEmail,
@@ -5896,6 +5897,7 @@ export const appRouter = router({
   campaign: campaignRouter,
   canva: canvaRouter,
   posts: postsRouter,
+  inbox: inboxRouter,
   analytics: analyticsRouter,
   admin: adminRouter,
   features: featuresRouter,
