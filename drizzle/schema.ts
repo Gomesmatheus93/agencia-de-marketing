@@ -1082,3 +1082,30 @@ export const agentFiles = pgTable(
 export type AgentThread = typeof agentThreads.$inferSelect;
 export type AgentMessage = typeof agentMessages.$inferSelect;
 export type AgentFile = typeof agentFiles.$inferSelect;
+
+// ─── Respostas automáticas no Direct (por regras, sem IA) ─────────────────────
+export type DmAutoRule = { id: string; keywords: string[]; reply: string; active: boolean };
+
+export const dmAutoReplySettings = pgTable("dm_auto_reply_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().unique(),
+  enabled: boolean("enabled").default(false).notNull(),
+  whatsappLink: varchar("whatsappLink", { length: 500 }),
+  fallbackEnabled: boolean("fallbackEnabled").default(true).notNull(),
+  fallbackMessage: text("fallbackMessage"),
+  rules: json("rules").$type<DmAutoRule[]>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+// Uma linha por resposta enviada: serve para não repetir a mesma resposta à mesma pessoa.
+export const dmAutoReplyLog = pgTable(
+  "dm_auto_reply_log",
+  {
+    id: serial("id").primaryKey(),
+    igAccountId: varchar("igAccountId", { length: 64 }).notNull(),
+    senderId: varchar("senderId", { length: 64 }).notNull(),
+    ruleKey: varchar("ruleKey", { length: 64 }).notNull(),
+    sentAt: timestamp("sentAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_dm_auto_reply_log_lookup").on(t.igAccountId, t.senderId, t.ruleKey)]
+);

@@ -36,6 +36,13 @@
       "when": 1793967752684,
       "tag": "0004_heygen_avatar_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794249128723,
+      "tag": "0005_dm_auto_reply",
+      "breakpoints": true
     }
   ]
 }

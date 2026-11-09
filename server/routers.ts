@@ -71,6 +71,7 @@ import { hashPassword, needsRehash, verifyPassword } from "./_core/password";
 import { blindIndex } from "./_core/crypto";
 import { timingSafeEqual } from "node:crypto";
 import { inboxRouter } from "./inboxRouter";
+import { dmAutoReplyRouter } from "./dmAutoReply";
 import {
   passwordResetEmail,
   sendEmail,
@@ -5661,6 +5662,7 @@ export const appRouter = router({
   canva: canvaRouter,
   posts: postsRouter,
   inbox: inboxRouter,
+  dmAutoReply: dmAutoReplyRouter,
   analytics: analyticsRouter,
   admin: adminRouter,
   features: featuresRouter,

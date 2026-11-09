@@ -1,7 +1,8 @@
 import AppLayout from "@/components/AppLayout";
+import { DmAutoReplyDialog } from "@/components/DmAutoReplyDialog";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ExternalLink, Instagram, Loader2, MessageCircle, RefreshCw, Search, Send } from "lucide-react";
+import { ArrowLeft, Bot, ExternalLink, Instagram, Loader2, MessageCircle, RefreshCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
 export default function Direct() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [autoOpen, setAutoOpen] = useState(false);
   const list = trpc.inbox.conversations.useQuery(undefined, { refetchInterval: LIST_REFRESH_MS, staleTime: 20_000 });
   const conversations = list.data?.conversations ?? [];
   const filtered = useMemo(
@@ -87,6 +89,15 @@ export default function Direct() {
                         {list.data.account ? `@${list.data.account} · ` : ""}{waiting ? `${waiting} aguardando resposta` : "tudo respondido"}
                       </p>
                     </div>
+                    <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setAutoOpen(true)}
+                      className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Respostas automáticas"
+                    >
+                      <Bot className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => list.refetch()}
@@ -95,6 +106,7 @@ export default function Direct() {
                     >
                       <RefreshCw className={cn("h-4 w-4", list.isFetching && "animate-spin")} />
                     </button>
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 rounded-full bg-muted/70 px-3 py-2 text-sm">
                     <Search className="h-4 w-4 text-muted-foreground" />
@@ -151,6 +163,7 @@ export default function Direct() {
           )}
         </div>
       </main>
+      <DmAutoReplyDialog open={autoOpen} onOpenChange={setAutoOpen} />
     </AppLayout>
   );
 }

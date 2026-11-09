@@ -22,6 +22,7 @@ import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
 import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
+import { handleIncomingDm } from "../dmAutoReply";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
@@ -730,7 +731,7 @@ async function startServer() {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { ig_account_id, sender_id, is_echo } = req.body as { ig_account_id?: string; sender_id?: string; is_echo?: boolean };
+    const { ig_account_id, sender_id, is_echo, text: messageText } = req.body as { ig_account_id?: string; sender_id?: string; is_echo?: boolean; text?: string };
     if (!ig_account_id || !sender_id) {
       res.status(400).json({ error: "Campos obrigatórios: ig_account_id, sender_id" });
       return;
@@ -743,7 +744,9 @@ async function startServer() {
     try {
       const pending = await db.getPendingDmFollowup(ig_account_id, sender_id);
       if (!pending) {
-        res.json({ sent: false, reason: "no_pending_followup" });
+        // Fora de uma automação de comentário: respostas automáticas por palavra-chave.
+        const auto = await handleIncomingDm({ igAccountId: ig_account_id, senderId: sender_id, text: typeof messageText === "string" ? messageText : "" });
+        res.json(auto);
         return;
       }
       const { followup, automation } = pending;
