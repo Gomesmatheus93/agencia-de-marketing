@@ -757,11 +757,13 @@ async function startServer() {
         res.status(404).json({ error: "Instagram connection not found" });
         return;
       }
-      const sender = igConnection.instagramAccountId ?? ig_account_id;
+      // Com token do Facebook (página), a Meta só aceita mensagem enviada pela página,
+      // igual ao plano B do send-dm. Sem página, tenta pela conta do Instagram.
+      const sender = igConnection.facebookPageId ?? igConnection.instagramAccountId ?? ig_account_id;
       const apiRes = await fetch(`https://graph.facebook.com/v25.0/${sender}/messages?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipient: { id: sender_id }, message: { text } }),
+        body: JSON.stringify({ recipient: { id: sender_id }, message: { text }, messaging_type: "RESPONSE" }),
       });
       const data = await apiRes.json() as Record<string, unknown>;
       if (!apiRes.ok) {
