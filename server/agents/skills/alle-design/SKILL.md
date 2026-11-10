@@ -196,6 +196,13 @@ post real em collab com a @allpfit:
 - Ressalva do 35% sempre que o percentual aparecer, pequena, no rodapé.
 - Texto nunca em cima do rosto da pessoa: mova a pessoa para a direita.
 
+## Padrões pedidos pela equipe (valem para todas as artes)
+
+- **Sem @ no rodapé dos slides** ("@alleenergia", "@alleenergia + @allpfit"): a marcação vai só na legenda.
+- **Último slide do carrossel sem a seta** de "arrasta": é o fechamento.
+- Sobre fundo roxo, use o `alle:logo-branco` (a frase "autonomia e liberdade energética" já vem legível) ou o `alle:logo-branco-limpo` quando o logo for pequeno.
+- Desconto: **até 35% para PJ e até 15% para PF**. Para alunos da Allp Fit (em geral PF), não prometa 35%.
+
 ## Rotina de revisão (obrigatória)
 
 1. Desenhe e chame `render_design`.
