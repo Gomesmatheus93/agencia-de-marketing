@@ -1,5 +1,5 @@
 ﻿import { z } from "zod";
-import { collaboratorsSchema } from "./_core/instagramCollaborators";
+import { collaboratorsSchema, normalizeUsername } from "./_core/instagramCollaborators";
 import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { getHolidaysForYear } from "@shared/holidays";
 import { systemRouter } from "./_core/systemRouter";
@@ -3849,7 +3849,45 @@ async function verifyInstagramTokenOwnership(instagramAccountId: string, accessT
   return false;
 }
 
+// Confere o @ de um colaborador (collab) pela Business Discovery da Meta: só funciona
+// para contas comerciais/de criador. O erro 110 vem tanto para @ inexistente quanto
+// para conta pessoal, então os dois casos viram "not_found".
+const collaboratorLookupCache = new Map<string, { at: number; value: unknown }>();
+const COLLABORATOR_LOOKUP_TTL_MS = 60 * 60 * 1000;
+
 const analyticsRouter = router({
+  lookupCollaborator: protectedProcedure
+    .input(z.object({ username: z.string().trim().max(31) }))
+    .query(async ({ ctx, input }) => {
+      const username = normalizeUsername(input.username);
+      if (!/^[a-z0-9._]{1,30}$/.test(username)) return { status: "invalid" as const, username };
+      const key = `${ctx.user.id}:${username}`;
+      const hit = collaboratorLookupCache.get(key);
+      if (hit && Date.now() - hit.at < COLLABORATOR_LOOKUP_TTL_MS) return hit.value as never;
+      const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
+      let value:
+        | { status: "found"; username: string; name: string | null; profilePic: string | null; followers: number | null }
+        | { status: "not_found"; username: string }
+        | { status: "error"; username: string };
+      try {
+        const data = await graphGet<{ business_discovery?: { username: string; name?: string; profile_picture_url?: string; followers_count?: number } }>(
+          igAccountId,
+          { fields: `business_discovery.username(${username}){username,name,profile_picture_url,followers_count}` },
+          accessToken,
+        );
+        const bd = data.business_discovery;
+        value = bd
+          ? { status: "found", username: bd.username, name: bd.name ?? null, profilePic: bd.profile_picture_url ?? null, followers: bd.followers_count ?? null }
+          : { status: "not_found", username };
+      } catch (err) {
+        // "Invalid user id" (110) = @ inexistente ou conta pessoal; outro erro = não deu para checar agora
+        value = /invalid user id|cannot find/i.test((err as Error).message) ? { status: "not_found", username } : { status: "error", username };
+      }
+      if (value.status !== "error") collaboratorLookupCache.set(key, { at: Date.now(), value });
+      if (collaboratorLookupCache.size > 1000) collaboratorLookupCache.clear();
+      return value;
+    }),
+
   saveInstagramCredentials: protectedProcedure
     .input(z.object({
       instagramAccountId: z.string().min(1),
