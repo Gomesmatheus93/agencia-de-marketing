@@ -126,8 +126,14 @@ async function getRequiredMetaConfig(userId?: number) {
         };
       }
     } catch {
-      // DB may not have the table yet — fall back to ENV
+      // erro ao ler a conexão: cai no erro abaixo
     }
+    // Segurança: post de uma conta nunca sai pela conta do .env (seria publicar
+    // o conteúdo de um cliente no Instagram de outro).
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Conta Instagram não conectada. Conecte sua conta em Configurações > Instagram para publicar.",
+    });
   }
 
   const missing: string[] = [];

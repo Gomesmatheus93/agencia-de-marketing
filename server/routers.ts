@@ -3795,7 +3795,9 @@ function graphUrl(path: string) {
 }
 
 async function graphGet<T>(path: string, params: Record<string, string> = {}, accessToken?: string): Promise<T> {
-  const token = accessToken || ENV.metaAccessToken;
+  // Sempre o token da conta do usuário (nunca o do .env).
+  if (!accessToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conecte o Instagram para continuar." });
+  const token = accessToken;
   const qs = new URLSearchParams({ ...params, access_token: token }).toString();
   const res = await fetch(`${graphUrl(path)}?${qs}`);
   const data = await res.json() as T & { error?: { message?: string } };
@@ -3809,21 +3811,16 @@ async function graphGet<T>(path: string, params: Record<string, string> = {}, ac
 }
 
 async function getInstagramCredentials(userId: number) {
-  try {
-    const connection = await db.getInstagramConnection(userId);
-    if (connection?.accessToken && connection?.instagramAccountId) {
-      return { accessToken: connection.accessToken, igAccountId: connection.instagramAccountId };
-    }
-  } catch {
-    // DB may not have the table yet — fall back to ENV
+  // Segurança: só a conexão da própria conta. Sem conexão, erro; nunca cair no
+  // token do .env (daria a qualquer usuário os dados de outra conta).
+  const connection = await db.getInstagramConnection(userId).catch(() => undefined);
+  if (connection?.accessToken && connection?.instagramAccountId) {
+    return { accessToken: connection.accessToken, igAccountId: connection.instagramAccountId };
   }
-  if (!ENV.metaAccessToken || !ENV.metaInstagramAccountId) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Nenhuma conta Instagram conectada. Faça login com o Instagram para continuar.",
-    });
-  }
-  return { accessToken: ENV.metaAccessToken, igAccountId: ENV.metaInstagramAccountId };
+  throw new TRPCError({
+    code: "PRECONDITION_FAILED",
+    message: "Nenhuma conta Instagram conectada. Conecte o Instagram para continuar.",
+  });
 }
 
 
@@ -3932,21 +3929,17 @@ const analyticsRouter = router({
       }
     } catch { /* ignore */ }
 
-    if (!token) {
-      token = ENV.metaAccessToken;
-      tokenSource = ".env (META_ACCESS_TOKEN)";
-    }
-
+    // Segurança: diagnostica só a conexão da própria conta (nunca o token do .env).
     if (!token) {
       return {
         ok: false,
         tokenSource: "nenhum",
-        error: "Nenhum token configurado. Defina META_ACCESS_TOKEN no .env ou conecte sua conta em Configurações → Instagram.",
+        error: "Nenhuma conta Instagram conectada. Conecte sua conta em Configurações → Instagram.",
         details: null,
       };
     }
 
-    const igAccountId = ENV.metaInstagramAccountId;
+    const igAccountId = (await db.getInstagramConnection(ctx.user.id).catch(() => undefined))?.instagramAccountId ?? "";
 
     try {
       // 1. Debug token
