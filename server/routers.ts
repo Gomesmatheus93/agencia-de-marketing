@@ -72,6 +72,7 @@ import { blindIndex } from "./_core/crypto";
 import { timingSafeEqual } from "node:crypto";
 import { inboxRouter } from "./inboxRouter";
 import { dashboardRouter } from "./dashboardRouter";
+import { profileRouter } from "./profileRouter";
 import { dmAutoReplyRouter } from "./dmAutoReply";
 import {
   passwordResetEmail,
@@ -5664,6 +5665,7 @@ export const appRouter = router({
   posts: postsRouter,
   inbox: inboxRouter,
   dashboard: dashboardRouter,
+  profile: profileRouter,
   dmAutoReply: dmAutoReplyRouter,
   analytics: analyticsRouter,
   admin: adminRouter,

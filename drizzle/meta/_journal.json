@@ -43,6 +43,13 @@
       "when": 1794249128723,
       "tag": "0005_dm_auto_reply",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794320710021,
+      "tag": "0006_user_avatar",
+      "breakpoints": true
     }
   ]
 }

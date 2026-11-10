@@ -47,6 +47,8 @@ export const users = pgTable("users", {
   // null = conta principal (dona da empresa); preenchido = funcionário,
   // aponta pro id da conta principal. Um único nível (sem sub-sub-usuário).
   companyOwnerId: integer("companyOwnerId"),
+  // Foto de perfil (URL pública no storage), definida pelo próprio usuário.
+  avatarUrl: text("avatarUrl"),
 }, (t) => [
   uniqueIndex("uq_users_emailHash").on(t.emailHash),
   index("idx_users_emailDomain").on(t.emailDomain),

@@ -1,8 +1,10 @@
 import AppLayout from "@/components/AppLayout";
 import UpgradeModal from "@/components/UpgradeModal";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { initialsOf } from "@/pages/Profile";
 import { usePlan } from "@/_core/hooks/usePlan";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -168,9 +170,17 @@ export default function OperationalDashboard() {
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-[1400px] space-y-8">
           <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard/perfil" title="Editar meu perfil" className="shrink-0 rounded-full ring-4 ring-primary/10 transition hover:ring-primary/30">
+                <Avatar className="h-14 w-14 md:h-16 md:w-16">
+                  {(user as { avatarUrl?: string | null } | null)?.avatarUrl && <AvatarImage src={(user as { avatarUrl?: string | null }).avatarUrl!} alt="" className="object-cover" />}
+                  <AvatarFallback className="gradient-primary text-lg font-semibold text-white">{initialsOf(user?.name)}</AvatarFallback>
+                </Avatar>
+              </Link>
+              <div>
               <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{greeting}, <span className="bg-gradient-to-r from-alle-purple to-alle-orange bg-clip-text text-transparent">{firstName}</span></h1>
               <p className="mt-1 text-sm text-muted-foreground">{view === "mes" ? <>O mês de <span className="font-medium capitalize text-foreground">{monthName}</span></> : <>A semana de <span className="font-medium text-foreground">{ddmm(range.start)} a {ddmm(range.end)}</span></>} da Alle Energia: o que está planejado, o que já foi criado e como o perfil está indo.</p>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div role="tablist" aria-label="Período" className="inline-flex rounded-full border bg-card p-1">

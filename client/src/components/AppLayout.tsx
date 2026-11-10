@@ -24,6 +24,7 @@ import {
   CalendarDays,
   MessageCircle,
   Lock,
+  UserRound,
   PanelLeftClose,
   PanelLeftOpen,
   Crown,
@@ -38,7 +39,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -266,9 +267,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   );
 
   // Gate: determine if current module should be blocked
-  const ALWAYS_OPEN = new Set(["dashboard", "settings"]);
+  const ALWAYS_OPEN = new Set(["dashboard", "settings", "profile"]);
   const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
-  const activeLabel = navItems.find((n) => n.id === activeModule)?.label;
+  const activeLabel = activeModule === "profile" ? "Meu perfil" : navItems.find((n) => n.id === activeModule)?.label;
+  const avatarUrl = (user as { avatarUrl?: string | null } | null)?.avatarUrl ?? undefined;
 
   const renderSidebar = (mini: boolean) => (
     <div className="flex flex-col h-full">
@@ -420,6 +422,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           <DropdownMenuTrigger asChild>
             <button title={mini ? user?.name || "Usuário" : undefined} className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200 group", mini && "justify-center px-0")}>
               <Avatar className="w-8 h-8 flex-shrink-0">
+                {avatarUrl && <AvatarImage src={avatarUrl} alt="" className="object-cover" />}
                 <AvatarFallback className="gradient-primary text-white text-xs font-semibold">
                   {userInitials}
                 </AvatarFallback>
@@ -431,6 +434,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52 glass-card border-border/50">
+            <DropdownMenuItem onClick={() => navigate("/dashboard/perfil")} className="gap-2">
+              <UserRound className="w-4 h-4" />
+              Meu perfil
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="gap-2">
               <Settings className="w-4 h-4" />
               {t("settings")}
@@ -554,8 +561,9 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <h2 className="text-lg font-bold tracking-tight truncate">{activeLabel ?? "Alle Energia"}</h2>
             <p className="text-xs text-muted-foreground capitalize">{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</p>
           </div>
-          <button type="button" onClick={() => navigate("/dashboard/settings")} className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-4 transition-colors hover:bg-card">
+          <button type="button" onClick={() => navigate("/dashboard/perfil")} title="Meu perfil" className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-4 transition-colors hover:bg-card">
             <Avatar className="w-10 h-10">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt="" className="object-cover" />}
               <AvatarFallback className="gradient-primary text-white text-sm font-semibold">{userInitials}</AvatarFallback>
             </Avatar>
             <span className="text-left leading-tight">
