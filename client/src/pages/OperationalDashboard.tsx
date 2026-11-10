@@ -31,8 +31,23 @@ function fmt(n: number) {
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
-function monthKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function ddmm(date: string) {
+  return `${date.slice(8)}/${date.slice(5, 7)}`;
+}
+type View = "semana" | "mes";
+/** Período da visão: semana de segunda a domingo, ou o mês inteiro. */
+function rangeOf(view: View, now: Date) {
+  if (view === "semana") {
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+    const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+    return { start: ymd(monday), end: ymd(sunday), days: 7 };
+  }
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: ymd(first), end: ymd(last), days: last.getDate() };
 }
 /** O valor diário do Instagram vem com end_time no dia seguinte: volta 1 dia para saber a que dia pertence. */
 function dayOf(endTime: string) {
@@ -70,17 +85,29 @@ export default function OperationalDashboard() {
   const [, navigate] = useLocation();
 
   const now = new Date();
-  const month = monthKey(now);
+  const [view, setView] = useState<View>(() => {
+    try { return localStorage.getItem("dashboard_view") === "semana" ? "semana" : "mes"; } catch { return "mes"; }
+  });
+  const changeView = (v: View) => {
+    setView(v);
+    try { localStorage.setItem("dashboard_view", v); } catch { /* sem localStorage */ }
+  };
+  const today = ymd(now);
+  const range = rangeOf(view, now);
+  const inRange = (d: Date) => { const k = ymd(d); return k >= range.start && k <= range.end; };
   const monthName = now.toLocaleDateString("pt-BR", { month: "long" });
-  const today = `${month}-${String(now.getDate()).padStart(2, "0")}`;
+  /** "de novembro" ou "da semana (09/11 a 15/11)" */
+  const periodName = view === "mes" ? `de ${monthName}` : `da semana (${ddmm(range.start)} a ${ddmm(range.end)})`;
+  const periodShort = view === "mes" ? `em ${monthName}` : "nesta semana";
+  const daysSoFar = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(`${range.start}T00:00:00`).getTime()) / 86_400_000) + 1;
   const live = { refetchInterval: REFRESH_MS, refetchOnWindowFocus: true, staleTime: 60_000 } as const;
 
-  const overview = trpc.dashboard.month.useQuery({ month }, live);
+  const overview = trpc.dashboard.period.useQuery({ start: range.start, end: range.end }, live);
   const recent = trpc.agents.recent.useQuery(undefined, { staleTime: 60_000 });
   const connection = trpc.analytics.getInstagramConnectionStatus.useQuery(undefined, { retry: 1, staleTime: 5 * 60_000 });
   const connected = connection.data?.connected === true;
   const profile = trpc.analytics.getProfile.useQuery(undefined, { ...live, enabled: connected, retry: 1 });
-  const insights = trpc.analytics.getInsights.useQuery({ days: Math.max(7, now.getDate()) }, { ...live, enabled: connected, retry: 1 });
+  const insights = trpc.analytics.getInsights.useQuery({ days: Math.max(7, daysSoFar) }, { ...live, enabled: connected, retry: 1 });
   const media = trpc.analytics.getMedia.useQuery({ limit: 25 }, { ...live, staleTime: 10 * 60_000, enabled: connected, retry: 1 });
   const inbox = trpc.inbox.conversations.useQuery(undefined, { ...live, enabled: connected, retry: 1 });
 
@@ -91,30 +118,30 @@ export default function OperationalDashboard() {
   // ── Analytics do mês (só os dias deste mês) ──
   const monthInsights = useMemo(() => {
     const list = (insights.data ?? []) as InsightMetric[];
-    const inMonth = (name: string) => (list.find((m) => m.metric === name)?.values ?? []).filter((v) => monthKey(dayOf(v.end_time)) === month);
+    const inMonth = (name: string) => (list.find((m) => m.metric === name)?.values ?? []).filter((v) => inRange(dayOf(v.end_time)));
     const sum = (name: string) => inMonth(name).reduce((s, v) => s + v.value, 0);
     return {
       reach: sum("reach"), interactions: sum("total_interactions"), newFollowers: sum("follower_count"),
       chart: inMonth("reach").map((v) => ({ dia: String(dayOf(v.end_time).getDate()).padStart(2, "0"), Alcance: v.value })),
     };
-  }, [insights.data, month]);
+  }, [insights.data, range.start, range.end]);
 
   const byFormat = useMemo(() => {
     const groups: Record<string, number[]> = { Reel: [], Carrossel: [], Imagem: [] };
     for (const m of (media.data ?? []) as Array<{ timestamp: string; media_type: string; media_product_type?: string; insights?: Record<string, number> }>) {
-      if (monthKey(new Date(m.timestamp)) !== month) continue;
+      if (!inRange(new Date(m.timestamp))) continue;
       const key = m.media_product_type === "REELS" ? "Reel" : m.media_type === "CAROUSEL_ALBUM" ? "Carrossel" : "Imagem";
       groups[key].push(m.insights?.reach ?? 0);
     }
     return Object.entries(groups).map(([formato, v]) => ({ formato, posts: v.length, alcance: v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0 }));
-  }, [media.data, month]);
+  }, [media.data, range.start, range.end]);
   const postsThisMonth = byFormat.reduce((s, f) => s + f.posts, 0);
 
   const dm = useMemo(() => {
     const convs = (inbox.data?.conversations ?? []) as Array<{ updatedTime?: string; lastFromMe?: boolean }>;
-    const monthConvs = convs.filter((c) => c.updatedTime && monthKey(new Date(c.updatedTime)) === month);
+    const monthConvs = convs.filter((c) => c.updatedTime && inRange(new Date(c.updatedTime)));
     return { total: monthConvs.length, waiting: monthConvs.filter((c) => !c.lastFromMe).length };
-  }, [inbox.data, month]);
+  }, [inbox.data, range.start, range.end]);
 
   // ── Planejamento do mês ──
   const items = overview.data?.items ?? [];
@@ -126,7 +153,7 @@ export default function OperationalDashboard() {
     const strip = stripRef.current;
     const target = strip?.querySelector<HTMLElement>("[data-upcoming='true']");
     if (strip && target) strip.scrollLeft = target.offsetLeft - strip.offsetLeft - 8;
-  }, [items.length]);
+  }, [items.length, view]);
   const openOutput = (agentSlug: string, threadId: number) => {
     const screen = OUTPUT_SCREEN[agentSlug];
     if (!screen) return navigate("/dashboard/planejamento");
@@ -143,9 +170,19 @@ export default function OperationalDashboard() {
           <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{greeting}, <span className="bg-gradient-to-r from-alle-purple to-alle-orange bg-clip-text text-transparent">{firstName}</span></h1>
-              <p className="mt-1 text-sm text-muted-foreground">O mês de <span className="font-medium capitalize text-foreground">{monthName}</span> da Alle Energia: o que está planejado, o que já foi criado e como o perfil está indo.</p>
+              <p className="mt-1 text-sm text-muted-foreground">{view === "mes" ? <>O mês de <span className="font-medium capitalize text-foreground">{monthName}</span></> : <>A semana de <span className="font-medium text-foreground">{ddmm(range.start)} a {ddmm(range.end)}</span></>} da Alle Energia: o que está planejado, o que já foi criado e como o perfil está indo.</p>
             </div>
-            <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />Planejar o mês</Link></Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="tablist" aria-label="Período" className="inline-flex rounded-full border bg-card p-1">
+                {([["semana", "Visão semanal"], ["mes", "Visão mensal"]] as const).map(([v, label]) => (
+                  <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => changeView(v)}
+                    className={cn("rounded-full px-4 py-1.5 text-sm font-medium transition", view === v ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />{view === "mes" ? "Planejar o mês" : "Planejar a semana"}</Link></Button>
+            </div>
           </header>
 
           {!isPaid && !isLegacy && (isExpired || isTrialActive) && (
@@ -160,7 +197,7 @@ export default function OperationalDashboard() {
           {/* ── Planejamento do mês ── */}
           <section>
             <SectionTitle action={items.length > 0 && <p className="text-xs text-muted-foreground"><span className="font-semibold text-foreground">{created}</span> de {items.length} pautas criadas</p>}>
-              Planejamento de {monthName}
+              Planejamento {periodName}
             </SectionTitle>
             <Card className="border-border/60">
               <CardContent className="p-3">
@@ -169,8 +206,8 @@ export default function OperationalDashboard() {
                 ) : items.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <CalendarRange className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Ainda não tem plano para {monthName}.</p>
-                    <Button size="sm" asChild><Link href="/dashboard/planejamento"><Plus className="mr-1.5 h-4 w-4" />Gerar o plano do mês</Link></Button>
+                    <p className="text-sm text-muted-foreground">Ainda não tem plano {view === "mes" ? `para ${monthName}` : "para esta semana"}.</p>
+                    <Button size="sm" asChild><Link href="/dashboard/planejamento"><Plus className="mr-1.5 h-4 w-4" />{view === "mes" ? "Gerar o plano do mês" : "Gerar o plano da semana"}</Link></Button>
                   </div>
                 ) : (
                   <div ref={stripRef} className="flex snap-x gap-3 overflow-x-auto pb-2">
@@ -179,9 +216,9 @@ export default function OperationalDashboard() {
                       const isToday = it.date === today;
                       const past = it.date < today;
                       return (
-                        <div key={it.index} data-upcoming={i === firstUpcoming} className={cn("flex w-48 shrink-0 snap-start flex-col rounded-2xl border bg-card p-2.5", isToday && "border-primary ring-2 ring-primary/20", past && !it.output && "opacity-60")}>
+                        <div key={`${it.planThreadId}-${it.index}`} data-upcoming={i === firstUpcoming} className={cn("flex w-48 shrink-0 snap-start flex-col rounded-2xl border bg-card p-2.5", isToday && "border-primary ring-2 ring-primary/20", past && !it.output && "opacity-60")}>
                           <div className="flex items-center justify-between gap-1 text-[11px]">
-                            <span className={cn("font-semibold", isToday ? "text-primary" : "text-muted-foreground")}>{isToday ? "Hoje" : `${WEEKDAYS[d.getDay()]} ${it.date.slice(8)}/${it.date.slice(5, 7)}`}{it.time ? ` · ${it.time}` : ""}</span>
+                            <span className={cn("font-semibold", isToday ? "text-primary" : "text-muted-foreground")}>{isToday ? "Hoje" : `${WEEKDAYS[d.getDay()]} ${ddmm(it.date)}`}{it.time ? ` · ${it.time}` : ""}</span>
                             {it.format && <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
                           </div>
                           <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-tight">{it.title}</p>
@@ -210,11 +247,11 @@ export default function OperationalDashboard() {
           {/* ── Analytics do mês ── */}
           <section>
             <SectionTitle action={<Link href="/dashboard/analytics" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Ver analytics completo<ArrowRight className="h-3 w-3" /></Link>}>
-              Analytics de {monthName}
+              Analytics {periodName}
             </SectionTitle>
             {!connection.isLoading && !connected ? (
               <Card className="border-border/60"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-                <p className="text-sm text-muted-foreground">Conecte o Instagram para ver os números do mês aqui.</p>
+                <p className="text-sm text-muted-foreground">Conecte o Instagram para ver os números do período aqui.</p>
                 <Button size="sm" asChild><Link href="/dashboard/analytics">Conectar Instagram</Link></Button>
               </CardContent></Card>
             ) : (
@@ -222,19 +259,19 @@ export default function OperationalDashboard() {
                 <div className="grid gap-4 sm:grid-cols-2 lg:col-span-12 xl:grid-cols-4">
                   <Stat label="Seguidores" icon={Users} loading={profile.isLoading}
                     value={fmt(profile.data?.followers_count ?? 0)}
-                    hint={monthInsights.newFollowers > 0 ? <span className="text-emerald-600 dark:text-emerald-400">+{monthInsights.newFollowers} em {monthName}</span> : `em ${monthName}`} />
-                  <Stat label="Alcance no mês" icon={Eye} loading={insights.isLoading} value={fmt(monthInsights.reach)} hint={`soma de 1º/${month.slice(5)} até hoje`} />
-                  <Stat label="Interações no mês" icon={Heart} loading={insights.isLoading} value={fmt(monthInsights.interactions)} hint="curtidas, comentários, salvos e compart." />
+                    hint={monthInsights.newFollowers > 0 ? <span className="text-emerald-600 dark:text-emerald-400">+{monthInsights.newFollowers} {periodShort}</span> : periodShort} />
+                  <Stat label={view === "mes" ? "Alcance no mês" : "Alcance na semana"} icon={Eye} loading={insights.isLoading} value={fmt(monthInsights.reach)} hint={`soma de ${ddmm(range.start)} até hoje`} />
+                  <Stat label={view === "mes" ? "Interações no mês" : "Interações na semana"} icon={Heart} loading={insights.isLoading} value={fmt(monthInsights.interactions)} hint="curtidas, comentários, salvos e compart." />
                   <Link href="/dashboard/direct" className="block">
                     <Stat label="Mensagens no Direct" icon={MessageCircle} loading={inbox.isLoading} value={String(dm.total)}
-                      hint={dm.waiting > 0 ? <span className="font-medium text-alle-orange">{dm.waiting} aguardando resposta</span> : "conversas no mês · todas respondidas"} />
+                      hint={dm.waiting > 0 ? <span className="font-medium text-alle-orange">{dm.waiting} aguardando resposta</span> : `conversas ${periodShort} · todas respondidas`} />
                   </Link>
                 </div>
 
                 <Card className="border-border/60 lg:col-span-7">
                   <CardContent className="p-5">
                     <p className="text-sm font-semibold">Alcance por dia</p>
-                    <p className="text-xs text-muted-foreground">contas alcançadas em {monthName}</p>
+                    <p className="text-xs text-muted-foreground">contas alcançadas {periodShort}</p>
                     <div className="mt-3 h-56">
                       {monthInsights.chart.length ? (
                         <ResponsiveContainer width="100%" height="100%">
@@ -247,7 +284,7 @@ export default function OperationalDashboard() {
                             <Area type="monotone" dataKey="Alcance" stroke="#7c00ae" strokeWidth={2} fill="url(#dashReach)" />
                           </AreaChart>
                         </ResponsiveContainer>
-                      ) : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{insights.isLoading ? "Carregando…" : "Sem dados de alcance neste mês ainda."}</div>}
+                      ) : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{insights.isLoading ? "Carregando…" : "Sem dados de alcance neste período ainda."}</div>}
                     </div>
                   </CardContent>
                 </Card>
@@ -255,7 +292,7 @@ export default function OperationalDashboard() {
                 <Card className="border-border/60 lg:col-span-5">
                   <CardContent className="p-5">
                     <p className="text-sm font-semibold">Alcance médio por formato</p>
-                    <p className="text-xs text-muted-foreground">{postsThisMonth} {postsThisMonth === 1 ? "post publicado" : "posts publicados"} em {monthName}</p>
+                    <p className="text-xs text-muted-foreground">{postsThisMonth} {postsThisMonth === 1 ? "post publicado" : "posts publicados"} {periodShort}</p>
                     <div className="mt-3 h-56">
                       {postsThisMonth ? (
                         <ResponsiveContainer width="100%" height="100%">
@@ -269,7 +306,7 @@ export default function OperationalDashboard() {
                             </Bar>
                           </BarChart>
                         </ResponsiveContainer>
-                      ) : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{media.isLoading ? "Carregando…" : "Nenhum post publicado neste mês ainda."}</div>}
+                      ) : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{media.isLoading ? "Carregando…" : "Nenhum post publicado neste período ainda."}</div>}
                     </div>
                   </CardContent>
                 </Card>
@@ -279,7 +316,7 @@ export default function OperationalDashboard() {
 
           {/* ── Relatório do mês ── */}
           <section>
-            <SectionTitle>Relatório de {monthName}</SectionTitle>
+            <SectionTitle>Relatório {periodName}</SectionTitle>
             <div className="grid gap-4 lg:grid-cols-12">
               <Card className="border-border/60 lg:col-span-5">
                 <CardContent className="space-y-4 p-5">
@@ -295,7 +332,7 @@ export default function OperationalDashboard() {
                       <p className="text-sm font-bold">{overview.isLoading ? "…" : row.value}</p>
                     </div>
                   ))}
-                  {(posts?.failed ?? 0) > 0 && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">{posts!.failed} {posts!.failed === 1 ? "postagem falhou" : "postagens falharam"} neste mês. Confira em Postagens.</p>}
+                  {(posts?.failed ?? 0) > 0 && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">{posts!.failed} {posts!.failed === 1 ? "postagem falhou" : "postagens falharam"} {periodShort}. Confira em Postagens.</p>}
                   {posts?.next?.scheduledAt && (
                     <p className="rounded-lg bg-muted px-3 py-2 text-xs">Próxima postagem: <span className="font-semibold">{new Date(posts.next.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>{posts.next.title ? ` · ${posts.next.title}` : ""}</p>
                   )}
