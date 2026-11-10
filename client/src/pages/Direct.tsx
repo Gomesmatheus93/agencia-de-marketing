@@ -6,6 +6,9 @@ import { ArrowLeft, Bot, ExternalLink, Instagram, Loader2, MessageCircle, Refres
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+// Mensagem nova chega pelo sinal do webhook (ACTIVITY_POLL_MS, consulta leve).
+// As atualizações abaixo são só a garantia, caso o webhook falhe.
+const ACTIVITY_POLL_MS = 3_000;
 const LIST_REFRESH_MS = 30_000;
 const THREAD_REFRESH_MS = 15_000;
 
@@ -32,18 +35,35 @@ function dayLabel(iso: string) {
 }
 const hour = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-/** Avatar com a inicial do @ (a API de conversas não traz a foto de perfil). */
-function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
+/** Foto de perfil do cliente; sem foto (ou se o link da Meta expirar), a inicial do @. */
+function Avatar({ name, src, size = "md" }: { name: string; src?: string | null; size?: "sm" | "md" }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
+  const box = size === "md" ? "h-11 w-11 text-base" : "h-9 w-9 text-sm";
+  if (src && !broken) {
+    return <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className={cn("shrink-0 rounded-full bg-muted object-cover shadow-sm", box)} />;
+  }
   return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-alle-purple to-alle-orange font-semibold uppercase text-white shadow-sm",
-        size === "md" ? "h-11 w-11 text-base" : "h-9 w-9 text-sm",
-      )}
-    >
+    <span className={cn("flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-alle-purple to-alle-orange font-semibold uppercase text-white shadow-sm", box)}>
       {name.replace(/^@/, "").charAt(0) || "?"}
     </span>
   );
+}
+
+/** Quando o webhook avisa uma DM nova, recarrega a lista e a conversa aberta. */
+function useInboxActivity() {
+  const utils = trpc.useUtils();
+  const activity = trpc.inbox.activity.useQuery(undefined, { refetchInterval: ACTIVITY_POLL_MS, refetchIntervalInBackground: false });
+  const last = useRef<number | null>(null);
+  useEffect(() => {
+    const at = activity.data?.at;
+    if (at === undefined) return;
+    if (last.current !== null && at !== last.current) {
+      utils.inbox.conversations.invalidate();
+      utils.inbox.messages.invalidate();
+    }
+    last.current = at;
+  }, [activity.data?.at, utils]);
 }
 
 /** Direct do Instagram: conversas à esquerda, chat à direita (no celular, um de cada vez). */
@@ -51,6 +71,7 @@ export default function Direct() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [autoOpen, setAutoOpen] = useState(false);
+  useInboxActivity();
   const list = trpc.inbox.conversations.useQuery(undefined, { refetchInterval: LIST_REFRESH_MS, staleTime: 20_000 });
   const conversations = list.data?.conversations ?? [];
   const filtered = useMemo(
@@ -128,7 +149,7 @@ export default function Direct() {
                             selected === c.id ? "bg-primary/10" : "hover:bg-muted/60",
                           )}
                         >
-                          <Avatar name={name} />
+                          <Avatar name={name} src={c.customer?.profilePic} />
                           <span className="min-w-0 flex-1">
                             <span className="flex items-center justify-between gap-2">
                               <span className={cn("truncate text-sm", pending ? "font-bold" : "font-medium")}>{name}</span>
@@ -150,7 +171,7 @@ export default function Direct() {
 
               {/* ── Chat ── */}
               {selected ? (
-                <Thread key={selected} conversationId={selected} fallbackName={current?.customer?.username ?? ""} onBack={() => setSelected(null)} />
+                <Thread key={selected} conversationId={selected} fallbackName={current?.customer?.username ?? ""} fallbackPic={current?.customer?.profilePic ?? null} onBack={() => setSelected(null)} />
               ) : (
                 <div className="hidden flex-col items-center justify-center gap-3 text-muted-foreground md:flex">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-alle-purple/15 to-alle-orange/15">
@@ -168,7 +189,7 @@ export default function Direct() {
   );
 }
 
-function Thread({ conversationId, fallbackName, onBack }: { conversationId: string; fallbackName: string; onBack: () => void }) {
+function Thread({ conversationId, fallbackName, fallbackPic, onBack }: { conversationId: string; fallbackName: string; fallbackPic: string | null; onBack: () => void }) {
   const utils = trpc.useUtils();
   const [text, setText] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
@@ -180,6 +201,7 @@ function Thread({ conversationId, fallbackName, onBack }: { conversationId: stri
   });
   const messages = thread.data?.messages ?? [];
   const name = thread.data?.customer?.username ?? fallbackName;
+  const pic = thread.data?.customer?.profilePic ?? fallbackPic;
   useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
 
   // Altura do campo acompanha o texto (até 5 linhas).
@@ -196,7 +218,7 @@ function Thread({ conversationId, fallbackName, onBack }: { conversationId: stri
     <div className="flex min-h-0 flex-col">
       <header className="flex items-center gap-3 border-b bg-card/80 px-4 py-3 backdrop-blur">
         <button type="button" onClick={onBack} className="-ml-1 rounded-full p-1.5 hover:bg-muted md:hidden" aria-label="Voltar"><ArrowLeft className="h-5 w-5" /></button>
-        <Avatar name={name || "?"} size="sm" />
+        <Avatar name={name || "?"} src={pic} size="sm" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name ? `@${name}` : "…"}</p>
           <p className="text-[11px] text-muted-foreground">Instagram Direct</p>
@@ -225,7 +247,7 @@ function Thread({ conversationId, fallbackName, onBack }: { conversationId: stri
                 </div>
               )}
               <div className={cn("flex items-end gap-2", m.fromMe ? "justify-end" : "justify-start", groupedWithPrev ? "mt-0.5" : "mt-3")}>
-                {!m.fromMe && (lastOfGroup ? <Avatar name={name || "?"} size="sm" /> : <span className="w-9 shrink-0" />)}
+                {!m.fromMe && (lastOfGroup ? <Avatar name={name || "?"} src={pic} size="sm" /> : <span className="w-9 shrink-0" />)}
                 <div
                   className={cn(
                     "max-w-[78%] px-3.5 py-2 text-sm shadow-sm md:max-w-[65%]",

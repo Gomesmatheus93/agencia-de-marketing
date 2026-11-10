@@ -23,6 +23,7 @@ import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
 import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
 import { handleIncomingDm } from "../dmAutoReply";
+import { notifyInboxActivity } from "../inboxRouter";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
@@ -736,6 +737,8 @@ async function startServer() {
       res.status(400).json({ error: "Campos obrigatórios: ig_account_id, sender_id" });
       return;
     }
+    // Avisa o Direct da plataforma (inclusive ecos: mensagens enviadas pelo celular aparecem na hora).
+    notifyInboxActivity(String(ig_account_id)).catch((err) => console.error("[dm-received] aviso do Direct:", err));
     // Mensagens enviadas pela própria conta (eco) não disparam nada.
     if (is_echo || sender_id === ig_account_id) {
       res.json({ sent: false, reason: "echo" });

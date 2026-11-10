@@ -56,6 +56,8 @@ async function ownConversation(conn: { token: string; igId: string }, conversati
 const STALE_MAX_MS = 10 * 60 * 1000;
 type Entry = { at: number; value: unknown; pending?: Promise<unknown> };
 const cache = new Map<string, Entry>();
+// Buscas sem nada guardado ainda, em andamento: pedidos ao mesmo tempo esperam a mesma busca.
+const inflight = new Map<string, Promise<unknown>>();
 
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   const hit = cache.get(key);
@@ -67,22 +69,116 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
       .catch(() => { hit.pending = undefined; return hit.value; });
     return hit.value as T;
   }
+  const running = inflight.get(key);
+  if (running) return running as Promise<T>;
+  const promise = load()
+    .then((value) => {
+      cache.set(key, { at: Date.now(), value });
+      if (cache.size > 500) for (const [k, e] of cache) if (Date.now() - e.at > STALE_MAX_MS) cache.delete(k);
+      return value;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, promise);
+  return promise;
+}
+
+// ─── Foto de perfil de quem manda DM ─────────────────────────────────────────
+// A API de conversas não traz a foto; ela vem de GET /{igsid}?fields=profile_pic
+// (só para quem já mandou mensagem pra conta). Guardada por 12 h e buscada por
+// trás, para não atrasar a lista. O link da Meta expira em alguns dias.
+const PIC_TTL_MS = 12 * 60 * 60 * 1000;
+const pics = new Map<string, { at: number; url: string | null }>();
+const picLoading = new Map<string, Promise<void>>();
+
+function loadPic(id: string, token: string) {
+  const hit = pics.get(id);
+  if (hit && Date.now() - hit.at < PIC_TTL_MS) return Promise.resolve();
+  let p = picLoading.get(id);
+  if (!p) {
+    p = graph<{ profile_pic?: string }>(`/${id}?fields=profile_pic`, token)
+      .then((r) => { pics.set(id, { at: Date.now(), url: r.profile_pic ?? null }); })
+      .catch(() => { pics.set(id, { at: Date.now(), url: hit?.url ?? null }); })
+      .finally(() => picLoading.delete(id));
+    picLoading.set(id, p);
+    if (pics.size > 2000) for (const [k, e] of pics) if (Date.now() - e.at > PIC_TTL_MS) pics.delete(k);
+  }
+  return p;
+}
+
+/** Fotos dos clientes: espera no máximo `waitMs` pelas que faltam; o resto aparece na próxima atualização. */
+async function picsFor(ids: string[], token: string, waitMs: number) {
+  const missing = ids.filter((id) => !pics.has(id));
+  const all = Promise.all(ids.map((id) => loadPic(id, token)));
+  if (missing.length) await Promise.race([all, new Promise((r) => setTimeout(r, waitMs))]);
+  return (id: string) => pics.get(id)?.url ?? null;
+}
+
+// ─── Sinal de "chegou mensagem" ──────────────────────────────────────────────
+// O webhook da Meta (via n8n → /api/automations/dm-received) avisa cada DM. Aqui
+// a gente descarta o cache daquela conta, já busca a lista nova por trás e marca
+// a hora da atividade; a tela consulta essa hora a cada poucos segundos (consulta
+// leve, sem chamar a Meta) e atualiza na hora em que muda.
+const activity = new Map<number, number>();
+
+function loadList(userId: number, conn: { token: string; pageId: string }) {
+  return cached(`list:${userId}`, 20_000, () => graph<{ data?: GraphConversation[] }>(
+    `/${conn.pageId}/conversations?platform=instagram&limit=25&fields=updated_time,participants,messages.limit(1){message,from,created_time}`,
+    conn.token,
+  ));
+}
+function loadConversation(userId: number, conn: { token: string; igId: string }, id: string) {
+  return cached(`conv:${userId}:${id}`, 8_000, () => ownConversation(conn, id));
+}
+
+/** Busca de novo, ignorando o cache, e guarda o resultado (sem apagar o antigo antes). */
+async function refresh<T>(key: string, load: () => Promise<T>) {
   const value = await load();
   cache.set(key, { at: Date.now(), value });
-  if (cache.size > 500) for (const [k, e] of cache) if (Date.now() - e.at > STALE_MAX_MS) cache.delete(k);
   return value;
+}
+
+// Avisos que chegam juntos (várias mensagens seguidas) viram uma busca só.
+const refreshing = new Map<number, Promise<void>>();
+
+export async function notifyInboxActivity(igAccountId: string) {
+  const ig = await db.getInstagramConnectionByIgId(igAccountId);
+  if (!ig) return;
+  const userId = ig.userId;
+  const conn = await ownConnection(userId);
+  if (!conn) return;
+  const prev = refreshing.get(userId);
+  if (prev) { await prev; } // espera a busca em andamento e faz mais uma, para pegar a mensagem nova
+  const run = (async () => {
+    // Recarrega a lista e as conversas abertas há pouco (as que alguém está olhando) e só
+    // depois marca a atividade: a tela, ao ver a mudança, já recebe os dados novos na hora.
+    const open = [...cache.entries()]
+      .filter(([k, e]) => k.startsWith(`conv:${userId}:`) && Date.now() - e.at < 2 * 60_000)
+      .map(([k]) => k.slice(`conv:${userId}:`.length));
+    await Promise.allSettled([
+      refresh(`list:${userId}`, () => graph<{ data?: GraphConversation[] }>(
+        `/${conn.pageId}/conversations?platform=instagram&limit=25&fields=updated_time,participants,messages.limit(1){message,from,created_time}`,
+        conn.token,
+      )),
+      ...open.map((id) => refresh(`conv:${userId}:${id}`, () => ownConversation(conn, id))),
+    ]);
+    activity.set(userId, Date.now());
+  })().finally(() => refreshing.delete(userId));
+  refreshing.set(userId, run);
+  await run;
 }
 
 const conversationId = z.string().regex(/^[\w-]{5,200}$/, "Conversa inválida.");
 
 export const inboxRouter = router({
+  /** Hora da última DM avisada pelo webhook (consulta leve, sem chamar a Meta). */
+  activity: protectedProcedure.query(({ ctx }) => ({ at: activity.get(ctx.user.id) ?? 0 })),
+
   conversations: protectedProcedure.query(async ({ ctx }) => {
     const conn = await ownConnection(ctx.user.id);
     if (!conn) return { connected: false as const, conversations: [] };
-    const res = await cached(`list:${ctx.user.id}`, 20_000, () => graph<{ data?: GraphConversation[] }>(
-      `/${conn.pageId}/conversations?platform=instagram&limit=25&fields=updated_time,participants,messages.limit(1){message,from,created_time}`,
-      conn.token,
-    ));
+    const res = await loadList(ctx.user.id, conn);
+    const customerIds = (res.data ?? []).map((c) => c.participants?.data?.find((p) => p.id !== conn.igId)?.id).filter((id): id is string => Boolean(id));
+    const picOf = await picsFor(customerIds, conn.token, 2_500);
     return {
       connected: true as const,
       account: conn.username,
@@ -92,7 +188,7 @@ export const inboxRouter = router({
         return {
           id: c.id,
           updatedTime: c.updated_time,
-          customer: customer ? { id: customer.id, username: customer.username ?? customer.name ?? customer.id } : null,
+          customer: customer ? { id: customer.id, username: customer.username ?? customer.name ?? customer.id, profilePic: picOf(customer.id) } : null,
           lastMessage: last?.message || (last ? "📎 anexo" : ""),
           lastFromMe: last?.from?.id === conn.igId,
         };
@@ -104,7 +200,8 @@ export const inboxRouter = router({
     .input(z.object({ conversationId }))
     .query(async ({ ctx, input }) => {
       const conn = await requireConnection(ctx.user.id);
-      const { conv, customer } = await cached(`conv:${ctx.user.id}:${input.conversationId}`, 8_000, () => ownConversation(conn, input.conversationId));
+      const { conv, customer } = await loadConversation(ctx.user.id, conn, input.conversationId);
+      const picOf = await picsFor(customer ? [customer.id] : [], conn.token, 2_000);
       const messages = (conv.messages?.data ?? [])
         .map((m) => {
           const att = m.attachments?.data?.[0];
@@ -119,7 +216,7 @@ export const inboxRouter = router({
         .reverse(); // a Meta devolve da mais nova para a mais antiga
       const lastFromCustomer = [...messages].reverse().find((m) => !m.fromMe);
       const canReply = Boolean(lastFromCustomer && Date.now() - new Date(lastFromCustomer.createdTime).getTime() < REPLY_WINDOW_MS);
-      return { customer: customer ? { id: customer.id, username: customer.username ?? customer.name ?? customer.id } : null, messages, canReply };
+      return { customer: customer ? { id: customer.id, username: customer.username ?? customer.name ?? customer.id, profilePic: picOf(customer.id) } : null, messages, canReply };
     }),
 
   reply: protectedProcedure
