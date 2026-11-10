@@ -231,7 +231,7 @@ export default function OperationalDashboard() {
                             <span className={cn("font-semibold", isToday ? "text-primary" : "text-muted-foreground")}>{isToday ? "Hoje" : `${WEEKDAYS[d.getDay()]} ${ddmm(it.date)}`}{it.time ? ` · ${it.time}` : ""}</span>
                             {it.format && <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
                           </div>
-                          <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-tight">{it.title}</p>
+                          <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
                           <p className="text-[11px] text-primary">{it.type}{it.collab ? <span className="text-alle-orange"> · {it.collab}</span> : null}</p>
                           {it.output ? (
                             <button type="button" onClick={() => openOutput(it.output!.agentSlug, it.output!.threadId)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
