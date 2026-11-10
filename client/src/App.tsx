@@ -21,7 +21,6 @@ import CommentAutomations from "./pages/CommentAutomations";
 import AdminPanel from "./pages/AdminPanel";
 import Stories from "./pages/Stories";
 import Resize from "./pages/Resize";
-import Report from "./pages/Report";
 import Onboarding from "./pages/Onboarding";
 import ArtStudio from "./pages/ArtStudio";
 import Approve from "./pages/Approve";
@@ -76,7 +75,6 @@ function AppRoutes() {
       <Route path="/dashboard/comment-automations" component={CommentAutomations} />
       <Route path="/dashboard/stories" component={Stories} />
       <Route path="/dashboard/resize" component={Resize} />
-      <Route path="/dashboard/report" component={Report} />
       <Route path="/dashboard/onboarding" component={Onboarding} />
       <Route path="/dashboard/artes" component={ArtStudio} />
       <Route path="/dashboard/team" component={Team} />

@@ -30,7 +30,6 @@ import {
   Crown,
   Layers,
   Crop,
-  FileBarChart2,
   LayoutGrid,
   Users,
   CalendarRange,
@@ -69,7 +68,6 @@ const NAV_ITEMS_CONFIG = [
   { id: "brandCheck", icon: ShieldCheck, path: "/dashboard/marca", color: "from-alle-purple to-alle-orange", labelKey: "brandCheck" as const, descKey: "brandCheckDesc" as const, group: "measure" as const },
   { id: "audit", icon: ClipboardCheck, path: "/dashboard/auditoria", color: "from-alle-orange to-alle-orange-light", labelKey: "audit" as const, descKey: "auditDesc" as const, group: "measure" as const },
   { id: "analytics", icon: BarChart2, path: "/dashboard/analytics", color: "from-alle-orange to-alle-orange-light", labelKey: "analytics" as const, descKey: "analyticsDesc" as const, group: "measure" as const },
-  { id: "report", icon: FileBarChart2, path: "/dashboard/report", color: "from-alle-orange to-alle-orange-light", labelKey: "report" as const, descKey: "reportDesc" as const, group: "measure" as const },
 ];
 
 // A barra lateral é montada de novo a cada página: guarda a rolagem para não voltar ao topo.
