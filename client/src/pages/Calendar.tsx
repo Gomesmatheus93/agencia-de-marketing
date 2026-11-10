@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { useLocation } from "wouter";
 import type { ContentPrefill } from "@/lib/contentPrefill";
 const RADAR_PREFILL_KEY = "radar_prefill";
@@ -589,6 +590,7 @@ function CreatePostDialog({
   const [imageUrl, setImageUrl] = useState(initialImageDataUrl ?? "");
   const [displayImageUrl, setDisplayImageUrl] = useState(initialImageDataUrl ?? "");
   const [requireApproval, setRequireApproval] = useState(false);
+  const [collaborators, setCollaborators] = useState<string[]>([]);
   const [scheduledAt, setScheduledAt] = useState(() => {
     const base = prefillDate ?? new Date();
     const d = new Date(base);
@@ -668,6 +670,7 @@ function CreatePostDialog({
       content: content.trim(),
       imageUrl,
       scheduledAt,
+      collaborators,
     });
   }
 
@@ -801,6 +804,8 @@ function CreatePostDialog({
               {content.length} / {maxChars}
             </p>
           </div>
+
+          <CollaboratorsInput value={collaborators} onChange={setCollaborators} />
 
           {/* Scheduled date */}
           <div className="space-y-1.5">

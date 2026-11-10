@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { collaboratorsParam } from "./instagramCollaborators";
 import fs from "node:fs";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
@@ -21,6 +22,8 @@ export type InstagramPostingInput = {
   caption?: string;
   finalCta?: string;
   slides: InstagramPostingSlide[];
+  /** @ de até 3 perfis convidados para o post em colaboração (collab). */
+  collaborators?: string[];
 };
 
 export type InstagramPostingResult = {
@@ -480,6 +483,7 @@ export async function publishInstagramReelsPost(input: {
   userId: number;
   videoUrl: string;
   caption: string;
+  collaborators?: string[];
 }): Promise<InstagramPostingResult> {
   const config = await getRequiredMetaConfig(input.userId);
 
@@ -512,7 +516,7 @@ export async function publishInstagramReelsPost(input: {
 
   const containerId = await postToGraph(
     "media",
-    { video_url: publicVideoUrl, media_type: "REELS", caption: input.caption },
+    { video_url: publicVideoUrl, media_type: "REELS", caption: input.caption, ...collaboratorsParam(input.collaborators) },
     config
   );
 
@@ -570,6 +574,7 @@ export async function publishInstagramCarouselWithAgent(
       {
         image_url: metaSlideUrls[0],
         caption,
+        ...collaboratorsParam(input.collaborators),
       },
       config
     );
@@ -608,6 +613,8 @@ export async function publishInstagramCarouselWithAgent(
       media_type: "CAROUSEL",
       children: childContainerIds.join(","),
       caption,
+      // Em carrossel, o convite vai só no container principal (não nos slides).
+      ...collaboratorsParam(input.collaborators),
     },
     config
   );

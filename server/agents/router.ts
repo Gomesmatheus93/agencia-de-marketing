@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { collaboratorsSchema } from "../_core/instagramCollaborators";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
@@ -151,7 +152,7 @@ export const agentsRouter = router({
   /** O que já foi criado para cada pauta do plano: capa, quantidade de artes e vídeo. */
   /** Agenda (when = data ISO) ou publica agora (when = null) um carrossel/post já criado. */
   publishOutput: protectedProcedure
-    .input(z.object({ threadId: z.number().int(), when: z.string().nullable() }))
+    .input(z.object({ threadId: z.number().int(), when: z.string().nullable(), collaborators: collaboratorsSchema }))
     .mutation(async ({ ctx, input }) => {
       const thread = await ownThread(ctx.user.id, input.threadId);
       const r = thread.result as Record<string, any> | null;
@@ -174,8 +175,9 @@ export const agentsRouter = router({
               topic: r.title,
               caption,
               slides: r.slides.map((s: any) => ({ title: s.heading, body: s.body, imageUrl: s.imageUrl })),
+              collaborators: input.collaborators,
             })
-          : undefined,
+          : input.collaborators?.length ? JSON.stringify({ collaborators: input.collaborators }) : undefined,
         scheduledAt,
       });
 

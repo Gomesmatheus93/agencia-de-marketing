@@ -1,4 +1,5 @@
 ﻿import { z } from "zod";
+import { collaboratorsSchema } from "./_core/instagramCollaborators";
 import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { getHolidaysForYear } from "@shared/holidays";
 import { systemRouter } from "./_core/systemRouter";
@@ -3032,6 +3033,7 @@ const postsRouter = router({
             .optional(),
           extraImageUrls: z.array(z.string().url()).optional(),
           scheduledAt: scheduledAtInputSchema.optional(),
+          collaborators: collaboratorsSchema,
         })
         .superRefine((value, ctx) => {
           if (value.channel === "instagram" && value.scheduledAt && !value.imageUrl?.trim()) {
@@ -3044,7 +3046,7 @@ const postsRouter = router({
         })
     )
     .mutation(async ({ ctx, input }) => {
-      const { scheduledAt: scheduledAtInput, extraImageUrls, ...data } = input;
+      const { scheduledAt: scheduledAtInput, extraImageUrls, collaborators, ...data } = input;
 
       // Trial users: only Instagram posts, 1 per day. Non-Instagram channels require paid plan.
       if (input.channel !== 'instagram') {
@@ -3071,9 +3073,10 @@ const postsRouter = router({
       }
 
       // Store additional images in metadata
-      const metadata = extraImageUrls && extraImageUrls.length > 0
-        ? JSON.stringify({ imageUrls: [imageUrl, ...extraImageUrls].filter(Boolean) })
-        : undefined;
+      const meta: { imageUrls?: string[]; collaborators?: string[] } = {};
+      if (extraImageUrls && extraImageUrls.length > 0) meta.imageUrls = [imageUrl, ...extraImageUrls].filter(Boolean) as string[];
+      if (collaborators?.length) meta.collaborators = collaborators;
+      const metadata = Object.keys(meta).length ? JSON.stringify(meta) : undefined;
 
       const saved = await db.saveSocialPost(ctx.user.id, { ...data, imageUrl, metadata, scheduledAt });
       return saved;

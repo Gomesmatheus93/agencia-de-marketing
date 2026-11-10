@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import type { SocialPost } from "../../drizzle/schema";
+import { collaboratorsFromMetadata } from "./instagramCollaborators";
 import {
   publishInstagramCarouselWithAgent,
   publishInstagramReelsPost,
@@ -62,6 +63,7 @@ export async function publishInstagramSocialPost(post: SocialPost) {
   }
 
   const carouselPayload = parseScheduledCarouselPayload(post.metadata);
+  const collaborators = collaboratorsFromMetadata(post.metadata);
 
   // Carousel post from the Carousel tab
   if (carouselPayload) {
@@ -72,6 +74,7 @@ export async function publishInstagramSocialPost(post: SocialPost) {
       caption: carouselPayload.caption || post.content,
       finalCta: carouselPayload.finalCta,
       slides: carouselPayload.slides,
+      collaborators,
     };
     const result = await publishInstagramCarouselWithAgent(publishingInput);
     return { result, publicImageUrl: result.slideUrls[0] };
@@ -92,6 +95,7 @@ export async function publishInstagramSocialPost(post: SocialPost) {
       userId: post.userId,
       videoUrl: imageUrl,
       caption,
+      collaborators,
     });
     return { result, publicImageUrl: undefined };
   }
@@ -109,6 +113,7 @@ export async function publishInstagramSocialPost(post: SocialPost) {
         ...(imageUrl.startsWith("data:image/") ? { imageDataUrl: imageUrl } : { imageUrl }),
       },
     ],
+    collaborators,
   };
   const result = await publishInstagramCarouselWithAgent(publishingInput);
   return { result, publicImageUrl: result.slideUrls[0] };
@@ -122,5 +127,6 @@ export function buildScheduledInstagramCarouselMetadata(input: Omit<InstagramPos
     caption: input.caption,
     finalCta: input.finalCta,
     slides: input.slides,
-  } satisfies ScheduledInstagramCarouselPayload);
+    ...(input.collaborators?.length ? { collaborators: input.collaborators } : {}),
+  } satisfies ScheduledInstagramCarouselPayload & { collaborators?: string[] });
 }

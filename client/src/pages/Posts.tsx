@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { trpc } from "@/lib/trpc";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -121,6 +122,7 @@ export default function Posts() {
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formScheduledAt, setFormScheduledAt] = useState("");
+  const [formCollaborators, setFormCollaborators] = useState<string[]>([]);
   const [formImageUrls, setFormImageUrls] = useState<string[]>([]);
   const [formMediaTypes, setFormMediaTypes] = useState<("image" | "video")[]>([]);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
@@ -190,6 +192,7 @@ export default function Posts() {
     setFormTitle("");
     setFormContent("");
     setFormScheduledAt("");
+    setFormCollaborators([]);
     setFormImageUrls([]);
     setFormMediaTypes([]);
     setUploadingIdx(null);
@@ -307,6 +310,7 @@ export default function Posts() {
       scheduledAt: formScheduledAt || undefined,
       imageUrl: imageUrls[0] || undefined,
       extraImageUrls: imageUrls.slice(1),
+      collaborators: formCollaborators,
     });
   };
 
@@ -692,6 +696,8 @@ export default function Posts() {
                       {formContent.length}/{cfg.maxChars}
                     </p>
                   </div>
+
+                  <CollaboratorsInput value={formCollaborators} onChange={setFormCollaborators} />
 
                   {/* Schedule */}
                   <div>

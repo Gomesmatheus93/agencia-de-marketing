@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
 import { ArtEditButton, CaptionEditor } from "@/components/agents/ArtEditor";
 import { ModelPicker } from "@/components/agents/ModelPicker";
@@ -654,6 +655,7 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
 /** Agenda ou publica no Instagram um carrossel/post já criado. */
 function PublishPanel({ threadId }: { threadId: number }) {
   const [when, setWhen] = useState("");
+  const [collaborators, setCollaborators] = useState<string[]>([]);
   const publish = trpc.agents.publishOutput.useMutation({
     onSuccess: (r) => toast.success(r.status === "published" ? "Publicado no Instagram!" : "Agendado! Ele aparece no Calendário."),
     onError: (e) => toast.error(e.message),
@@ -661,13 +663,14 @@ function PublishPanel({ threadId }: { threadId: number }) {
   return (
     <div className="space-y-2 rounded-xl border p-3">
       <p className="text-sm font-semibold">Publicar no Instagram</p>
+      <CollaboratorsInput value={collaborators} onChange={setCollaborators} />
       <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
         className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
       <div className="flex gap-2">
         <Button size="sm" variant="outline" className="flex-1" disabled={!when || publish.isPending}
-          onClick={() => publish.mutate({ threadId, when: new Date(when).toISOString() })}>Agendar</Button>
+          onClick={() => publish.mutate({ threadId, when: new Date(when).toISOString(), collaborators })}>Agendar</Button>
         <Button size="sm" className="flex-1" disabled={publish.isPending}
-          onClick={() => { if (confirm("Publicar agora no Instagram?")) publish.mutate({ threadId, when: null }); }}>
+          onClick={() => { if (confirm("Publicar agora no Instagram?")) publish.mutate({ threadId, when: null, collaborators }); }}>
           {publish.isPending ? "Enviando…" : "Postar agora"}
         </Button>
       </div>
