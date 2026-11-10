@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { PhotoCropper } from "@/components/PhotoCropper";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { Camera, Loader2, Trash2 } from "lucide-react";
+import { Camera, Crop, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,11 +40,14 @@ export default function Profile() {
   // undefined = manter a foto atual; null = remover; string = nova foto (data URL)
   const [photo, setPhoto] = useState<string | null | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Foto aberta no ajuste; a original fica guardada para reajustar antes de salvar.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [original, setOriginal] = useState<string | null>(null);
 
   useEffect(() => { if (user?.name) setName(user.name); }, [user?.name]);
 
   const save = trpc.profile.update.useMutation({
-    onSuccess: async () => { await refresh(); setPhoto(undefined); toast.success("Perfil atualizado!"); },
+    onSuccess: async () => { await refresh(); setPhoto(undefined); setOriginal(null); toast.success("Perfil atualizado!"); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -54,7 +58,7 @@ export default function Profile() {
     if (!file) return;
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return toast.error("Use uma foto em JPG, PNG ou WebP.");
     if (file.size > 15 * 1024 * 1024) return toast.error("Essa foto é grande demais (máx. 15 MB).");
-    try { setPhoto(await shrinkPhoto(file)); } catch (e) { toast.error((e as Error).message); }
+    try { const small = await shrinkPhoto(file); setOriginal(small); setCropSrc(small); } catch (e) { toast.error((e as Error).message); }
   };
 
   return (
@@ -81,12 +85,17 @@ export default function Profile() {
                 </div>
                 <div className="flex flex-col items-center gap-2 sm:items-start">
                   <p className="text-sm font-medium">Foto de perfil</p>
-                  <p className="text-xs text-muted-foreground">JPG, PNG ou WebP. A foto fica quadrada, recortada no centro.</p>
+                  <p className="text-xs text-muted-foreground">JPG, PNG ou WebP. Depois de escolher, você ajusta o zoom e a posição.</p>
                   <div className="flex gap-2">
                     <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()}>{currentPhoto ? "Trocar foto" : "Enviar foto"}</Button>
-                    {currentPhoto && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setPhoto(null)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Remover</Button>}
+                    {currentPhoto && <Button type="button" size="sm" variant="outline" onClick={() => setCropSrc(original ?? currentPhoto)}><Crop className="mr-1.5 h-3.5 w-3.5" />Ajustar</Button>}
+                    {currentPhoto && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => { setPhoto(null); setOriginal(null); }}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Remover</Button>}
                   </div>
                 </div>
+                <PhotoCropper src={cropSrc} open={cropSrc !== null}
+                  onCancel={() => setCropSrc(null)}
+                  onDone={(dataUrl) => { setPhoto(dataUrl); setCropSrc(null); }}
+                  onError={() => { setCropSrc(null); toast.error("Não consegui abrir essa foto para ajustar. Envie a foto de novo."); }} />
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                   onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
               </div>
