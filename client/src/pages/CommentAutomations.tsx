@@ -623,9 +623,10 @@ function CampaignCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isActive = campaign.status === "active";
+  const isScheduled = campaign.status === "scheduled";
 
   return (
-    <div className={`glass-card rounded-2xl overflow-hidden transition-all ${isActive ? "" : "opacity-60"}`}>
+    <div className={`glass-card rounded-2xl overflow-hidden transition-all ${isActive || isScheduled ? "" : "opacity-60"}`}>
       <div className="flex items-start gap-3 p-4">
         {/* Thumbnail */}
         <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-muted border border-border/40">
@@ -646,13 +647,15 @@ function CampaignCard({
               className={`text-[10px] font-semibold px-2 py-0.5 ${
                 isActive
                   ? "border-green-500/40 text-green-600 bg-green-500/5"
-                  : "border-muted-foreground/30 text-muted-foreground"
+                  : isScheduled
+                    ? "border-amber-500/40 text-amber-700 bg-amber-500/5"
+                    : "border-muted-foreground/30 text-muted-foreground"
               }`}
             >
-              {isActive ? "Ativa" : "Pausada"}
+              {isActive ? "Ativa" : isScheduled ? "Aguardando publicação" : "Pausada"}
             </Badge>
             <span className="text-[10px] text-muted-foreground">
-              Post: {campaign.igPostId.slice(0, 12)}…
+              {campaign.igPostId.startsWith("pending:") ? "Liga sozinha quando o post agendado sair" : `Post: ${campaign.igPostId.slice(0, 12)}…`}
             </span>
           </div>
 

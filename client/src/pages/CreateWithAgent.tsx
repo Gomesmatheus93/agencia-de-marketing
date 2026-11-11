@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { CommentAutomationFields, commentAutomationReady, type CommentAutomationValue } from "@/components/CommentAutomationFields";
 import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
 import { ArtEditButton, CaptionEditor } from "@/components/agents/ArtEditor";
@@ -656,6 +657,12 @@ function ReelsEditPanel({ threadId, index, video, defaultHook, onDone }: { threa
 function PublishPanel({ threadId }: { threadId: number }) {
   const [when, setWhen] = useState("");
   const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [automation, setAutomation] = useState<CommentAutomationValue | null>(null);
+  const checkAutomation = () => {
+    if (commentAutomationReady(automation)) return true;
+    toast.error("Preencha a palavra-chave, a resposta pública e a primeira mensagem da automação.");
+    return false;
+  };
   const publish = trpc.agents.publishOutput.useMutation({
     onSuccess: (r) => toast.success(r.status === "published" ? "Publicado no Instagram!" : "Agendado! Ele aparece no Calendário."),
     onError: (e) => toast.error(e.message),
@@ -664,13 +671,14 @@ function PublishPanel({ threadId }: { threadId: number }) {
     <div className="space-y-2 rounded-xl border p-3">
       <p className="text-sm font-semibold">Publicar no Instagram</p>
       <CollaboratorsInput value={collaborators} onChange={setCollaborators} />
+      <CommentAutomationFields value={automation} onChange={setAutomation} />
       <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
         className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
       <div className="flex gap-2">
         <Button size="sm" variant="outline" className="flex-1" disabled={!when || publish.isPending}
-          onClick={() => publish.mutate({ threadId, when: new Date(when).toISOString(), collaborators })}>Agendar</Button>
+          onClick={() => checkAutomation() && publish.mutate({ threadId, when: new Date(when).toISOString(), collaborators, commentAutomation: automation ?? undefined })}>Agendar</Button>
         <Button size="sm" className="flex-1" disabled={publish.isPending}
-          onClick={() => { if (confirm("Publicar agora no Instagram?")) publish.mutate({ threadId, when: null, collaborators }); }}>
+          onClick={() => { if (confirm("Publicar agora no Instagram?")) checkAutomation() && publish.mutate({ threadId, when: null, collaborators, commentAutomation: automation ?? undefined }); }}>
           {publish.isPending ? "Enviando…" : "Postar agora"}
         </Button>
       </div>

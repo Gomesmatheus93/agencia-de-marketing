@@ -1,4 +1,5 @@
 ﻿import { z } from "zod";
+import { createPendingCommentAutomation, lastAutomationTemplate, scheduledCommentAutomationSchema } from "./_core/scheduledCommentAutomation";
 import { collaboratorsSchema, normalizeUsername } from "./_core/instagramCollaborators";
 import { UNAUTHED_ERR_MSG } from "@shared/const";
 import { getHolidaysForYear } from "@shared/holidays";
@@ -3034,6 +3035,7 @@ const postsRouter = router({
           extraImageUrls: z.array(z.string().url()).optional(),
           scheduledAt: scheduledAtInputSchema.optional(),
           collaborators: collaboratorsSchema,
+          commentAutomation: scheduledCommentAutomationSchema,
         })
         .superRefine((value, ctx) => {
           if (value.channel === "instagram" && value.scheduledAt && !value.imageUrl?.trim()) {
@@ -3046,7 +3048,7 @@ const postsRouter = router({
         })
     )
     .mutation(async ({ ctx, input }) => {
-      const { scheduledAt: scheduledAtInput, extraImageUrls, collaborators, ...data } = input;
+      const { scheduledAt: scheduledAtInput, extraImageUrls, collaborators, commentAutomation, ...data } = input;
 
       // Trial users: only Instagram posts, 1 per day. Non-Instagram channels require paid plan.
       if (input.channel !== 'instagram') {
@@ -3079,6 +3081,10 @@ const postsRouter = router({
       const metadata = Object.keys(meta).length ? JSON.stringify(meta) : undefined;
 
       const saved = await db.saveSocialPost(ctx.user.id, { ...data, imageUrl, metadata, scheduledAt });
+      // Automação de comentários: fica esperando e liga sozinha quando o post sair.
+      if (commentAutomation && saved) {
+        await createPendingCommentAutomation(ctx.user.id, saved.id, commentAutomation, { caption: data.content, thumbnailUrl: imageUrl ?? null });
+      }
       return saved;
     }),
 
@@ -4235,6 +4241,9 @@ const commentAutomationsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return db.getCommentAutomations(ctx.user.id);
   }),
+
+  /** Textos sugeridos para a automação de um post agendado (os da última automação). */
+  lastTemplate: protectedProcedure.query(async ({ ctx }) => lastAutomationTemplate(ctx.user.id)),
 
   create: protectedProcedure
     .input(z.object({

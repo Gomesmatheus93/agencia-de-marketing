@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { CommentAutomationFields, commentAutomationReady, type CommentAutomationValue } from "@/components/CommentAutomationFields";
 import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { trpc } from "@/lib/trpc";
 import { useState, useRef } from "react";
@@ -123,6 +124,7 @@ export default function Posts() {
   const [formContent, setFormContent] = useState("");
   const [formScheduledAt, setFormScheduledAt] = useState("");
   const [formCollaborators, setFormCollaborators] = useState<string[]>([]);
+  const [formAutomation, setFormAutomation] = useState<CommentAutomationValue | null>(null);
   const [formImageUrls, setFormImageUrls] = useState<string[]>([]);
   const [formMediaTypes, setFormMediaTypes] = useState<("image" | "video")[]>([]);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
@@ -193,6 +195,7 @@ export default function Posts() {
     setFormContent("");
     setFormScheduledAt("");
     setFormCollaborators([]);
+    setFormAutomation(null);
     setFormImageUrls([]);
     setFormMediaTypes([]);
     setUploadingIdx(null);
@@ -302,6 +305,7 @@ export default function Posts() {
 
   const handleCreate = () => {
     if (!formContent.trim()) { toast.error("O conteúdo é obrigatório"); return; }
+    if (!commentAutomationReady(formAutomation)) { toast.error("Preencha a palavra-chave, a resposta pública e a primeira mensagem da automação."); return; }
     const imageUrls = formImageUrls.filter(Boolean);
     createMutation.mutate({
       channel: activeChannel,
@@ -311,6 +315,7 @@ export default function Posts() {
       imageUrl: imageUrls[0] || undefined,
       extraImageUrls: imageUrls.slice(1),
       collaborators: formCollaborators,
+      commentAutomation: formAutomation ?? undefined,
     });
   };
 
@@ -698,6 +703,7 @@ export default function Posts() {
                   </div>
 
                   <CollaboratorsInput value={formCollaborators} onChange={setFormCollaborators} />
+                  <CommentAutomationFields value={formAutomation} onChange={setFormAutomation} />
 
                   {/* Schedule */}
                   <div>

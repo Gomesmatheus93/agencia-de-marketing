@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { createPendingCommentAutomation, scheduledCommentAutomationSchema } from "../_core/scheduledCommentAutomation";
 import { collaboratorsSchema } from "../_core/instagramCollaborators";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -152,7 +153,7 @@ export const agentsRouter = router({
   /** O que já foi criado para cada pauta do plano: capa, quantidade de artes e vídeo. */
   /** Agenda (when = data ISO) ou publica agora (when = null) um carrossel/post já criado. */
   publishOutput: protectedProcedure
-    .input(z.object({ threadId: z.number().int(), when: z.string().nullable(), collaborators: collaboratorsSchema }))
+    .input(z.object({ threadId: z.number().int(), when: z.string().nullable(), collaborators: collaboratorsSchema, commentAutomation: scheduledCommentAutomationSchema }))
     .mutation(async ({ ctx, input }) => {
       const thread = await ownThread(ctx.user.id, input.threadId);
       const r = thread.result as Record<string, any> | null;
@@ -180,6 +181,13 @@ export const agentsRouter = router({
           : input.collaborators?.length ? JSON.stringify({ collaborators: input.collaborators }) : undefined,
         scheduledAt,
       });
+
+      // Automação de comentários: fica esperando e liga sozinha quando o post sair.
+      if (input.commentAutomation) {
+        await createPendingCommentAutomation(ctx.user.id, post.id, input.commentAutomation, {
+          caption: r.title ?? caption, thumbnailUrl: isCarousel ? r.slides[0].imageUrl : r.imageUrl,
+        });
+      }
 
       if (!scheduledAt) {
         const { result, publicImageUrl } = await publishInstagramSocialPost(post);

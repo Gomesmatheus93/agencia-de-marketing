@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { CommentAutomationFields, commentAutomationReady, type CommentAutomationValue } from "@/components/CommentAutomationFields";
 import { CollaboratorsInput } from "@/components/CollaboratorsInput";
 import { useLocation } from "wouter";
 import type { ContentPrefill } from "@/lib/contentPrefill";
@@ -591,6 +592,7 @@ function CreatePostDialog({
   const [displayImageUrl, setDisplayImageUrl] = useState(initialImageDataUrl ?? "");
   const [requireApproval, setRequireApproval] = useState(false);
   const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [automation, setAutomation] = useState<CommentAutomationValue | null>(null);
   const [scheduledAt, setScheduledAt] = useState(() => {
     const base = prefillDate ?? new Date();
     const d = new Date(base);
@@ -665,12 +667,17 @@ function CreatePostDialog({
       toast.error("Gere ou adicione uma imagem antes de continuar.");
       return;
     }
+    if (!commentAutomationReady(automation)) {
+      toast.error("Preencha a palavra-chave, a resposta pública e a primeira mensagem da automação.");
+      return;
+    }
     createMutation.mutate({
       channel,
       content: content.trim(),
       imageUrl,
       scheduledAt,
       collaborators,
+      commentAutomation: automation ?? undefined,
     });
   }
 
@@ -806,6 +813,7 @@ function CreatePostDialog({
           </div>
 
           <CollaboratorsInput value={collaborators} onChange={setCollaborators} />
+          <CommentAutomationFields value={automation} onChange={setAutomation} />
 
           {/* Scheduled date */}
           <div className="space-y-1.5">

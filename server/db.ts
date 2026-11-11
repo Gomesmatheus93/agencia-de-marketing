@@ -1253,6 +1253,35 @@ export async function updateSocialPost(
   await db.update(socialPosts).set(data).where(
     and(eq(socialPosts.id, id), eq(socialPosts.userId, userId))
   );
+  // Publicou (ganhou o ID do Instagram): liga a automação de comentários que estava esperando.
+  if (data.igMediaId) {
+    try {
+      await activatePendingCommentAutomations(id, data.igMediaId, data.imageUrl ?? null);
+    } catch (err) {
+      console.error(`[CommentAutomations] erro ao ativar automação do post ${id}:`, err);
+    }
+  }
+}
+
+/**
+ * Automações gravadas no agendamento ficam com igPostId = "pending:<id da postagem>" e
+ * status "scheduled". Ao publicar, recebem o ID real do Instagram e passam a "active"
+ * (as que a equipe pausou antes de publicar continuam pausadas).
+ */
+export async function activatePendingCommentAutomations(socialPostId: number, igMediaId: string, thumbnailUrl?: string | null) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ id: commentAutomations.id, status: commentAutomations.status, thumb: commentAutomations.postThumbnailUrl })
+    .from(commentAutomations).where(eq(commentAutomations.igPostId, `pending:${socialPostId}`));
+  for (const r of rows) {
+    await db.update(commentAutomations).set({
+      igPostId: igMediaId,
+      status: r.status === "paused" ? "paused" : "active",
+      postThumbnailUrl: r.thumb ?? thumbnailUrl ?? null,
+    }).where(eq(commentAutomations.id, r.id));
+  }
+  if (rows.length) console.log(`[CommentAutomations] ${rows.length} automação(ões) ativada(s) para o post ${socialPostId} → ${igMediaId}`);
+  return rows.length;
 }
 
 export async function deleteSocialPost(id: number, userId: number) {
@@ -2243,12 +2272,17 @@ export async function createCommentAutomation(
   return hydrateAutomation((rows[0] as unknown as Record<string, unknown>[])[0]);
 }
 
-export async function toggleCommentAutomationStatus(id: number, userId: number): Promise<'active' | 'paused'> {
+export async function toggleCommentAutomationStatus(id: number, userId: number): Promise<'active' | 'paused' | 'scheduled'> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const rows = await execute(db, sql`SELECT status FROM comment_automations WHERE id = ${id} AND "userId" = ${userId} LIMIT 1`);
-  const current = ((rows[0] as unknown as Record<string, unknown>[])[0])?.status as string ?? 'active';
-  const next = current === 'active' ? 'paused' : 'active';
+  const rows = await execute(db, sql`SELECT status, "igPostId" FROM comment_automations WHERE id = ${id} AND "userId" = ${userId} LIMIT 1`);
+  const row = (rows[0] as unknown as Record<string, unknown>[])[0];
+  const current = row?.status as string ?? 'active';
+  // Ainda aguardando publicação: alterna entre "aguardando" e "pausada" (não fica "ativa" sem post).
+  const pending = String(row?.igPostId ?? "").startsWith("pending:");
+  const next = pending
+    ? (current === 'paused' ? 'scheduled' : 'paused')
+    : (current === 'active' ? 'paused' : 'active');
   await execute(db, sql`UPDATE comment_automations SET status = ${next} WHERE id = ${id} AND "userId" = ${userId}`);
   return next;
 }

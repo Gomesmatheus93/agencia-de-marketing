@@ -39,6 +39,8 @@ async function publishDueInstagramPosts() {
         publishedAt: new Date(),
         imageUrl: publicImageUrl,
         errorMessage: null,
+        // Sem o ID, métricas e a automação de comentários agendada não acham o post.
+        igMediaId: result.mediaId ?? null,
       });
       console.log(`${tag} Published successfully. mediaId=${result.mediaId} slides=${result.slideUrls.length}`);
     } catch (error) {
