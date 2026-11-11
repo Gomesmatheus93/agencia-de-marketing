@@ -1,0 +1,1 @@
+ALTER TABLE "dm_auto_reply_settings" ADD COLUMN "flowEnabled" boolean DEFAULT false NOT NULL;

@@ -1096,6 +1096,8 @@ export const dmAutoReplySettings = pgTable("dm_auto_reply_settings", {
   fallbackEnabled: boolean("fallbackEnabled").default(true).notNull(),
   fallbackMessage: text("fallbackMessage"),
   rules: json("rules").$type<DmAutoRule[]>().notNull(),
+  // Fluxo em etapas (script da Ane): pergunta o valor da conta e encaminha ao WhatsApp.
+  flowEnabled: boolean("flowEnabled").default(false).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 

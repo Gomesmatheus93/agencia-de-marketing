@@ -5,12 +5,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Rule = { id: string; keywords: string[]; reply: string; active: boolean };
-type Form = { enabled: boolean; whatsappLink: string; fallbackEnabled: boolean; fallbackMessage: string; rules: Rule[] };
+type Form = { enabled: boolean; whatsappLink: string; fallbackEnabled: boolean; fallbackMessage: string; rules: Rule[]; flowEnabled: boolean };
 
 /** Configuração das respostas automáticas do Direct (por palavra-chave, sem IA). */
 export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -24,7 +24,8 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   useEffect(() => {
     if (!settings.data || !open) return;
-    setForm(settings.data);
+    const { defaults: _d, ...data } = settings.data;
+    setForm(data);
     setKeywordText(Object.fromEntries(settings.data.rules.map((r) => [r.id, r.keywords.join(", ")])));
   }, [settings.data, open]);
 
@@ -35,6 +36,26 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
     const id = `regra-${Date.now()}`;
     setForm((f) => f && { ...f, rules: [...f.rules, { id, keywords: [], reply: "", active: true }] });
     setKeywordText((k) => ({ ...k, [id]: "" }));
+  };
+
+  const moveRule = (index: number, delta: number) =>
+    setForm((f) => {
+      if (!f) return f;
+      const rules = [...f.rules];
+      const to = index + delta;
+      if (to < 0 || to >= rules.length) return f;
+      [rules[index], rules[to]] = [rules[to], rules[index]];
+      return { ...f, rules };
+    });
+
+  // Troca regras e resposta padrão pelas do script da Ane (só no formulário; vale ao salvar).
+  const useScriptDefaults = () => {
+    const d = settings.data?.defaults;
+    if (!d || !form) return;
+    if (!confirm("Trocar todas as regras e a resposta padrão pelas respostas do script da Ane? As regras atuais serão substituídas quando você salvar.")) return;
+    setForm({ ...form, rules: d.rules, fallbackMessage: d.fallbackMessage });
+    setKeywordText(Object.fromEntries(d.rules.map((r) => [r.id, r.keywords.join(", ")])));
+    toast.info("Respostas do script carregadas. Revise e clique em Salvar.");
   };
 
   const submit = () => {
@@ -67,6 +88,16 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
               <Switch checked={form.enabled} onCheckedChange={(v) => setForm({ ...form, enabled: v })} />
             </label>
 
+            <label className="flex items-center justify-between gap-3 rounded-2xl border p-4">
+              <span>
+                <span className="block text-sm font-semibold">Fluxo em etapas (script da Ane)</span>
+                <span className="block text-xs text-muted-foreground">
+                  A Ane pergunta o valor aproximado da conta de luz. Acima de R$ 200, diz que a pessoa pode ter desconto e manda para o WhatsApp; abaixo, avisa o mínimo; acima de R$ 3.000, confirma o valor. Depois de responder uma dúvida, ela retoma a pergunta do valor.
+                </span>
+              </span>
+              <Switch checked={form.flowEnabled} onCheckedChange={(v) => setForm({ ...form, flowEnabled: v })} />
+            </label>
+
             <div className="space-y-1.5">
               <p className="text-sm font-semibold">Link do WhatsApp da Ane</p>
               <Input value={form.whatsappLink} onChange={(e) => setForm({ ...form, whatsappLink: e.target.value })} placeholder="https://wa.me/55..." />
@@ -75,10 +106,16 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold">Regras por palavra-chave</p>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={addRule}><Plus className="h-3.5 w-3.5" />Nova regra</Button>
+                <div>
+                  <p className="text-sm font-semibold">Regras por palavra-chave</p>
+                  <p className="text-xs text-muted-foreground">Vale a primeira regra que bater, de cima para baixo: deixe as mais específicas em cima.</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="ghost" className="gap-1.5" onClick={useScriptDefaults}><RotateCcw className="h-3.5 w-3.5" />Usar script da Ane</Button>
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={addRule}><Plus className="h-3.5 w-3.5" />Nova regra</Button>
+                </div>
               </div>
-              {form.rules.map((r) => (
+              {form.rules.map((r, i) => (
                 <div key={r.id} className={cn("space-y-2 rounded-2xl border p-4", !r.active && "opacity-60")}>
                   <div className="flex items-center gap-2">
                     <Input
@@ -87,6 +124,8 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
                       placeholder="Palavras-chave separadas por vírgula (ex.: preço, desconto, quanto)"
                       className="flex-1"
                     />
+                    <button type="button" onClick={() => moveRule(i, -1)} disabled={i === 0} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Subir regra"><ArrowUp className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => moveRule(i, 1)} disabled={i === form.rules.length - 1} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Descer regra"><ArrowDown className="h-4 w-4" /></button>
                     <Switch checked={r.active} onCheckedChange={(v) => setRule(r.id, { active: v })} aria-label="Regra ativa" />
                     <button type="button" onClick={() => setForm({ ...form, rules: form.rules.filter((x) => x.id !== r.id) })} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Apagar regra">
                       <Trash2 className="h-4 w-4" />
