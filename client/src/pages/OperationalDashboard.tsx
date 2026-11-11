@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight, CalendarCheck2, CalendarRange, Clock3, Crown, Eye, FileText, Heart, Lock, MessageCircle, Plus, Send, Users,
+  FileDown,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -193,6 +194,7 @@ export default function OperationalDashboard() {
                   </button>
                 ))}
               </div>
+              <Button variant="outline" asChild><Link href={`/dashboard/relatorio?mes=${today.slice(0, 7)}`}><FileDown className="mr-2 h-4 w-4" />Exportar relatório</Link></Button>
               <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />{view === "mes" ? "Planejar o mês" : "Planejar a semana"}</Link></Button>
             </div>
           </header>

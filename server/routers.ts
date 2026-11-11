@@ -4056,11 +4056,21 @@ const analyticsRouter = router({
   }),
 
   getInsights: protectedProcedure
-    .input(z.object({ days: z.number().int().min(7).max(90).default(30) }))
+    .input(z.object({
+      days: z.number().int().min(7).max(90).default(30),
+      // Período exato (relatório do mês). A Meta aceita no máximo 30 dias entre since e until.
+      start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }))
     .query(async ({ ctx, input }) => {
       const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
-      const until = Math.floor(Date.now() / 1000);
-      const since = until - input.days * 86400;
+      let until = Math.floor(Date.now() / 1000);
+      let since = until - input.days * 86400;
+      if (input.start && input.end) {
+        const brMidnight = (d: string) => { const [y, m, dd] = d.split("-").map(Number); return Date.UTC(y, m - 1, dd, 3) / 1000; };
+        until = Math.min(brMidnight(input.end) + 86400, Math.floor(Date.now() / 1000));
+        since = Math.max(brMidnight(input.start), until - 30 * 86400);
+      }
       // A Meta descontinuou impressions, phone_call_clicks, get_directions_clicks, email_contacts e
       // text_message_clicks. reach e follower_count vêm por dia; as demais só como total do período
       // (metric_type=total_value) — pedidas "por dia" elas davam erro e apareciam vazias.

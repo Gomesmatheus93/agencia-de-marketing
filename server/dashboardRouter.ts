@@ -1,6 +1,6 @@
 import { and, eq, gte, lt, or } from "drizzle-orm";
 import { z } from "zod";
-import { socialPosts } from "../drizzle/schema";
+import { dmAutoReplyLog, dmAutoReplySettings, socialPosts } from "../drizzle/schema";
 import { protectedProcedure, router } from "./_core/trpc";
 import * as store from "./agents/store";
 import * as db from "./db";
@@ -54,7 +54,7 @@ export const dashboardRouter = router({
       const start = brMidnight(input.start);
       const end = new Date(brMidnight(input.end).getTime() + 86_400_000);
       const conn = await db.getDb();
-      const posts = conn ? await conn.select({ status: socialPosts.status, scheduledAt: socialPosts.scheduledAt, publishedAt: socialPosts.publishedAt, title: socialPosts.title })
+      const posts = conn ? await conn.select({ status: socialPosts.status, scheduledAt: socialPosts.scheduledAt, publishedAt: socialPosts.publishedAt, title: socialPosts.title, metadata: socialPosts.metadata, errorMessage: socialPosts.errorMessage, igMediaId: socialPosts.igMediaId })
         .from(socialPosts)
         .where(and(eq(socialPosts.userId, ctx.user.id), or(
           and(gte(socialPosts.scheduledAt, start), lt(socialPosts.scheduledAt, end)),
@@ -64,8 +64,25 @@ export const dashboardRouter = router({
       const next = posts.filter((p) => p.status === "scheduled" && p.scheduledAt && +p.scheduledAt > now)
         .sort((a, b) => +a.scheduledAt! - +b.scheduledAt!)[0];
 
+      // Atendimento automático no período: respostas no Direct (todas as contas da empresa) e cliques no link curto (total).
+      const ig = await db.getInstagramConnection(ctx.user.id);
+      const dmReplies = conn && ig?.instagramAccountId
+        ? (await conn.select({ id: dmAutoReplyLog.id }).from(dmAutoReplyLog)
+            .where(and(eq(dmAutoReplyLog.igAccountId, ig.instagramAccountId), gte(dmAutoReplyLog.sentAt, start), lt(dmAutoReplyLog.sentAt, end)))).length
+        : 0;
+      const [dm] = conn ? await conn.select({ clicks: dmAutoReplySettings.linkClicks, slug: dmAutoReplySettings.shortSlug }).from(dmAutoReplySettings).where(eq(dmAutoReplySettings.userId, ctx.user.id)) : [];
+
       return {
         items,
+        dmReplies,
+        shortLink: dm?.slug ? { slug: dm.slug, clicks: dm.clicks } : null,
+        postList: posts
+          .map((p) => {
+            let collaborators: string[] = [];
+            try { collaborators = (JSON.parse(p.metadata ?? "{}") as { collaborators?: string[] }).collaborators ?? []; } catch { /* metadata antigo */ }
+            return { title: p.title, status: p.status, scheduledAt: p.scheduledAt, publishedAt: p.publishedAt, igMediaId: p.igMediaId, errorMessage: p.errorMessage, collaborators };
+          })
+          .sort((a, b) => +(a.publishedAt ?? a.scheduledAt ?? 0) - +(b.publishedAt ?? b.scheduledAt ?? 0)),
         posts: {
           published: posts.filter((p) => p.status === "published").length,
           scheduled: posts.filter((p) => p.status === "scheduled").length,
