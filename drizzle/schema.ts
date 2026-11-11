@@ -1098,6 +1098,9 @@ export const dmAutoReplySettings = pgTable("dm_auto_reply_settings", {
   rules: json("rules").$type<DmAutoRule[]>().notNull(),
   // Fluxo em etapas (script da Ane): pergunta o valor da conta e encaminha ao WhatsApp.
   flowEnabled: boolean("flowEnabled").default(false).notNull(),
+  // Link curto do WhatsApp no domínio da plataforma: /wa/<shortSlug> (ex.: /wa/ane).
+  shortSlug: varchar("shortSlug", { length: 40 }).unique(),
+  linkClicks: integer("linkClicks").default(0).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 

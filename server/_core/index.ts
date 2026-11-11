@@ -22,7 +22,7 @@ import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
 import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
-import { handleIncomingDm } from "../dmAutoReply";
+import { handleIncomingDm, resolveShortLink } from "../dmAutoReply";
 import { notifyInboxActivity } from "../inboxRouter";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
@@ -784,6 +784,25 @@ async function startServer() {
     } catch (err) {
       console.error("[dm-received] erro:", err);
       res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Link curto do WhatsApp (ex.: /wa/ane) → link configurado no robô do Direct.
+  // Robôs de prévia (Instagram/Facebook/WhatsApp) não contam como clique.
+  app.get("/wa/:slug", async (req, res) => {
+    try {
+      const ua = String(req.headers["user-agent"] ?? "");
+      const isBot = /facebookexternalhit|facebot|whatsapp\/|bot\b|crawler|spider|preview/i.test(ua);
+      const url = await resolveShortLink(String(req.params.slug).toLowerCase(), !isBot);
+      res.set("Cache-Control", "no-store");
+      if (!url) {
+        res.status(404).type("text/plain").send("Link não encontrado.");
+        return;
+      }
+      res.redirect(302, url);
+    } catch (err) {
+      console.error("[wa] erro no link curto:", err);
+      res.status(500).type("text/plain").send("Erro ao abrir o link.");
     }
   });
 

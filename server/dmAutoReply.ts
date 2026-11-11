@@ -1,7 +1,8 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dmAutoReplyLog, dmAutoReplySettings, type DmAutoRule } from "../drizzle/schema";
+import { ENV } from "./_core/env";
 import { protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -114,6 +115,39 @@ const FLOW = {
   confirm: (v: string) => `Opa, esse valor parece bem alto! Só pra confirmar: a sua conta vem mesmo em torno de ${v}? Ou pode ter sido um erro de digitação?\n\nMe confirma o valor correto 💚`,
 };
 
+// ─── Link curto do WhatsApp (/wa/<apelido>) ─────────────────────────────────
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
+const WHATSAPP_HOSTS = new Set(["wa.me", "api.whatsapp.com", "whatsapp.com", "www.whatsapp.com"]);
+
+/** Só aceita destino do WhatsApp: o link curto nunca pode virar redirecionamento para outro site. */
+export function isWhatsappUrl(value: string) {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" && WHATSAPP_HOSTS.has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+const shortLinkOf = (slug: string) => `${ENV.appBaseUrl.replace(/\/+$/, "")}/wa/${slug}`;
+
+/**
+ * Destino do link curto. Conta o clique quando `countClick` (não conta robôs de prévia).
+ * Devolve null se o apelido não existir ou o link do WhatsApp não for válido.
+ */
+export async function resolveShortLink(slug: string, countClick: boolean) {
+  if (!SLUG_RE.test(slug)) return null;
+  const conn = await db.getDb();
+  if (!conn) return null;
+  const [row] = await conn.select({ id: dmAutoReplySettings.id, whatsappLink: dmAutoReplySettings.whatsappLink })
+    .from(dmAutoReplySettings).where(eq(dmAutoReplySettings.shortSlug, slug));
+  if (!row?.whatsappLink || !isWhatsappUrl(row.whatsappLink)) return null;
+  if (countClick) {
+    await conn.update(dmAutoReplySettings).set({ linkClicks: sql`${dmAutoReplySettings.linkClicks} + 1` }).where(eq(dmAutoReplySettings.id, row.id));
+  }
+  return row.whatsappLink;
+}
+
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /** Minúsculas e sem acentos, para comparar palavras-chave. */
@@ -224,7 +258,8 @@ export async function handleIncomingDm(input: { igAccountId: string; senderId: s
   if ("skip" in decision) return { sent: false, reason: decision.skip, ruleKey: decision.ruleKey };
 
   // Envia pela página (igual à segunda DM) e registra as chaves (regra e/ou etapa do fluxo).
-  const link = settings.whatsappLink?.trim() || "pelo link da bio";
+  // Com apelido, as respostas usam o link curto do domínio da Alle (conta os cliques).
+  const link = settings.shortSlug && settings.whatsappLink ? shortLinkOf(settings.shortSlug) : settings.whatsappLink?.trim() || "pelo link da bio";
   const body = decision.message.split(LINK).join(link).slice(0, 1000);
   const from = igConnection.facebookPageId ?? igConnection.instagramAccountId ?? input.igAccountId;
   const res = await fetch(`https://graph.facebook.com/v25.0/${from}/messages?access_token=${encodeURIComponent(igConnection.accessToken)}`, {
@@ -259,6 +294,9 @@ export const dmAutoReplyRouter = router({
       fallbackMessage: row?.fallbackMessage ?? DEFAULT_FALLBACK,
       rules: row?.rules?.length ? row.rules : DEFAULT_RULES,
       flowEnabled: row?.flowEnabled ?? false,
+      shortSlug: row?.shortSlug ?? "",
+      shortBase: shortLinkOf(""),
+      linkClicks: row?.linkClicks ?? 0,
       // Para o botão "Usar as respostas do script da Ane" na tela.
       defaults: { rules: DEFAULT_RULES, fallbackMessage: DEFAULT_FALLBACK },
     };
@@ -267,7 +305,10 @@ export const dmAutoReplyRouter = router({
   save: protectedProcedure
     .input(z.object({
       enabled: z.boolean(),
-      whatsappLink: z.string().trim().max(500).refine((v) => !v || /^https:\/\//i.test(v), "Use um link que comece com https://"),
+      whatsappLink: z.string().trim().max(500).refine((v) => !v || isWhatsappUrl(v), "Use um link do WhatsApp (https://wa.me/... ou https://api.whatsapp.com/...)."),
+      shortSlug: z.string().trim().toLowerCase().max(40)
+        .refine((v) => !v || SLUG_RE.test(v), "Apelido: só letras minúsculas, números e hífen (ex.: ane).")
+        .default(""),
       fallbackEnabled: z.boolean(),
       fallbackMessage: z.string().trim().min(1).max(1000),
       rules: z.array(ruleSchema).max(30),
@@ -276,7 +317,11 @@ export const dmAutoReplyRouter = router({
     .mutation(async ({ ctx, input }) => {
       const conn = await db.getDb();
       if (!conn) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
-      const values = { ...input, whatsappLink: input.whatsappLink || null };
+      const values = { ...input, whatsappLink: input.whatsappLink || null, shortSlug: input.shortSlug || null };
+      if (values.shortSlug) {
+        const [taken] = await conn.select({ userId: dmAutoReplySettings.userId }).from(dmAutoReplySettings).where(eq(dmAutoReplySettings.shortSlug, values.shortSlug));
+        if (taken && taken.userId !== ctx.user.id) throw new TRPCError({ code: "CONFLICT", message: "Esse apelido já está em uso. Escolha outro." });
+      }
       await conn.insert(dmAutoReplySettings).values({ userId: ctx.user.id, ...values })
         .onConflictDoUpdate({ target: dmAutoReplySettings.userId, set: values });
       return { ok: true };

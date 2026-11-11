@@ -5,12 +5,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { ArrowDown, ArrowUp, Bot, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Copy, Link2, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Rule = { id: string; keywords: string[]; reply: string; active: boolean };
-type Form = { enabled: boolean; whatsappLink: string; fallbackEnabled: boolean; fallbackMessage: string; rules: Rule[]; flowEnabled: boolean };
+type Form = { enabled: boolean; whatsappLink: string; fallbackEnabled: boolean; fallbackMessage: string; rules: Rule[]; flowEnabled: boolean; shortSlug: string };
 
 /** Configuração das respostas automáticas do Direct (por palavra-chave, sem IA). */
 export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -24,7 +24,7 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   useEffect(() => {
     if (!settings.data || !open) return;
-    const { defaults: _d, ...data } = settings.data;
+    const { defaults: _d, shortBase: _b, linkClicks: _c, ...data } = settings.data;
     setForm(data);
     setKeywordText(Object.fromEntries(settings.data.rules.map((r) => [r.id, r.keywords.join(", ")])));
   }, [settings.data, open]);
@@ -102,6 +102,32 @@ export function DmAutoReplyDialog({ open, onOpenChange }: { open: boolean; onOpe
               <p className="text-sm font-semibold">Link do WhatsApp da Ane</p>
               <Input value={form.whatsappLink} onChange={(e) => setForm({ ...form, whatsappLink: e.target.value })} placeholder="https://wa.me/55..." />
               <p className="text-xs text-muted-foreground">Entra no lugar de <code>{"{link}"}</code> nas respostas. Sem link, o texto diz "pelo link da bio".</p>
+            </div>
+
+            <div className="space-y-1.5 rounded-2xl border p-4">
+              <p className="flex items-center gap-1.5 text-sm font-semibold"><Link2 className="h-4 w-4 text-primary" />Link curto com o domínio da Alle</p>
+              <div className="flex items-center gap-0 overflow-hidden rounded-md border bg-muted/40 focus-within:ring-2 focus-within:ring-ring/30">
+                <span className="shrink-0 truncate px-3 text-xs text-muted-foreground">{settings.data?.shortBase}</span>
+                <input
+                  value={form.shortSlug}
+                  onChange={(e) => setForm({ ...form, shortSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
+                  placeholder="ane"
+                  maxLength={40}
+                  className="h-9 min-w-0 flex-1 bg-background px-2 text-sm outline-none"
+                />
+              </div>
+              {settings.data?.shortSlug && settings.data.shortSlug === form.shortSlug ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-medium text-foreground">{settings.data.shortBase}{settings.data.shortSlug}</span>
+                  <button type="button" className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-primary hover:bg-primary/10"
+                    onClick={() => { navigator.clipboard.writeText(`${settings.data!.shortBase}${settings.data!.shortSlug}`).then(() => toast.success("Link copiado!")).catch(() => toast.error("Não consegui copiar.")); }}>
+                    <Copy className="h-3 w-3" />copiar
+                  </button>
+                  <span className="text-muted-foreground">· {settings.data.linkClicks} {settings.data.linkClicks === 1 ? "clique" : "cliques"}</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Com um apelido (ex.: <code>ane</code>), as respostas usam o link curto no lugar do link do WhatsApp, e os cliques são contados. Também dá para usar na bio e nos stories.</p>
+              )}
             </div>
 
             <div className="space-y-3">
