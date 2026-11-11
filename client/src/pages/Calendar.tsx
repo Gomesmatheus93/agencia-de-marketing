@@ -2216,26 +2216,6 @@ export default function Calendar() {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            {plan === "agency" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2 font-medium border-violet-500/40 text-violet-700 dark:text-violet-300 hover:bg-violet-500/10"
-                onClick={() => setShowPlanWizard(true)}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                {t("planMonthBtn")}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2 font-medium border-primary/30 text-primary hover:bg-primary/10"
-              onClick={() => { setCampaignDate(selectedDate ?? today); setShowCampaignDialog(true); }}
-            >
-              <Wand2 className="w-4 h-4" />
-              Campanha completa
-            </Button>
             <Button
               size="sm"
               className="gap-2 font-medium"
