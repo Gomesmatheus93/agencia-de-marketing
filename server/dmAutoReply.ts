@@ -209,6 +209,9 @@ export async function handleIncomingDm(input: { igAccountId: string; senderId: s
   if (!igConnection?.accessToken) return { sent: false, reason: "no_connection" };
   const settings = await loadSettings(igConnection.userId);
   if (!settings?.enabled) return { sent: false, reason: "disabled" };
+  // Sem texto não é mensagem para responder: "visualizado", "entregue", reação, eco… (ou o
+  // n8n não está mandando o campo "text"). Responder isso repetia perguntas sozinho.
+  if (!input.text.trim()) return { sent: false, reason: "no_text" };
   const conn = await db.getDb();
   if (!conn) return { sent: false, reason: "no_db" };
 
