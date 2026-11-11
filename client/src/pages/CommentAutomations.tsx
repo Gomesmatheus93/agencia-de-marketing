@@ -812,21 +812,6 @@ export default function CommentAutomations() {
           </div>
         </div>
 
-        {/* How it works banner */}
-        <div className="glass-card rounded-2xl px-4 py-3 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shrink-0">
-            <MessageCircle className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-foreground">Como funciona</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Quando alguém comentar a palavra-chave no post vinculado, o n8n recebe o webhook do Instagram,
-              consulta <code className="bg-muted rounded px-1">/api/automations/match-comment</code> e dispara
-              automaticamente a resposta pública e a DM configuradas aqui.
-            </p>
-          </div>
-        </div>
-
         {/* List */}
         {listQuery.isLoading ? (
           <div className="flex items-center justify-center h-40 gap-2 text-muted-foreground">

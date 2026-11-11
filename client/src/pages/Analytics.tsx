@@ -71,22 +71,22 @@ function fmtDate(iso: string) {
 type InsightMetric = {
   metric: string;
   values: Array<{ value: number; end_time: string }>;
+  total?: number | null;
 };
 
+/** Total do período: vem pronto (metric_type=total_value) ou é a soma da série diária. */
 function sumMetric(insights: InsightMetric[], name: string) {
-  return insights.find((m) => m.metric === name)?.values.reduce((s, v) => s + v.value, 0) ?? 0;
+  const m = insights.find((x) => x.metric === name);
+  if (!m) return 0;
+  return m.total ?? m.values.reduce((s, v) => s + v.value, 0);
 }
 
 function buildChartData(insights: InsightMetric[]) {
   const reach = insights.find((m) => m.metric === "reach")?.values ?? [];
-  const impressions = insights.find((m) => m.metric === "impressions")?.values ?? [];
-  const profileViews = insights.find((m) => m.metric === "profile_views")?.values ?? [];
 
   return reach.map((r, i) => ({
     date: fmtDate(r.end_time),
     Alcance: r.value,
-    Impressões: impressions[i]?.value ?? 0,
-    "Visitas ao Perfil": profileViews[i]?.value ?? 0,
   }));
 }
 
@@ -260,7 +260,7 @@ function PostCard({
               <Metric icon={Clock} label="Tempo médio (s)" value={Math.round((post.insights.avgWatchTimeMs ?? 0) / 1000)} />
             </>
           ) : (
-            <Metric icon={TrendingUp} label="Impressões" value={post.insights.impressions ?? 0} />
+            <Metric icon={TrendingUp} label="Visualizações" value={post.insights.views ?? 0} />
           )}
           <Metric icon={Share2} label="Compart." value={post.insights.shares ?? 0} />
         </div>
@@ -471,12 +471,10 @@ function InstagramTab() {
   const profile = profileQuery.data;
   const chartData = buildChartData(insights);
   const totalReach = sumMetric(insights, "reach");
-  const totalImpressions = sumMetric(insights, "impressions");
+  const totalViews = sumMetric(insights, "views");
   const totalProfileViews = sumMetric(insights, "profile_views");
   const followerChange = sumMetric(insights, "follower_count");
   const totalWebsiteClicks = sumMetric(insights, "website_clicks");
-  const totalPhoneClicks = sumMetric(insights, "phone_call_clicks");
-  const totalDirectionsClicks = sumMetric(insights, "get_directions_clicks");
   const totalInteractions = sumMetric(insights, "total_interactions");
   const totalAccountsEngaged = sumMetric(insights, "accounts_engaged");
 
@@ -871,11 +869,11 @@ function InstagramTab() {
                   sub="Últimos 30 dias"
                 />
                 <KpiCard
-                  label="Impressões"
-                  value={fmt(totalImpressions)}
+                  label="Visualizações"
+                  value={fmt(totalViews)}
                   icon={TrendingUp}
                   accentClass="bg-gradient-to-br from-orange-500 to-rose-500"
-                  isEmpty={totalImpressions === 0}
+                  isEmpty={totalViews === 0}
                   sub="Últimos 30 dias"
                 />
                 <KpiCard
@@ -891,9 +889,9 @@ function InstagramTab() {
           </div>
 
           {/* ── Profile Action KPI Cards ─────────────────────────── */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
+              Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-2xl border border-border/40 bg-background/80 p-5">
                   <Skeleton className="h-2.5 w-20" />
                   <Skeleton className="mt-2 h-8 w-16" />
@@ -908,22 +906,6 @@ function InstagramTab() {
                   icon={ExternalLink}
                   accentClass="bg-gradient-to-br from-alle-purple to-alle-purple-light"
                   isEmpty={totalWebsiteClicks === 0}
-                  sub="Últimos 30 dias"
-                />
-                <KpiCard
-                  label="Ligações"
-                  value={fmt(totalPhoneClicks)}
-                  icon={Phone}
-                  accentClass="bg-gradient-to-br from-emerald-500 to-teal-600"
-                  isEmpty={totalPhoneClicks === 0}
-                  sub="Últimos 30 dias"
-                />
-                <KpiCard
-                  label="Direções"
-                  value={fmt(totalDirectionsClicks)}
-                  icon={MapPin}
-                  accentClass="bg-gradient-to-br from-amber-500 to-orange-600"
-                  isEmpty={totalDirectionsClicks === 0}
                   sub="Últimos 30 dias"
                 />
                 <KpiCard
@@ -948,9 +930,9 @@ function InstagramTab() {
 
           {/* ── Charts ───────────────────────────────────────────── */}
           <div className="grid gap-4 lg:grid-cols-3">
-            {/* Area chart — Alcance & Impressões */}
-            <div className="rounded-2xl border border-border/40 bg-background/80 p-5 lg:col-span-2">
-              <p className="mb-1 text-sm font-bold text-foreground">Alcance e Impressões</p>
+            {/* Area chart — Alcance por dia (única métrica que a Meta ainda manda por dia) */}
+            <div className="rounded-2xl border border-border/40 bg-background/80 p-5 lg:col-span-3">
+              <p className="mb-1 text-sm font-bold text-foreground">Alcance por dia</p>
               <p className="mb-4 text-[11px] text-muted-foreground/60">Últimos 30 dias</p>
               {isLoading ? (
                 <Skeleton className="h-56 w-full rounded-xl" />
@@ -963,45 +945,17 @@ function InstagramTab() {
                 <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <defs>
-                      {(["Alcance", "Impressões"] as const).map((key) => (
-                        <linearGradient key={key} id={`grad-ig-${key}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={CHART_COLORS[key]} stopOpacity={0.3} />
-                          <stop offset="95%" stopColor={CHART_COLORS[key]} stopOpacity={0} />
-                        </linearGradient>
-                      ))}
+                      <linearGradient id="grad-ig-Alcance" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={CHART_COLORS.Alcance} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={CHART_COLORS.Alcance} stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="0" stroke="hsl(var(--border))" opacity={0.25} vertical={false} />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }} tickLine={false} axisLine={false} interval={tickInterval} />
                     <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }} tickLine={false} axisLine={false} tickFormatter={fmt} />
                     <Tooltip content={<ChartTooltip />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
-                    {(["Alcance", "Impressões"] as const).map((key) => (
-                      <Area key={key} type="monotone" dataKey={key} stroke={CHART_COLORS[key]} strokeWidth={2} fill={`url(#grad-ig-${key})`} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                    ))}
+                    <Area type="monotone" dataKey="Alcance" stroke={CHART_COLORS.Alcance} strokeWidth={2} fill="url(#grad-ig-Alcance)" dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
                   </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            {/* Bar chart — Profile views */}
-            <div className="rounded-2xl border border-border/40 bg-background/80 p-5">
-              <p className="mb-1 text-sm font-bold text-foreground">Visitas ao Perfil</p>
-              <p className="mb-4 text-[11px] text-muted-foreground/60">Últimos 30 dias</p>
-              {isLoading ? (
-                <Skeleton className="h-56 w-full rounded-xl" />
-              ) : chartData.length === 0 ? (
-                <div className="flex h-56 flex-col items-center justify-center gap-2 text-center">
-                  <Eye className="h-8 w-8 text-muted-foreground/20" />
-                  <p className="text-sm text-muted-foreground/50">Sem dados disponíveis.</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="0" stroke="hsl(var(--border))" opacity={0.25} vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }} tickLine={false} axisLine={false} interval={tickInterval} />
-                    <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", opacity: 0.6 }} tickLine={false} axisLine={false} tickFormatter={fmt} />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }} />
-                    <Bar dataKey="Visitas ao Perfil" fill={CHART_COLORS["Visitas ao Perfil"]} radius={[3, 3, 0, 0]} />
-                  </BarChart>
                 </ResponsiveContainer>
               )}
             </div>

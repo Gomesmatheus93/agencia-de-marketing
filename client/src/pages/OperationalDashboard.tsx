@@ -123,7 +123,9 @@ export default function OperationalDashboard() {
     const inMonth = (name: string) => (list.find((m) => m.metric === name)?.values ?? []).filter((v) => inRange(dayOf(v.end_time)));
     const sum = (name: string) => inMonth(name).reduce((s, v) => s + v.value, 0);
     return {
-      reach: sum("reach"), interactions: sum("total_interactions"), newFollowers: sum("follower_count"),
+      reach: sum("reach"), newFollowers: sum("follower_count"),
+      // Interações só vêm como total do período (a Meta não manda mais por dia).
+      interactions: (list.find((m) => m.metric === "total_interactions") as { total?: number | null } | undefined)?.total ?? 0,
       chart: inMonth("reach").map((v) => ({ dia: String(dayOf(v.end_time).getDate()).padStart(2, "0"), Alcance: v.value })),
     };
   }, [insights.data, range.start, range.end]);

@@ -4061,37 +4061,37 @@ const analyticsRouter = router({
       const { accessToken, igAccountId } = await getInstagramCredentials(ctx.user.id);
       const until = Math.floor(Date.now() / 1000);
       const since = until - input.days * 86400;
-      const metrics = [
-        "impressions",
-        "reach",
-        "profile_views",
-        "follower_count",
-        "website_clicks",
-        "phone_call_clicks",
-        "email_contacts",
-        "text_message_clicks",
-        "get_directions_clicks",
-        "total_interactions",
-        "accounts_engaged",
-      ] as const;
+      // A Meta descontinuou impressions, phone_call_clicks, get_directions_clicks, email_contacts e
+      // text_message_clicks. reach e follower_count vêm por dia; as demais só como total do período
+      // (metric_type=total_value) — pedidas "por dia" elas davam erro e apareciam vazias.
+      const seriesMetrics = ["reach", "follower_count"] as const;
+      const totalMetrics = ["views", "profile_views", "website_clicks", "total_interactions", "accounts_engaged"] as const;
 
-      const results = await Promise.allSettled(
-        metrics.map((metric) =>
+      const [series, totals] = await Promise.all([
+        Promise.allSettled(seriesMetrics.map((metric) =>
           graphGet<{ data: Array<{ name: string; values: Array<{ value: number; end_time: string }> }> }>(
             `${igAccountId}/insights`,
             { metric, period: "day", since: String(since), until: String(until) },
             accessToken
-          )
-        )
-      );
+          ))),
+        Promise.allSettled(totalMetrics.map((metric) =>
+          graphGet<{ data: Array<{ name: string; total_value?: { value: number } }> }>(
+            `${igAccountId}/insights`,
+            { metric, period: "day", metric_type: "total_value", since: String(since), until: String(until) },
+            accessToken
+          ))),
+      ]);
 
-      return metrics.map((metric, i) => {
-        const result = results[i];
-        const values = result.status === "fulfilled"
-          ? (result.value.data?.[0]?.values ?? [])
-          : [];
-        return { metric, values };
-      });
+      return [
+        ...seriesMetrics.map((metric, i) => {
+          const r = series[i];
+          return { metric, values: r.status === "fulfilled" ? (r.value.data?.[0]?.values ?? []) : [], total: null as number | null };
+        }),
+        ...totalMetrics.map((metric, i) => {
+          const r = totals[i];
+          return { metric, values: [] as Array<{ value: number; end_time: string }>, total: r.status === "fulfilled" ? (r.value.data?.[0]?.total_value?.value ?? null) : null };
+        }),
+      ];
     }),
 
   getMedia: protectedProcedure
@@ -4141,7 +4141,8 @@ const analyticsRouter = router({
         items.map(async (item) => {
           const isReel = item.media_product_type === "REELS";
           const baseMetrics = ["reach", "saved", "shares"];
-          const extraMetrics = isReel ? ["views", "ig_reels_avg_watch_time"] : ["impressions"];
+          // "impressions" foi descontinuada; "views" vale para todo tipo de post.
+          const extraMetrics = isReel ? ["views", "ig_reels_avg_watch_time"] : ["views"];
           const allMetrics = [...baseMetrics, ...extraMetrics];
 
           const values = await Promise.all(allMetrics.map((m) => fetchMetric(item.id, m)));
