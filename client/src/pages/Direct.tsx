@@ -2,7 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { DmAutoReplyDialog } from "@/components/DmAutoReplyDialog";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Bot, ExternalLink, Instagram, Loader2, MessageCircle, RefreshCw, Search, Send } from "lucide-react";
+import { ArrowLeft, Bot, ExternalLink, Instagram, Loader2, MessageCircle, RefreshCw, RotateCcw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -213,6 +213,10 @@ function Thread({ conversationId, fallbackName, fallbackPic, onBack }: { convers
   }, [text]);
 
   const send = () => { if (text.trim() && !reply.isPending) reply.mutate({ conversationId, text: text.trim() }); };
+  const resetAuto = trpc.inbox.resetAutoReply.useMutation({
+    onSuccess: (r) => toast.success(r.removed ? "Atendimento automático reiniciado: a próxima mensagem conta como a primeira." : "Essa conversa ainda não tinha respostas automáticas."),
+    onError: (e) => toast.error(e.message),
+  });
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -223,6 +227,15 @@ function Thread({ conversationId, fallbackName, fallbackPic, onBack }: { convers
           <p className="truncate text-sm font-semibold">{name ? `@${name}` : "…"}</p>
           <p className="text-[11px] text-muted-foreground">Instagram Direct</p>
         </div>
+        <button
+          type="button"
+          onClick={() => { if (confirm("Reiniciar o atendimento automático desta conversa? A próxima mensagem dessa pessoa será tratada como a primeira (zera as 24 h e a etapa do fluxo).")) resetAuto.mutate({ conversationId }); }}
+          disabled={resetAuto.isPending}
+          className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          title="Reiniciar atendimento automático"
+        >
+          {resetAuto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+        </button>
         {name && (
           <a href={`https://instagram.com/${name}`} target="_blank" rel="noreferrer" className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="Abrir perfil">
             <ExternalLink className="h-4 w-4" />

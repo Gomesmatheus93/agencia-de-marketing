@@ -1,5 +1,7 @@
 import { TRPCError } from "@trpc/server";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { dmAutoReplyLog } from "../drizzle/schema";
 import { protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -217,6 +219,24 @@ export const inboxRouter = router({
       const lastFromCustomer = [...messages].reverse().find((m) => !m.fromMe);
       const canReply = Boolean(lastFromCustomer && Date.now() - new Date(lastFromCustomer.createdTime).getTime() < REPLY_WINDOW_MS);
       return { customer: customer ? { id: customer.id, username: customer.username ?? customer.name ?? customer.id, profilePic: picOf(customer.id) } : null, messages, canReply };
+    }),
+
+  /**
+   * Zera o atendimento automático desta conversa (cooldowns de 12/24 h e etapa do fluxo):
+   * a próxima mensagem da pessoa é tratada como a primeira. Útil para testar.
+   */
+  resetAutoReply: protectedProcedure
+    .input(z.object({ conversationId }))
+    .mutation(async ({ ctx, input }) => {
+      const conn = await requireConnection(ctx.user.id);
+      const { customer } = await ownConversation(conn, input.conversationId, 1);
+      if (!customer) throw new TRPCError({ code: "BAD_REQUEST", message: "Não achei o cliente desta conversa." });
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+      const removed = await database.delete(dmAutoReplyLog)
+        .where(and(eq(dmAutoReplyLog.igAccountId, conn.igId), eq(dmAutoReplyLog.senderId, customer.id)))
+        .returning({ id: dmAutoReplyLog.id });
+      return { removed: removed.length };
     }),
 
   reply: protectedProcedure
