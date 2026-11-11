@@ -1,5 +1,5 @@
 import AppLayout from "@/components/AppLayout";
-import { TaskError, TaskHistory, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
+import { TaskError, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -142,7 +142,6 @@ export default function Planning() {
               <h1 className="text-3xl font-bold tracking-tight">Planejamento de postagens</h1>
               <p className="mt-1 text-sm text-muted-foreground">O agente usa automaticamente a última Auditoria e a última análise de Marca, além da memória da equipe e dos posts recentes, e monta o plano. Você escolhe o que vai para o calendário.</p>
             </div>
-            <TaskHistory tasks={t.tasks} threadId={t.threadId} onSelect={t.setThreadId} />
           </header>
 
           <Card>
