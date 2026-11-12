@@ -15,7 +15,8 @@ export const ENV = {
   emailFrom: process.env.EMAIL_FROM ?? "Alle Energia <no-reply@alleenergia.com>",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   // Modelo dos agentes (Planejamento, Carrossel, Auditoria…): "anthropic" (Claude) ou "openai" (GPT).
-  agentProvider: (process.env.AGENT_PROVIDER ?? "anthropic").toLowerCase(),
+  // Sem AGENT_PROVIDER, usa a OpenAI quando houver OPENAI_API_KEY (o Claude da conta está sem crédito).
+  agentProvider: (process.env.AGENT_PROVIDER || (process.env.OPENAI_API_KEY ? "openai" : "anthropic")).toLowerCase(),
   agentModel: process.env.AGENT_MODEL ?? "",
   openaiApiBaseUrl: process.env.OPENAI_API_BASE_URL ?? "https://api.openai.com/v1",
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
