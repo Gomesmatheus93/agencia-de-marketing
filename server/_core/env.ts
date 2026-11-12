@@ -14,6 +14,9 @@ export const ENV = {
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   emailFrom: process.env.EMAIL_FROM ?? "Alle Energia <no-reply@alleenergia.com>",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  // Modelo dos agentes (Planejamento, Carrossel, Auditoria…): "anthropic" (Claude) ou "openai" (GPT).
+  agentProvider: (process.env.AGENT_PROVIDER ?? "anthropic").toLowerCase(),
+  agentModel: process.env.AGENT_MODEL ?? "",
   openaiApiBaseUrl: process.env.OPENAI_API_BASE_URL ?? "https://api.openai.com/v1",
   openaiChatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
   openaiImageModel: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1",

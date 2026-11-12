@@ -4,12 +4,15 @@ import { ENV } from "../_core/env";
 import { getAgent, type AgentDefinition } from "./registry";
 import * as store from "./store";
 import { TASKS, planContext, planItemSchema, type PlanResult, type TaskDefinition } from "./tasks";
+import { OpenAIError, openaiStep } from "./openaiProvider";
 import { AGENT_TOOLS, executeTool, loadSkillText } from "./tools";
 
 type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
 type ToolResult = Anthropic.Beta.Messages.BetaToolResultBlockParam;
 
-const MODEL = "claude-opus-5-5";
+// Provedor dos agentes, escolhido no .env (AGENT_PROVIDER=openai|anthropic, AGENT_MODEL=...).
+const PROVIDER = ENV.agentProvider === "openai" ? "openai" : "anthropic";
+const MODEL = ENV.agentModel || (PROVIDER === "openai" ? "gpt-6.1-sol" : "claude-opus-5-5");
 const MAX_TOKENS = 16_000;
 // Tarefas devolvem o resultado inteiro numa chamada de ferramenta (ex.: um mês de pautas).
 const MAX_TOKENS_TASK = 32_000;
@@ -96,7 +99,9 @@ export async function runTurn(userId: number, threadId: number) {
     const maxSteps = task ? MAX_STEPS_TASK : MAX_STEPS_PER_TURN;
     for (let step = 0; step < maxSteps; step++) {
       // Streaming: respostas longas (tarefas) passariam do tempo limite de uma chamada comum.
-      const response = await client().beta.messages.stream({
+      const response = PROVIDER === "openai"
+        ? await openaiStep({ model: MODEL, system, tools: tools as never, messages, maxTokens: task ? MAX_TOKENS_TASK : MAX_TOKENS })
+        : await client().beta.messages.stream({
         model: MODEL,
         max_tokens: task ? MAX_TOKENS_TASK : MAX_TOKENS,
         system,
@@ -156,7 +161,9 @@ export async function runTurn(userId: number, threadId: number) {
     throw new Error(`O agente passou de ${maxSteps} passos neste turno e foi interrompido.`);
   } catch (error) {
     const message =
-      error instanceof Anthropic.APIError ? `API do Claude (${error.status}): ${error.message}` : (error as Error).message;
+      error instanceof Anthropic.APIError ? `API do Claude (${error.status}): ${error.message}`
+        : error instanceof OpenAIError ? error.message
+        : (error as Error).message;
     console.error(`[agents] thread ${threadId} falhou:`, error);
     await store.setThreadStatus(threadId, "failed", message);
   }
@@ -197,14 +204,10 @@ export async function regeneratePlanItem(userId: number, plan: PlanResult, index
   const context = await planContext(userId);
   const { $schema: _, ...schema } = z.toJSONSchema(planItemSchema, { io: "input" }) as Record<string, unknown>;
   const others = plan.items.map((it, i) => (i === index ? null : `- ${it.date} ${it.time} · ${it.format} · ${it.type} · ${it.title}`)).filter(Boolean);
-  const response = await client().beta.messages.create({
-    model: MODEL,
-    max_tokens: 4000,
-    system: await systemPrompt(agent),
-    tools: [{ name: "submit_item", description: "Registra a nova pauta.", input_schema: schema as Anthropic.Beta.Messages.BetaTool["input_schema"] }],
-    tool_choice: { type: "tool", name: "submit_item" },
+  const itemTool = { name: "submit_item", description: "Registra a nova pauta.", input_schema: schema as Anthropic.Beta.Messages.BetaTool["input_schema"] };
+  const request = {
     messages: [{
-      role: "user",
+      role: "user" as const,
       content: `A equipe não gostou de uma pauta do plano "${plan.periodLabel}" e quer outra no lugar. Crie uma pauta NOVA (outro tema e outro ângulo, não uma reescrita da atual), seguindo a estratégia e a memória abaixo, e registre com submit_item.
 
 PAUTA ATUAL (a ser substituída):
@@ -221,7 +224,13 @@ ${others.join("\n")}
 ${memory.filter(Boolean).join("\n\n")}
 ${context ? `\nDADOS DA CONTA:\n${context}` : ""}`,
     }],
-  });
+  };
+  const response = PROVIDER === "openai"
+    ? await openaiStep({ model: MODEL, system: await systemPrompt(agent), tools: [itemTool], messages: request.messages, maxTokens: 4000, forceTool: "submit_item" })
+    : await client().beta.messages.create({
+        model: MODEL, max_tokens: 4000, system: await systemPrompt(agent), tools: [itemTool],
+        tool_choice: { type: "tool", name: "submit_item" }, messages: request.messages,
+      });
   const tool = response.content.find((b) => b.type === "tool_use");
   const parsed = planItemSchema.safeParse(tool?.type === "tool_use" ? tool.input : null);
   if (!parsed.success) throw new Error("O agente não devolveu uma pauta válida. Tente de novo.");
