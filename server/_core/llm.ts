@@ -226,7 +226,8 @@ const resolveApiKey = () => ENV.openaiApiKey || ENV.forgeApiKey;
 const resolveModel = () =>
   isUsingOpenAI() ? ENV.openaiChatModel : "gemini-2.5-flash";
 
-const OPENAI_MAX_TOKENS_CAP = 4_096;
+// Nos modelos novos (GPT-5/6) o raciocínio interno conta dentro desse limite: 4.096 cortava respostas.
+const OPENAI_MAX_TOKENS_CAP = 16_384;
 
 const assertApiKey = () => {
   if (!resolveApiKey()) {
@@ -314,15 +315,14 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
+  // A OpenAI trocou max_tokens por max_completion_tokens (os modelos GPT-5/6 recusam o antigo).
   const requestedMaxTokens = maxTokens ?? max_tokens;
-  if (typeof requestedMaxTokens === "number") {
-    payload.max_tokens = isUsingOpenAI()
+  if (isUsingOpenAI()) {
+    payload.max_completion_tokens = typeof requestedMaxTokens === "number"
       ? Math.min(requestedMaxTokens, OPENAI_MAX_TOKENS_CAP)
-      : requestedMaxTokens;
-  } else if (isUsingOpenAI()) {
-    payload.max_tokens = OPENAI_MAX_TOKENS_CAP;
-  } else if (!isUsingOpenAI()) {
-    payload.max_tokens = 32768;
+      : OPENAI_MAX_TOKENS_CAP;
+  } else {
+    payload.max_tokens = typeof requestedMaxTokens === "number" ? requestedMaxTokens : 32768;
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({
