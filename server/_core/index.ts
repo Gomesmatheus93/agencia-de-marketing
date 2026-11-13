@@ -23,6 +23,7 @@ import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
 import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
 import { handleIncomingDm, resolveShortLink } from "../dmAutoReply";
+import { SsoError, loginWithAlleToken } from "./alleSso";
 import { notifyInboxActivity } from "../inboxRouter";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
@@ -247,6 +248,7 @@ async function startServer() {
     async (req, res) => {
       try {
         const user = await sdk.authenticateRequest(req);
+        if (user.accountType === "unit") { res.status(403).json({ error: "Conta de unidade não envia arquivos." }); return; }
         const contentType = (req.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
         const ext = MIME_TO_EXT[contentType] ?? "bin";
         const key = `uploads/${user.id}/${randomUUID()}.${ext}`;
@@ -270,10 +272,13 @@ async function startServer() {
   app.post("/api/request-presigned-upload", express.json(), async (req, res) => {
     try {
       const user = await sdk.authenticateRequest(req);
+      if (user.accountType === "unit") { res.status(403).json({ error: "Conta de unidade não envia arquivos." }); return; }
       const contentType = (typeof req.body?.contentType === "string" ? req.body.contentType : "application/octet-stream").split(";")[0].trim();
       const MIME_TO_EXT: Record<string, string> = {
         "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
         "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "video/x-msvideo": "avi",
+        // Materiais das unidades (mídia kit em PDF, pacotes de artes em ZIP).
+        "application/pdf": "pdf", "application/zip": "zip", "application/x-zip-compressed": "zip",
       };
       const ext = MIME_TO_EXT[contentType] ?? "bin";
       const key = `uploads/${user.id}/${randomUUID()}.${ext}`;
@@ -784,6 +789,25 @@ async function startServer() {
     } catch (err) {
       console.error("[dm-received] erro:", err);
       res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Login unificado com o sistema da Alle (academias parceiras): /sso/alle?token=<JWT>.
+  app.get("/sso/alle", async (req, res) => {
+    const page = (status: number, msg: string) =>
+      res.status(status).type("html").send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso Alle</title><body style="font-family:system-ui;max-width:480px;margin:15vh auto;padding:0 16px;color:#1E0A01"><h2 style="color:#7B2FBE">Não foi possível entrar</h2><p>${msg.replace(/[<>&]/g, "")}</p></body>`);
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token || token.length > 4096) return page(400, "Link de acesso incompleto. Entre de novo pelo sistema da Alle.");
+    try {
+      const { user, unit } = await loginWithAlleToken(token);
+      await sdk.issueSessionCookies(req, res, user);
+      await db.recordAudit({ action: "sso.login", actorUserId: user.id, ip: req.ip ?? null, userAgent: String(req.headers["user-agent"] ?? "").slice(0, 255), metadata: { unitId: unit.id, unitCode: unit.code } });
+      res.set("Cache-Control", "no-store");
+      res.redirect(302, "/app/unidade");
+    } catch (err) {
+      if (err instanceof SsoError) return page(401, err.message);
+      console.error("[sso] erro no login unificado:", err);
+      return page(500, "Erro ao entrar. Tente de novo em instantes.");
     }
   });
 

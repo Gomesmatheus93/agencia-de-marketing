@@ -75,6 +75,7 @@ import { timingSafeEqual } from "node:crypto";
 import { inboxRouter } from "./inboxRouter";
 import { dashboardRouter } from "./dashboardRouter";
 import { profileRouter } from "./profileRouter";
+import { unitAdminRouter, unitPortalRouter } from "./unitPortal";
 import { dmAutoReplyRouter } from "./dmAutoReply";
 import {
   passwordResetEmail,
@@ -5720,6 +5721,8 @@ export const appRouter = router({
   inbox: inboxRouter,
   dashboard: dashboardRouter,
   profile: profileRouter,
+  unitPortal: unitPortalRouter,
+  unitAdmin: unitAdminRouter,
   dmAutoReply: dmAutoReplyRouter,
   analytics: analyticsRouter,
   admin: adminRouter,

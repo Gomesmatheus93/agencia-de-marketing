@@ -35,6 +35,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   ShieldCheck,
+  Building2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -136,6 +137,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     description: t(item.descKey),
   }));
   const settingsItem = { ...SETTINGS_CONFIG, label: t(SETTINGS_CONFIG.labelKey), description: t(SETTINGS_CONFIG.descKey) };
+  const unitsItem = { id: "units", icon: Building2, path: "/dashboard/unidades", color: "from-alle-purple to-alle-orange", label: "Unidades", description: "Academias parceiras: acessos, plano e materiais" };
   const artStudioItem = { ...ART_STUDIO_CONFIG, label: t(ART_STUDIO_CONFIG.labelKey), description: t(ART_STUDIO_CONFIG.descKey) };
   const teamItem = { ...TEAM_CONFIG, label: t(TEAM_CONFIG.labelKey), description: t(TEAM_CONFIG.descKey) };
   const { hasCompanyAccess } = useCompanyAccess();
@@ -155,6 +157,12 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     }
   }, [isAuthenticated, loading, navigate]);
 
+  // Conta de academia parceira só usa o portal da unidade.
+  const isUnitAccount = (user as { accountType?: string } | null)?.accountType === "unit";
+  useEffect(() => {
+    if (isUnitAccount) navigate("/unidade");
+  }, [isUnitAccount, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen gradient-bg flex items-center justify-center">
@@ -171,7 +179,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated || isUnitAccount) return null;
 
   const userInitials = user?.name
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -265,7 +273,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   );
 
   // Gate: determine if current module should be blocked
-  const ALWAYS_OPEN = new Set(["dashboard", "settings", "profile"]);
+  const ALWAYS_OPEN = new Set(["dashboard", "settings", "profile", "units"]);
   const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
   const activeLabel = activeModule === "profile" ? "Meu perfil" : navItems.find((n) => n.id === activeModule)?.label;
   const avatarUrl = (user as { avatarUrl?: string | null } | null)?.avatarUrl ?? undefined;
@@ -331,6 +339,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <div className={cn("text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3", mini && "hidden")}>
               {t("system")}
             </div>
+            <NavButton item={unitsItem} mini={mini} />
             <NavButton item={settingsItem} mini={mini} />
           </>
         )}

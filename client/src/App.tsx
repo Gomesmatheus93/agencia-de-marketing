@@ -31,6 +31,8 @@ import ResetPassword from "./pages/ResetPassword";
 import AccountSecurity from "./pages/AccountSecurity";
 import Profile from "./pages/Profile";
 import MonthlyReport from "./pages/MonthlyReport";
+import UnitPortal from "./pages/UnitPortal";
+import UnitsAdmin from "./pages/UnitsAdmin";
 import CreativeStudio from "./pages/CreativeStudio";
 import Agents from "./pages/Agents";
 import AgentOffice from "./pages/AgentOffice";
@@ -82,6 +84,8 @@ function AppRoutes() {
       <Route path="/dashboard/security" component={AccountSecurity} />
       <Route path="/dashboard/perfil" component={Profile} />
       <Route path="/dashboard/relatorio" component={MonthlyReport} />
+      <Route path="/dashboard/unidades" component={UnitsAdmin} />
+      <Route path="/unidade" component={UnitPortal} />
       <Route path="/aprovar/:token" component={Approve} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/404" component={NotFound} />

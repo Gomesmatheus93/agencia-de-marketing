@@ -68,11 +68,21 @@ const withIpRateLimit = (limit: number, windowMs: number) =>
 
 // ─── Middlewares ──────────────────────────────────────────────────────────────
 
+// Conta de unidade (academia parceira) só usa o portal da unidade, o login e o próprio perfil.
+// A regra fica no servidor: esconder o menu não basta (ninguém chama agentes de IA, analytics etc.).
+const UNIT_ALLOWED_PATHS = [/^auth\./, /^unitPortal\./, /^profile\./];
+export function isUnitPathAllowed(path: string) {
+  return UNIT_ALLOWED_PATHS.some((re) => re.test(path));
+}
+
 const requireUser = t.middleware(async opts => {
-  const { ctx, next } = opts;
+  const { ctx, next, path } = opts;
 
   if (!ctx.user || !ctx.actualUser) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+  if (ctx.actualUser.accountType === "unit" && !isUnitPathAllowed(path)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Esta conta de unidade só tem acesso ao portal da unidade." });
   }
 
   return next({

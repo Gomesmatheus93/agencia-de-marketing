@@ -14,7 +14,7 @@ function InstagramIcon({ className }: { className?: string }) {
 }
 
 export default function Login() {
-  const { isAuthenticated, loading, refresh } = useAuth();
+  const { isAuthenticated, loading, refresh, user } = useAuth();
   const [location, navigate] = useLocation();
   const [mode, setMode] = useState<"login" | "register">(location === "/register" ? "register" : "login");
   const [showPassword, setShowPassword] = useState(false);
@@ -77,7 +77,8 @@ export default function Login() {
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      navigate(justRegisteredRef.current ? "/dashboard/onboarding" : "/dashboard");
+      const isUnit = (user as { accountType?: string } | null)?.accountType === "unit";
+      navigate(isUnit ? "/unidade" : justRegisteredRef.current ? "/dashboard/onboarding" : "/dashboard");
     }
   }, [isAuthenticated, loading, navigate]);
 

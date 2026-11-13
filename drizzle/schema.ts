@@ -49,6 +49,11 @@ export const users = pgTable("users", {
   companyOwnerId: integer("companyOwnerId"),
   // Foto de perfil (URL pública no storage), definida pelo próprio usuário.
   avatarUrl: text("avatarUrl"),
+  // "standard" = equipe/agência; "unit" = academia parceira (acesso só ao portal da unidade).
+  accountType: varchar("accountType", { length: 16 }).default("standard").notNull(),
+  unitId: integer("unitId"),
+  // ID da pessoa no sistema da Alle (login unificado).
+  externalId: varchar("externalId", { length: 128 }).unique(),
 }, (t) => [
   uniqueIndex("uq_users_emailHash").on(t.emailHash),
   index("idx_users_emailDomain").on(t.emailDomain),
@@ -1116,3 +1121,66 @@ export const dmAutoReplyLog = pgTable(
   },
   (t) => [index("idx_dm_auto_reply_log_lookup").on(t.igAccountId, t.senderId, t.ruleKey)]
 );
+
+// ─── Portal das unidades (academias parceiras) ──────────────────────────────
+
+/** Unidades das academias; criadas pelo painel ou no primeiro login unificado. */
+export const units = pgTable("units", {
+  id: serial("id").primaryKey(),
+  // Código da unidade no sistema da Alle (vem no token do login unificado).
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  city: varchar("city", { length: 120 }),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Unit = typeof units.$inferSelect;
+
+/** Materiais: unitId null = biblioteca geral (todas as unidades); preenchido = da unidade (ex.: mídia kit). */
+export const unitMaterials = pgTable(
+  "unit_materials",
+  {
+    id: serial("id").primaryKey(),
+    unitId: integer("unitId"),
+    kind: varchar("kind", { length: 16 }).default("material").notNull(), // "material" | "midia_kit"
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    fileUrl: text("fileUrl").notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    contentType: varchar("contentType", { length: 120 }).notNull(),
+    sizeBytes: integer("sizeBytes").default(0).notNull(),
+    createdByUserId: integer("createdByUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_unit_materials_unitId").on(t.unitId)]
+);
+export type UnitMaterial = typeof unitMaterials.$inferSelect;
+
+export type UnitPlanItem = {
+  date: string; // YYYY-MM-DD
+  time?: string | null;
+  format?: string | null;
+  title: string;
+  caption?: string | null;
+  imageUrls: string[];
+};
+
+/** Planejamento semanal único, publicado pela equipe da Alle para todas as unidades. */
+export const unitWeeklyPlans = pgTable("unit_weekly_plans", {
+  id: serial("id").primaryKey(),
+  weekStart: varchar("weekStart", { length: 10 }).notNull().unique(), // segunda-feira, YYYY-MM-DD
+  title: varchar("title", { length: 255 }),
+  notes: text("notes"),
+  items: json("items").$type<UnitPlanItem[]>().notNull(),
+  status: varchar("status", { length: 16 }).default("draft").notNull(), // "draft" | "published"
+  publishedAt: timestamp("publishedAt"),
+  createdByUserId: integer("createdByUserId").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type UnitWeeklyPlan = typeof unitWeeklyPlans.$inferSelect;
+
+/** Tokens do login unificado já usados (impede reaproveitar o mesmo link). */
+export const ssoUsedTokens = pgTable("sso_used_tokens", {
+  jti: varchar("jti", { length: 128 }).primaryKey(),
+  usedAt: timestamp("usedAt").defaultNow().notNull(),
+});
