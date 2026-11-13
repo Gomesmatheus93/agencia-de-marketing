@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, X509Certificate, type KeyObject } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import { createRemoteJWKSet, importJWK, importSPKI, importX509, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, importJWK, jwtVerify, type JWTPayload } from "jose";
 import { z } from "zod";
 import { ssoUsedTokens, units, userUnits, users } from "../../drizzle/schema";
 import * as db from "../db";
@@ -50,7 +50,26 @@ export type AlleSsoClaims = {
  */
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-type VerifyKey = Uint8Array | CryptoKey | ReturnType<typeof createRemoteJWKSet>;
+type VerifyKey = Uint8Array | CryptoKey | KeyObject | ReturnType<typeof createRemoteJWKSet>;
+
+/**
+ * Lê a chave pública do jeito que vier colada no painel: PEM com ou sem quebras de linha
+ * (o painel às vezes troca por espaços), sem cabeçalho (só o base64), PKCS#1
+ * ("BEGIN RSA PUBLIC KEY") ou certificado ("BEGIN CERTIFICATE").
+ */
+export function parsePublicKey(raw: string): KeyObject {
+  const m = raw.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  const label = m?.[1] ?? "";
+  const der = Buffer.from((m ? m[2] : raw).replace(/[^A-Za-z0-9+/=]/g, ""), "base64");
+  if (!der.length) throw new Error("chave vazia");
+  if (label === "CERTIFICATE") return new X509Certificate(der).publicKey;
+  const types: Array<"spki" | "pkcs1"> = label === "RSA PUBLIC KEY" ? ["pkcs1", "spki"] : ["spki", "pkcs1"];
+  let last: unknown;
+  for (const type of types) {
+    try { return createPublicKey({ key: der, format: "der", type }); } catch (e) { last = e; }
+  }
+  throw last;
+}
 
 async function verificationKeys(): Promise<{ keys: VerifyKey[]; algorithms: string[] }> {
   const alg = (process.env.ALLE_SSO_ALG || "RS256").trim(); // ES256 para chave de curva elíptica
@@ -68,10 +87,10 @@ async function verificationKeys(): Promise<{ keys: VerifyKey[]; algorithms: stri
         const jwk = JSON.parse(pub);
         return { keys: [await importJWK(jwk, jwk.alg || alg)], algorithms: [jwk.alg || alg] };
       }
-      if (pub.includes("BEGIN CERTIFICATE")) return { keys: [await importX509(pub, alg)], algorithms: [alg] };
-      return { keys: [await importSPKI(pub, alg)], algorithms: [alg] };
+      return { keys: [parsePublicKey(pub)], algorithms: [alg] };
     } catch (err) {
-      console.error("[sso] ALLE_SSO_PUBLIC_KEY inválida:", (err as Error).message);
+      console.error("[sso] ALLE_SSO_PUBLIC_KEY inválida:", (err as Error).message,
+        { comeco: pub.slice(0, 30), tamanho: pub.length, linhas: pub.split("\n").length });
       throw new SsoError("Login unificado mal configurado (chave pública inválida). Fale com a equipe da Alle.");
     }
   }
