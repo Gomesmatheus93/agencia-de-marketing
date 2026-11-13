@@ -123,7 +123,7 @@ export const unitPortalRouter = router({
 
   /** Libera o arquivo (confere se é desta unidade) e registra o download. */
   download: protectedProcedure
-    .input(z.object({ materialId: z.number().int() }))
+    .input(z.object({ materialId: z.number().int(), mode: z.enum(["baixar", "abrir"]).default("baixar") }))
     .mutation(async ({ ctx, input }) => {
       const c = await conn();
       const [m] = await c.select().from(unitMaterials).where(eq(unitMaterials.id, input.materialId));
@@ -131,9 +131,10 @@ export const unitPortalRouter = router({
       const allowed = m && (m.unitId === null || me.accountType !== "unit" || (await accessibleUnits(me)).some((u) => u.id === m.unitId));
       if (!allowed) throw new TRPCError({ code: "NOT_FOUND", message: "Material não encontrado." });
       if (me.accountType === "unit") {
-        await db.recordAudit({ action: "unit.material.download", actorUserId: me.id, targetType: "unit_material", targetId: String(m.id), metadata: { unitId: me.unitId, title: m.title } });
+        // Abrir/ampliar fica registrado à parte, para não inflar a contagem de downloads.
+        await db.recordAudit({ action: input.mode === "abrir" ? "unit.material.view" : "unit.material.download", actorUserId: me.id, targetType: "unit_material", targetId: String(m.id), metadata: { unitId: me.unitId, title: m.title } });
       }
-      return { url: m.fileUrl, fileName: m.fileName };
+      return { url: m.fileUrl, fileName: m.fileName, contentType: m.contentType };
     }),
 
   /** Registra o download de uma arte ou legenda do planejamento. */
@@ -149,7 +150,7 @@ export const unitPortalRouter = router({
 
 // ─── Administração das unidades (só administradores) ────────────────────────
 
-const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download"];
+const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view"];
 const planItemSchema = z.object({
   date: day, time: z.string().max(10).nullable().optional(), format: z.string().max(30).nullable().optional(),
   title: z.string().trim().min(1).max(300), type: z.string().max(60).nullable().optional(), caption: z.string().max(5000).nullable().optional(),

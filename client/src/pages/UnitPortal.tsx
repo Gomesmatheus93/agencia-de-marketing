@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/contexts/ThemeContext";
-import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Megaphone, Menu, Moon, Sun, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Maximize2, Megaphone, Menu, Moon, Sun, X, ZoomIn, ZoomOut, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -45,8 +45,15 @@ type PlanItem = { date: string; time?: string | null; format?: string | null; ti
 function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null; index: number; weekStart: string; onClose: () => void }) {
   const track = trpc.unitPortal.trackPlanDownload.useMutation();
   const [copied, setCopied] = useState(false);
+  const [viewing, setViewing] = useState<number | null>(null);
   if (!item) return null;
   const d = new Date(`${item.date}T12:00:00`);
+  // Arte ampliada: o visualizador ocupa o lugar da janela (fechar volta para ela).
+  if (viewing !== null) return (
+    <ImageViewer
+      items={item.imageUrls.map((url, j) => ({ id: j, url, title: `Arte ${j + 1} de ${item.imageUrls.length}`, label: item.title }))}
+      index={viewing} onIndex={setViewing} onClose={() => setViewing(null)}
+      onDownload={(j) => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); saveFile(item.imageUrls[j], `${item.date}-${j + 1}.png`); }} />);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
@@ -62,10 +69,10 @@ function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null
           <div>
             <div className="grid grid-cols-3 gap-2">
               {item.imageUrls.map((url, j) => (
-                <button key={url} type="button" title="Baixar esta arte" className="group relative overflow-hidden rounded-lg border bg-muted"
-                  onClick={() => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); saveFile(url, `${item.date}-${j + 1}.png`); }}>
+                <button key={url} type="button" title="Abrir e ampliar" className="group relative cursor-zoom-in overflow-hidden rounded-lg border bg-muted"
+                  onClick={() => setViewing(j)}>
                   <img src={url} alt={`Arte ${j + 1}`} loading="lazy" className="aspect-[4/5] w-full object-cover" />
-                  <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Download className="h-5 w-5" /></span>
+                  <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
                 </button>
               ))}
             </div>
@@ -154,12 +161,91 @@ function PlanTab() {
   );
 }
 
+/** Visualizador de imagens: zoom (botões, rolagem, duplo clique, pinça), arrastar e setas. */
+function ImageViewer({ items, index, onIndex, onClose, onDownload }: {
+  items: Array<{ id: number; url: string; title: string; label?: string | null }>;
+  index: number; onIndex: (i: number) => void; onClose: () => void; onDownload: (id: number) => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const pinch = useRef<{ d: number; z: number } | null>(null);
+  const item = items[index];
+  const clamp = (z: number) => Math.min(6, Math.max(1, z));
+  const setZ = (z: number) => { const n = clamp(z); setZoom(n); if (n === 1) setPos({ x: 0, y: 0 }); };
+  const go = (d: number) => { const n = index + d; if (n >= 0 && n < items.length) { onIndex(n); setZoom(1); setPos({ x: 0, y: 0 }); } };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "+" || e.key === "=") setZ(zoom + 0.5);
+      else if (e.key === "-") setZ(zoom - 0.5);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  if (!item) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90 text-white" role="dialog" aria-modal="true">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          {item.label && <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-white/60">{item.label}</p>}
+          <p className="truncate text-sm font-medium">{item.title}</p>
+        </div>
+        <span className="hidden text-xs text-white/60 sm:block">{index + 1} / {items.length}</span>
+        <button type="button" title="Diminuir" onClick={() => setZ(zoom - 0.5)} disabled={zoom <= 1} className="rounded-lg p-2 hover:bg-white/10 disabled:opacity-30"><ZoomOut className="h-5 w-5" /></button>
+        <span className="w-12 text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button type="button" title="Ampliar" onClick={() => setZ(zoom + 0.5)} disabled={zoom >= 6} className="rounded-lg p-2 hover:bg-white/10 disabled:opacity-30"><ZoomIn className="h-5 w-5" /></button>
+        <button type="button" title="Abrir em nova aba" onClick={() => window.open(item.url, "_blank", "noopener")} className="rounded-lg p-2 hover:bg-white/10"><ExternalLink className="h-5 w-5" /></button>
+        <Button size="sm" variant="secondary" onClick={() => onDownload(item.id)}><Download className="mr-1.5 h-4 w-4" />Baixar</Button>
+        <button type="button" title="Fechar (Esc)" onClick={onClose} className="rounded-lg p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
+      </div>
+      <div
+        className={cn("relative flex-1 touch-none select-none overflow-hidden", zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in")}
+        onClick={(e) => { if (e.target === e.currentTarget && zoom === 1) onClose(); }}
+        onDoubleClick={() => setZ(zoom > 1 ? 1 : 2.5)}
+        onWheel={(e) => setZ(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))}
+        onPointerDown={(e) => { if (zoom > 1) { drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } }}
+        onPointerMove={(e) => { if (drag.current) setPos({ x: drag.current.px + e.clientX - drag.current.x, y: drag.current.py + e.clientY - drag.current.y }); }}
+        onPointerUp={() => { drag.current = null; }}
+        onTouchStart={(e) => { if (e.touches.length === 2) { drag.current = null; pinch.current = { d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY), z: zoom }; } }}
+        onTouchMove={(e) => { if (pinch.current && e.touches.length === 2) setZ(pinch.current.z * Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / pinch.current.d); }}
+        onTouchEnd={() => { pinch.current = null; }}
+      >
+        <img src={item.url} alt={item.title} draggable={false}
+          className="pointer-events-none absolute inset-0 m-auto max-h-full max-w-full object-contain p-4 transition-transform duration-75"
+          style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom})` }} />
+        {index > 0 && (
+          <button type="button" title="Anterior" onClick={() => go(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 hover:bg-black/70"><ChevronLeft className="h-6 w-6" /></button>
+        )}
+        {index < items.length - 1 && (
+          <button type="button" title="Próxima" onClick={() => go(1)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 hover:bg-black/70"><ChevronRight className="h-6 w-6" /></button>
+        )}
+      </div>
+      <p className="pb-3 text-center text-[11px] text-white/50">Rolagem, duplo clique ou pinça para ampliar · arraste para mover · Esc para fechar</p>
+    </div>
+  );
+}
+
 function MaterialsTab() {
   const materials = trpc.unitPortal.materials.useQuery();
   const download = trpc.unitPortal.download.useMutation({ onError: (e) => toast.error(e.message) });
   // O zip é montado no servidor e baixa direto (o navegador mostra o progresso).
   const downloadAll = () => { window.location.href = "/api/unidade/midia-kit.zip"; };
   const get = async (materialId: number) => { const r = await download.mutateAsync({ materialId }); saveFile(r.url, r.fileName); };
+  const openDoc = async (materialId: number) => {
+    // Abre a aba já no clique (o navegador bloqueia janelas abertas depois de um await).
+    const w = window.open("", "_blank");
+    try {
+      const r = await download.mutateAsync({ materialId, mode: "abrir" });
+      if (w) w.location.href = r.url; else window.open(r.url, "_blank", "noopener");
+    } catch { w?.close(); }
+  };
+  const [viewing, setViewing] = useState<number | null>(null);
+  const logView = trpc.unitPortal.download.useMutation();
   if (materials.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando os materiais…</p>;
   const { general = [], mine = [] } = materials.data ?? {};
   const images = mine.filter((m) => m.thumbUrl);
@@ -173,8 +259,8 @@ function MaterialsTab() {
         <p className="truncate text-sm font-medium">{m.title}</p>
         <p className="truncate text-xs text-muted-foreground">{m.description || m.fileName} · {fmtSize(m.sizeBytes)}</p>
       </div>
-      <Button size="sm" variant="outline" disabled={download.isPending}
-        onClick={async () => { const r = await download.mutateAsync({ materialId: m.id }); saveFile(r.url, r.fileName); }}>
+      <Button size="sm" variant="ghost" onClick={() => openDoc(m.id)}><ExternalLink className="mr-1.5 h-4 w-4" />Abrir</Button>
+      <Button size="sm" variant="outline" disabled={download.isPending} onClick={() => get(m.id)}>
         <Download className="mr-1.5 h-4 w-4" />Baixar
       </Button>
     </div>
@@ -197,18 +283,21 @@ function MaterialsTab() {
                 <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><ImageIcon className="h-3.5 w-3.5" />Imagens ({images.length})</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {images.map((m) => (
-                    <button key={m.id} type="button" disabled={download.isPending} title={`Baixar ${m.fileName}`} onClick={() => get(m.id)}
-                      className="group flex flex-col overflow-hidden rounded-xl border bg-card text-left transition hover:border-primary">
-                      <div className="relative flex aspect-[4/5] items-center justify-center bg-muted">
+                    <div key={m.id} className="group flex flex-col overflow-hidden rounded-xl border bg-card transition hover:border-primary">
+                      <button type="button" title="Abrir e ampliar" onClick={() => { setViewing(images.indexOf(m)); logView.mutate({ materialId: m.id, mode: "abrir" }); }}
+                        className="relative flex aspect-[4/5] cursor-zoom-in items-center justify-center bg-muted">
                         {m.thumbUrl && <img src={m.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-1" />}
-                        <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Download className="h-6 w-6" /></span>
+                        <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-6 w-6" /></span>
+                      </button>
+                      <div className="flex min-w-0 items-center gap-1 p-2">
+                        <div className="min-w-0 flex-1">
+                          {m.description && <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-primary">{m.description.split(" › ").pop()}</p>}
+                          <p className="truncate text-xs font-medium">{m.title}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</p>
+                        </div>
+                        <button type="button" title="Baixar" disabled={download.isPending} onClick={() => get(m.id)} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"><Download className="h-4 w-4" /></button>
                       </div>
-                      <div className="min-w-0 p-2">
-                        {m.description && <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-primary">{m.description.split(" › ").pop()}</p>}
-                        <p className="truncate text-xs font-medium">{m.title}</p>
-                        <p className="truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</p>
-                      </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -218,15 +307,17 @@ function MaterialsTab() {
                 <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><FileText className="h-3.5 w-3.5" />Arquivos ({docs.length})</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {docs.map((m) => (
-                    <button key={m.id} type="button" disabled={download.isPending} title={`Baixar ${m.fileName}`} onClick={() => get(m.id)}
-                      className="flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition hover:border-primary">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{m.title}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</span>
-                      </span>
-                      <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </button>
+                    <div key={m.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 transition hover:border-primary">
+                      <button type="button" title="Abrir" onClick={() => openDoc(m.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-5 w-5" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium hover:text-primary">{m.title}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</span>
+                        </span>
+                      </button>
+                      <button type="button" title="Abrir" onClick={() => openDoc(m.id)} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"><ExternalLink className="h-4 w-4" /></button>
+                      <button type="button" title="Baixar" disabled={download.isPending} onClick={() => get(m.id)} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"><Download className="h-4 w-4" /></button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -234,6 +325,11 @@ function MaterialsTab() {
           </>
         ) : <p className="text-sm text-muted-foreground">O mídia kit da sua unidade ainda não foi disponibilizado.</p>}
       </section>
+      {viewing !== null && (
+        <ImageViewer
+          items={images.map((m) => ({ id: m.id, url: m.thumbUrl!, title: m.title, label: m.description?.split(" › ").pop() }))}
+          index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} onDownload={get} />
+      )}
       <section className="space-y-3">
         <h2 className="flex items-center gap-2 text-lg font-bold"><FolderOpen className="h-5 w-5 text-primary" />Materiais da Alle</h2>
         {general.length ? <div className="grid gap-2 md:grid-cols-2">{general.map((m) => <Card key={m.id} m={m} />)}</div>

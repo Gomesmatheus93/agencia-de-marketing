@@ -16,7 +16,7 @@ import { Link } from "wouter";
 // Painel do super admin: unidades (academias parceiras), acessos, plano da semana e materiais.
 
 const ACTION_LABEL: Record<string, string> = {
-  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material",
+  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material", "unit.material.view": "Abriu material",
 };
 const fmtDateTime = (d: string | Date | null) => (d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 const ddmm = (ymd: string) => `${ymd.slice(8)}/${ymd.slice(5, 7)}`;
