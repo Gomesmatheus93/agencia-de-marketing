@@ -1,0 +1,1 @@
+ALTER TABLE "unit_weekly_plans" ADD COLUMN "releaseAt" timestamp with time zone;

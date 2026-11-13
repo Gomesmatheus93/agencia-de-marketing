@@ -1,6 +1,6 @@
 import { getMetaFetchableStorageUrl } from "./storage";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditLog, unitAnnouncements, unitMaterials, unitPostMarks, units, unitWeeklyPlans, userUnits, users, type UnitPlanItem, type User } from "../drizzle/schema";
 import { adminProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -61,6 +61,9 @@ export async function currentUnit(me: User) {
   return { list, current: list.find((u) => u.id === me.unitId) ?? list[0] ?? null };
 }
 
+/** Semana visível para as unidades: publicada e com a data de envio já alcançada. */
+const released = () => and(eq(unitWeeklyPlans.status, "published"), or(isNull(unitWeeklyPlans.releaseAt), lte(unitWeeklyPlans.releaseAt, new Date())));
+
 // ─── Portal (contas de unidade; a equipe também consegue ver, como prévia) ────
 
 export const unitPortalRouter = router({
@@ -90,10 +93,10 @@ export const unitPortalRouter = router({
     .query(async ({ ctx, input }) => {
       const c = await conn();
       const published = await c.select({ weekStart: unitWeeklyPlans.weekStart, title: unitWeeklyPlans.title })
-        .from(unitWeeklyPlans).where(eq(unitWeeklyPlans.status, "published")).orderBy(desc(unitWeeklyPlans.weekStart)).limit(12);
+        .from(unitWeeklyPlans).where(released()).orderBy(desc(unitWeeklyPlans.weekStart)).limit(12);
       const current = mondayOf();
       const wanted = input?.weekStart ?? (published.find((p) => p.weekStart <= current)?.weekStart ?? published[0]?.weekStart ?? current);
-      const [plan] = await c.select().from(unitWeeklyPlans).where(and(eq(unitWeeklyPlans.weekStart, wanted), eq(unitWeeklyPlans.status, "published")));
+      const [plan] = await c.select().from(unitWeeklyPlans).where(and(eq(unitWeeklyPlans.weekStart, wanted), released()));
       if (plan && ctx.actualUser.accountType === "unit" && shouldLogView(`${ctx.actualUser.id}:${wanted}`)) {
         await db.recordAudit({ action: "unit.plan.view", actorUserId: ctx.actualUser.id, targetType: "unit_plan", targetId: wanted, metadata: { unitId: ctx.actualUser.unitId } });
       }
@@ -104,7 +107,7 @@ export const unitPortalRouter = router({
       // Próximas semanas já publicadas (prévia).
       const next = published.filter((p) => p.weekStart > (plan?.weekStart ?? current)).map((p) => p.weekStart).sort().slice(0, 3);
       const upcoming = next.length
-        ? (await c.select().from(unitWeeklyPlans).where(and(inArray(unitWeeklyPlans.weekStart, next), eq(unitWeeklyPlans.status, "published"))))
+        ? (await c.select().from(unitWeeklyPlans).where(and(inArray(unitWeeklyPlans.weekStart, next), released())))
           .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
           .map((w) => ({ weekStart: w.weekStart, weekEnd: addDays(w.weekStart, 6), title: w.title, items: w.items.map((it) => ({ date: it.date, format: it.format ?? null, title: it.title, thumb: it.imageUrls[0] ?? null })) }))
         : [];
@@ -216,12 +219,12 @@ export const unitAdminRouter = router({
     const eventUnit = (e: { metadata: unknown }) => (e.metadata as { unitId?: number } | null)?.unitId ?? null;
     const materials = await c.select({ unitId: unitMaterials.unitId, kind: unitMaterials.kind }).from(unitMaterials);
     const [planRow] = await c.select({ n: sql<number>`count(*)::int` }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.status, "published"));
-    const [current] = await c.select({ status: unitWeeklyPlans.status }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, mondayOf()));
+    const [current] = await c.select({ status: unitWeeklyPlans.status, releaseAt: unitWeeklyPlans.releaseAt }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, mondayOf()));
     // Adesão às postagens nas últimas 4 semanas: posts já vencidos (data até hoje) x marcados como postados.
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const fromWeek = addDays(mondayOf(), -21);
     const recentPlans = await c.select({ weekStart: unitWeeklyPlans.weekStart, items: unitWeeklyPlans.items }).from(unitWeeklyPlans)
-      .where(and(eq(unitWeeklyPlans.status, "published"), gte(unitWeeklyPlans.weekStart, fromWeek)));
+      .where(and(released(), gte(unitWeeklyPlans.weekStart, fromWeek)));
     const dueKeys = new Set(recentPlans.flatMap((p) => p.items.map((it, i) => (it.date <= today ? `${p.weekStart}:${i}` : null)).filter(Boolean) as string[]));
     const marks = await c.select().from(unitPostMarks).where(gte(unitPostMarks.weekStart, fromWeek));
     const thisWeek = mondayOf();
@@ -261,7 +264,7 @@ export const unitAdminRouter = router({
         postedThisWeek: list.filter((u) => u.postedThisWeek > 0).length,
         adherence4w: (() => { const due = dueKeys.size * list.filter((u) => u.active).length; const done = list.filter((u) => u.active).reduce((s, u) => s + u.posted4w, 0); return due ? Math.round((done / due) * 100) : null; })(),
         withLink: list.filter((u) => u.hasLink).length,
-        currentWeekPublished: current?.status === "published",
+        currentWeekPublished: current?.status === "published" && (!current.releaseAt || current.releaseAt <= new Date()),
       },
     };
   }),
@@ -391,6 +394,36 @@ export const unitAdminRouter = router({
     return plan ?? null;
   }),
 
+  /** Planejamento do mês das unidades: as semanas (segunda a domingo) que tocam o mês. */
+  monthPlans: adminProcedure.input(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })).query(async ({ input }) => {
+    const first = `${input.month}-01`;
+    const [y, m] = input.month.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    const weeks: string[] = [];
+    for (let w = mondayOf(new Date(`${first}T15:00:00Z`)); w <= last; w = addDays(w, 7)) weeks.push(w);
+    const c = await conn();
+    const rows = await c.select().from(unitWeeklyPlans).where(inArray(unitWeeklyPlans.weekStart, weeks));
+    const now = new Date();
+    return weeks.map((w) => {
+      const r = rows.find((x) => x.weekStart === w);
+      const state = !r ? "vazia" : r.status !== "published" ? "rascunho" : r.releaseAt && r.releaseAt > now ? "agendada" : "liberada";
+      return { weekStart: w, weekEnd: addDays(w, 6), state, releaseAt: r?.releaseAt ?? null, title: r?.title ?? "", notes: r?.notes ?? "", items: r?.items ?? [] };
+    });
+  }),
+
+  /** Artes prontas dos agentes (carrossel, post e stories) para usar num post das unidades. */
+  creations: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(60).default(30) })).query(async ({ ctx, input }) => {
+    const out: Array<{ id: number; agent: string; title: string; createdAt: Date; images: string[]; caption: string | null; format: string }> = [];
+    for (const [slug, format] of [["carrossel", "carrossel"], ["legendas", "imagem"], ["stories", "stories"]] as const) {
+      for (const t of (await store.listThreads(ctx.user.id, slug, "task")).slice(0, input.limit)) {
+        const r = (t.result ?? {}) as Record<string, any>;
+        const images: string[] = (r.slides?.map((s: any) => s.imageUrl) ?? r.frames?.map((f: any) => f.imageUrl) ?? (r.imageUrl ? [r.imageUrl] : [])).filter(Boolean);
+        if (images.length) out.push({ id: t.id, agent: slug, title: String(r.title ?? t.title), createdAt: t.createdAt, images, caption: r.caption ?? null, format });
+      }
+    }
+    return out.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, input.limit * 2);
+  }),
+
   /** Monta a semana a partir do planejamento da Alle: pautas com arte criada, com todas as artes e a legenda. */
   importFromAlle: adminProcedure.input(z.object({ weekStart: day })).mutation(async ({ ctx, input }) => {
     const end = addDays(input.weekStart, 6);
@@ -427,16 +460,21 @@ export const unitAdminRouter = router({
   }),
 
   savePlan: adminProcedure
-    .input(z.object({ weekStart: day, title: z.string().trim().max(255).optional(), notes: z.string().trim().max(5000).optional(), items: z.array(planItemSchema).max(30), publish: z.boolean() }))
+    .input(z.object({
+      weekStart: day, title: z.string().trim().max(255).optional(), notes: z.string().trim().max(5000).optional(), items: z.array(planItemSchema).max(30), publish: z.boolean(),
+      releaseAt: z.string().datetime({ offset: true }).nullable().optional(), // envio agendado; padrão: segunda 00h da semana
+    }))
     .mutation(async ({ ctx, input }) => {
       if (mondayOf(new Date(`${input.weekStart}T15:00:00Z`)) !== input.weekStart) throw new TRPCError({ code: "BAD_REQUEST", message: "A semana precisa começar numa segunda-feira." });
       const c = await conn();
       const values = {
         title: input.title || null, notes: input.notes || null, items: input.items,
         status: input.publish ? "published" : "draft", publishedAt: input.publish ? new Date() : null, createdByUserId: ctx.actualUser!.id,
+        releaseAt: input.publish ? (input.releaseAt ? new Date(input.releaseAt) : new Date(`${input.weekStart}T00:00:00-03:00`)) : null,
       };
       await c.insert(unitWeeklyPlans).values({ weekStart: input.weekStart, ...values })
         .onConflictDoUpdate({ target: unitWeeklyPlans.weekStart, set: values });
+      if (input.items.some((it) => it.date < input.weekStart || it.date > addDays(input.weekStart, 6))) throw new TRPCError({ code: "BAD_REQUEST", message: "Há post com data fora desta semana." });
       await db.recordAudit({ action: input.publish ? "unit.plan.published" : "unit.plan.saved", actorUserId: ctx.actualUser!.id, targetType: "unit_plan", targetId: input.weekStart });
       return { ok: true };
     }),

@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Send, Sparkles, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -169,8 +169,22 @@ function ActivityTab() {
   );
 }
 
-// ── Planejamento semanal ───────────────────────────────────────────────────
+// ── Planejamento das unidades (mensal, enviado semana a semana) ────────────
 type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[] };
+type Week = { weekStart: string; weekEnd: string; state: string; releaseAt: string | Date | null; title: string; notes: string; items: Item[] };
+
+const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const FORMATS = [["carrossel", "Carrossel"], ["imagem", "Imagem"], ["reel", "Reel"], ["stories", "Stories"]] as const;
+const FORMAT_CLS: Record<string, string> = { carrossel: "bg-primary/10 text-primary", imagem: "bg-sky-500/10 text-sky-700", reel: "bg-alle-orange/10 text-alle-orange", stories: "bg-emerald-500/10 text-emerald-700" };
+const addDaysYmd = (ymd: string, n: number) => { const d = new Date(`${ymd}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString("en-CA"); };
+const toLocalInput = (d: string | Date) => { const x = new Date(d); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const STATE: Record<string, { label: string; cls: string }> = {
+  vazia: { label: "Sem posts", cls: "bg-muted text-muted-foreground" },
+  rascunho: { label: "Rascunho", cls: "bg-muted text-foreground" },
+  agendada: { label: "Envio agendado", cls: "bg-amber-500/10 text-amber-700" },
+  liberada: { label: "Enviada às unidades", cls: "bg-emerald-500/10 text-emerald-700" },
+};
 
 /** Envia um arquivo pelo upload direto (presigned) e devolve a URL pública. */
 async function uploadFile(file: File): Promise<string> {
@@ -181,79 +195,246 @@ async function uploadFile(file: File): Promise<string> {
   if (!put.ok) throw new Error("O envio do arquivo falhou.");
   return publicUrl;
 }
-function PlanTab() {
-  const [week, setWeek] = useState(mondayOf());
-  const saved = trpc.unitAdmin.getPlan.useQuery({ weekStart: week });
-  const [draft, setDraft] = useState<{ week: string; title: string; notes: string; items: Item[] } | null>(null);
-  const current = draft?.week === week ? draft : saved.data ? { week, title: saved.data.title ?? "", notes: saved.data.notes ?? "", items: saved.data.items } : null;
-  const utils = trpc.useUtils();
-  const importAlle = trpc.unitAdmin.importFromAlle.useMutation({
-    onSuccess: (r) => { setDraft({ week, title: current?.title ?? "", notes: current?.notes ?? "", items: r.items }); toast.success(r.items.length ? `${r.items.length} posts com arte importados do planejamento da Alle.` : "Nenhuma pauta desta semana tem arte criada ainda."); },
-    onError: (e) => toast.error(e.message),
-  });
-  const save = trpc.unitAdmin.savePlan.useMutation({
-    onSuccess: (_r, v) => { toast.success(v.publish ? "Publicado para todas as unidades!" : "Rascunho salvo."); setDraft(null); utils.unitAdmin.getPlan.invalidate(); utils.unitAdmin.overview.invalidate(); },
-    onError: (e) => toast.error(e.message),
-  });
-  const setItem = (i: number, patch: Partial<Item>) => current && setDraft({ ...current, items: current.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
-  const [uploading, setUploading] = useState<number | null>(null);
 
+/** Escolher uma arte pronta dos agentes (carrossel, post, stories). */
+function CreationPicker({ onPick, onClose }: { onPick: (c: { title: string; images: string[]; caption: string | null; format: string }) => void; onClose: () => void }) {
+  const list = trpc.unitAdmin.creations.useQuery({ limit: 30 });
+  const LABEL: Record<string, string> = { carrossel: "Carrossel", legendas: "Post", stories: "Stories" };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader><DialogTitle>Usar uma criação dos agentes</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">Artes já criadas pelos agentes de Carrossel, Post e Stories. Ao escolher, as artes e a legenda entram no post (dá para editar depois).</p>
+        {list.isLoading ? <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : !list.data?.length ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma criação com arte ainda. Crie no Estúdio (Carrossel, Post ou Stories) e volte aqui.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {list.data.map((c) => (
+              <button key={`${c.agent}-${c.id}`} type="button" onClick={() => { onPick(c); onClose(); }} className="overflow-hidden rounded-xl border bg-card text-left transition hover:border-primary">
+                <div className="flex gap-0.5 bg-muted">{c.images.slice(0, 3).map((u) => <img key={u} src={u} alt="" loading="lazy" className={cn("min-w-0 flex-1 object-cover", c.format === "stories" ? "aspect-[9/16]" : "aspect-[4/5]")} />)}</div>
+                <div className="p-2.5">
+                  <p className="line-clamp-2 text-xs font-semibold">{c.title}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{LABEL[c.agent] ?? c.agent} · {c.images.length} {c.images.length === 1 ? "arte" : "artes"} · {new Date(c.createdAt).toLocaleDateString("pt-BR")}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Editor de um post das unidades. */
+function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week: Week; initial: Item; onSave: (it: Item) => void; onDelete?: () => void; onClose: () => void; saving: boolean }) {
+  const [it, setIt] = useState<Item>(initial);
+  const [busy, setBusy] = useState<"artes" | "stories" | null>(null);
+  const [picker, setPicker] = useState(false);
+  const set = (patch: Partial<Item>) => setIt((x) => ({ ...x, ...patch }));
+  const days = Array.from({ length: 7 }, (_, i) => addDaysYmd(week.weekStart, i));
+  const upload = async (files: File[], target: "artes" | "stories") => {
+    if (!files.length) return;
+    setBusy(target);
+    try {
+      const urls: string[] = [];
+      for (const f of files) urls.push(await uploadFile(f));
+      if (target === "artes") set({ imageUrls: [...it.imageUrls, ...urls].slice(0, 20) });
+      else set({ storyUrls: [...(it.storyUrls ?? []), ...urls].slice(0, 10) });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
+  const move = (i: number, d: number) => { const arr = [...it.imageUrls]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ imageUrls: arr }); };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader><DialogTitle>{onDelete ? "Editar post das unidades" : "Novo post das unidades"}</DialogTitle></DialogHeader>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <label className="space-y-1 text-sm"><span className="font-medium">Dia</span>
+                <select value={it.date} onChange={(e) => set({ date: e.target.value })} className="h-9 w-full rounded-md border bg-background px-2">
+                  {days.map((d) => <option key={d} value={d}>{WD[new Date(`${d}T12:00:00`).getDay()]} {ddmm(d)}</option>)}
+                </select></label>
+              <label className="space-y-1 text-sm"><span className="font-medium">Horário</span><Input type="time" value={it.time ?? ""} onChange={(e) => set({ time: e.target.value || null })} /></label>
+              <label className="space-y-1 text-sm"><span className="font-medium">Formato</span>
+                <select value={it.format ?? "imagem"} onChange={(e) => set({ format: e.target.value })} className="h-9 w-full rounded-md border bg-background px-2">
+                  {FORMATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select></label>
+            </div>
+            <label className="block space-y-1 text-sm"><span className="font-medium">Título (o que as unidades veem no card)</span><Input value={it.title} onChange={(e) => set({ title: e.target.value })} placeholder="Ex.: Aluno Allp Fit: desconto na conta de luz" /></label>
+            <label className="block space-y-1 text-sm"><span className="font-medium">Tipo de pauta (opcional)</span><Input value={it.type ?? ""} onChange={(e) => set({ type: e.target.value || null })} placeholder="Ensino, Oferta, Prova…" /></label>
+            <label className="block space-y-1 text-sm"><span className="font-medium">Legenda</span><Textarea rows={10} value={it.caption ?? ""} onChange={(e) => set({ caption: e.target.value })} placeholder="Legenda que a unidade vai copiar, com a ressalva do desconto e @alleenergia @allpfit" /></label>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <p className="flex-1 text-sm font-medium">Artes ({it.imageUrls.length})</p>
+                <Button size="sm" variant="outline" onClick={() => setPicker(true)}><Sparkles className="mr-1.5 h-4 w-4" />Usar criação dos agentes</Button>
+                <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-muted", busy === "artes" && "pointer-events-none opacity-60")}>
+                  {busy === "artes" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Enviar
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; upload(f, "artes"); }} />
+                </label>
+              </div>
+              {it.imageUrls.length ? (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {it.imageUrls.map((u, i) => (
+                    <div key={u + i} className="group relative overflow-hidden rounded-lg border bg-muted">
+                      <img src={u} alt="" className="aspect-[4/5] w-full object-cover" />
+                      <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] font-bold text-white">{i + 1}</span>
+                      <div className="absolute inset-x-0 bottom-0 hidden justify-between bg-black/60 p-1 group-hover:flex">
+                        <button type="button" title="Mover para trás" onClick={() => move(i, -1)} className="px-1 text-xs text-white">‹</button>
+                        <button type="button" title="Tirar" onClick={() => set({ imageUrls: it.imageUrls.filter((_, j) => j !== i) })} className="px-1 text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+                        <button type="button" title="Mover para frente" onClick={() => move(i, 1)} className="px-1 text-xs text-white">›</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Envie as artes ou use uma criação dos agentes.</p>}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <p className="flex-1 text-sm font-medium">Story do dia (9:16, opcional)</p>
+                <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-muted", busy === "stories" && "pointer-events-none opacity-60")}>
+                  {busy === "stories" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Enviar
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; upload(f, "stories"); }} />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(it.storyUrls ?? []).map((u) => (
+                  <span key={u} className="relative">
+                    <img src={u} alt="" className="h-28 w-16 rounded-md border object-cover" />
+                    <button type="button" title="Tirar" onClick={() => set({ storyUrls: (it.storyUrls ?? []).filter((x) => x !== u) })} className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive px-1.5 text-[11px] leading-5 text-white">×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap justify-between gap-2 border-t pt-4">
+          {onDelete ? <Button variant="ghost" className="text-destructive" onClick={() => { if (confirm("Tirar este post do planejamento das unidades?")) onDelete(); }}><Trash2 className="mr-1.5 h-4 w-4" />Excluir</Button> : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button disabled={saving || !it.title.trim() || !it.imageUrls.length} title={!it.imageUrls.length ? "Adicione pelo menos uma arte" : undefined} onClick={() => onSave({ ...it, title: it.title.trim() })}>
+              {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar post
+            </Button>
+          </div>
+        </div>
+        {picker && <CreationPicker onClose={() => setPicker(false)} onPick={(c) => set({ imageUrls: c.images, caption: it.caption?.trim() ? it.caption : c.caption, title: it.title.trim() ? it.title : c.title, format: c.format === "stories" ? "stories" : c.images.length > 1 ? "carrossel" : "imagem" })} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
+  week: Week; onEdit: (i: number) => void; onNew: (date: string) => void; onSaveMeta: (patch: { title?: string; notes?: string }) => void;
+  onRelease: (mode: "agendar" | "agora" | "rascunho", releaseAt?: string) => void; busy: boolean;
+}) {
+  const today = new Date().toLocaleDateString("en-CA");
+  const [release, setRelease] = useState(toLocalInput(week.releaseAt ?? `${week.weekStart}T00:00:00-03:00`));
+  const [title, setTitle] = useState(week.title);
+  const [notes, setNotes] = useState(week.notes);
+  const st = STATE[week.state] ?? STATE.vazia;
+  const days = Array.from({ length: 7 }, (_, i) => addDaysYmd(week.weekStart, i));
+  return (
+    <Card className="border-border/60"><CardContent className="space-y-3 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-semibold">Semana de {ddmm(week.weekStart)} a {ddmm(week.weekEnd)}</p>
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", st.cls)}>{st.label}</span>
+        <span className="text-xs text-muted-foreground">{week.items.length} {week.items.length === 1 ? "post" : "posts"}</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {week.state === "liberada" ? (
+            <>
+              <span className="text-xs text-muted-foreground">Enviada {week.releaseAt ? `em ${fmtDateTime(week.releaseAt)}` : ""}</span>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { if (confirm("Tirar esta semana do portal das unidades (volta para rascunho)?")) onRelease("rascunho"); }}>Recolher</Button>
+            </>
+          ) : (
+            <>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">Enviar em
+                <Input type="datetime-local" value={release} onChange={(e) => setRelease(e.target.value)} className="h-8 w-[190px] text-xs" /></label>
+              {week.state === "agendada" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRelease("rascunho")}>Cancelar envio</Button>}
+              <Button size="sm" variant="outline" disabled={busy || !week.items.length} onClick={() => onRelease("agendar", new Date(release).toISOString())}><Clock3 className="mr-1.5 h-4 w-4" />{week.state === "agendada" ? "Reagendar" : "Agendar envio"}</Button>
+              <Button size="sm" disabled={busy || !week.items.length} onClick={() => { if (confirm(`Enviar agora a semana de ${ddmm(week.weekStart)} para todas as unidades?`)) onRelease("agora"); }}><Send className="mr-1.5 h-4 w-4" />Enviar agora</Button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== week.title && onSaveMeta({ title })} placeholder="Título da semana (opcional, ex.: Semana da Black Friday)" className="h-8 text-sm" />
+        <Input value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== week.notes && onSaveMeta({ notes })} placeholder="Recado para as unidades (opcional)" className="h-8 text-sm" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {days.map((d) => {
+          const posts = week.items.map((it, i) => ({ it, i })).filter(({ it }) => it.date === d);
+          const dd = new Date(`${d}T12:00:00`);
+          return (
+            <div key={d} className={cn("flex min-h-[170px] flex-col gap-1.5 rounded-xl border bg-muted/20 p-2", d === today && "border-primary ring-1 ring-primary/30")}>
+              <p className={cn("text-[11px] font-semibold uppercase", d === today ? "text-primary" : "text-muted-foreground")}>{WD[dd.getDay()]} {ddmm(d)}</p>
+              {posts.map(({ it, i }) => (
+                <button key={i} type="button" onClick={() => onEdit(i)} className="overflow-hidden rounded-lg border bg-card text-left transition hover:border-primary">
+                  {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className="aspect-[4/5] w-full object-cover" />}
+                  <div className="p-1.5">
+                    <p className="flex items-center gap-1 text-[10px]">{it.time && <span className="font-semibold">{it.time}</span>}{it.format && <span className={cn("rounded px-1", FORMAT_CLS[it.format] ?? "bg-muted")}>{FORMATS.find(([v]) => v === it.format)?.[1] ?? it.format}</span>}{it.storyUrls?.length ? <span className="text-muted-foreground">+story</span> : null}</p>
+                    <p className="line-clamp-2 text-[11px] font-medium leading-tight">{it.title}</p>
+                  </div>
+                </button>
+              ))}
+              <button type="button" onClick={() => onNew(d)} className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[11px] text-muted-foreground hover:border-primary hover:text-primary"><Plus className="h-3 w-3" />Post</button>
+            </div>
+          );
+        })}
+      </div>
+    </CardContent></Card>
+  );
+}
+
+function PlanTab() {
+  const now = new Date();
+  const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const q = trpc.unitAdmin.monthPlans.useQuery({ month });
+  const utils = trpc.useUtils();
+  const save = trpc.unitAdmin.savePlan.useMutation({ onError: (e) => toast.error(e.message) });
+  const [editing, setEditing] = useState<{ week: Week; index: number | null; item: Item } | null>(null);
+  const [y, m] = month.split("-").map(Number);
+  const shift = (d: number) => { const x = new Date(y, m - 1 + d, 1); setMonth(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`); };
+
+  /** Salva a semana mantendo o estado de envio (rascunho, agendada, enviada). */
+  const persist = async (week: Week, patch: Partial<Pick<Week, "items" | "title" | "notes">>, release?: { mode: "agendar" | "agora" | "rascunho"; at?: string }) => {
+    const items = [...(patch.items ?? week.items)].sort((a, b) => `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`));
+    const published = release ? release.mode !== "rascunho" : week.state === "agendada" || week.state === "liberada";
+    const releaseAt = release?.mode === "agora" ? new Date().toISOString() : release?.mode === "agendar" ? release.at : week.releaseAt ? new Date(week.releaseAt).toISOString() : null;
+    await save.mutateAsync({ weekStart: week.weekStart, title: patch.title ?? week.title, notes: patch.notes ?? week.notes, items, publish: published, releaseAt: published ? releaseAt : null });
+    await utils.unitAdmin.monthPlans.invalidate();
+    utils.unitAdmin.overview.invalidate();
+  };
+
+  const weeks = (q.data ?? []) as Week[];
+  const total = weeks.reduce((s, w) => s + w.items.filter((it) => it.date.startsWith(month)).length, 0);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => setWeek(addWeeks(week, -1))}>‹</Button>
-        <span className="font-semibold">Semana de {ddmm(week)} a {ddmm(sundayOf(week))}</span>
-        <Button variant="outline" size="sm" onClick={() => setWeek(addWeeks(week, 1))}>›</Button>
-        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", saved.data?.status === "published" ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>{saved.data ? (saved.data.status === "published" ? "Publicado" : "Rascunho") : "Sem plano"}</span>
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" disabled={importAlle.isPending} onClick={() => importAlle.mutate({ weekStart: week })}>{importAlle.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Importar do planejamento da Alle</Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => shift(-1)}>‹</Button>
+        <span className="min-w-[150px] text-center text-lg font-bold">{MONTHS[m - 1]} {y}</span>
+        <Button variant="outline" size="sm" onClick={() => shift(1)}>›</Button>
+        <span className="text-sm text-muted-foreground">{total} {total === 1 ? "post" : "posts"} no mês</span>
       </div>
-      {!current ? (
-        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhum plano para esta semana. Clique em "Importar do planejamento da Alle" para trazer as pautas com arte criada.</p>
-      ) : (
-        <>
-          <div className="grid gap-2 md:grid-cols-2">
-            <Input value={current.title} onChange={(e) => setDraft({ ...current, title: e.target.value })} placeholder="Título (ex.: Semana da Black Friday)" />
-            <Input value={current.notes} onChange={(e) => setDraft({ ...current, notes: e.target.value })} placeholder="Recado para as unidades (opcional)" />
-          </div>
-          {current.items.map((it, i) => (
-            <Card key={i} className="border-border/60"><CardContent className="grid gap-3 p-3 md:grid-cols-[220px_1fr]">
-              <div className="flex gap-1 overflow-x-auto">{it.imageUrls.map((u) => <img key={u} src={u} alt="" className="h-28 w-[90px] shrink-0 rounded-md border object-cover" />)}</div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm"><span className="font-semibold">{ddmm(it.date)}{it.time ? ` · ${it.time}` : ""}</span><span className="text-muted-foreground">{it.format}</span>
-                  <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" title="Tirar da semana" onClick={() => setDraft({ ...current, items: current.items.filter((_, j) => j !== i) })}><Trash2 className="h-4 w-4" /></button></div>
-                <Input value={it.title} onChange={(e) => setItem(i, { title: e.target.value })} />
-                <Textarea rows={4} value={it.caption ?? ""} onChange={(e) => setItem(i, { caption: e.target.value })} className="text-sm" placeholder="Legenda que a unidade vai copiar" />
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-muted-foreground">Story do dia:</span>
-                  {(it.storyUrls ?? []).map((u) => (
-                    <span key={u} className="relative">
-                      <img src={u} alt="" className="h-16 w-9 rounded border object-cover" />
-                      <button type="button" title="Tirar" onClick={() => setItem(i, { storyUrls: (it.storyUrls ?? []).filter((x) => x !== u) })} className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive px-1 text-[10px] leading-4 text-white">×</button>
-                    </span>
-                  ))}
-                  <label className={cn("inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted", uploading === i && "pointer-events-none opacity-60")}>
-                    {uploading === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}Adicionar story (9:16)
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
-                      const files = [...(e.target.files ?? [])]; e.target.value = "";
-                      if (!files.length) return;
-                      setUploading(i);
-                      try { const urls = []; for (const f of files) urls.push(await uploadFile(f)); setItem(i, { storyUrls: [...(it.storyUrls ?? []), ...urls].slice(0, 10) }); }
-                      catch (err) { toast.error((err as Error).message); } finally { setUploading(null); }
-                    }} />
-                  </label>
-                </div>
-              </div>
-            </CardContent></Card>
-          ))}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={save.isPending} onClick={() => save.mutate({ weekStart: week, title: current.title, notes: current.notes, items: current.items, publish: false })}>Salvar rascunho</Button>
-            <Button disabled={save.isPending || current.items.length === 0} onClick={() => { if (confirm(`Publicar o plano da semana de ${ddmm(week)} para todas as unidades?`)) save.mutate({ weekStart: week, title: current.title, notes: current.notes, items: current.items, publish: true }); }}>
-              {save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Publicar para as unidades
-            </Button>
-          </div>
-        </>
+      <p className="rounded-xl bg-primary/5 p-3 text-sm text-muted-foreground">
+        Este é o calendário <b>das academias</b>, separado do planejamento da Alle. Monte o mês, crie as artes (envie ou use uma criação dos agentes) e cada semana vai para o portal das unidades na data de envio. Padrão: segunda-feira 00h da própria semana.
+      </p>
+      {q.isLoading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : weeks.map((w) => (
+        <WeekCard key={`${w.weekStart}-${w.state}-${String(w.releaseAt)}`} week={w} busy={save.isPending}
+          onNew={(date) => setEditing({ week: w, index: null, item: { date, time: "12:00", format: "imagem", title: "", caption: "", imageUrls: [], storyUrls: [] } })}
+          onEdit={(i) => setEditing({ week: w, index: i, item: w.items[i] })}
+          onSaveMeta={(patch) => persist(w, patch).then(() => toast.success("Semana atualizada."))}
+          onRelease={(mode, at) => persist(w, {}, { mode, at }).then(() => toast.success(mode === "agora" ? "Semana enviada para as unidades!" : mode === "agendar" ? "Envio agendado." : "Semana voltou para rascunho."))} />
+      ))}
+      {editing && (
+        <PostEditor week={editing.week} initial={editing.item} saving={save.isPending} onClose={() => setEditing(null)}
+          onSave={async (it) => {
+            const items = editing.index === null ? [...editing.week.items, it] : editing.week.items.map((x, j) => (j === editing.index ? it : x));
+            await persist(editing.week, { items });
+            toast.success(editing.week.state === "liberada" ? "Post salvo (a semana já está no portal: a mudança aparece na hora)." : "Post salvo.");
+            setEditing(null);
+          }}
+          onDelete={editing.index === null ? undefined : async () => { await persist(editing.week, { items: editing.week.items.filter((_, j) => j !== editing.index) }); setEditing(null); }} />
       )}
     </div>
   );
@@ -471,7 +652,7 @@ export default function UnitsAdmin() {
   const supportUnread = trpc.unitSupportAdmin.unread.useQuery(undefined, { enabled: user?.role === "admin", refetchInterval: 60_000 }).data ?? 0;
   const [open, setOpen] = useState<number | null>(null);
   if (user && user.role !== "admin") return <AppLayout activeModule="units"><p className="p-8 text-sm text-muted-foreground">Apenas administradores.</p></AppLayout>;
-  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento semanal", CalendarDays], ["avisos", "Avisos", Megaphone], ["suporte", "Suporte", LifeBuoy], ["materiais", "Materiais e mídia kits", Download]] as const;
+  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento das unidades", CalendarDays], ["avisos", "Avisos", Megaphone], ["suporte", "Suporte", LifeBuoy], ["materiais", "Materiais e mídia kits", Download]] as const;
   return (
     <AppLayout activeModule="units">
       <main className="min-h-screen p-4 md:p-8">

@@ -1184,6 +1184,8 @@ export const unitWeeklyPlans = pgTable("unit_weekly_plans", {
   items: json("items").$type<UnitPlanItem[]>().notNull(),
   status: varchar("status", { length: 16 }).default("draft").notNull(), // "draft" | "published"
   publishedAt: timestamp("publishedAt"),
+  // Quando a semana aparece para as unidades (envio agendado). Nulo = assim que publicada.
+  releaseAt: timestamp("releaseAt"),
   createdByUserId: integer("createdByUserId").notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });
