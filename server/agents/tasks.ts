@@ -273,7 +273,7 @@ ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 
 const storiesInput = z.object({
   topic: z.string().trim().min(3).max(3000),
-  frames: z.number().int().min(3).max(7).default(5),
+  frames: z.number().int().min(1).max(7).default(5),
   notes: z.string().trim().max(3000).optional(),
 });
 
@@ -284,7 +284,7 @@ const storiesResult = z.object({
   title: z.string(),
   goal: z.string().describe("O objetivo da sequência em uma frase (ex.: puxar conversa no Direct sobre a conta de luz)."),
   frames: z.array(z.object({
-    role: z.enum(["abertura", "meio", "pergunta", "fechamento"]),
+    role: z.enum(["unico", "abertura", "meio", "pergunta", "fechamento"]).describe('"unico" quando a sequência tem 1 quadro só.'),
     imageUrl: artUrl,
     onScreen: z.string().describe("O texto que está na arte."),
     voiceover: z.string().nullable().describe("O que falar, se o quadro for gravado em vídeo; null se for só imagem."),
@@ -295,7 +295,7 @@ const storiesResult = z.object({
     }),
     replaceWithRealMedia: z.boolean().describe("true quando o ideal é a equipe trocar a arte por foto/vídeo real (rosto ou mão)."),
     notes: z.string().nullable(),
-  })).min(3).max(7),
+  })).min(1).max(7),
   followUp: z.string().describe("O que fazer com as respostas (a quem responder no Direct e como)."),
   assumptions: z.array(z.string()),
 });
@@ -307,9 +307,11 @@ export const storiesTask: TaskDefinition<typeof storiesInput, typeof storiesResu
   title: (i) => `Stories: ${i.topic.split("\n")[0].slice(0, 60)}`,
   brief: (i) => `${TASK_RULES}
 
-TAREFA: criar a sequência de stories do dia da Alle Energia, com as artes prontas.
+TAREFA: ${i.frames === 1 ? "criar UM story avulso da Alle Energia, com a arte pronta" : "criar a sequência de stories do dia da Alle Energia, com as artes prontas"}.
 - Tema: ${i.topic}
-- ${i.frames} quadros, seguindo a sua skill (abertura, conteúdo, pergunta com UMA figurinha no 4º quadro ou antes, fechamento). Fale com "você", uma ideia por quadro.
+${i.frames === 1
+  ? `- EXATAMENTE 1 quadro (role "unico"). Ele precisa funcionar sozinho: gancho no topo, uma ideia só e a chamada para ação no mesmo quadro (ex.: "Comenta ENERGIA" ou responder na figurinha). Use no máximo UMA figurinha, se ajudar a puxar conversa. Fale com "você".`
+  : `- ${i.frames} quadros, seguindo a sua skill (abertura, conteúdo, pergunta com UMA figurinha no 4º quadro ou antes, fechamento). Fale com "você", uma ideia por quadro.`}
 - Leia a memória (voice.md, plan.md) e a identidade da marca. Humanize os textos (ig-human).
 - Carregue a skill alle-design e desenhe cada quadro com render_design no formato story_9x16 (texto entre y=250 e y=1600). Na abertura, prefira foto de pessoa ou mão (search_photos) e marque replaceWithRealMedia=true quando o ideal for a equipe gravar a cena real.
 - Figurinhas interativas são colocadas no app do Instagram: NÃO desenhe a figurinha. No quadro com figurinha, deixe livre a faixa de y=${STORY_STICKER_ZONE.top} a y=${STORY_STICKER_ZONE.bottom} (nada de texto ou elemento importante ali) e descreva a figurinha em "sticker".

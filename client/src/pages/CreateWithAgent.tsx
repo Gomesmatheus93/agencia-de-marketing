@@ -284,7 +284,7 @@ type StickerType = "nenhum" | "enquete" | "caixa_de_perguntas" | "quiz" | "slide
 type StoriesResult = {
   title: string; goal: string; followUp: string; assumptions: string[];
   frames: Array<{
-    role: "abertura" | "meio" | "pergunta" | "fechamento"; imageUrl: string; onScreen: string; voiceover: string | null;
+    role: "unico" | "abertura" | "meio" | "pergunta" | "fechamento"; imageUrl: string; onScreen: string; voiceover: string | null;
     sticker: { type: StickerType; prompt: string | null; options: string[] };
     replaceWithRealMedia: boolean; notes: string | null;
   }>;
@@ -363,7 +363,7 @@ function PhoneFrame({ frame, index, total }: { frame: StoriesResult["frames"][nu
   );
 }
 
-const ROLE_LABEL = { abertura: "Abertura", meio: "Conteúdo", pergunta: "Pergunta", fechamento: "Fechamento" } as const;
+const ROLE_LABEL = { unico: "Story único", abertura: "Abertura", meio: "Conteúdo", pergunta: "Pergunta", fechamento: "Fechamento" } as const;
 
 export function CreateStories() {
   const t = useAgentTask<StoriesResult>("stories");
@@ -380,7 +380,7 @@ export function CreateStories() {
         <Textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ex.: a conta de outubro chegou mais cara — descobrir quem levou susto e puxar conversa no Direct" />
         <div className="grid gap-3 md:grid-cols-[160px_1fr_auto] md:items-end">
           <label className="space-y-1.5 text-sm"><span className="font-medium">Quadros</span>
-            <select value={frames} onChange={(e) => setFrames(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</select>
+            <select value={frames} onChange={(e) => setFrames(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">{[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n === 1 ? "1 (story único)" : n}</option>)}</select>
           </label>
           <label className="space-y-1.5 text-sm"><span className="font-medium">Observações (opcional)</span><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-9" placeholder="Ex.: usar caixa de perguntas; mencionar a collab com a @allpfit" /></label>
           <Button className="gap-2" disabled={t.running || t.starting || topic.trim().length < 3} onClick={() => t.start({ topic, frames, notes: notes || undefined })}>
