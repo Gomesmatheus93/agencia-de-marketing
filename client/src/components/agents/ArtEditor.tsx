@@ -119,12 +119,39 @@ function isBackground(el: Element, w: number, h: number) {
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
-function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; target: ArtTarget; onClose: () => void; onSaved: () => void }) {
+/** Fonte genérica de SVG: permite abrir o mesmo editor fora das artes dos agentes (ex.: mídia kit). */
+export type SvgSource = {
+  title?: string;
+  svg: string | null | undefined;
+  loading: boolean;
+  saving: boolean;
+  save: (svg: string) => Promise<void>;
+  /** Volta para o modelo/versão anterior (opcional). */
+  undo?: { label: string; run: () => Promise<void> };
+  emptyMessage?: string;
+};
+
+/** Abre o editor de artes para qualquer SVG (tela cheia). */
+export function SvgEditorModal({ source, onClose }: { source: SvgSource; onClose: () => void }) {
+  return createPortal(<ArtStudio adapter={source} onClose={onClose} onSaved={() => {}} />, document.body);
+}
+
+function ArtStudio({ threadId = 0, target = { kind: "post" }, onClose, onSaved, adapter }: { threadId?: number; target?: ArtTarget; onClose: () => void; onSaved: () => void; adapter?: SvgSource }) {
   const utils = trpc.useUtils();
   const query = { threadId, target: { kind: target.kind, index: target.index ?? 0 } };
-  const source = trpc.agents.artSource.useQuery(query, { refetchOnWindowFocus: false });
-  const save = trpc.agents.saveArt.useMutation();
-  const undoSaved = trpc.agents.undoArtEdit.useMutation();
+  const remote = trpc.agents.artSource.useQuery(query, { refetchOnWindowFocus: false, enabled: !adapter });
+  const saveRemote = trpc.agents.saveArt.useMutation();
+  const undoRemote = trpc.agents.undoArtEdit.useMutation();
+  // Mesma interface para as duas origens (arte de agente ou SVG avulso).
+  const source = adapter
+    ? { data: adapter.svg ? { svg: adapter.svg, canUndo: !!adapter.undo } : undefined, isLoading: adapter.loading }
+    : remote;
+  const save = adapter
+    ? { isPending: adapter.saving, mutate: (v: { svg: string }, o: { onSuccess: () => void; onError: (e: Error) => void }) => { adapter.save(v.svg).then(o.onSuccess, o.onError); } }
+    : { isPending: saveRemote.isPending, mutate: (v: { svg: string }, o: { onSuccess: () => void; onError: (e: Error) => void }) => saveRemote.mutate({ ...query, svg: v.svg }, { onSuccess: o.onSuccess, onError: (e) => o.onError(new Error(e.message)) }) };
+  const undoSaved = adapter
+    ? { isPending: false, mutate: (_q: unknown, o: { onSuccess: () => void; onError: (e: Error) => void }) => { adapter.undo?.run().then(o.onSuccess, o.onError); } }
+    : { isPending: undoRemote.isPending, mutate: (_q: unknown, o: { onSuccess: () => void; onError: (e: Error) => void }) => undoRemote.mutate(query, { onSuccess: o.onSuccess, onError: (e) => o.onError(new Error(e.message)) }) };
 
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -422,14 +449,14 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
 
   const finish = (message: string) => {
     toast.success(message);
-    utils.agents.artSource.invalidate(query);
+    if (!adapter) utils.agents.artSource.invalidate(query);
     onSaved();
     onClose();
   };
   const onSave = () => {
     const svg = serialize();
     if (!svg) return;
-    save.mutate({ ...query, svg }, { onSuccess: () => finish("Arte salva"), onError: (e) => toast.error(e.message) });
+    save.mutate({ svg }, { onSuccess: () => finish("Arte salva"), onError: (e) => toast.error(e.message) });
   };
   const close = () => {
     if (dirty && !window.confirm("Sair sem salvar as alterações?")) return;
@@ -443,7 +470,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       <style>{FONT_FACES}</style>
       <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-        <p className="mr-2 font-semibold">Editar arte</p>
+        <p className="mr-2 font-semibold">{adapter?.title ?? "Editar arte"}</p>
         <Button variant="ghost" size="sm" disabled={h.pos <= 0} onClick={() => restore(h.pos - 1)} title="Desfazer (Ctrl+Z)"><Undo2 className="h-4 w-4" /></Button>
         <Button variant="ghost" size="sm" disabled={h.pos >= h.stack.length - 1} onClick={() => restore(h.pos + 1)} title="Refazer (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></Button>
         <span className="mx-1 h-5 w-px bg-border" />
@@ -461,7 +488,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
         <div className="ml-auto flex items-center gap-2">
           {source.data?.canUndo && !dirty && (
             <Button variant="ghost" size="sm" className="gap-1.5" disabled={undoSaved.isPending} onClick={() => undoSaved.mutate(query, { onSuccess: () => finish("Voltou para a versão anterior"), onError: (e) => toast.error(e.message) })}>
-              <Undo2 className="h-3.5 w-3.5" />Voltar à versão salva anterior
+              <Undo2 className="h-3.5 w-3.5" />{adapter?.undo?.label ?? "Voltar à versão salva anterior"}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={close} disabled={save.isPending}><X className="mr-1 h-3.5 w-3.5" />Cancelar</Button>
@@ -474,7 +501,7 @@ function ArtStudio({ threadId, target, onClose, onSaved }: { threadId: number; t
           {source.isLoading ? (
             <p className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Abrindo a arte…</p>
           ) : !source.data?.svg || error ? (
-            <p className="max-w-md rounded-lg bg-background p-4 text-sm text-muted-foreground">{error ?? "Esta arte foi feita antes da edição existir e o desenho dela não ficou guardado. Peça o ajuste ao agente ou gere de novo."}</p>
+            <p className="max-w-md rounded-lg bg-background p-4 text-sm text-muted-foreground">{error ?? adapter?.emptyMessage ?? "Esta arte foi feita antes da edição existir e o desenho dela não ficou guardado. Peça o ajuste ao agente ou gere de novo."}</p>
           ) : null}
           <div
             className={cn("relative touch-none shadow-lg", (!source.data?.svg || error) && "hidden")}

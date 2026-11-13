@@ -6,7 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Download, Loader2, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { SvgEditorModal } from "@/components/agents/ArtEditor";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Check, Columns3, Download, Loader2, PenLine, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -25,32 +27,92 @@ const FIELD_LABEL: Record<string, string> = {
   voucherTitle: "Título do vale", voucherKicker: "Antes do número", voucherValue: "Número do vale", voucherSub: "Depois do número",
   stubTitle: "Canhoto: título", stubText: "Canhoto: texto", step1: "Passo 1", step2: "Passo 2", step3: "Passo 3",
   wbLine1: "Linha 1", wbLine2: "Linha 2 (grande)", disclaimer: "Ressalva (obrigatória com o %)",
+  // Designs anteriores
+  kicker: "Acima do número", percent: "Número em destaque", line1: "Linha 1", line2: "Linha 2 (grande)", benefit4: "Benefício 4",
+  audience: "Faixa laranja", qrTitle: "Chamada do QR", qrText: "Complemento do QR", footer: "Rodapé",
+  headline3: "Título, linha 3", highlight: "Destaque laranja", stepsTitle: "Título dos passos",
 };
 const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText"]);
-const LAYOUT_NOTE: Record<string, string> = {
-  chat: "Display de balcão: conversa com a Ane, selo da oferta e a faixa roxa com o QR.",
-  impact: "Banner de parede: frase grande para ler de longe, QR gigante e a Ane com balão.",
-  voucher: "Panfleto: vale-desconto com picote e canhoto de resgate com o QR.",
-  flag: "Windbanner: as duas faces da bandeira lado a lado no molde, cada uma com o QR da academia.",
-};
+
+/** Todos os designs de um material lado a lado. */
+function CompareDialog({ format, unitId, onClose, onUse, onEdit }: { format: string; unitId: number | null; onClose: () => void; onUse: (v: string) => void; onEdit: (v: string) => void }) {
+  const compare = trpc.unitKit.compare.useMutation({ onError: (e) => toast.error(e.message) });
+  useEffect(() => { compare.mutate({ format: format as never, unitId }); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [format, unitId]);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[94vh] w-[96vw] overflow-y-auto sm:max-w-7xl">
+        <DialogHeader><DialogTitle>Comparar os designs</DialogTitle></DialogHeader>
+        {compare.isPending || !compare.data ? (
+          <p className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Montando as prévias…</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3">
+            {compare.data.map((c) => (
+              <div key={c.id} className={cn("flex flex-col overflow-hidden rounded-2xl border bg-card", c.selected && "border-primary ring-2 ring-primary/30")}>
+                <div className="flex flex-1 items-center justify-center bg-muted/40 p-3"><img src={c.dataUrl} alt={c.label} className="max-h-[62vh] w-auto rounded shadow" /></div>
+                <div className="space-y-2 p-3">
+                  <p className="flex flex-wrap items-center gap-1.5 font-semibold">{c.label}
+                    {c.selected && <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase text-primary-foreground">em uso</span>}
+                    {c.edited && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">editada à mão</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{c.note}</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => onEdit(c.id)}><PenLine className="mr-1.5 h-4 w-4" />Editar arte</Button>
+                    <Button size="sm" className="flex-1" disabled={c.selected} onClick={() => onUse(c.id)}><Check className="mr-1.5 h-4 w-4" />{c.selected ? "Em uso" : "Usar este"}</Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Editor de arte (o mesmo das artes dos agentes) para um design do mídia kit. */
+function KitArtEditor({ format, variant, label, onClose }: { format: string; variant: string; label: string; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const src = trpc.unitKit.artSource.useQuery({ format: format as never, variant }, { refetchOnWindowFocus: false });
+  const save = trpc.unitKit.saveArt.useMutation();
+  const reset = trpc.unitKit.resetArt.useMutation();
+  const done = () => { utils.unitKit.templates.invalidate(); utils.unitKit.artSource.invalidate(); };
+  return (
+    <SvgEditorModal onClose={onClose} source={{
+      title: `Editar arte · ${label}`,
+      svg: src.data?.svg,
+      loading: src.isLoading,
+      saving: save.isPending,
+      save: async (svg) => { await save.mutateAsync({ format: format as never, variant, svg }); done(); },
+      undo: src.data?.edited ? { label: "Voltar ao modelo original", run: async () => { await reset.mutateAsync({ format: format as never, variant }); done(); } } : undefined,
+      emptyMessage: "Não consegui abrir esta arte.",
+    }} />
+  );
+}
 
 function KitDesigner() {
   const formats = trpc.unitKit.formats.useQuery();
   const templates = trpc.unitKit.templates.useQuery();
-  const defaults = trpc.unitKit.defaults.useQuery();
   const kitUnits = trpc.unitKit.units.useQuery();
   const utils = trpc.useUtils();
   const [format, setFormat] = useState("display");
+  const [viewing, setViewing] = useState<Record<string, string>>({}); // design aberto em cada material
   const [draft, setDraft] = useState<Record<string, Record<string, string>>>({});
   const [unitId, setUnitId] = useState<number | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [editingArt, setEditingArt] = useState<string | null>(null);
   const job = trpc.unitKit.job.useQuery(undefined, { refetchInterval: (q) => (q.state.data && !q.state.data.finishedAt ? 1500 : false) });
   const tpl = templates.data?.find((t) => t.format === format);
-  const fields = draft[format] ?? tpl?.fields;
+  const variant = viewing[format] ?? tpl?.variant ?? "";
+  const vInfo = tpl?.variants.find((v) => v.id === variant);
+  const key = `${format}:${variant}`;
+  const fields = draft[key] ?? tpl?.texts[variant];
   const fmt = formats.data?.find((f) => f.id === format);
-  const dirty = !!draft[format];
+  const dirty = !!draft[key];
+  const edited = !!vInfo?.edited;
   const previewM = trpc.unitKit.preview.useMutation({ onSuccess: (r) => setPreview(r.dataUrl), onError: (e) => toast.error(e.message) });
-  const save = trpc.unitKit.save.useMutation({ onSuccess: () => { toast.success("Texto salvo."); setDraft(({ [format]: _x, ...rest }) => rest); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
+  const save = trpc.unitKit.saveTexts.useMutation({ onSuccess: () => { toast.success("Texto salvo."); setDraft(({ [key]: _x, ...rest }) => rest); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
+  const select = trpc.unitKit.selectVariant.useMutation({ onSuccess: () => { toast.success("Design escolhido para as academias."); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const exportOne = trpc.unitKit.exportOne.useMutation({ onSuccess: (r) => { toast.success("PDF de conferência gerado (não vai para a academia)."); window.open(r.url, "_blank", "noopener"); }, onError: (e) => toast.error(e.message) });
   const approver = trpc.unitKit.approver.useQuery();
   const canApprove = !!approver.data?.canApprove;
@@ -58,17 +120,18 @@ function KitDesigner() {
   const discard = trpc.unitKit.discard.useMutation({ onSuccess: () => { toast.success("Versão descartada."); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const genAll = trpc.unitKit.generateAll.useMutation({ onSuccess: () => utils.unitKit.job.invalidate(), onError: (e) => toast.error(e.message) });
 
-  // Prévia automática ao trocar formato, academia ou texto (com uma pausa enquanto digita).
+  // Prévia automática ao trocar material, design, academia ou texto (com uma pausa enquanto digita).
   useEffect(() => {
-    if (!fields) return;
-    const t = setTimeout(() => previewM.mutate({ format: format as never, fields: fields as never, unitId }), 500);
+    if (!variant || !templates.data) return;
+    const t = setTimeout(() => previewM.mutate({ format: format as never, variant, fields: edited ? undefined : fields, unitId }), 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, unitId, JSON.stringify(fields)]);
+  }, [format, variant, unitId, edited, JSON.stringify(fields), templates.dataUpdatedAt]);
   useEffect(() => { if (job.data?.finishedAt) { utils.unitKit.templates.invalidate(); utils.unitAdmin.overview.invalidate(); } }, [job.data?.finishedAt, utils]);
 
-  const setField = (k: string, v: string) => fields && setDraft((d) => ({ ...d, [format]: { ...fields, [k]: v } }));
+  const setField = (k: string, v: string) => fields && setDraft((d) => ({ ...d, [key]: { ...fields, [k]: v } }));
   const running = job.data && !job.data.finishedAt;
+  const inUse = tpl?.variants.find((v) => v.id === tpl.variant);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -91,29 +154,62 @@ function KitDesigner() {
         })}
       </div>
 
+      {/* Designs do material: a equipe compara e escolhe qual vai para as academias */}
+      {tpl && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Designs</span>
+          {tpl.variants.map((v) => (
+            <button key={v.id} type="button" onClick={() => setViewing((x) => ({ ...x, [format]: v.id }))}
+              className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition", variant === v.id ? "border-primary bg-primary/10 font-semibold text-primary" : "hover:border-primary/40")}>
+              {v.label}
+              {tpl.variant === v.id && <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold uppercase text-primary-foreground">em uso</span>}
+              {v.edited && <PenLine className="h-3 w-3 text-amber-600" />}
+            </button>
+          ))}
+          <div className="ml-auto flex flex-wrap gap-2">
+            {tpl.variants.length > 1 && <Button size="sm" variant="outline" onClick={() => setComparing(true)}><Columns3 className="mr-1.5 h-4 w-4" />Comparar lado a lado</Button>}
+            <Button size="sm" variant="outline" onClick={() => setEditingArt(variant)}><PenLine className="mr-1.5 h-4 w-4" />Editar arte</Button>
+            {tpl.variant !== variant && <Button size="sm" disabled={select.isPending} onClick={() => select.mutate({ format: format as never, variant })}><Check className="mr-1.5 h-4 w-4" />Usar este design</Button>}
+          </div>
+        </div>
+      )}
+      {tpl && tpl.variant !== variant && (
+        <p className="rounded-xl bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">Você está vendo “{vInfo?.label}”. O que vai para as academias é “{inUse?.label}”. Clique em “Usar este design” para trocar.</p>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card className="border-border/60"><CardContent className="space-y-4 p-4">
-          {fmt && <p className="rounded-lg bg-primary/5 p-2.5 text-xs text-muted-foreground">{LAYOUT_NOTE[fmt.layout]}</p>}
-          {fields && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {Object.keys(defaults.data?.[format as keyof typeof defaults.data] ?? fields).map((k) => (
-                <label key={k} className={cn("space-y-1 text-sm", LONG_FIELDS.has(k) && "sm:col-span-2")}>
-                  <span className="text-xs text-muted-foreground">{FIELD_LABEL[k] ?? k}</span>
-                  {LONG_FIELDS.has(k) ? <Textarea rows={k === "disclaimer" ? 3 : 2} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
-                    : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
-                </label>
-              ))}
+          {vInfo && <p className="rounded-lg bg-primary/5 p-2.5 text-xs text-muted-foreground">{vInfo.note}</p>}
+          {edited ? (
+            <div className="space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/[.06] p-4 text-sm">
+              <p className="font-semibold">Esta arte foi editada à mão.</p>
+              <p className="text-muted-foreground">Os textos e posições agora são os da edição. Para mudar, clique em “Editar arte”. Se quiser voltar a editar pelos campos de texto, volte ao modelo.</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setEditingArt(variant)}><PenLine className="mr-1.5 h-4 w-4" />Editar arte</Button>
+              </div>
             </div>
+          ) : fields && (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {Object.keys(vInfo?.defaults ?? fields).map((k) => (
+                  <label key={k} className={cn("space-y-1 text-sm", LONG_FIELDS.has(k) && "sm:col-span-2")}>
+                    <span className="text-xs text-muted-foreground">{FIELD_LABEL[k] ?? k}</span>
+                    {LONG_FIELDS.has(k) ? <Textarea rows={k === "disclaimer" ? 3 : 2} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
+                      : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+                {vInfo && <Button variant="ghost" size="sm" onClick={() => setDraft((d) => ({ ...d, [key]: { ...vInfo.defaults } }))}>Voltar ao texto padrão</Button>}
+                <Button size="sm" disabled={!dirty || save.isPending} onClick={() => fields && save.mutate({ format: format as never, variant, fields })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar texto</Button>
+              </div>
+            </>
           )}
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-            {defaults.data && <Button variant="ghost" size="sm" onClick={() => setDraft((d) => ({ ...d, [format]: { ...defaults.data![format as keyof typeof defaults.data] } }))}>Voltar ao texto padrão</Button>}
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => fields && save.mutate({ format: format as never, fields: fields as never })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar texto</Button>
-          </div>
         </CardContent></Card>
 
         <Card className="border-border/60"><CardContent className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="flex-1 text-sm font-semibold">Prévia {fmt ? `· ${fmt.label} ${String(fmt.wCm).replace(".", ",")} × ${String(fmt.hCm).replace(".", ",")} cm` : ""}</p>
+            <p className="flex-1 text-sm font-semibold">Prévia {fmt ? `· ${fmt.label} ${String(fmt.wCm).replace(".", ",")} × ${String(fmt.hCm).replace(".", ",")} cm` : ""}{vInfo ? ` · ${vInfo.label}` : ""}</p>
             <select value={unitId ?? ""} onChange={(e) => setUnitId(e.target.value ? Number(e.target.value) : null)} className="h-8 max-w-[220px] rounded-md border bg-background px-2 text-xs">
               <option value="">Sem academia (espaço do QR)</option>
               {(kitUnits.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -124,6 +220,7 @@ function KitDesigner() {
             {previewM.isPending && preview && <span className="absolute right-3 top-3 rounded-full bg-background/90 px-2 py-0.5 text-[11px] text-muted-foreground shadow"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />atualizando</span>}
           </div>
           {dirty && <p className="text-xs text-amber-600">Salve o texto antes de gerar: a geração usa o texto salvo.</p>}
+          {tpl && tpl.variant !== variant && <p className="text-xs text-amber-600">A geração usa o design em uso (“{inUse?.label}”).</p>}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={!unitId || dirty || exportOne.isPending} title={!unitId ? "Escolha uma academia na prévia" : undefined}
               onClick={() => unitId && exportOne.mutate({ format: format as never, unitId })}>
@@ -147,6 +244,11 @@ function KitDesigner() {
           <p className="text-xs text-muted-foreground">Cada academia ganha um PDF no tamanho real ({fmt ? `${fmt.px.w} × ${fmt.px.h} px, ${fmt.dpi} dpi` : "…"}) com o QR code dela. Ele só aparece no mídia kit da academia depois da aprovação. Academias sem QR nem link ficam de fora.</p>
         </CardContent></Card>
       </div>
+
+      {comparing && <CompareDialog format={format} unitId={unitId} onClose={() => setComparing(false)}
+        onUse={(v) => { select.mutate({ format: format as never, variant: v }); setViewing((x) => ({ ...x, [format]: v })); setComparing(false); }}
+        onEdit={(v) => { setViewing((x) => ({ ...x, [format]: v })); setComparing(false); setEditingArt(v); }} />}
+      {editingArt && <KitArtEditor format={format} variant={editingArt} label={tpl?.variants.find((v) => v.id === editingArt)?.label ?? ""} onClose={() => setEditingArt(null)} />}
 
       {tpl && tpl.pendingCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/[.04]"><CardContent className="space-y-3 p-4">

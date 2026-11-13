@@ -80,6 +80,59 @@ export const KIT_DEFAULTS: Record<KitFormat, Record<string, string>> = {
   windbanner: { wbLine1: "Desconto na", wbLine2: "conta de luz" },
 };
 export type KitFields = Record<string, string>;
+
+/** Textos padrão dos cartazes das versões anteriores (para comparar). */
+const ORIGINAL_DEFAULTS: KitFields = {
+  kicker: "ATÉ",
+  percent: "15%",
+  line1: "de desconto na sua",
+  line2: "CONTA DE LUZ",
+  benefit1: "Sem custo",
+  benefit2: "Sem obra",
+  benefit3: "Sem fidelidade",
+  benefit4: "Sem placa solar",
+  audience: "Exclusivo para alunos Allp Fit",
+  qrTitle: "Aponte a câmera",
+  qrText: "e fale com a Ane no WhatsApp",
+  footer: "@alleenergia  ·  alleenergia.com",
+  disclaimer: "*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.",
+};
+const ACTIVATION_DEFAULTS: KitFields = {
+  eyebrow: "ALUNO ALLP FIT,",
+  headline1: "VOCÊ JÁ TEM",
+  headline2: "DESCONTO NA",
+  headline3: "CONTA DE LUZ.",
+  highlight: "Só falta ativar!",
+  offer: "ATÉ 15%* DE DESCONTO TODO MÊS",
+  stepsTitle: "ATIVE EM 3 PASSOS",
+  step1: "Aponte a câmera|para o QR code ao lado",
+  step2: "Fale com a Ane|no WhatsApp da Alle Energia",
+  step3: "Envie sua conta de luz|e a gente analisa pra você",
+  qrLabel: "ATIVE AGORA",
+  qrSub: "Leia com a câmera do celular",
+  benefit1: "Sem custo",
+  benefit2: "Sem obra",
+  benefit3: "Sem fidelidade",
+  disclaimer: "*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.",
+};
+
+type Variant = { id: string; label: string; note: string; defaults: KitFields; draw: (H: number, f: KitFields) => { svg: string; slots: Slot[] } };
+/** Designs de cada material: o primeiro é o mais novo. A equipe escolhe qual vai para as academias. */
+export function variantsOf(format: KitFormat): Variant[] {
+  const older: Variant[] = [
+    { id: "ativacao", label: "Ativação (2ª versão)", note: "Topo roxo com a mensagem e a Ane, base clara com os 3 passos e o QR.", defaults: ACTIVATION_DEFAULTS, draw: activationSvg },
+    { id: "original", label: "Primeira versão", note: "Oferta grande, Ane com a fatura, benefícios e faixa “exclusivo”.", defaults: ORIGINAL_DEFAULTS, draw: originalSvg },
+  ];
+  switch (format) {
+    case "display": return [{ id: "conversa", label: "Conversa com a Ane (nova)", note: "Balões de conversa, selo da oferta e a faixa roxa com o QR.", defaults: KIT_DEFAULTS.display, draw: chatSvg }, ...older];
+    case "banner": return [{ id: "impacto", label: "Impacto (nova)", note: "Frase grande para ler de longe, QR gigante e a Ane com balão.", defaults: KIT_DEFAULTS.banner, draw: impactSvg }, ...older];
+    case "panfleto": return [{ id: "vale", label: "Vale-desconto (nova)", note: "Cupom com picote e canhoto de resgate com o QR.", defaults: KIT_DEFAULTS.panfleto, draw: voucherSvg }, ...older];
+    default: return [{ id: "bandeira", label: "Bandeira", note: "As duas faces da bandeira lado a lado no molde.", defaults: KIT_DEFAULTS.windbanner, draw: flagSvg }];
+  }
+}
+
+/** O que fica salvo por material: o design escolhido, os textos de cada design e as artes editadas à mão. */
+export type KitState = { variant: string; texts: Record<string, KitFields>; custom: Record<string, string> };
 const fieldsSchema = z.record(z.string().max(40), z.string().max(240));
 
 const W = 1000;
@@ -265,6 +318,128 @@ function voucherSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   return { svg, slots: [qr] };
 }
 
+/** Cartaz (display, banner e panfleto): fundo roxo, oferta grande, Ane com a fatura, benefícios e QR. */
+function originalSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
+  const F = 96; // rodapé
+  const pillH = 64, pillY = H - F - 58 - pillH;
+  const panelH = 400, panelTop = pillY - 24 - panelH;
+  const l2Y = panelTop - 56, l1Y = l2Y - 64, pctY = l1Y - 40, kickY = pctY - 176;
+  const qr = { x: 92, y: panelTop + 46, size: 236 };
+  const photoH = 640, photoW = (photoH * 900) / 1297;
+  const benefits = [f.benefit1, f.benefit2, f.benefit3, f.benefit4];
+  const check = (cx: number, cy: number) =>
+    `<circle cx="${cx}" cy="${cy}" r="30" fill="#ff7300"/><path d="M${cx - 13} ${cy + 1} l9 9 l17 -19" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const benefitSvg = benefits.map((b, i) => {
+    const cx = i % 2 === 0 ? 420 : 700, cy = panelTop + (i < 2 ? 130 : 262);
+    const [first, ...rest] = b.trim().split(/\s+/);
+    return check(cx, cy) + T(cx + 44, cy - 6, 22, 700, "#ff7300", first.toUpperCase()) + T(cx + 44, cy + 24, 26, 900, "#44015e", rest.join(" ").toUpperCase());
+  }).join("");
+  const disc = wrap(f.disclaimer, 118);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#8a3bd0"/><stop offset="0.55" stop-color="#7B2FBE"/><stop offset="1" stop-color="#5B1D9A"/></linearGradient>
+    <linearGradient id="or" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff6a00"/></linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <path d="M${W} 0 L${W} ${H * 0.34} C${W - 140} ${H * 0.27} ${W - 230} ${H * 0.13} ${W - 250} 0 Z" fill="url(#or)" opacity="0.92"/>
+  <path d="M${W} 0 L${W} ${H * 0.2} C${W - 70} ${H * 0.16} ${W - 120} ${H * 0.08} ${W - 130} 0 Z" fill="#ffffff" opacity="0.10"/>
+  <image href="alle:raio-mono" x="-120" y="${kickY - 120}" width="430" height="686" opacity="0.07"/>
+  <image href="alle:logo-branco" x="64" y="62" width="238" height="70"/>
+  ${T(336, 112, 40, 700, "#ffffff", "+", "middle")}
+  <image href="alle:allpfit-branco" x="372" y="72" width="236" height="51"/>
+  ${T(64, kickY, 46, 800, "#ffffff", f.kicker)}
+  <text x="64" y="${pctY}" font-family="Montserrat" font-size="230" font-weight="900" fill="#ff7300" letter-spacing="-6">${esc(f.percent)}<tspan font-size="96" dy="-118">*</tspan></text>
+  ${T(66, l1Y, 40, 600, "#ffffff", f.line1)}
+  ${T(64, l2Y, 58, 900, "#ffffff", f.line2)}
+  <rect x="40" y="${panelTop}" width="${W - 80}" height="${panelH}" rx="40" fill="#FFF8F2"/>
+  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="26" fill="#ffffff" stroke="#ff7300" stroke-width="6"/>
+  ${T(qr.x + qr.size / 2, panelTop + 344, 26, 800, "#44015e", f.qrTitle, "middle")}
+  ${T(qr.x + qr.size / 2, panelTop + 374, 19, 500, "#5B1D9A", f.qrText, "middle")}
+  <line x1="376" y1="${panelTop + 70}" x2="376" y2="${panelTop + 340}" stroke="#7B2FBE" stroke-opacity="0.15" stroke-width="3"/>
+  ${benefitSvg}
+  <image href="alle:ane-tablet" x="${W - photoW + 10}" y="${panelTop + 62 - photoH}" width="${photoW}" height="${photoH}" preserveAspectRatio="xMidYMax meet"/>
+  <rect x="40" y="${pillY}" width="${W - 80}" height="${pillH}" rx="${pillH / 2}" fill="url(#or)"/>
+  ${T(W / 2, pillY + 42, 28, 800, "#ffffff", f.audience.toUpperCase(), "middle", 'letter-spacing="1"')}
+  ${disc.map((l, i) => T(W / 2, H - F - 36 + i * 19 - (disc.length - 2) * 19, 14, 500, "#ffffff", l, "middle", 'fill-opacity="0.78"')).join("")}
+  <rect x="0" y="${H - F}" width="${W}" height="${F}" fill="#44015e"/>
+  <image href="alle:raio" x="56" y="${H - F + 20}" width="35" height="56"/>
+  ${T(W / 2, H - F / 2 + 10, 28, 700, "#ffffff", f.footer, "middle")}
+</svg>`;
+  return { svg, slots: [qr] };
+}
+
+/**
+ * Cartaz (display, banner e panfleto), focado em ativação: o aluno já tem o desconto, falta ativar.
+ * Topo roxo com a mensagem e a Ane (recortada na borda da faixa, sem invadir o resto);
+ * base clara com os 3 passos e o QR em destaque ("Ative agora").
+ */
+function activationSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
+  const Z = Math.round(H - 640); // divisa: a base clara tem a mesma altura em todos os formatos
+  const hl = 58, hlGap = 66;
+  const h3Y = Z - 196, h2Y = h3Y - hlGap, h1Y = h2Y - hlGap, eyeY = h1Y - 74;
+  const hiY = h3Y + 34, offerY = hiY + 92;
+  // Ane: caixa à direita, apoiada exatamente na divisa.
+  const aneW = 470, aneH = Math.min(Z - 130, 560);
+  // QR em destaque na base, à direita.
+  const bY = H - 100; // linha dos benefícios
+  const card = { x: 584, y: Z + 52, w: 352, h: bY - 64 - (Z + 52) };
+  const qrSize = Math.min(card.w - 92, card.h - 168);
+  const qr = { x: card.x + (card.w - qrSize) / 2, y: card.y + 94, size: qrSize };
+  const steps = [f.step1, f.step2, f.step3].map((t) => t.split("|"));
+  const stepSvg = steps.map(([title, sub], i) => {
+    const y = Z + 162 + i * 104;
+    return `<circle cx="96" cy="${y}" r="30" fill="#7B2FBE"/>${T(96, y + 11, 30, 900, "#ffffff", String(i + 1), "middle")}`
+      + T(144, y - 4, 29, 800, "#2a0a3d", title ?? "") + T(144, y + 28, 21, 500, "#6b5a78", sub ?? "")
+      + (i < steps.length - 1 ? `<line x1="96" y1="${y + 34}" x2="96" y2="${y + 70}" stroke="#7B2FBE" stroke-opacity="0.25" stroke-width="4" stroke-dasharray="2 8" stroke-linecap="round"/>` : "");
+  }).join("");
+  const benefits = [f.benefit1, f.benefit2, f.benefit3].filter(Boolean);
+  const bw = (W - 128) / benefits.length;
+  const benefitSvg = benefits.map((b, i) => {
+    const cx = 64 + bw * i + bw / 2;
+    return `<circle cx="${cx - 92}" cy="${bY - 9}" r="15" fill="#ff7300"/><path d="M${cx - 99} ${bY - 9} l5 5 l9 -10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`
+      + T(cx - 68, bY, 24, 800, "#2a0a3d", b.toUpperCase());
+  }).join("");
+  const disc = wrap(f.disclaimer, 120);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#8b3fd2"/><stop offset="1" stop-color="#5e1ca3"/></linearGradient>
+    <linearGradient id="or" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff6400"/></linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.62" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <clipPath id="top"><rect width="${W}" height="${Z}"/></clipPath>
+  </defs>
+  <rect width="${W}" height="${H}" fill="#FFF8F2"/>
+  <g clip-path="url(#top)">
+    <rect width="${W}" height="${Z}" fill="url(#bg)"/>
+    <rect width="${W}" height="${Z}" fill="url(#glow)"/>
+    <image href="alle:raio-mono" x="610" y="${Z - 700}" width="470" height="750" opacity="0.08"/>
+    <circle cx="${W - 235}" cy="${Z - 250}" r="250" fill="url(#or)" opacity="0.95"/>
+    <image href="alle:ane-solto" x="${W - aneW - 10}" y="${Z - aneH}" width="${aneW}" height="${aneH}" preserveAspectRatio="xMidYMax meet"/>
+  </g>
+  <image href="alle:logo-branco" x="64" y="56" width="218" height="64"/>
+  <rect x="300" y="66" width="2" height="44" fill="#ffffff" opacity="0.4"/>
+  <image href="alle:allpfit-branco" x="320" y="66" width="208" height="45"/>
+  ${T(64, eyeY, 30, 800, "#ff8a1f", f.eyebrow, "start", 'letter-spacing="2"')}
+  ${T(62, h1Y, hl, 900, "#ffffff", f.headline1)}
+  ${T(62, h2Y, hl, 900, "#ffffff", f.headline2)}
+  ${T(62, h3Y, hl, 900, "#ffffff", f.headline3)}
+  <rect x="58" y="${hiY}" width="${Math.min(470, 40 + f.highlight.length * 23)}" height="70" rx="14" fill="url(#or)"/>
+  ${T(78, hiY + 48, 40, 900, "#ffffff", f.highlight)}
+  <rect x="58" y="${offerY}" width="${Math.min(480, 40 + f.offer.length * 13.4)}" height="46" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2"/>
+  ${T(78, offerY + 31, 21, 700, "#ffffff", f.offer, "start", 'letter-spacing="0.5"')}
+  ${T(64, Z + 86, 26, 900, "#7B2FBE", f.stepsTitle, "start", 'letter-spacing="2"')}
+  <rect x="64" y="${Z + 102}" width="70" height="5" rx="2.5" fill="#ff7300"/>
+  ${stepSvg}
+  <rect x="${card.x}" y="${card.y}" width="${card.w}" height="${card.h}" rx="32" fill="url(#or)"/>
+  ${T(card.x + card.w / 2, card.y + 62, 38, 900, "#ffffff", f.qrLabel, "middle", 'letter-spacing="1"')}
+  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="20" fill="#ffffff"/>
+  ${T(card.x + card.w / 2, card.y + card.h - 24, 19, 700, "#ffffff", f.qrSub, "middle")}
+  <line x1="64" y1="${bY - 44}" x2="${W - 64}" y2="${bY - 44}" stroke="#2a0a3d" stroke-opacity="0.08" stroke-width="2"/>
+  ${benefitSvg}
+  ${disc.map((l, i) => T(W / 2, H - 40 + i * 18 - (disc.length - 2) * 18, 13.5, 500, "#6b5a78", l, "middle")).join("")}
+</svg>`;
+  return { svg, slots: [qr] };
+}
+
 /** Windbanner: molde com as duas faces da bandeira lado a lado. */
 function flagSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   const pw = 470, xs = [20, 510];
@@ -298,32 +473,100 @@ function flagSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   return { svg, slots };
 }
 
-function buildSvg(format: KitFormat, fields: KitFields) {
-  const H = heightOf(format);
-  const f = { ...KIT_DEFAULTS[format], ...fields };
-  switch (KIT_FORMATS[format].layout) {
-    case "flag": return flagSvg(H, f);
-    case "chat": return chatSvg(H, f);
-    case "impact": return impactSvg(H, f);
-    default: return voucherSvg(H, f);
+// ── Design escolhido, textos e arte editada à mão ───────────────────────────
+const pick = (defaults: Record<string, string>, saved?: Record<string, unknown> | null) =>
+  Object.fromEntries(Object.keys(defaults).map((k) => [k, typeof saved?.[k] === "string" ? (saved[k] as string) : defaults[k]]));
+
+/** Lê o que está salvo (ou o padrão) de um material. */
+function stateFrom(format: KitFormat, raw: unknown): KitState {
+  const vs = variantsOf(format);
+  const r = (raw ?? {}) as { variant?: string; texts?: Record<string, Record<string, unknown>>; custom?: Record<string, string> };
+  const variant = vs.some((v) => v.id === r.variant) ? r.variant! : vs[0].id;
+  const texts = Object.fromEntries(vs.map((v) => [v.id, pick(v.defaults, r.texts?.[v.id])]));
+  const custom = Object.fromEntries(Object.entries(r.custom ?? {}).filter(([k, v]) => vs.some((x) => x.id === k) && typeof v === "string"));
+  return { variant, texts, custom };
+}
+
+const num = (v: string | undefined, d = 0) => (v === undefined || v === "" || Number.isNaN(Number(v)) ? d : Number(v));
+const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`))?.[1];
+
+/** Espaço do QR numa arte editada: grupos data-qr-slot (o editor move com transform="matrix(...)"). */
+function slotsOf(svg: string): Slot[] {
+  const out: Slot[] = [];
+  for (const m of svg.matchAll(/<g\b([^>]*\bdata-qr-slot\b[^>]*)>([\s\S]*?)<\/g>/g)) {
+    const rect = m[2].match(/<rect\b[^>]*>/)?.[0];
+    if (!rect) continue;
+    const x = num(attr(rect, "x")), y = num(attr(rect, "y")), w = num(attr(rect, "width")), h = num(attr(rect, "height"));
+    const t = attr(`<g ${m[1]}>`, "transform") ?? "";
+    let [a, b, c, d, e, f] = [1, 0, 0, 1, 0, 0];
+    const mat = t.match(/matrix\(([^)]+)\)/), tr = t.match(/translate\(([^)]+)\)/), sc = t.match(/scale\(([^)]+)\)/);
+    if (mat) [a, b, c, d, e, f] = mat[1].split(/[\s,]+/).map(Number);
+    else { if (tr) { const [tx, ty = 0] = tr[1].split(/[\s,]+/).map(Number); e = tx; f = ty; } if (sc) { const [sx, sy] = sc[1].split(/[\s,]+/).map(Number); a = sx; d = sy ?? sx; } }
+    const size = Math.min(Math.abs(a * w), Math.abs(d * h));
+    out.push({ x: a * x + c * y + e, y: b * x + d * y + f, size });
   }
+  return out;
+}
+const stripSlots = (svg: string) => svg.replace(/<g\b[^>]*\bdata-qr-slot\b[^>]*>[\s\S]*?<\/g>/g, "");
+
+/** Desenho de "QR aqui" (marcado para o editor e para a geração encontrarem o espaço do QR). */
+const placeholderQr = (s: Slot) =>
+  `<g data-qr-slot="1"><rect x="${s.x}" y="${s.y}" width="${s.size}" height="${s.size}" fill="#f1e9fb"/>` +
+  T(s.x + s.size / 2, s.y + s.size / 2 - 4, s.size * 0.1, 800, "#7B2FBE", "QR da", "middle") +
+  T(s.x + s.size / 2, s.y + s.size / 2 + s.size * 0.12, s.size * 0.1, 800, "#7B2FBE", "academia", "middle") + `</g>`;
+
+/** Arte de um design: a editada à mão, se houver; senão o modelo com os textos. */
+function drawVariant(format: KitFormat, state: KitState, variantId = state.variant): { svg: string; slots: Slot[]; custom: boolean } {
+  const custom = state.custom[variantId];
+  if (custom) return { svg: stripSlots(custom), slots: slotsOf(custom), custom: true };
+  const v = variantsOf(format).find((x) => x.id === variantId) ?? variantsOf(format)[0];
+  return { ...v.draw(heightOf(format), { ...v.defaults, ...state.texts[v.id] }), custom: false };
+}
+
+/** SVG para abrir no editor (com o espaço do QR marcado). */
+function editableSvg(format: KitFormat, state: KitState, variantId: string) {
+  if (state.custom[variantId]) return state.custom[variantId];
+  const { svg, slots } = drawVariant(format, state, variantId);
+  return svg.replace("</svg>", `${slots.map(placeholderQr).join("")}</svg>`);
+}
+
+/** Limpa o SVG salvo do editor: sem script/eventos; imagens só da marca, data: ou https. */
+function sanitizeSvg(svg: string, format: KitFormat): string {
+  const root = svg.match(/<svg\b[^>]*>/i)?.[0];
+  const vb = root && attr(root, "viewBox")?.split(/[\s,]+/).map(Number);
+  if (!vb || Math.round(vb[2]) !== W || Math.abs(vb[3] - heightOf(format)) > 1) throw new TRPCError({ code: "BAD_REQUEST", message: "O desenho não tem o tamanho deste material." });
+  const out = svg
+    .replace(/<(script|foreignObject|iframe|object|embed)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    .replace(/(\s(?:xlink:)?href\s*=\s*)(["'])(.*?)\2/gi, (m, a: string, q: string, v: string) =>
+      /^(alle:[a-z-]+|data:image\/(png|jpeg|webp|gif);|https:\/\/|#)/i.test(v.trim()) ? m : "");
+  if (!slotsOf(out).length) throw new TRPCError({ code: "BAD_REQUEST", message: "O espaço do QR (“QR da academia”) precisa continuar na arte." });
+  if (out.length > 6_000_000) throw new TRPCError({ code: "BAD_REQUEST", message: "Arte grande demais." });
+  return out;
+}
+
+/** Embute as imagens https (fotos enviadas no editor) para o renderizador. */
+async function embedRemote(svg: string) {
+  const urls = [...new Set([...svg.matchAll(/href="(https:\/\/[^"]+)"/g)].map((m) => m[1]))].slice(0, 10);
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { signal: AbortSignal.timeout(20_000) });
+      const type = res.headers.get("content-type")?.split(";")[0] ?? "image/png";
+      if (res.ok && type.startsWith("image/")) svg = svg.split(`href="${u}"`).join(`href="data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}"`);
+    } catch { /* imagem fora do ar: fica sem ela */ }
+  }
+  return svg;
 }
 
 const withAssets = (svg: string) => svg.replace(/href="(alle:[a-z-]+)"/g, (m, k: string) => (BRAND_ASSETS[k] ? `href="${BRAND_ASSETS[k]}"` : m));
 const renderSvg = (svg: string, width: number) =>
   Buffer.from(new Resvg(withAssets(svg), { fitTo: { mode: "width", value: width }, font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: "Montserrat" } }).render().asPng());
 
-/** Desenho de "QR aqui" para a prévia sem academia. */
-const placeholderQr = (s: Slot) =>
-  `<rect x="${s.x}" y="${s.y}" width="${s.size}" height="${s.size}" fill="#f1e9fb"/>` +
-  T(s.x + s.size / 2, s.y + s.size / 2 - 4, s.size * 0.1, 800, "#7B2FBE", "QR da", "middle") +
-  T(s.x + s.size / 2, s.y + s.size / 2 + s.size * 0.12, s.size * 0.1, 800, "#7B2FBE", "academia", "middle");
-
-/** Prévia (JPEG em data URL) com o QR de uma academia ou o espaço reservado. */
-export function previewKit(format: KitFormat, fields: KitFields, qrData: string | null, width = 900) {
-  const { svg, slots } = buildSvg(format, fields);
+/** Prévia (PNG) de um design, com o QR de uma academia ou o espaço reservado. */
+export async function previewKit(format: KitFormat, state: KitState, qrData: string | null, width = 900, variantId = state.variant) {
+  const { svg, slots } = drawVariant(format, state, variantId);
   const extra = slots.map((s) => (qrData ? qrSvgGroup(qrData, s.x, s.y, s.size) : placeholderQr(s))).join("");
-  return renderSvg(svg.replace("</svg>", `${extra}</svg>`), width);
+  return renderSvg(await embedRemote(svg.replace("</svg>", `${extra}</svg>`)), width);
 }
 
 /** PDF de uma página com a imagem JPEG ocupando o tamanho real do material. */
@@ -352,11 +595,12 @@ function jpegToPdf(jpeg: Buffer, px: { w: number; h: number }, cm: { w: number; 
  * e encaixa o QR vetorial de cada unidade. Salva PDF + prévia e põe no mídia kit da unidade.
  */
 /** mode "pendente": salva no mídia kit da unidade aguardando aprovação; "conferir": só devolve o PDF. */
-async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ id: number; name: string; qr: string }>, mode: "pendente" | "conferir", onProgress?: (done: number) => void) {
-  const { svg, slots } = buildSvg(format, fields);
+async function generateFor(format: KitFormat, state: KitState, list: Array<{ id: number; name: string; qr: string }>, mode: "pendente" | "conferir", onProgress?: (done: number) => void) {
+  const { svg, slots } = drawVariant(format, state);
+  if (!slots.length) throw new Error("A arte não tem o espaço do QR.");
   const px = pxOf(format);
   const scale = px.w / W;
-  const base = await sharp(renderSvg(svg, px.w)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const base = await sharp(renderSvg(await embedRemote(svg), px.w)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const fmt = KIT_FORMATS[format];
   const c = await conn();
   const label = `${fmt.label} ${String(fmt.wCm).replace(".", ",")} × ${String(fmt.hCm).replace(".", ",")} cm`;
@@ -396,15 +640,18 @@ async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ i
   return results;
 }
 
-/** Só os campos do layout atual (textos salvos de um layout antigo são ignorados). */
-const pick = (defaults: Record<string, string>, saved?: Record<string, string> | null) =>
-  Object.fromEntries(Object.keys(defaults).map((k) => [k, saved?.[k] ?? defaults[k]]));
-
-async function fieldsOf(format: KitFormat): Promise<KitFields> {
+async function stateOf(format: KitFormat): Promise<KitState> {
   const c = await conn();
   const [row] = await c.select().from(unitKitTemplates).where(eq(unitKitTemplates.format, format));
-  return pick(KIT_DEFAULTS[format], row?.fields);
+  return stateFrom(format, row?.fields);
 }
+async function saveState(format: KitFormat, state: KitState) {
+  const c = await conn();
+  const fields = state as unknown as Record<string, string>;
+  await c.insert(unitKitTemplates).values({ format, fields, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: unitKitTemplates.format, set: { fields, updatedAt: new Date() } });
+}
+const variantSchema = z.string().min(1).max(40);
 
 async function unitsWithQr(unitIds?: number[]) {
   const c = await conn();
@@ -436,13 +683,15 @@ export const unitKitRouter = router({
       .from(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), like(unitMaterials.description, "Impressão › %")));
     const unitRows = await c.select({ id: units.id, name: units.name }).from(units);
     const unitName = new Map(unitRows.map((u) => [u.id, u.name]));
-    return Object.keys(KIT_FORMATS).map((format) => {
+    return (Object.keys(KIT_FORMATS) as KitFormat[]).map((format) => {
       const r = rows.find((x) => x.format === format);
-      const desc = `Impressão › ${KIT_FORMATS[format as KitFormat].label}`;
+      const state = stateFrom(format, r?.fields);
+      const desc = `Impressão › ${KIT_FORMATS[format].label}`;
       const pending = mats.filter((m) => m.description === desc && m.pending);
       return {
-        format, fields: pick(KIT_DEFAULTS[format as KitFormat], r?.fields), updatedAt: r?.updatedAt ?? null,
-        generatedAt: r?.generatedAt ?? null, generatedCount: r?.generatedCount ?? 0, approvedAt: r?.approvedAt ?? null,
+        format, variant: state.variant, texts: state.texts,
+        variants: variantsOf(format).map((v) => ({ id: v.id, label: v.label, note: v.note, defaults: v.defaults, edited: !!state.custom[v.id] })),
+        updatedAt: r?.updatedAt ?? null, generatedAt: r?.generatedAt ?? null, generatedCount: r?.generatedCount ?? 0, approvedAt: r?.approvedAt ?? null,
         pendingCount: pending.length,
         sentCount: mats.filter((m) => m.description === desc && !m.pending).length,
         // Amostras da versão aguardando aprovação, para revisar antes de enviar.
@@ -464,7 +713,7 @@ export const unitKitRouter = router({
         await tx.delete(unitMaterials).where(and(eq(unitMaterials.unitId, p.unitId!), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, false)));
       }
       await tx.update(unitMaterials).set({ pending: false }).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
-      await tx.insert(unitKitTemplates).values({ format: input.format, fields: KIT_DEFAULTS[input.format], approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
+      await tx.insert(unitKitTemplates).values({ format: input.format, fields: stateFrom(input.format, null) as unknown as Record<string, string>, approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
         .onConflictDoUpdate({ target: unitKitTemplates.format, set: { approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id } });
     });
     await db.recordAudit({ action: "unit.kit.approved", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: pending.length } });
@@ -480,31 +729,77 @@ export const unitKitRouter = router({
     return { ok: true };
   }),
 
-  defaults: adminProcedure.query(() => KIT_DEFAULTS),
-
-
   /** Unidades que podem receber o material (têm QR ou link). */
   units: adminProcedure.query(async () => (await unitsWithQr()).map((u) => ({ id: u.id, name: u.name }))),
 
-  save: adminProcedure.input(z.object({ format: formatSchema, fields: fieldsSchema })).mutation(async ({ input }) => {
-    const c = await conn();
-    await c.insert(unitKitTemplates).values({ format: input.format, fields: input.fields, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: unitKitTemplates.format, set: { fields: input.fields, updatedAt: new Date() } });
+  /** Salva os textos de um design. */
+  saveTexts: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema, fields: fieldsSchema })).mutation(async ({ input }) => {
+    const state = await stateOf(input.format);
+    const v = variantsOf(input.format).find((x) => x.id === input.variant);
+    if (!v) throw new TRPCError({ code: "BAD_REQUEST", message: "Design não encontrado." });
+    state.texts[v.id] = pick(v.defaults, input.fields);
+    await saveState(input.format, state);
     return { ok: true };
   }),
 
-  preview: adminProcedure.input(z.object({ format: formatSchema, fields: fieldsSchema, unitId: z.number().int().nullable() })).mutation(async ({ input }) => {
+  /** Escolhe o design que vai para as academias. */
+  selectVariant: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema })).mutation(async ({ input }) => {
+    const state = await stateOf(input.format);
+    if (!variantsOf(input.format).some((x) => x.id === input.variant)) throw new TRPCError({ code: "BAD_REQUEST", message: "Design não encontrado." });
+    state.variant = input.variant;
+    await saveState(input.format, state);
+    return { ok: true };
+  }),
+
+  /** Prévia de um design (com textos ainda não salvos, se vierem). */
+  preview: adminProcedure
+    .input(z.object({ format: formatSchema, variant: variantSchema, fields: fieldsSchema.optional(), unitId: z.number().int().nullable(), width: z.number().int().min(200).max(1200).default(900) }))
+    .mutation(async ({ input }) => {
+      const state = await stateOf(input.format);
+      if (input.fields) state.texts[input.variant] = { ...state.texts[input.variant], ...input.fields };
+      const u = input.unitId ? (await unitsWithQr([input.unitId]))[0] : null;
+      const jpg = await sharp(await previewKit(input.format, state, u?.qr ?? null, input.width, input.variant)).jpeg({ quality: 84 }).toBuffer();
+      return { dataUrl: `data:image/jpeg;base64,${jpg.toString("base64")}` };
+    }),
+
+  /** Todos os designs do material lado a lado (para comparar). */
+  compare: adminProcedure.input(z.object({ format: formatSchema, unitId: z.number().int().nullable() })).mutation(async ({ input }) => {
+    const state = await stateOf(input.format);
     const u = input.unitId ? (await unitsWithQr([input.unitId]))[0] : null;
-    const png = previewKit(input.format, input.fields, u?.qr ?? null, 900);
-    const jpg = await sharp(png).jpeg({ quality: 85 }).toBuffer();
-    return { dataUrl: `data:image/jpeg;base64,${jpg.toString("base64")}` };
+    return Promise.all(variantsOf(input.format).map(async (v) => {
+      const jpg = await sharp(await previewKit(input.format, state, u?.qr ?? null, 560, v.id)).jpeg({ quality: 82 }).toBuffer();
+      return { id: v.id, label: v.label, note: v.note, edited: !!state.custom[v.id], selected: state.variant === v.id, dataUrl: `data:image/jpeg;base64,${jpg.toString("base64")}` };
+    }));
+  }),
+
+  /** Arte de um design para abrir no editor (igual ao das artes dos agentes). */
+  artSource: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema })).query(async ({ input }) => {
+    const state = await stateOf(input.format);
+    return { svg: editableSvg(input.format, state, input.variant), edited: !!state.custom[input.variant] };
+  }),
+
+  /** Salva a arte editada à mão (passa a valer no lugar do modelo com textos). */
+  saveArt: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema, svg: z.string().max(6_000_000) })).mutation(async ({ input }) => {
+    const state = await stateOf(input.format);
+    if (!variantsOf(input.format).some((x) => x.id === input.variant)) throw new TRPCError({ code: "BAD_REQUEST", message: "Design não encontrado." });
+    state.custom[input.variant] = sanitizeSvg(input.svg, input.format);
+    await saveState(input.format, state);
+    return { ok: true };
+  }),
+
+  /** Descarta a edição à mão e volta ao modelo com textos. */
+  resetArt: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema })).mutation(async ({ input }) => {
+    const state = await stateOf(input.format);
+    delete state.custom[input.variant];
+    await saveState(input.format, state);
+    return { ok: true };
   }),
 
   /** Gera para uma academia só e devolve o PDF (para conferir ou mandar para a gráfica). */
   exportOne: adminProcedure.input(z.object({ format: formatSchema, unitId: z.number().int() })).mutation(async ({ input }) => {
     const list = await unitsWithQr([input.unitId]);
     if (!list.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta academia ainda não tem QR code nem link cadastrado." });
-    const [r] = await generateFor(input.format, await fieldsOf(input.format), list, "conferir");
+    const [r] = await generateFor(input.format, await stateOf(input.format), list, "conferir");
     return { url: r.url };
   }),
 
@@ -512,14 +807,14 @@ export const unitKitRouter = router({
   generateAll: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
     if (job && !job.finishedAt) throw new TRPCError({ code: "CONFLICT", message: `Já existe uma geração em andamento (${KIT_FORMATS[job.format].label}).` });
     const list = await unitsWithQr();
-    const fields = await fieldsOf(input.format);
+    const state = await stateOf(input.format);
     const current = { format: input.format, total: list.length, done: 0, error: null as string | null, finishedAt: null as Date | null };
     job = current;
     void (async () => {
       try {
-        await generateFor(input.format, fields, list, "pendente", (d) => { current.done = d; });
+        await generateFor(input.format, state, list, "pendente", (d) => { current.done = d; });
         const c = await conn();
-        await c.insert(unitKitTemplates).values({ format: input.format, fields, generatedAt: new Date(), generatedCount: list.length })
+        await c.insert(unitKitTemplates).values({ format: input.format, fields: state as unknown as Record<string, string>, generatedAt: new Date(), generatedCount: list.length })
           .onConflictDoUpdate({ target: unitKitTemplates.format, set: { generatedAt: new Date(), generatedCount: list.length } });
         await db.recordAudit({ action: "unit.kit.generated", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: list.length } });
       } catch (err) {
