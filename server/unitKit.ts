@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import { TRPCError } from "@trpc/server";
-import { and, eq, isNotNull, or } from "drizzle-orm";
+import { and, eq, isNotNull, like, or } from "drizzle-orm";
 import sharp from "sharp";
 import { z } from "zod";
 import { unitKitTemplates, unitMaterials, units } from "../drizzle/schema";
@@ -199,7 +199,8 @@ function jpegToPdf(jpeg: Buffer, px: { w: number; h: number }, cm: { w: number; 
  * Gera o material de várias academias: desenha a arte uma vez (sem QR) no tamanho de impressão
  * e encaixa o QR vetorial de cada unidade. Salva PDF + prévia e põe no mídia kit da unidade.
  */
-async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ id: number; name: string; qr: string }>, onProgress?: (done: number) => void) {
+/** mode "pendente": salva no mídia kit da unidade aguardando aprovação; "conferir": só devolve o PDF. */
+async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ id: number; name: string; qr: string }>, mode: "pendente" | "conferir", onProgress?: (done: number) => void) {
   const { svg, slots } = buildSvg(format, fields);
   const px = pxOf(format);
   const scale = px.w / W;
@@ -221,13 +222,20 @@ async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ i
     const preview = await sharp(jpeg).resize({ width: 1000 }).jpeg({ quality: 82 }).toBuffer();
     const key = `${unitKey(u.name)}-${format}-${Date.now().toString(36)}`;
     const pdf = jpegToPdf(jpeg, px, { w: fmt.wCm, h: fmt.hCm });
+    if (mode === "conferir") {
+      const { url } = await storagePut(`unit-kits-print/conferir/${key}.pdf`, pdf, "application/pdf");
+      results.push({ unitId: u.id, url });
+      onProgress?.(++done);
+      continue;
+    }
     const [{ url: pdfUrl }, { url: previewUrl }] = await Promise.all([
       storagePut(`unit-kits-print/${key}.pdf`, pdf, "application/pdf"),
       storagePut(`unit-kits-print/${key}-previa.jpg`, preview, "image/jpeg"),
     ]);
-    await c.delete(unitMaterials).where(and(eq(unitMaterials.unitId, u.id), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, description)));
+    // Troca só a versão pendente anterior; a aprovada continua no portal até a nova ser aprovada.
+    await c.delete(unitMaterials).where(and(eq(unitMaterials.unitId, u.id), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, description), eq(unitMaterials.pending, true)));
     await c.insert(unitMaterials).values({
-      unitId: u.id, kind: "midia_kit", title: label, description, fileUrl: pdfUrl, previewUrl,
+      unitId: u.id, kind: "midia_kit", title: label, description, fileUrl: pdfUrl, previewUrl, pending: true,
       fileName: `${fmt.label} - ${u.name}.pdf`, contentType: "application/pdf", sizeBytes: pdf.length, createdByUserId: 1,
     });
     results.push({ unitId: u.id, url: pdfUrl });
@@ -258,10 +266,50 @@ export const unitKitRouter = router({
   templates: adminProcedure.query(async () => {
     const c = await conn();
     const rows = await c.select().from(unitKitTemplates);
+    const mats = await c.select({ description: unitMaterials.description, pending: unitMaterials.pending, unitId: unitMaterials.unitId, previewUrl: unitMaterials.previewUrl, fileUrl: unitMaterials.fileUrl })
+      .from(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), like(unitMaterials.description, "Impressão › %")));
+    const unitRows = await c.select({ id: units.id, name: units.name }).from(units);
+    const unitName = new Map(unitRows.map((u) => [u.id, u.name]));
     return Object.keys(KIT_FORMATS).map((format) => {
       const r = rows.find((x) => x.format === format);
-      return { format, fields: { ...KIT_DEFAULTS, ...(r?.fields ?? {}) }, updatedAt: r?.updatedAt ?? null, generatedAt: r?.generatedAt ?? null, generatedCount: r?.generatedCount ?? 0 };
+      const desc = `Impressão › ${KIT_FORMATS[format as KitFormat].label}`;
+      const pending = mats.filter((m) => m.description === desc && m.pending);
+      return {
+        format, fields: { ...KIT_DEFAULTS, ...(r?.fields ?? {}) }, updatedAt: r?.updatedAt ?? null,
+        generatedAt: r?.generatedAt ?? null, generatedCount: r?.generatedCount ?? 0, approvedAt: r?.approvedAt ?? null,
+        pendingCount: pending.length,
+        sentCount: mats.filter((m) => m.description === desc && !m.pending).length,
+        // Amostras da versão aguardando aprovação, para revisar antes de enviar.
+        samples: pending.slice(0, 8).map((m) => ({ unitName: unitName.get(m.unitId ?? 0) ?? "—", previewUrl: m.previewUrl, pdfUrl: m.fileUrl })),
+      };
     });
+  }),
+
+  /** Aprova a versão gerada: ela substitui a anterior no mídia kit de cada unidade. */
+  approve: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
+    const c = await conn();
+    const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
+    const pending = await c.select({ id: unitMaterials.id, unitId: unitMaterials.unitId }).from(unitMaterials)
+      .where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
+    if (!pending.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Não há versão gerada aguardando aprovação." });
+    await c.transaction(async (tx) => {
+      for (const p of pending) {
+        await tx.delete(unitMaterials).where(and(eq(unitMaterials.unitId, p.unitId!), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, false)));
+      }
+      await tx.update(unitMaterials).set({ pending: false }).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
+      await tx.insert(unitKitTemplates).values({ format: input.format, fields: KIT_DEFAULTS, approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
+        .onConflictDoUpdate({ target: unitKitTemplates.format, set: { approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id } });
+    });
+    await db.recordAudit({ action: "unit.kit.approved", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: pending.length } });
+    return { sent: pending.length };
+  }),
+
+  /** Descarta a versão gerada (as unidades continuam com a anterior). */
+  discard: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ input }) => {
+    const c = await conn();
+    const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
+    await c.delete(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
+    return { ok: true };
   }),
 
   defaults: adminProcedure.query(() => KIT_DEFAULTS),
@@ -287,7 +335,7 @@ export const unitKitRouter = router({
   exportOne: adminProcedure.input(z.object({ format: formatSchema, unitId: z.number().int() })).mutation(async ({ input }) => {
     const list = await unitsWithQr([input.unitId]);
     if (!list.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta academia ainda não tem QR code nem link cadastrado." });
-    const [r] = await generateFor(input.format, await fieldsOf(input.format), list);
+    const [r] = await generateFor(input.format, await fieldsOf(input.format), list, "conferir");
     return { url: r.url };
   }),
 
@@ -300,7 +348,7 @@ export const unitKitRouter = router({
     job = current;
     void (async () => {
       try {
-        await generateFor(input.format, fields, list, (d) => { current.done = d; });
+        await generateFor(input.format, fields, list, "pendente", (d) => { current.done = d; });
         const c = await conn();
         await c.insert(unitKitTemplates).values({ format: input.format, fields, generatedAt: new Date(), generatedCount: list.length })
           .onConflictDoUpdate({ target: unitKitTemplates.format, set: { generatedAt: new Date(), generatedCount: list.length } });

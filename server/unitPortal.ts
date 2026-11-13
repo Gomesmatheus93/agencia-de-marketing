@@ -152,7 +152,7 @@ export const unitPortalRouter = router({
     const c = await conn();
     const unitId = (await currentUnit(ctx.actualUser)).current?.id ?? null;
     const rows = await c.select().from(unitMaterials)
-      .where(unitId ? or(isNull(unitMaterials.unitId), eq(unitMaterials.unitId, unitId)) : isNull(unitMaterials.unitId))
+      .where(and(eq(unitMaterials.pending, false), unitId ? or(isNull(unitMaterials.unitId), eq(unitMaterials.unitId, unitId)) : isNull(unitMaterials.unitId)))
       .orderBy(desc(unitMaterials.createdAt));
     const strip = ({ fileUrl: _f, createdByUserId: _c, ...m }: typeof rows[number]) => m;
     // No kit da própria unidade, as imagens já vêm com a miniatura (o acesso foi conferido acima).
@@ -172,7 +172,7 @@ export const unitPortalRouter = router({
       const c = await conn();
       const [m] = await c.select().from(unitMaterials).where(eq(unitMaterials.id, input.materialId));
       const me = ctx.actualUser;
-      const allowed = m && (m.unitId === null || me.accountType !== "unit" || (await accessibleUnits(me)).some((u) => u.id === m.unitId));
+      const allowed = m && (me.accountType !== "unit" || (!m.pending && (m.unitId === null || (await accessibleUnits(me)).some((u) => u.id === m.unitId))));
       if (!allowed) throw new TRPCError({ code: "NOT_FOUND", message: "Material não encontrado." });
       if (me.accountType === "unit") {
         // Abrir/ampliar fica registrado à parte, para não inflar a contagem de downloads.
@@ -217,7 +217,7 @@ export const unitAdminRouter = router({
       .from(auditLog).where(and(inArray(auditLog.action, UNIT_ACTIONS), gte(auditLog.createdAt, since)));
     // Cada evento conta para a academia aberta no momento (metadata.unitId).
     const eventUnit = (e: { metadata: unknown }) => (e.metadata as { unitId?: number } | null)?.unitId ?? null;
-    const materials = await c.select({ unitId: unitMaterials.unitId, kind: unitMaterials.kind }).from(unitMaterials);
+    const materials = await c.select({ unitId: unitMaterials.unitId, kind: unitMaterials.kind }).from(unitMaterials).where(eq(unitMaterials.pending, false));
     const [planRow] = await c.select({ n: sql<number>`count(*)::int` }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.status, "published"));
     const [current] = await c.select({ status: unitWeeklyPlans.status, releaseAt: unitWeeklyPlans.releaseAt }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, mondayOf()));
     // Adesão às postagens nas últimas 4 semanas: posts já vencidos (data até hoje) x marcados como postados.
@@ -338,7 +338,7 @@ export const unitAdminRouter = router({
   // ── Materiais ──
   materials: adminProcedure.query(async () => {
     const c = await conn();
-    return c.select().from(unitMaterials).orderBy(desc(unitMaterials.createdAt));
+    return c.select().from(unitMaterials).where(eq(unitMaterials.pending, false)).orderBy(desc(unitMaterials.createdAt));
   }),
 
   addMaterial: adminProcedure
@@ -488,7 +488,7 @@ export async function buildUnitKitZip(me: User): Promise<{ zip: Buffer; fileName
   const unit = (await currentUnit(me)).current;
   if (!unit) return null;
   const c = await conn();
-  const rows = await c.select().from(unitMaterials).where(eq(unitMaterials.unitId, unit.id));
+  const rows = await c.select().from(unitMaterials).where(and(eq(unitMaterials.unitId, unit.id), eq(unitMaterials.pending, false)));
   if (!rows.length) return null;
   const { default: JSZip } = await import("jszip");
   const zip = new JSZip();

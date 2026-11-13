@@ -36,6 +36,7 @@ import {
   ClipboardCheck,
   ShieldCheck,
   Building2,
+  Palette,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -138,6 +139,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   }));
   const settingsItem = { ...SETTINGS_CONFIG, label: t(SETTINGS_CONFIG.labelKey), description: t(SETTINGS_CONFIG.descKey) };
   const unitsItem = { id: "units", icon: Building2, path: "/dashboard/unidades", color: "from-alle-purple to-alle-orange", label: "Unidades", description: "Academias parceiras: acessos, plano e materiais" };
+  const mediaKitItem = { id: "midiakit", icon: Palette, path: "/dashboard/midia-kit", color: "from-alle-purple to-alle-orange", label: "Mídia kit", description: "Materiais impressos das academias, com aprovação" };
   const artStudioItem = { ...ART_STUDIO_CONFIG, label: t(ART_STUDIO_CONFIG.labelKey), description: t(ART_STUDIO_CONFIG.descKey) };
   const teamItem = { ...TEAM_CONFIG, label: t(TEAM_CONFIG.labelKey), description: t(TEAM_CONFIG.descKey) };
   const { hasCompanyAccess } = useCompanyAccess();
@@ -273,9 +275,9 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   );
 
   // Gate: determine if current module should be blocked
-  const ALWAYS_OPEN = new Set(["dashboard", "settings", "profile", "units"]);
+  const ALWAYS_OPEN = new Set(["dashboard", "settings", "profile", "units", "midiakit"]);
   const gateActive = !!activeModule && !ALWAYS_OPEN.has(activeModule) && isLocked(activeModule);
-  const activeLabel = activeModule === "profile" ? "Meu perfil" : navItems.find((n) => n.id === activeModule)?.label;
+  const activeLabel = activeModule === "profile" ? "Meu perfil" : activeModule === "midiakit" ? "Mídia kit" : activeModule === "units" ? "Unidades" : navItems.find((n) => n.id === activeModule)?.label;
   const avatarUrl = (user as { avatarUrl?: string | null } | null)?.avatarUrl ?? undefined;
 
   const renderSidebar = (mini: boolean) => (
@@ -340,6 +342,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               {t("system")}
             </div>
             <NavButton item={unitsItem} mini={mini} />
+            <NavButton item={mediaKitItem} mini={mini} />
             <NavButton item={settingsItem} mini={mini} />
           </>
         )}

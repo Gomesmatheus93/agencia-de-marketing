@@ -33,6 +33,7 @@ import Profile from "./pages/Profile";
 import MonthlyReport from "./pages/MonthlyReport";
 import UnitPortal from "./pages/UnitPortal";
 import UnitsAdmin from "./pages/UnitsAdmin";
+import MediaKit from "./pages/MediaKit";
 import CreativeStudio from "./pages/CreativeStudio";
 import Agents from "./pages/Agents";
 import AgentOffice from "./pages/AgentOffice";
@@ -85,6 +86,7 @@ function AppRoutes() {
       <Route path="/dashboard/perfil" component={Profile} />
       <Route path="/dashboard/relatorio" component={MonthlyReport} />
       <Route path="/dashboard/unidades" component={UnitsAdmin} />
+      <Route path="/dashboard/midia-kit" component={MediaKit} />
       <Route path="/unidade" component={UnitPortal} />
       <Route path="/unidade/materiais" component={UnitPortal} />
       <Route path="/unidade/suporte" component={UnitPortal} />

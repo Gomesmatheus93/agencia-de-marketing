@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Palette, Plus, Search, Send, Sparkles, Trash2, Upload } from "lucide-react";
+import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Send, Sparkles, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -575,129 +575,6 @@ function SupportTab({ initial }: { initial: number | null }) {
   );
 }
 
-// ── Design do mídia kit impresso ───────────────────────────────────────────
-const KIT_FIELD_GROUPS: Array<{ title: string; layouts: string[]; fields: Array<[string, string, boolean?]> }> = [
-  { title: "Oferta", layouts: ["poster"], fields: [["kicker", "Acima do número"], ["percent", "Número em destaque"], ["line1", "Linha 1"], ["line2", "Linha 2 (grande)"]] },
-  { title: "Benefícios (a 1ª palavra vira o título pequeno)", layouts: ["poster"], fields: [["benefit1", "Benefício 1"], ["benefit2", "Benefício 2"], ["benefit3", "Benefício 3"], ["benefit4", "Benefício 4"]] },
-  { title: "QR code", layouts: ["poster"], fields: [["qrTitle", "Chamada"], ["qrText", "Complemento"]] },
-  { title: "Faixa e rodapé", layouts: ["poster"], fields: [["audience", "Faixa laranja"], ["footer", "Rodapé"], ["disclaimer", "Ressalva (obrigatória com o %)", true]] },
-  { title: "Bandeira", layouts: ["flag"], fields: [["wbLine1", "Linha 1"], ["wbLine2", "Linha 2 (grande)"]] },
-];
-
-function KitDesignTab() {
-  const formats = trpc.unitKit.formats.useQuery();
-  const templates = trpc.unitKit.templates.useQuery();
-  const defaults = trpc.unitKit.defaults.useQuery();
-  const kitUnits = trpc.unitKit.units.useQuery();
-  const utils = trpc.useUtils();
-  const [format, setFormat] = useState("display");
-  const [draft, setDraft] = useState<Record<string, Record<string, string>>>({});
-  const [unitId, setUnitId] = useState<number | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const job = trpc.unitKit.job.useQuery(undefined, { refetchInterval: (q) => (q.state.data && !q.state.data.finishedAt ? 1500 : false) });
-  const tpl = templates.data?.find((t) => t.format === format);
-  const fields = draft[format] ?? tpl?.fields;
-  const fmt = formats.data?.find((f) => f.id === format);
-  const dirty = !!draft[format];
-  const previewM = trpc.unitKit.preview.useMutation({ onSuccess: (r) => setPreview(r.dataUrl), onError: (e) => toast.error(e.message) });
-  const save = trpc.unitKit.save.useMutation({ onSuccess: () => { toast.success("Texto salvo."); setDraft(({ [format]: _x, ...rest }) => rest); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
-  const exportOne = trpc.unitKit.exportOne.useMutation({ onSuccess: (r) => { toast.success("PDF gerado e salvo no mídia kit da academia."); window.open(r.url, "_blank", "noopener"); }, onError: (e) => toast.error(e.message) });
-  const genAll = trpc.unitKit.generateAll.useMutation({ onSuccess: () => utils.unitKit.job.invalidate(), onError: (e) => toast.error(e.message) });
-
-  // Prévia automática ao trocar formato, academia ou texto (com uma pausa enquanto digita).
-  useEffect(() => {
-    if (!fields) return;
-    const t = setTimeout(() => previewM.mutate({ format: format as never, fields: fields as never, unitId }), 500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, unitId, JSON.stringify(fields)]);
-  useEffect(() => { if (job.data?.finishedAt) { utils.unitKit.templates.invalidate(); utils.unitAdmin.overview.invalidate(); } }, [job.data?.finishedAt, utils]);
-
-  const setField = (k: string, v: string) => fields && setDraft((d) => ({ ...d, [format]: { ...fields, [k]: v } }));
-  const running = job.data && !job.data.finishedAt;
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        {(formats.data ?? []).map((f) => {
-          const t = templates.data?.find((x) => x.format === f.id);
-          return (
-            <button key={f.id} type="button" onClick={() => setFormat(f.id)} className={cn("flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition", format === f.id ? "border-primary ring-2 ring-primary/20" : "hover:border-primary/40")}>
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <span className="block rounded-sm bg-primary/70" style={{ width: 22, height: Math.min(40, 22 * f.ratio) }} />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-semibold">{f.label}</span>
-                <span className="block text-xs text-muted-foreground">{String(f.wCm).replace(".", ",")} × {String(f.hCm).replace(".", ",")} cm</span>
-                <span className="block text-[11px] text-muted-foreground">{t?.generatedAt ? `gerado p/ ${t.generatedCount} em ${new Date(t.generatedAt).toLocaleDateString("pt-BR")}` : "ainda não gerado"}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <Card className="border-border/60"><CardContent className="space-y-4 p-4">
-          {fields && fmt && KIT_FIELD_GROUPS.filter((g) => g.layouts.includes(fmt.layout)).map((g) => (
-            <div key={g.title} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {g.fields.map(([k, label, long]) => (
-                  <label key={k} className={cn("space-y-1 text-sm", long && "sm:col-span-2")}>
-                    <span className="text-xs text-muted-foreground">{label}</span>
-                    {long ? <Textarea rows={3} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
-                      : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-          {fmt?.layout === "flag" && <p className="text-xs text-muted-foreground">O windbanner leva as duas faces da bandeira lado a lado no molde, cada uma com o QR da academia.</p>}
-          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-            {defaults.data && <Button variant="ghost" size="sm" onClick={() => setDraft((d) => ({ ...d, [format]: { ...defaults.data } }))}>Voltar ao texto padrão</Button>}
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => fields && save.mutate({ format: format as never, fields: fields as never })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar texto</Button>
-          </div>
-        </CardContent></Card>
-
-        <Card className="border-border/60"><CardContent className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="flex-1 text-sm font-semibold">Prévia {fmt ? `· ${fmt.label} ${String(fmt.wCm).replace(".", ",")} × ${String(fmt.hCm).replace(".", ",")} cm` : ""}</p>
-            <select value={unitId ?? ""} onChange={(e) => setUnitId(e.target.value ? Number(e.target.value) : null)} className="h-8 max-w-[220px] rounded-md border bg-background px-2 text-xs">
-              <option value="">Sem academia (espaço do QR)</option>
-              {(kitUnits.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </div>
-          <div className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-xl border bg-muted/40 p-3">
-            {preview ? <img src={preview} alt="Prévia" className="max-h-[70vh] w-auto rounded shadow-lg" /> : <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
-            {previewM.isPending && preview && <span className="absolute right-3 top-3 rounded-full bg-background/90 px-2 py-0.5 text-[11px] text-muted-foreground shadow"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />atualizando</span>}
-          </div>
-          {dirty && <p className="text-xs text-amber-600">Salve o texto antes de gerar: a geração usa o texto salvo.</p>}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled={!unitId || dirty || exportOne.isPending} title={!unitId ? "Escolha uma academia na prévia" : undefined}
-              onClick={() => unitId && exportOne.mutate({ format: format as never, unitId })}>
-              {exportOne.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}Gerar PDF desta academia
-            </Button>
-            <Button size="sm" className="ml-auto" disabled={dirty || !!running || genAll.isPending}
-              onClick={() => { if (confirm(`Gerar o ${fmt?.label} para ${kitUnits.data?.length ?? 0} academias? Cada uma recebe o PDF no mídia kit, com o próprio QR code. O ${fmt?.label} gerado antes é substituído.`)) genAll.mutate({ format: format as never }); }}>
-              <Sparkles className="mr-1.5 h-4 w-4" />Gerar para todas as academias ({kitUnits.data?.length ?? 0})
-            </Button>
-          </div>
-          {job.data && (
-            <div className="rounded-xl border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span>{job.data.label}: {job.data.finishedAt ? (job.data.error ? "erro" : "concluído") : "gerando…"}</span>
-                <span className="text-xs text-muted-foreground">{job.data.done} de {job.data.total}</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full transition-all", job.data.error ? "bg-destructive" : "bg-primary")} style={{ width: `${job.data.total ? (job.data.done / job.data.total) * 100 : 0}%` }} /></div>
-              {job.data.error && <p className="mt-1 text-xs text-destructive">{job.data.error}</p>}
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">Cada academia recebe um PDF no tamanho real ({fmt ? `${fmt.px.w} × ${fmt.px.h} px, ${fmt.dpi} dpi` : "…"}) com o QR code dela, pronto para a gráfica. Academias sem QR nem link ficam de fora.</p>
-        </CardContent></Card>
-      </div>
-    </div>
-  );
-}
-
 // ── Materiais ──────────────────────────────────────────────────────────────
 function MaterialsTab() {
   const overview = trpc.unitAdmin.overview.useQuery();
@@ -771,11 +648,11 @@ function MaterialsTab() {
 export default function UnitsAdmin() {
   const { user } = useAuth();
   const supportFromLink = (() => { const n = Number(new URLSearchParams(window.location.search).get("suporte")); return Number.isInteger(n) && n > 0 ? n : null; })();
-  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "avisos" | "suporte" | "materiais" | "kit">(supportFromLink ? "suporte" : "geral");
+  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "avisos" | "suporte" | "materiais">(supportFromLink ? "suporte" : "geral");
   const supportUnread = trpc.unitSupportAdmin.unread.useQuery(undefined, { enabled: user?.role === "admin", refetchInterval: 60_000 }).data ?? 0;
   const [open, setOpen] = useState<number | null>(null);
   if (user && user.role !== "admin") return <AppLayout activeModule="units"><p className="p-8 text-sm text-muted-foreground">Apenas administradores.</p></AppLayout>;
-  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento das unidades", CalendarDays], ["avisos", "Avisos", Megaphone], ["suporte", "Suporte", LifeBuoy], ["materiais", "Materiais e mídia kits", Download], ["kit", "Design do mídia kit", Palette]] as const;
+  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento das unidades", CalendarDays], ["avisos", "Avisos", Megaphone], ["suporte", "Suporte", LifeBuoy], ["materiais", "Materiais e mídia kits", Download]] as const;
   return (
     <AppLayout activeModule="units">
       <main className="min-h-screen p-4 md:p-8">
@@ -800,7 +677,6 @@ export default function UnitsAdmin() {
           {tab === "plano" && <PlanTab />}
           {tab === "avisos" && <AnnouncementsTab />}
           {tab === "suporte" && <SupportTab initial={supportFromLink} />}
-          {tab === "kit" && <KitDesignTab />}
           {tab === "materiais" && <MaterialsTab />}
           {open !== null && <UnitDetail unitId={open} onClose={() => setOpen(null)} />}
         </div>

@@ -1157,6 +1157,8 @@ export const unitMaterials = pgTable(
     description: text("description"),
     fileUrl: text("fileUrl").notNull(),
     previewUrl: text("previewUrl"), // miniatura (ex.: prévia em JPG de um PDF de impressão)
+    // Gerado pelo design do mídia kit e ainda não aprovado: as unidades não veem.
+    pending: boolean("pending").default(false).notNull(),
     fileName: varchar("fileName", { length: 255 }).notNull(),
     contentType: varchar("contentType", { length: 120 }).notNull(),
     sizeBytes: integer("sizeBytes").default(0).notNull(),
@@ -1272,4 +1274,6 @@ export const unitKitTemplates = pgTable("unit_kit_templates", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   generatedAt: timestamp("generatedAt"),
   generatedCount: integer("generatedCount").default(0).notNull(),
+  approvedAt: timestamp("approvedAt"),
+  approvedByUserId: integer("approvedByUserId"),
 });
