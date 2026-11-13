@@ -35,6 +35,65 @@ const FIELD_LABEL: Record<string, string> = {
 };
 const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText"]);
 
+/** Escolher o que gerar: quais materiais e para quais academias. */
+function GenerateDialog({ formats, units, pending, onClose, onGenerate }: {
+  formats: Array<{ id: string; label: string; size: string; design: string }>;
+  units: Array<{ id: number; name: string }>;
+  pending: boolean; onClose: () => void; onGenerate: (formats: string[], unitIds: number[], all: boolean) => void;
+}) {
+  const [fs, setFs] = useState<string[]>(formats.map((f) => f.id));
+  const [sel, setSel] = useState<Set<number>>(new Set(units.map((u) => u.id)));
+  const [q, setQ] = useState("");
+  const shown = units.filter((u) => u.name.toLowerCase().includes(q.toLowerCase()));
+  const toggleF = (id: string) => setFs((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  const toggleU = (id: number) => setSel((x) => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allSel = sel.size === units.length;
+  const total = fs.length * sel.size;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader><DialogTitle>Gerar materiais</DialogTitle></DialogHeader>
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Quais materiais</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {formats.map((f) => (
+              <label key={f.id} className={cn("flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm", fs.includes(f.id) ? "border-primary bg-primary/5" : "hover:border-primary/40")}>
+                <input type="checkbox" checked={fs.includes(f.id)} onChange={() => toggleF(f.id)} className="h-4 w-4 accent-[#7B2FBE]" />
+                <span className="min-w-0"><span className="block font-semibold">{f.label} <span className="font-normal text-muted-foreground">· {f.size}</span></span><span className="block truncate text-xs text-muted-foreground">Design: {f.design}</span></span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="flex-1 text-sm font-semibold">Quais academias ({sel.size} de {units.length})</p>
+            <Button size="sm" variant="ghost" onClick={() => setSel(allSel ? new Set() : new Set(units.map((u) => u.id)))}>{allSel ? "Desmarcar todas" : "Marcar todas"}</Button>
+          </div>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar academia" className="h-9" />
+          <div className="grid max-h-[40vh] gap-1 overflow-y-auto rounded-xl border p-2 sm:grid-cols-2">
+            {shown.map((u) => (
+              <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted/50">
+                <input type="checkbox" checked={sel.has(u.id)} onChange={() => toggleU(u.id)} className="h-4 w-4 accent-[#7B2FBE]" />
+                <span className="truncate">{u.name}</span>
+              </label>
+            ))}
+            {!shown.length && <p className="p-2 text-sm text-muted-foreground">Nenhuma academia com esse nome.</p>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <p className="text-sm text-muted-foreground">{total} {total === 1 ? "imagem" : "imagens"} PNG no tamanho real · tudo fica aguardando aprovação</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button disabled={pending || !fs.length || !sel.size} onClick={() => onGenerate(fs, [...sel], allSel)}>
+              {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}Gerar {total} {total === 1 ? "imagem" : "imagens"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Todos os designs de um material lado a lado. */
 function CompareDialog({ format, unitId, onClose, onUse, onEdit }: { format: string; unitId: number | null; onClose: () => void; onUse: (v: string) => void; onEdit: (v: string) => void }) {
   const compare = trpc.unitKit.compare.useMutation({ onError: (e) => toast.error(e.message) });
@@ -115,7 +174,7 @@ function KitDesigner() {
   const previewM = trpc.unitKit.preview.useMutation({ onSuccess: (r) => setPreview(r.dataUrl), onError: (e) => toast.error(e.message) });
   const save = trpc.unitKit.saveTexts.useMutation({ onSuccess: () => { toast.success("Texto salvo."); setDraft(({ [key]: _x, ...rest }) => rest); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const select = trpc.unitKit.selectVariant.useMutation({ onSuccess: () => { toast.success("Design escolhido para as academias."); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
-  const exportOne = trpc.unitKit.exportOne.useMutation({ onSuccess: (r) => { toast.success("PDF de conferência gerado (não vai para a academia)."); window.open(r.url, "_blank", "noopener"); }, onError: (e) => toast.error(e.message) });
+  const exportOne = trpc.unitKit.exportOne.useMutation({ onSuccess: (r) => { toast.success("PNG de conferência gerado (não vai para a academia)."); window.open(r.url, "_blank", "noopener"); }, onError: (e) => toast.error(e.message) });
   const approver = trpc.unitKit.approver.useQuery();
   const canApprove = !!approver.data?.canApprove;
   const approve = trpc.unitKit.approve.useMutation({ onSuccess: (r) => { toast.success(`Aprovado! Enviado ao mídia kit de ${r.sent} academias.`); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
@@ -136,7 +195,7 @@ function KitDesigner() {
   const inUse = tpl?.variants.find((v) => v.id === tpl.variant);
   const approveAll = trpc.unitKit.approveAll.useMutation({ onSuccess: (r) => { toast.success(`Aprovado! ${r.total} materiais enviados ao mídia kit das academias.`); utils.unitKit.invalidate(); }, onError: (e) => toast.error(e.message) });
   const totalPending = (templates.data ?? []).reduce((a, t) => a + t.pendingCount, 0);
-  const designsInUse = (templates.data ?? []).map((t) => `${formats.data?.find((f) => f.id === t.format)?.label ?? t.format}: ${t.variants.find((v) => v.id === t.variant)?.label ?? ""}`).join("\n");
+  const [pickOpen, setPickOpen] = useState(false);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/30 bg-primary/[.04] p-4">
@@ -146,7 +205,7 @@ function KitDesigner() {
           <p className="text-sm text-muted-foreground">Display, banner, panfleto e windbanner, com o design em uso de cada um e o QR code de cada academia ({kitUnits.data?.length ?? 0} academias com QR). Tudo fica aguardando aprovação.</p>
         </div>
         <Button disabled={!!running || genAll.isPending || !kitUnits.data?.length}
-          onClick={() => { if (confirm(`Gerar os 4 materiais de ${kitUnits.data?.length ?? 0} academias (${(kitUnits.data?.length ?? 0) * 4} PDFs) com estes designs?\n\n${designsInUse}\n\nNada vai para as academias antes da aprovação.`)) genAll.mutate({ formats: ["display", "banner", "panfleto", "windbanner"] }); }}>
+          onClick={() => setPickOpen(true)}>
           <Sparkles className="mr-1.5 h-4 w-4" />Gerar todos os materiais
         </Button>
         {canApprove && totalPending > 0 && (
@@ -156,9 +215,17 @@ function KitDesigner() {
           </Button>
         )}
       </div>
+      {pickOpen && (
+        <GenerateDialog
+          formats={(formats.data ?? []).map((f) => ({ id: f.id, label: f.label, size: `${String(f.wCm).replace(".", ",")} × ${String(f.hCm).replace(".", ",")} cm`, design: templates.data?.find((t) => t.format === f.id)?.variants.find((v) => v.id === templates.data?.find((t) => t.format === f.id)?.variant)?.label ?? "" }))}
+          units={kitUnits.data ?? []}
+          pending={genAll.isPending}
+          onClose={() => setPickOpen(false)}
+          onGenerate={(fs, ids, all) => genAll.mutate({ formats: fs as never, unitIds: all ? undefined : ids }, { onSuccess: () => setPickOpen(false) })} />
+      )}
       {job.data && !job.data.finishedAt && job.data.formats.length > 1 && (
         <div className="rounded-xl border p-3 text-sm">
-          <div className="flex items-center justify-between"><span>{job.data.label}…</span><span className="text-xs text-muted-foreground">{job.data.done} de {job.data.total} PDFs</span></div>
+          <div className="flex items-center justify-between"><span>{job.data.label}…</span><span className="text-xs text-muted-foreground">{job.data.done} de {job.data.total} imagens</span></div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(job.data.done / Math.max(1, job.data.total)) * 100}%` }} /></div>
         </div>
       )}
@@ -256,7 +323,7 @@ function KitDesigner() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={!unitId || dirty || exportOne.isPending} title={!unitId ? "Escolha uma academia na prévia" : undefined}
               onClick={() => unitId && exportOne.mutate({ format: format as never, unitId })}>
-              {exportOne.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}PDF de conferência
+              {exportOne.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}PNG de conferência
             </Button>
             <Button size="sm" className="ml-auto" disabled={dirty || !!running || genAll.isPending}
               onClick={() => { if (confirm(`Gerar o ${fmt?.label} de ${kitUnits.data?.length ?? 0} academias para revisão? Nada vai para as academias antes da aprovação.`)) genAll.mutate({ formats: [format as never] }); }}>
@@ -273,7 +340,7 @@ function KitDesigner() {
               {job.data.error && <p className="mt-1 text-xs text-destructive">{job.data.error}</p>}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Cada academia ganha um PDF no tamanho real ({fmt ? `${fmt.px.w} × ${fmt.px.h} px, ${fmt.dpi} dpi` : "…"}) com o QR code dela. Ele só aparece no mídia kit da academia depois da aprovação. Academias sem QR nem link ficam de fora.</p>
+          <p className="text-xs text-muted-foreground">Cada academia ganha um PNG no tamanho real ({fmt ? `${fmt.px.w} × ${fmt.px.h} px, ${fmt.dpi} dpi = ${String(fmt.wCm).replace(".", ",")} × ${String(fmt.hCm).replace(".", ",")} cm` : "…"}) com o QR code dela. Ele só aparece no mídia kit da academia depois da aprovação. Academias sem QR nem link ficam de fora.</p>
         </CardContent></Card>
       </div>
 
@@ -288,7 +355,7 @@ function KitDesigner() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600"><ShieldCheck className="h-5 w-5" /></span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{fmt?.label}: {canApprove ? "aguardando a sua aprovação" : `aguardando a aprovação de ${approver.data?.email ?? "Matheus"}`}</p>
-              <p className="text-sm text-muted-foreground">{tpl.pendingCount} academias com o material gerado{tpl.generatedAt ? ` em ${new Date(tpl.generatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}. Confira as amostras e abra os PDFs antes de aprovar.{tpl.sentCount ? " Ao aprovar, a versão atual das academias é substituída." : ""}</p>
+              <p className="text-sm text-muted-foreground">{tpl.pendingCount} academias com o material gerado{tpl.generatedAt ? ` em ${new Date(tpl.generatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}. Confira as amostras e abra os PNGs antes de aprovar.{tpl.sentCount ? " Ao aprovar, a versão atual das academias é substituída." : ""}</p>
             </div>
             {canApprove && <>
             <Button variant="ghost" size="sm" disabled={discard.isPending} onClick={() => { if (confirm("Descartar esta versão? As academias continuam com o que já têm.")) discard.mutate({ format: format as never }); }}>Descartar</Button>
@@ -299,7 +366,7 @@ function KitDesigner() {
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
             {tpl.samples.map((s) => (
-              <a key={s.pdfUrl} href={s.pdfUrl} target="_blank" rel="noreferrer" title={`Abrir o PDF de ${s.unitName}`} className="group overflow-hidden rounded-lg border bg-card transition hover:border-primary">
+              <a key={s.fileUrl} href={s.fileUrl} target="_blank" rel="noreferrer" title={`Abrir o PNG de ${s.unitName}`} className="group overflow-hidden rounded-lg border bg-card transition hover:border-primary">
                 {s.previewUrl && <img src={s.previewUrl} alt="" loading="lazy" className="w-full object-cover" />}
                 <p className="truncate p-1.5 text-[11px] font-medium group-hover:text-primary">{s.unitName}</p>
               </a>
@@ -361,7 +428,7 @@ function KitsByUnit() {
                         {m.pending ? <p className="text-[11px] font-medium text-amber-600">aguardando aprovação</p>
                           : m.sent ? <p className="text-[11px] text-emerald-600">enviado</p>
                           : <p className="text-[11px] text-muted-foreground">não gerado</p>}
-                        {file && <a href={file.pdfUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">abrir PDF</a>}
+                        {file && <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">abrir PNG</a>}
                       </div>
                     </div>
                   );

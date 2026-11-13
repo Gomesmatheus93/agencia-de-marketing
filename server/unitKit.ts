@@ -582,26 +582,6 @@ export async function previewKit(format: KitFormat, state: KitState, qrData: str
   return renderSvg(await embedRemote(svg.replace("</svg>", `${extra}</svg>`)), width);
 }
 
-/** PDF de uma página com a imagem JPEG ocupando o tamanho real do material. */
-function jpegToPdf(jpeg: Buffer, px: { w: number; h: number }, cm: { w: number; h: number }): Buffer {
-  const pw = ((cm.w / 2.54) * 72).toFixed(2), ph = ((cm.h / 2.54) * 72).toFixed(2);
-  const content = Buffer.from(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);
-  const parts: Buffer[] = [];
-  const offsets: number[] = [];
-  let len = 0;
-  const push = (b: Buffer | string) => { const buf = typeof b === "string" ? Buffer.from(b, "latin1") : b; parts.push(buf); len += buf.length; };
-  const obj = (n: number, body: () => void) => { offsets[n] = len; push(`${n} 0 obj\n`); body(); push("\nendobj\n"); };
-  push("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
-  obj(1, () => push("<< /Type /Catalog /Pages 2 0 R >>"));
-  obj(2, () => push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"));
-  obj(3, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`));
-  obj(4, () => { push(`<< /Type /XObject /Subtype /Image /Width ${px.w} /Height ${px.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`); push(jpeg); push("\nendstream"); });
-  obj(5, () => { push(`<< /Length ${content.length} >>\nstream\n`); push(content); push("\nendstream"); });
-  const xref = len;
-  push(`xref\n0 6\n0000000000 65535 f \n${[1, 2, 3, 4, 5].map((n) => `${String(offsets[n]).padStart(10, "0")} 00000 n \n`).join("")}`);
-  push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
-  return Buffer.concat(parts);
-}
 
 /**
  * Gera o material de várias academias: desenha a arte uma vez (sem QR) no tamanho de impressão
@@ -627,27 +607,27 @@ async function generateFor(format: KitFormat, state: KitState, list: Array<{ id:
       return { input: qrPng, left: Math.round(s.x * scale), top: Math.round(s.y * scale) };
     });
     const img = sharp(base.data, { raw: base.info }).composite(overlays);
-    const jpeg = await img.clone().jpeg({ quality: 90, chromaSubsampling: "4:4:4" }).toBuffer();
-    const preview = await sharp(jpeg).resize({ width: 1000 }).jpeg({ quality: 82 }).toBuffer();
+    // PNG no tamanho de impressão, com a resolução (DPI) gravada: abre com o tamanho real em cm.
+    const png = await img.clone().png({ compressionLevel: 6 }).withMetadata({ density: fmt.dpi }).toBuffer();
+    const preview = await sharp(png).resize({ width: 1000 }).jpeg({ quality: 82 }).toBuffer();
     const key = `${unitKey(u.name)}-${format}-${Date.now().toString(36)}`;
-    const pdf = jpegToPdf(jpeg, px, { w: fmt.wCm, h: fmt.hCm });
     if (mode === "conferir") {
-      const { url } = await storagePut(`unit-kits-print/conferir/${key}.pdf`, pdf, "application/pdf");
+      const { url } = await storagePut(`unit-kits-print/conferir/${key}.png`, png, "image/png");
       results.push({ unitId: u.id, url });
       onProgress?.(++done);
       continue;
     }
-    const [{ url: pdfUrl }, { url: previewUrl }] = await Promise.all([
-      storagePut(`unit-kits-print/${key}.pdf`, pdf, "application/pdf"),
+    const [{ url: fileUrl }, { url: previewUrl }] = await Promise.all([
+      storagePut(`unit-kits-print/${key}.png`, png, "image/png"),
       storagePut(`unit-kits-print/${key}-previa.jpg`, preview, "image/jpeg"),
     ]);
     // Troca só a versão pendente anterior; a aprovada continua no portal até a nova ser aprovada.
     await c.delete(unitMaterials).where(and(eq(unitMaterials.unitId, u.id), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, description), eq(unitMaterials.pending, true)));
     await c.insert(unitMaterials).values({
-      unitId: u.id, kind: "midia_kit", title: label, description, fileUrl: pdfUrl, previewUrl, pending: true,
-      fileName: `${fmt.label} - ${u.name}.pdf`, contentType: "application/pdf", sizeBytes: pdf.length, createdByUserId: 1,
+      unitId: u.id, kind: "midia_kit", title: label, description, fileUrl, previewUrl, pending: true,
+      fileName: `${fmt.label} - ${u.name}.png`, contentType: "image/png", sizeBytes: png.length, createdByUserId: 1,
     });
-    results.push({ unitId: u.id, url: pdfUrl });
+    results.push({ unitId: u.id, url: fileUrl });
     onProgress?.(++done);
   }
   return results;
@@ -729,7 +709,7 @@ export const unitKitRouter = router({
         pendingCount: pending.length,
         sentCount: mats.filter((m) => m.description === desc && !m.pending).length,
         // Amostras da versão aguardando aprovação, para revisar antes de enviar.
-        samples: pending.slice(0, 8).map((m) => ({ unitName: unitName.get(m.unitId ?? 0) ?? "—", previewUrl: m.previewUrl, pdfUrl: m.fileUrl })),
+        samples: pending.slice(0, 8).map((m) => ({ unitName: unitName.get(m.unitId ?? 0) ?? "—", previewUrl: m.previewUrl, fileUrl: m.fileUrl })),
       };
     });
   }),
@@ -768,8 +748,8 @@ export const unitKitRouter = router({
         const sent = mine.find((m) => !m.pending), pend = mine.find((m) => m.pending);
         return {
           format: f, label: KIT_FORMATS[f].label,
-          sent: sent ? { previewUrl: sent.previewUrl, pdfUrl: sent.fileUrl, at: sent.createdAt } : null,
-          pending: pend ? { previewUrl: pend.previewUrl, pdfUrl: pend.fileUrl, at: pend.createdAt } : null,
+          sent: sent ? { previewUrl: sent.previewUrl, fileUrl: sent.fileUrl, at: sent.createdAt } : null,
+          pending: pend ? { previewUrl: pend.previewUrl, fileUrl: pend.fileUrl, at: pend.createdAt } : null,
         };
       }),
     }));
@@ -862,10 +842,11 @@ export const unitKitRouter = router({
   }),
 
   /** Gera para todas as academias com QR, um ou vários materiais em sequência (em segundo plano). */
-  generateAll: adminProcedure.input(z.object({ formats: z.array(formatSchema).min(1).max(4) })).mutation(async ({ ctx, input }) => {
+  generateAll: adminProcedure.input(z.object({ formats: z.array(formatSchema).min(1).max(4), unitIds: z.array(z.number().int()).max(500).optional() })).mutation(async ({ ctx, input }) => {
     if (job && !job.finishedAt) throw new TRPCError({ code: "CONFLICT", message: `Já existe uma geração em andamento (${KIT_FORMATS[job.format].label}).` });
     const formats = [...new Set(input.formats)];
-    const list = await unitsWithQr();
+    const list = await unitsWithQr(input.unitIds?.length ? input.unitIds : undefined);
+    if (!list.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha pelo menos uma academia com QR code." });
     const states = await Promise.all(formats.map((f) => stateOf(f)));
     const current: Job = { formats, format: formats[0], total: list.length * formats.length, done: 0, error: null, finishedAt: null };
     job = current;
