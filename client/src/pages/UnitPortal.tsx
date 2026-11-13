@@ -3,7 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Megaphone } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useTheme } from "@/contexts/ThemeContext";
+import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Megaphone, Menu, Moon, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -187,52 +190,159 @@ function MaterialsTab() {
   );
 }
 
+const NAV = [
+  { id: "plano", path: "/unidade", label: "Planejamento da semana", icon: CalendarDays },
+  { id: "materiais", path: "/unidade/materiais", label: "Materiais e mídia kit", icon: FolderOpen },
+] as const;
+
 export default function UnitPortal() {
   const { user, isAuthenticated, loading, logout } = useAuth();
-  const [, navigate] = useLocation();
+  const { theme, toggleTheme, switchable } = useTheme();
+  const [location, navigate] = useLocation();
   const me = trpc.unitPortal.me.useQuery(undefined, { enabled: isAuthenticated });
   const utils = trpc.useUtils();
   const select = trpc.unitPortal.selectUnit.useMutation({
     onSuccess: () => utils.unitPortal.invalidate(),
     onError: (e) => toast.error(e.message),
   });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const myUnits = me.data?.units ?? [];
-  const [tab, setTab] = useState<"plano" | "materiais">("plano");
+  const tab = location.startsWith("/unidade/materiais") ? "materiais" : "plano";
+  const active = NAV.find((n) => n.id === tab)!;
   useEffect(() => { if (!loading && !isAuthenticated) navigate("/login"); }, [loading, isAuthenticated, navigate]);
   if (loading || !isAuthenticated) return null;
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <img src="/app/logo.png" alt="Alle Energia" className="h-9 w-9" />
-          <div className="min-w-0 flex-1">
-            {myUnits.length > 1 ? (
-              <select value={me.data?.unit?.id ?? ""} disabled={select.isPending} aria-label="Academia"
-                onChange={(e) => select.mutate({ unitId: Number(e.target.value) })}
-                className="max-w-full truncate rounded-md border bg-background px-2 py-1 font-bold">
-                {myUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            ) : (
-              <p className="truncate font-bold leading-tight">{me.data?.unit?.name ?? "Portal da unidade"}</p>
-            )}
-            <p className="truncate text-xs text-muted-foreground">
-              Alle Energia · {user?.name}{me.data?.groupName ? ` · ${me.data.groupName}` : ""}{myUnits.length > 1 ? ` · ${myUnits.length} academias` : ""}
-            </p>
+  const isDark = theme === "dark";
+  const avatarUrl = (user as { avatarUrl?: string | null } | null)?.avatarUrl ?? undefined;
+  const initials = (user?.name ?? "U").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+  const unitName = me.data?.unit?.name ?? "Portal da unidade";
+  const subtitle = [me.data?.groupName, myUnits.length > 1 ? `${myUnits.length} academias` : null].filter(Boolean).join(" · ");
+
+  const ThemeSwitch = () => (
+    <button type="button" role="switch" aria-checked={isDark} aria-label={isDark ? "Tema claro" : "Tema escuro"}
+      onClick={() => switchable && toggleTheme?.()} disabled={!switchable || !toggleTheme}
+      className={cn("relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50", isDark ? "bg-primary" : "bg-muted")}>
+      <span className={cn("pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition", isDark ? "translate-x-5" : "translate-x-0")} />
+    </button>
+  );
+
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="px-7 pb-6 pt-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-1.5 shadow-md">
+            <img src="/logo.png" alt="Alle Energia" className="h-full w-full object-contain" />
           </div>
-          <Button variant="ghost" size="sm" onClick={() => logout()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-lg font-bold tracking-tight text-foreground">Alle Energia</div>
+            <div className="truncate text-[11px] text-muted-foreground">Portal das academias</div>
+          </div>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 px-4">
-          {([["plano", "Planejamento da semana", CalendarDays], ["materiais", "Materiais e mídia kit", FolderOpen]] as const).map(([id, label, Icon]) => (
-            <button key={id} type="button" onClick={() => setTab(id)}
-              className={cn("flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition", tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
-              <Icon className="h-4 w-4" />{label}
+      </div>
+
+      {/* Academia aberta (quem tem mais de uma troca aqui) */}
+      <div className="px-5 pb-4">
+        <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Academia</p>
+          {myUnits.length > 1 ? (
+            <select value={me.data?.unit?.id ?? ""} disabled={select.isPending} aria-label="Academia"
+              onChange={(e) => select.mutate({ unitId: Number(e.target.value) })}
+              className="mt-1 w-full truncate rounded-lg border bg-background px-2 py-1.5 text-sm font-semibold">
+              {myUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          ) : (
+            <p className="mt-0.5 truncate text-sm font-semibold">{unitName}</p>
+          )}
+          {subtitle && <p className="mt-1 truncate text-[11px] text-muted-foreground">{subtitle}</p>}
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-1 overflow-y-auto px-5 pb-4">
+        <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Módulos</div>
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          const isActive = item.id === tab;
+          return (
+            <button key={item.id} type="button" onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+              className={cn("group flex w-full items-center gap-3.5 rounded-2xl px-4 py-3 text-[15px] font-medium transition-all duration-200",
+                isActive ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
+              <Icon className={cn("h-5 w-5 flex-shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+              <span className="flex-1 truncate text-left">{item.label}</span>
             </button>
-          ))}
-        </nav>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
-        {tab === "plano" ? <PlanTab /> : <MaterialsTab />}
+          );
+        })}
+      </nav>
+
+      <div className="border-t border-border/40 px-5 py-4">
+        <div className="mb-2 flex items-center gap-3 rounded-lg px-3 py-2.5">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-muted/70">
+            {isDark ? <Sun className="h-4 w-4 text-muted-foreground" /> : <Moon className="h-4 w-4 text-muted-foreground" />}
+          </div>
+          <div className="min-w-0 flex-1 truncate text-sm font-medium">{isDark ? "Tema claro" : "Tema escuro"}</div>
+          <ThemeSwitch />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-all hover:bg-accent/50">
+              <Avatar className="h-8 w-8 flex-shrink-0">
+                {avatarUrl && <AvatarImage src={avatarUrl} alt="" className="object-cover" />}
+                <AvatarFallback className="gradient-primary text-xs font-semibold text-white">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 text-left">
+                <div className="truncate text-sm font-medium">{user?.name || "Usuário"}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{user?.email || ""}</div>
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="glass-card w-52 border-border/50">
+            <DropdownMenuItem onClick={() => logout()} className="gap-2 text-destructive focus:text-destructive">
+              <LogOut className="h-4 w-4" />Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="gradient-bg relative flex min-h-screen overflow-hidden">
+      <aside className="glass-sidebar fixed bottom-0 left-0 top-0 z-30 hidden w-72 flex-col lg:flex">{sidebar}</aside>
+
+      {sidebarOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      <aside className={cn("glass-sidebar fixed bottom-0 left-0 top-0 z-50 w-72 transition-transform duration-300 ease-out lg:hidden", sidebarOpen ? "translate-x-0" : "-translate-x-full")}>
+        <div className="absolute right-4 top-4">
+          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)} className="h-8 w-8 rounded-lg"><X className="h-4 w-4" /></Button>
+        </div>
+        {sidebar}
+      </aside>
+
+      <main className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
+        {/* Celular */}
+        <header className="glass sticky top-0 z-20 flex items-center justify-between border-b border-border/30 px-4 py-3 lg:hidden">
+          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="h-9 w-9 rounded-xl"><Menu className="h-5 w-5" /></Button>
+          <span className="truncate px-2 text-sm font-bold tracking-tight">{unitName}</span>
+          <ThemeSwitch />
+        </header>
+        {/* Computador */}
+        <header className="sticky top-0 z-20 hidden items-center justify-between gap-4 bg-background/85 px-8 py-5 backdrop-blur lg:flex">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold tracking-tight">{active.label}</h2>
+            <p className="text-xs capitalize text-muted-foreground">{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</p>
+          </div>
+          <div className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-4">
+            <Avatar className="h-10 w-10">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt="" className="object-cover" />}
+              <AvatarFallback className="gradient-primary text-sm font-semibold text-white">{initials}</AvatarFallback>
+            </Avatar>
+            <span className="text-left leading-tight">
+              <span className="block text-sm font-semibold">{user?.name || "Usuário"}</span>
+              <span className="block text-[11px] text-muted-foreground">{unitName}</span>
+            </span>
+          </div>
+        </header>
+        <div className="flex-1 overflow-auto px-4 py-6 lg:px-8">
+          {tab === "plano" ? <PlanTab /> : <MaterialsTab />}
+        </div>
       </main>
     </div>
   );

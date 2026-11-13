@@ -86,6 +86,7 @@ function AppRoutes() {
       <Route path="/dashboard/relatorio" component={MonthlyReport} />
       <Route path="/dashboard/unidades" component={UnitsAdmin} />
       <Route path="/unidade" component={UnitPortal} />
+      <Route path="/unidade/materiais" component={UnitPortal} />
       <Route path="/aprovar/:token" component={Approve} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/404" component={NotFound} />
