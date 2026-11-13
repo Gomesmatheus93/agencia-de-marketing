@@ -61,8 +61,8 @@ título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaix
 | `alle:raio` | 376×600 | o raio sozinho, fundo claro |
 | `alle:raio-branco` | 376×600 | o raio sozinho (branco e laranja), fundo roxo ou escuro |
 | `alle:raio-mono` | 376×600 | o raio sozinho, todo branco: fundo laranja e marca d'água |
-| `alle:allpfit-mono` | 1271×275 | logo da Allp Fit todo branco: co-branding da parceria sobre roxo/laranja |
-| `alle:allpfit-branco` | 1271×275 | logo da Allp Fit com ícone laranja e texto branco: fundo escuro |
+| `alle:allpfit-mono` | 1271×275 | logo da Allp Fit todo branco: só quando o fundo for laranja (o ícone laranja sumiria) |
+| `alle:allpfit-branco` | 1279×276 | **logo oficial da Allp Fit, laranja e branca** (ícone laranja, texto branco): é a PADRÃO da parceria em fundo roxo ou escuro |
 | `alle:allpfit` | 1271×275 | logo da Allp Fit colorido: fundo claro |
 | `alle:allpfit-roxo` | 1271×275 | logo roxa oficial da Allp Fit (ícone laranja, letras roxo-escuras): fundo claro, ou sobre uma pílula branca no roxo |
 
@@ -177,9 +177,10 @@ post real em collab com a @allpfit:
   **faixas diagonais em degradê laranja** (`#ff6a00` → `#ff8a1f`, de
   transparente a ~90%): uma no canto superior direito, outra entrando pela
   esquerda na altura do terço de baixo.
-- **Co-branding no topo à esquerda:** "allp fit" + "+" + `alle:logo-branco`,
-  tudo branco, do mesmo tamanho visual: `alle:allpfit-mono` + "+" +
-  `alle:logo-branco`.
+- **Co-branding no topo à esquerda:** `alle:allpfit-branco` (logo oficial
+  laranja e branca da Allp Fit) + "+" branco + `alle:logo-branco`, do mesmo
+  tamanho visual (mesma altura de letra). Não use a versão toda branca
+  (`alle:allpfit-mono`) no roxo: ela é só para fundo laranja.
 - **Pessoa recortada (sem fundo) à direita**, ocupando da metade para baixo e
   saindo pela borda inferior, sorrindo, de preferência em roupa de treino ou
   com camisa da Alle/Allp Fit. Foto real da equipe/alunos tem prioridade; banco
