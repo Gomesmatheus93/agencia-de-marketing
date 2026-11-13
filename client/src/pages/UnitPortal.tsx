@@ -354,6 +354,7 @@ function PlanTab() {
     return (
       <div className="space-y-5">
         <Announcements />
+        <HowToCard />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed bg-card py-16 text-center">
             <CalendarDays className="h-8 w-8 text-muted-foreground" />
@@ -362,7 +363,6 @@ function PlanTab() {
           </div>
           <LinkCard />
         </div>
-        <HowToCard />
         {data && <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />}
       </div>
     );
@@ -398,6 +398,9 @@ function PlanTab() {
         )}
       </div>
       {p.notes && <p className="rounded-xl bg-primary/5 p-4 text-sm">{p.notes}</p>}
+
+      {/* Como postar: logo acima do post do dia, bem à vista */}
+      <HowToCard />
 
       {/* Destaque do dia + adesão */}
       <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -462,7 +465,6 @@ function PlanTab() {
         </section>
       )}
 
-      <HowToCard />
       <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />
 
       {viewStory !== null && (
