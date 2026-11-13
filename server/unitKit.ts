@@ -257,11 +257,21 @@ async function unitsWithQr(unitIds?: number[]) {
   return rows.filter((u) => u.active && (!unitIds || unitIds.includes(u.id))).map((u) => ({ id: u.id, name: u.name, qr: (u.qrData ?? u.signupUrl)! }));
 }
 
+// Quem aprova o envio às unidades (só essa pessoa; os outros administradores só preparam).
+const APPROVER_EMAIL = (process.env.UNIT_KIT_APPROVER_EMAIL || "matheus@alleenergia.com").toLowerCase();
+const isApprover = (u: { email?: string | null } | null | undefined) => (u?.email ?? "").toLowerCase() === APPROVER_EMAIL;
+function assertApprover(u: { email?: string | null } | null | undefined) {
+  if (!isApprover(u)) throw new TRPCError({ code: "FORBIDDEN", message: `Só ${APPROVER_EMAIL} aprova o envio do mídia kit às unidades.` });
+}
+
 // Geração em segundo plano (uma por vez), com progresso para a tela acompanhar.
 let job: { format: KitFormat; total: number; done: number; error: string | null; finishedAt: Date | null } | null = null;
 
 export const unitKitRouter = router({
   formats: adminProcedure.query(() => Object.entries(KIT_FORMATS).map(([id, f]) => ({ id, ...f, ratio: f.hCm / f.wCm, px: pxOf(id as KitFormat) }))),
+
+  /** Se quem está logado pode aprovar (e quem é o aprovador). */
+  approver: adminProcedure.query(({ ctx }) => ({ canApprove: isApprover(ctx.actualUser), email: APPROVER_EMAIL })),
 
   templates: adminProcedure.query(async () => {
     const c = await conn();
@@ -287,6 +297,7 @@ export const unitKitRouter = router({
 
   /** Aprova a versão gerada: ela substitui a anterior no mídia kit de cada unidade. */
   approve: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
+    assertApprover(ctx.actualUser);
     const c = await conn();
     const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
     const pending = await c.select({ id: unitMaterials.id, unitId: unitMaterials.unitId }).from(unitMaterials)
@@ -305,7 +316,8 @@ export const unitKitRouter = router({
   }),
 
   /** Descarta a versão gerada (as unidades continuam com a anterior). */
-  discard: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ input }) => {
+  discard: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
+    assertApprover(ctx.actualUser);
     const c = await conn();
     const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
     await c.delete(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));

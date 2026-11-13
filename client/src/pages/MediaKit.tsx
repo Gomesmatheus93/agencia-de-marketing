@@ -40,6 +40,8 @@ function KitDesigner() {
   const previewM = trpc.unitKit.preview.useMutation({ onSuccess: (r) => setPreview(r.dataUrl), onError: (e) => toast.error(e.message) });
   const save = trpc.unitKit.save.useMutation({ onSuccess: () => { toast.success("Texto salvo."); setDraft(({ [format]: _x, ...rest }) => rest); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const exportOne = trpc.unitKit.exportOne.useMutation({ onSuccess: (r) => { toast.success("PDF de conferência gerado (não vai para a academia)."); window.open(r.url, "_blank", "noopener"); }, onError: (e) => toast.error(e.message) });
+  const approver = trpc.unitKit.approver.useQuery();
+  const canApprove = !!approver.data?.canApprove;
   const approve = trpc.unitKit.approve.useMutation({ onSuccess: (r) => { toast.success(`Aprovado! Enviado ao mídia kit de ${r.sent} academias.`); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const discard = trpc.unitKit.discard.useMutation({ onSuccess: () => { toast.success("Versão descartada."); utils.unitKit.templates.invalidate(); }, onError: (e) => toast.error(e.message) });
   const genAll = trpc.unitKit.generateAll.useMutation({ onSuccess: () => utils.unitKit.job.invalidate(), onError: (e) => toast.error(e.message) });
@@ -142,13 +144,15 @@ function KitDesigner() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600"><ShieldCheck className="h-5 w-5" /></span>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">{fmt?.label}: aguardando aprovação</p>
+              <p className="font-semibold">{fmt?.label}: {canApprove ? "aguardando a sua aprovação" : `aguardando a aprovação de ${approver.data?.email ?? "Matheus"}`}</p>
               <p className="text-sm text-muted-foreground">{tpl.pendingCount} academias com o material gerado{tpl.generatedAt ? ` em ${new Date(tpl.generatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}. Confira as amostras e abra os PDFs antes de aprovar.{tpl.sentCount ? " Ao aprovar, a versão atual das academias é substituída." : ""}</p>
             </div>
+            {canApprove && <>
             <Button variant="ghost" size="sm" disabled={discard.isPending} onClick={() => { if (confirm("Descartar esta versão? As academias continuam com o que já têm.")) discard.mutate({ format: format as never }); }}>Descartar</Button>
             <Button size="sm" disabled={approve.isPending || !!running} onClick={() => { if (confirm(`Aprovar e enviar o ${fmt?.label} para o mídia kit de ${tpl.pendingCount} academias?`)) approve.mutate({ format: format as never }); }}>
               {approve.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}Aprovar e enviar às unidades
             </Button>
+            </>}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
             {tpl.samples.map((s) => (
@@ -173,7 +177,7 @@ export default function MediaKit() {
         <div className="mx-auto max-w-[1400px] space-y-5">
           <header>
             <h1 className="text-2xl font-bold tracking-tight">Mídia kit das academias</h1>
-            <p className="text-sm text-muted-foreground">Display, banner, panfleto e windbanner com o QR code de cada academia. Edite, gere para revisão e aprove: só o que for aprovado vai para o mídia kit das unidades.</p>
+            <p className="text-sm text-muted-foreground">Display, banner, panfleto e windbanner com o QR code de cada academia. Edite e gere para revisão. O envio ao mídia kit das unidades só acontece depois da aprovação do Matheus.</p>
           </header>
           <KitDesigner />
         </div>
