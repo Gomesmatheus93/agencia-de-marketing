@@ -59,6 +59,7 @@ export const KIT_DEFAULTS: Record<KitFormat, Record<string, string>> = {
     bubble: "Fala comigo!",
     benefits: "SEM CUSTO  ·  SEM OBRA  ·  SEM FIDELIDADE",
     disclaimer: DISCLAIMER,
+    photo: "ane-tablet",
   },
   // Panfleto (na mão, guardado): vale-desconto com canhoto de resgate.
   panfleto: {
@@ -234,13 +235,25 @@ function chatSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   return { svg, slots: [qr] };
 }
 
+/** Fotos da Ane (recortes sem fundo) e o tamanho de cada uma. */
+export const ANE_PHOTOS: Record<string, { label: string; w: number; h: number }> = {
+  "ane-ombro": { label: "Olhando por cima do ombro", w: 742, h: 1020 },
+  "ane-solto": { label: "Sorrindo, de frente", w: 880, h: 994 },
+  "ane": { label: "De frente, braços cruzados", w: 848, h: 997 },
+  "ane-caneca": { label: "Com a caneca", w: 1016, h: 1020 },
+  "ane-tablet": { label: "Mostrando a conta no tablet", w: 900, h: 1297 },
+};
+
 /** Banner (90×120, parede): frase gigante, QR enorme com "ATIVE AGORA" e a Ane grande com balão. */
 function impactSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   const card = { x: 64, y: 586, w: 430 };
   const qrSize = 350;
   const qr = { x: card.x + (card.w - qrSize) / 2, y: card.y + 96, size: qrSize };
   const cardH = 96 + qrSize + 92;
-  const aneH = Math.min(H - 600, 680), aneW = (aneH * 742) / 1020;
+  // A foto cabe à direita do QR (a partir de x≈510) e encosta na borda de baixo.
+  const photo = ANE_PHOTOS[f.photo] ? f.photo : "ane-ombro";
+  const pd = ANE_PHOTOS[photo];
+  const aneH = Math.min(H - 600, 680, (510 * pd.h) / pd.w), aneW = (aneH * pd.w) / pd.h;
   const aneX = W - aneW + 20, aneY = H - aneH;
   const bw = textW(f.bubble, 30, 800) + 60;
   const offerW = textW(f.offer, 22, 800) + 56;
@@ -263,7 +276,7 @@ function impactSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
   ${T(card.x + card.w / 2, card.y + cardH - 30, 22, 700, "#ffffff", f.qrSub, "middle")}
   ${wrap(f.benefits, 24).map((l, i) => T(64, card.y + cardH + 52 + i * 30, 20, 800, "#ffffff", l, "start", 'letter-spacing="0.5"')).join("")}
   ${discLines(f.disclaimer, 56, 64, H - 34, 13, "#e9dcf7")}
-  <image href="alle:ane-ombro" x="${aneX}" y="${aneY}" width="${aneW}" height="${aneH}"/>
+  <image href="alle:${photo}" x="${aneX}" y="${aneY}" width="${aneW}" height="${aneH}"/>
   <g transform="translate(${Math.min(aneX + aneW * 0.66, W - 40 - bw / 2)} ${aneY - 14})">
     <rect x="${-bw / 2}" y="-74" width="${bw}" height="70" rx="35" fill="#ffffff"/>
     <path d="M-34 -10 l-6 36 l34 -36 Z" fill="#ffffff"/>
@@ -731,6 +744,9 @@ export const unitKitRouter = router({
 
   /** Unidades que podem receber o material (têm QR ou link). */
   units: adminProcedure.query(async () => (await unitsWithQr()).map((u) => ({ id: u.id, name: u.name }))),
+
+  /** Fotos da Ane que podem ser escolhidas. */
+  photos: adminProcedure.query(() => Object.entries(ANE_PHOTOS).map(([id, p]) => ({ id, label: p.label }))),
 
   /** Salva os textos de um design. */
   saveTexts: adminProcedure.input(z.object({ format: formatSchema, variant: variantSchema, fields: fieldsSchema })).mutation(async ({ input }) => {

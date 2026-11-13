@@ -31,6 +31,7 @@ const FIELD_LABEL: Record<string, string> = {
   kicker: "Acima do número", percent: "Número em destaque", line1: "Linha 1", line2: "Linha 2 (grande)", benefit4: "Benefício 4",
   audience: "Faixa laranja", qrTitle: "Chamada do QR", qrText: "Complemento do QR", footer: "Rodapé",
   headline3: "Título, linha 3", highlight: "Destaque laranja", stepsTitle: "Título dos passos",
+  photo: "Foto da Ane",
 };
 const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText"]);
 
@@ -93,6 +94,7 @@ function KitDesigner() {
   const formats = trpc.unitKit.formats.useQuery();
   const templates = trpc.unitKit.templates.useQuery();
   const kitUnits = trpc.unitKit.units.useQuery();
+  const photos = trpc.unitKit.photos.useQuery();
   const utils = trpc.useUtils();
   const [format, setFormat] = useState("display");
   const [viewing, setViewing] = useState<Record<string, string>>({}); // design aberto em cada material
@@ -194,7 +196,11 @@ function KitDesigner() {
                 {Object.keys(vInfo?.defaults ?? fields).map((k) => (
                   <label key={k} className={cn("space-y-1 text-sm", LONG_FIELDS.has(k) && "sm:col-span-2")}>
                     <span className="text-xs text-muted-foreground">{FIELD_LABEL[k] ?? k}</span>
-                    {LONG_FIELDS.has(k) ? <Textarea rows={k === "disclaimer" ? 3 : 2} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
+                    {k === "photo" ? (
+                      <select value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9 w-full rounded-md border bg-background px-2">
+                        {(photos.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    ) : LONG_FIELDS.has(k) ? <Textarea rows={k === "disclaimer" ? 3 : 2} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
                       : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
                   </label>
                 ))}
