@@ -77,6 +77,7 @@ import { dashboardRouter } from "./dashboardRouter";
 import { profileRouter } from "./profileRouter";
 import { unitAdminRouter, unitPortalRouter } from "./unitPortal";
 import { unitSupportAdminRouter, unitSupportRouter } from "./unitSupport";
+import { unitKitRouter } from "./unitKit";
 import { dmAutoReplyRouter } from "./dmAutoReply";
 import {
   passwordResetEmail,
@@ -5726,6 +5727,7 @@ export const appRouter = router({
   unitAdmin: unitAdminRouter,
   unitSupport: unitSupportRouter,
   unitSupportAdmin: unitSupportAdminRouter,
+  unitKit: unitKitRouter,
   dmAutoReply: dmAutoReplyRouter,
   analytics: analyticsRouter,
   admin: adminRouter,

@@ -13,6 +13,7 @@ import { unitMaterials, units } from "../drizzle/schema";
 import { getDb } from "../server/db";
 import { storagePut } from "../server/storage";
 import { PENDING_UNIT_PREFIX, unitKey } from "../server/_core/unitKey";
+import { decodeQr } from "../server/_core/qr";
 
 const args = process.argv.slice(2);
 const conn = await getDb();
@@ -65,8 +66,11 @@ for (const folder of folders) {
     [unit] = await conn.insert(units).values({ code: `${PENDING_UNIT_PREFIX}${key}`.slice(0, 64), name: folder.replace(/\s*-\s*/g, " - ") }).returning();
     allUnits.push(unit);
   }
-  const qrUrl = qr ? (await storagePut(`unit-qr/${key}.png`, await readFile(qr), "image/png")).url : unit.qrUrl;
-  await conn.update(units).set({ signupUrl: link ?? unit.signupUrl, qrUrl }).where(eq(units.id, unit.id));
+  const qrBuf = qr ? await readFile(qr) : null;
+  const qrUrl = qrBuf ? (await storagePut(`unit-qr/${key}.png`, qrBuf, "image/png")).url : unit.qrUrl;
+  // O QR do mídia kit é gerado com o conteúdo exato do QR original (que pode diferir do link exibido).
+  const qrData = qrBuf ? (await decodeQr(qrBuf)) ?? link : unit.qrData ?? link;
+  await conn.update(units).set({ signupUrl: link ?? unit.signupUrl, qrUrl, qrData }).where(eq(units.id, unit.id));
   ok++;
 }
 console.log(`\n${folders.length} pastas · ${ok} academias atualizadas${dryRun ? " (simulação)" : ""}`);

@@ -1,0 +1,1 @@
+ALTER TABLE "unit_materials" ADD COLUMN "previewUrl" text;

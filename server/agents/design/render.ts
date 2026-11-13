@@ -6,7 +6,7 @@ import path from "node:path";
 // em pixels, mas desenha layout, tipografia e formas em código) para PNG.
 
 const DESIGN_DIR = path.resolve(process.cwd(), "server/agents/design");
-const FONT_FILES = readdirSync(path.join(DESIGN_DIR, "fonts"))
+export const FONT_FILES = readdirSync(path.join(DESIGN_DIR, "fonts"))
   .filter((f) => f.endsWith(".otf") || f.endsWith(".ttf"))
   .map((f) => path.join(DESIGN_DIR, "fonts", f));
 
@@ -18,7 +18,7 @@ export const DESIGN_FORMATS = {
 export type DesignFormat = keyof typeof DESIGN_FORMATS;
 
 /** Arquivos da marca que o SVG pode referenciar com href="alle:<nome>". */
-const BRAND_ASSETS: Record<string, string> = {};
+export const BRAND_ASSETS: Record<string, string> = {};
 for (const name of ["logo", "logo-branco", "logo-mono", "raio", "raio-branco", "raio-mono", "allpfit", "allpfit-branco", "allpfit-mono", "allpfit-roxo", "ane", "ane-solto", "ane-caneca", "ane-ombro", "ane-tablet", "logo-branco-limpo"]) {
   BRAND_ASSETS[`alle:${name}`] = `data:image/png;base64,${readFileSync(path.join(DESIGN_DIR, "assets", `${name}.png`)).toString("base64")}`;
 }

@@ -156,7 +156,7 @@ export const unitPortalRouter = router({
       .orderBy(desc(unitMaterials.createdAt));
     const strip = ({ fileUrl: _f, createdByUserId: _c, ...m }: typeof rows[number]) => m;
     // No kit da própria unidade, as imagens já vêm com a miniatura (o acesso foi conferido acima).
-    const withThumb = (r: typeof rows[number]) => ({ ...strip(r), thumbUrl: r.contentType.startsWith("image/") ? r.fileUrl : null });
+    const withThumb = (r: typeof rows[number]) => ({ ...strip(r), thumbUrl: r.previewUrl ?? (r.contentType.startsWith("image/") ? r.fileUrl : null) });
     return {
       training: rows.filter((r) => r.unitId === null && r.kind === "treinamento").map(strip),
       general: rows.filter((r) => r.unitId === null && r.kind !== "treinamento").map(strip),

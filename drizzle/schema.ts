@@ -1140,6 +1140,8 @@ export const units = pgTable("units", {
   // Link de adesão da unidade (o mesmo do QR code impresso na academia) e a imagem do QR.
   signupUrl: text("signupUrl"),
   qrUrl: text("qrUrl"),
+  // Conteúdo exato do QR impresso (às vezes difere do link exibido): o QR do mídia kit é gerado com ele.
+  qrData: text("qrData"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Unit = typeof units.$inferSelect;
@@ -1154,6 +1156,7 @@ export const unitMaterials = pgTable(
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
     fileUrl: text("fileUrl").notNull(),
+    previewUrl: text("previewUrl"), // miniatura (ex.: prévia em JPG de um PDF de impressão)
     fileName: varchar("fileName", { length: 255 }).notNull(),
     contentType: varchar("contentType", { length: 120 }).notNull(),
     sizeBytes: integer("sizeBytes").default(0).notNull(),
@@ -1261,3 +1264,12 @@ export const unitSupportMessages = pgTable(
   },
   (t) => [index("idx_unit_support_msg_ticket").on(t.ticketId)]
 );
+
+/** Modelos do mídia kit impresso (display, banner, panfleto, windbanner): textos editáveis e última geração. */
+export const unitKitTemplates = pgTable("unit_kit_templates", {
+  format: varchar("format", { length: 20 }).primaryKey(),
+  fields: json("fields").$type<Record<string, string>>().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  generatedAt: timestamp("generatedAt"),
+  generatedCount: integer("generatedCount").default(0).notNull(),
+});
