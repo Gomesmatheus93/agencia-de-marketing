@@ -177,7 +177,7 @@ function TodayCard({ items, posted, canMark, pending, onOpen, onToggle, weekStar
   if (idx < 0) {
     const done = items.filter((_, i) => posted.includes(i)).length;
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-8 text-center">
+      <div className="flex h-full flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-8 text-center">
         <CalendarCheck className="h-8 w-8 text-emerald-500" />
         <p className="font-semibold">Os posts desta semana já passaram.</p>
         <p className="text-sm text-muted-foreground">{canMark ? `Vocês marcaram ${done} de ${items.length} como postados. Falta algum? Abra o card abaixo e clique em "Já postei".` : `${items.length} posts na semana.`}</p>
@@ -187,21 +187,22 @@ function TodayCard({ items, posted, canMark, pending, onOpen, onToggle, weekStar
   const it = items[idx];
   const isPosted = posted.includes(idx);
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-5 py-3">
         <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-primary-foreground">{isToday ? "Post de hoje" : "Próximo post"}</span>
         <span className="text-sm font-semibold">{dayLabel(it.date, true)}{it.time ? ` · ${it.time}` : ""}</span>
         {it.format && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
         {isPosted && <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" />postado</span>}
       </div>
-      <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-        <button type="button" onClick={() => onOpen(idx)} className="group relative block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
+      <div className="grid flex-1 gap-5 p-5 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+        <button type="button" onClick={() => onOpen(idx)} className="group relative block aspect-[4/5] self-start overflow-hidden rounded-xl border bg-muted" title="Abrir">
           {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
           {it.imageUrls.length > 1 && <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{it.imageUrls.length} artes</span>}
         </button>
         <div className="flex min-w-0 flex-col gap-3">
           <p className="text-lg font-bold leading-snug">{it.title}</p>
-          {it.caption && <p className="line-clamp-5 whitespace-pre-wrap text-sm text-muted-foreground">{it.caption}</p>}
+          {it.type && <p className="-mt-2 text-xs font-medium text-primary">{it.type}</p>}
+          {it.caption && <p className="line-clamp-6 whitespace-pre-wrap rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">{it.caption}</p>}
           <div className="mt-auto flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={async () => { track.mutate({ weekStart, itemIndex: idx, what: "arte" }); for (const [j, url] of it.imageUrls.entries()) await saveFile(url, `${it.date}-${j + 1}.png`); }}>
               <Download className="mr-1.5 h-4 w-4" />{it.imageUrls.length > 1 ? `Baixar as ${it.imageUrls.length} artes` : "Baixar a arte"}
@@ -227,81 +228,89 @@ function LinkCard() {
   const [zoom, setZoom] = useState(false);
   const unit = me.data?.unit;
   if (!unit) return null;
+  const has = unit.signupUrl || unit.qrUrl;
   return (
-    <div className="rounded-2xl border bg-card p-4">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><QrCode className="h-3.5 w-3.5" />Link de adesão da academia</p>
-      {unit.signupUrl || unit.qrUrl ? (
+    <div className="flex h-full flex-col rounded-2xl border bg-card p-5">
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><QrCode className="h-3.5 w-3.5" />Adesão dos alunos</p>
+      {has ? (
         <>
-          <div className="mt-3 flex items-center gap-3">
-            {unit.qrUrl && (
-              <button type="button" onClick={() => setZoom(true)} title="Ampliar o QR code" className="shrink-0 cursor-zoom-in rounded-xl border bg-white p-1.5">
-                <img src={unit.qrUrl} alt="QR code de adesão" className="h-24 w-24 object-contain" />
-              </button>
-            )}
-            <p className="text-xs text-muted-foreground">O aluno escaneia o QR (ou abre o link) e fala com a Ane para ver o desconto na conta de luz. Use na recepção, no WhatsApp e na bio.</p>
-          </div>
-          {unit.signupUrl && (
-            <div className="mt-3 flex items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pl-2.5 pr-1">
-              <span className="min-w-0 flex-1 truncate text-xs">{unit.signupUrl.replace(/^https?:\/\//, "")}</span>
-              <button type="button" title="Copiar o link" className="rounded-md p-1.5 hover:bg-background" onClick={() => navigator.clipboard.writeText(unit.signupUrl!).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}>
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-              <a href={unit.signupUrl} target="_blank" rel="noreferrer" title="Abrir" className="rounded-md p-1.5 hover:bg-background"><ExternalLink className="h-3.5 w-3.5" /></a>
-            </div>
-          )}
           {unit.qrUrl && (
-            <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => saveFile(unit.qrUrl!, `QR code - ${unit.name}.png`)}><Download className="mr-1.5 h-4 w-4" />Baixar o QR code</Button>
+            <button type="button" onClick={() => setZoom(true)} title="Ampliar o QR code" className="mx-auto mt-4 cursor-zoom-in rounded-2xl border bg-white p-2 transition hover:shadow-md">
+              <img src={unit.qrUrl} alt="QR code de adesão" className="h-36 w-36 object-contain" />
+            </button>
           )}
+          <p className="mt-3 text-center text-xs text-muted-foreground">O aluno escaneia (ou abre o link) e fala com a Ane para ver o desconto na conta de luz.</p>
+          <div className="mt-auto space-y-2 pt-4">
+            {unit.signupUrl && (
+              <div className="flex items-center gap-1 rounded-lg border bg-muted/40 py-1 pl-2.5 pr-1">
+                <span className="min-w-0 flex-1 truncate text-xs">{unit.signupUrl.replace(/^https?:\/\//, "")}</span>
+                <button type="button" title="Copiar o link" className="rounded-md p-1.5 hover:bg-background" onClick={() => navigator.clipboard.writeText(unit.signupUrl!).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}>
+                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                <a href={unit.signupUrl} target="_blank" rel="noreferrer" title="Abrir" className="rounded-md p-1.5 hover:bg-background"><ExternalLink className="h-3.5 w-3.5" /></a>
+              </div>
+            )}
+            {unit.qrUrl && <Button size="sm" variant="outline" className="w-full" onClick={() => saveFile(unit.qrUrl!, `QR code - ${unit.name}.png`)}><Download className="mr-1.5 h-4 w-4" />Baixar o QR code</Button>}
+          </div>
           {zoom && unit.qrUrl && (
             <ImageViewer items={[{ id: 0, url: unit.qrUrl, title: "QR code de adesão", label: unit.name }]} index={0} onIndex={() => {}} onClose={() => setZoom(false)}
               onDownload={() => saveFile(unit.qrUrl!, `QR code - ${unit.name}.png`)} />
           )}
         </>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">O link de adesão desta academia ainda não foi cadastrado pela equipe da Alle.</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
+          <QrCode className="h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">O link de adesão desta academia ainda não foi cadastrado pela equipe da Alle.</p>
+        </div>
       )}
     </div>
   );
 }
 
-/** Guia rápido de como postar (regras da equipe da Alle). */
+/** Guia rápido de como postar (regras da equipe da Alle), em uma faixa horizontal. */
 function HowToCard() {
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("unit_howto_closed") !== "1"; } catch { return true; } });
   const toggle = () => setOpen((o) => { try { localStorage.setItem("unit_howto_closed", o ? "1" : "0"); } catch { /* sem storage */ } return !o; });
   const steps = [
-    "Abra o post do dia e baixe as artes. No carrossel, poste na ordem (1, 2, 3…).",
-    "Copie a legenda e cole sem mudar nada, principalmente a ressalva do desconto (o texto com *).",
-    "Publique no horário indicado no card.",
-    "Marque @alleenergia e @allpfit.",
-    "Volte aqui e clique em \"Já postei\".",
+    ["Baixe as artes", "No carrossel, poste na ordem (1, 2, 3…)."],
+    ["Cole a legenda", "Sem mudar nada, principalmente a ressalva com *."],
+    ["Publique no horário", "O horário está em cada card."],
+    ["Marque as marcas", "@alleenergia e @allpfit."],
+    ["Clique em \"Já postei\"", "Assim a equipe da Alle acompanha."],
   ];
   return (
-    <div className="rounded-2xl border bg-card p-4">
-      <button type="button" onClick={toggle} className="flex w-full items-center gap-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <ListChecks className="h-3.5 w-3.5" /><span className="flex-1">Como postar</span>{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-      </button>
+    <section className="rounded-2xl border bg-card p-4">
+      <div className="flex items-center gap-2">
+        <ListChecks className="h-4 w-4 text-primary" />
+        <h2 className="flex-1 text-sm font-semibold">Como postar</h2>
+        <button type="button" onClick={toggle} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          {open ? <>Ocultar<ChevronUp className="h-3.5 w-3.5" /></> : <>Ver o passo a passo<ChevronDown className="h-3.5 w-3.5" /></>}
+        </button>
+      </div>
       {open && (
         <>
-          <ol className="mt-3 space-y-2">
-            {steps.map((t, i) => (
-              <li key={i} className="flex gap-2.5 text-sm"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{i + 1}</span><span>{t}</span></li>
+          <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {steps.map(([t, d], i) => (
+              <li key={t} className="flex gap-2.5 rounded-xl bg-muted/40 p-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{i + 1}</span>
+                <span className="min-w-0"><span className="block text-sm font-semibold leading-tight">{t}</span><span className="mt-0.5 block text-xs text-muted-foreground">{d}</span></span>
+              </li>
             ))}
           </ol>
-          <p className="mt-3 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">Fotos, vídeos ou depoimentos de alunos só com autorização por escrito.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Fotos, vídeos ou depoimentos de alunos só com autorização por escrito.</p>
         </>
       )}
-    </div>
+    </section>
   );
 }
 
 /** Próximas semanas já publicadas (prévia). */
 function UpcomingWeeks({ weeks, onPick }: { weeks: Array<{ weekStart: string; weekEnd: string; title: string | null; items: Array<{ date: string; format: string | null; title: string; thumb: string | null }> }>; onPick: (w: string) => void }) {
+  if (!weeks.length) return null;
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Próximas semanas</h2>
-      {weeks.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">As próximas semanas aparecem aqui assim que a equipe da Alle publicar.</p>
-      ) : (
+      {weeks.length === 0 ? null : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {weeks.map((w) => (
             <button key={w.weekStart} type="button" onClick={() => onPick(w.weekStart)} className="rounded-2xl border bg-card p-3 text-left transition hover:border-primary">
@@ -341,24 +350,19 @@ function PlanTab() {
   const today = todayYmd();
 
   if (plan.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando o planejamento…</p>;
-  const side = (
-    <div className="space-y-4">
-      <LinkCard />
-      <HowToCard />
-    </div>
-  );
   if (!data?.plan) {
     return (
       <div className="space-y-5">
         <Announcements />
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed py-16 text-center">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed bg-card py-16 text-center">
             <CalendarDays className="h-8 w-8 text-muted-foreground" />
             <p className="font-medium">O planejamento desta semana ainda não foi publicado.</p>
             <p className="text-sm text-muted-foreground">Assim que a equipe da Alle publicar, ele aparece aqui.</p>
           </div>
-          {side}
+          <LinkCard />
         </div>
+        <HowToCard />
         {data && <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />}
       </div>
     );
@@ -369,35 +373,41 @@ function PlanTab() {
   const toggle = (i: number) => { setPending(i); mark.mutate({ weekStart: p.weekStart, itemIndex: i, posted: !posted.includes(i) }); };
   // Stories da semana: os anexados a cada post (story do dia).
   const stories = items.flatMap((it, i) => (it.storyUrls ?? []).map((url) => ({ url, i, date: it.date, title: it.title })));
+  const pct = items.length ? Math.round((posted.length / items.length) * 100) : 0;
 
   return (
     <div className="space-y-6">
       <Announcements />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          {p.title || "Planejamento da semana"} ({ddmm(p.weekStart)} a {ddmm(p.weekEnd)})
-        </h2>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{items.length}</span> {items.length === 1 ? "post pronto" : "posts prontos"}
-            {data.canMark && <> · <span className="font-semibold text-emerald-600 dark:text-emerald-400">{posted.length}</span> postados</>}
-          </p>
-          {data.weeks.length > 1 && (
-            <select value={data.weekStart} onChange={(e) => setWeek(e.target.value)} className="h-8 rounded-md border bg-background px-2 text-xs">
-              {data.weeks.map((w) => <option key={w.weekStart} value={w.weekStart}>Semana de {ddmm(w.weekStart)}</option>)}
-            </select>
-          )}
+
+      {/* Semana: período, progresso e troca de semana */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border bg-card px-5 py-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{p.title || "Semana"}</p>
+          <p className="text-lg font-bold">{ddmm(p.weekStart)} a {ddmm(p.weekEnd)} <span className="text-sm font-normal text-muted-foreground">· {items.length} {items.length === 1 ? "post" : "posts"}</span></p>
         </div>
+        {data.canMark && (
+          <div className="min-w-[200px] flex-1">
+            <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Postados pela academia</span><span className="font-semibold">{posted.length} de {items.length}</span></div>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
+          </div>
+        )}
+        {data.weeks.length > 1 && (
+          <select value={data.weekStart} onChange={(e) => setWeek(e.target.value)} aria-label="Semana" className="ml-auto h-9 rounded-lg border bg-background px-2 text-sm">
+            {data.weeks.map((w) => <option key={w.weekStart} value={w.weekStart}>Semana de {ddmm(w.weekStart)}</option>)}
+          </select>
+        )}
       </div>
       {p.notes && <p className="rounded-xl bg-primary/5 p-4 text-sm">{p.notes}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      {/* Destaque do dia + adesão */}
+      <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <TodayCard items={items} posted={posted} canMark={data.canMark} pending={pending} onOpen={setOpen} onToggle={toggle} weekStart={p.weekStart} />
-        {side}
+        <LinkCard />
       </div>
 
+      {/* Todos os posts da semana */}
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Posts da semana</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Todos os posts da semana</h2>
         <div className="rounded-2xl border bg-card p-3">
           <div className="flex snap-x justify-center-safe gap-3 overflow-x-auto pb-2">
             {items.map((it, i) => {
@@ -419,8 +429,8 @@ function PlanTab() {
                   </button>
                   {data.canMark ? (
                     <button type="button" disabled={pending === i} onClick={() => toggle(i)}
-                      className={cn("mt-2 text-left text-[11px] font-medium hover:underline", isPosted ? "text-emerald-600 dark:text-emerald-400" : "text-primary")}>
-                      {isPosted ? "✓ postado · desfazer" : "Já postei"}
+                      className={cn("mt-2 flex h-7 items-center justify-center gap-1 rounded-lg border text-[11px] font-semibold transition", isPosted ? "border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400" : "border-primary/30 text-primary hover:bg-primary/10")}>
+                      {pending === i ? <Loader2 className="h-3 w-3 animate-spin" /> : isPosted ? <Check className="h-3 w-3" /> : <Send className="h-3 w-3" />}{isPosted ? "Postado" : "Já postei"}
                     </button>
                   ) : (
                     <button type="button" onClick={() => setOpen(i)} className="mt-2 text-left text-[11px] text-emerald-600 hover:underline dark:text-emerald-400">✓ pronto · baixar</button>
@@ -452,6 +462,7 @@ function PlanTab() {
         </section>
       )}
 
+      <HowToCard />
       <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />
 
       {viewStory !== null && (
