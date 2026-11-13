@@ -43,33 +43,74 @@ export type AlleSsoClaims = {
   allUnits: boolean; academias: Array<{ code: string; name: string }>; replayKey: string;
 };
 
-/** Chave de verificação: pública (RS256/ES256) se ALLE_SSO_PUBLIC_KEY existir; senão o segredo HS256. */
-async function verificationKey() {
+/**
+ * Chaves de verificação: pública (RS256/ES256) se ALLE_SSO_PUBLIC_KEY existir; senão o segredo HS256.
+ * O segredo é tentado como texto e, se tiver cara de hex ou base64, também decodificado
+ * (alguns sistemas assinam com os bytes do segredo, não com o texto).
+ */
+async function verificationKeys() {
   const pem = process.env.ALLE_SSO_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
   if (pem) {
     const alg = process.env.ALLE_SSO_ALG || "RS256"; // ES256 para chave de curva elíptica
-    return { key: await importSPKI(pem, alg), algorithms: [alg] };
+    return { keys: [await importSPKI(pem, alg)], algorithms: [alg] };
   }
-  const secret = process.env.ALLE_SSO_SECRET ?? "";
+  const secret = (process.env.ALLE_SSO_SECRET ?? "").trim();
   if (secret.length < 32) throw new SsoError("Login unificado não configurado (ALLE_SSO_SECRET ausente ou curto).");
-  return { key: new TextEncoder().encode(secret), algorithms: ["HS256"] };
+  const keys: Uint8Array[] = [new TextEncoder().encode(secret)];
+  if (/^[0-9a-f]+$/i.test(secret) && secret.length % 2 === 0) keys.push(new Uint8Array(Buffer.from(secret, "hex")));
+  if (/^[A-Za-z0-9+/_-]+={0,2}$/.test(secret)) keys.push(new Uint8Array(Buffer.from(secret, "base64")));
+  return { keys, algorithms: ["HS256", "HS384", "HS512"] };
+}
+
+/** Motivo curto (vai para a tela e para o log) a partir do erro do jose. */
+function reasonOf(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  if (code === "ERR_JWT_EXPIRED") return "token vencido";
+  if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") return "assinatura não confere com o segredo";
+  if (code === "ERR_JOSE_ALG_NOT_ALLOWED") return "algoritmo de assinatura não aceito";
+  if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") return `campo ${(err as { claim?: string }).claim ?? ""} inválido`.trim();
+  if (code === "ERR_JWS_INVALID" || code === "ERR_JWT_INVALID") return "token mal formado";
+  return code || "erro desconhecido";
+}
+
+/** Lê o cabeçalho e os nomes dos campos sem conferir (só para diagnóstico no log). */
+function peek(token: string) {
+  try {
+    const [h, p] = token.split(".");
+    const header = JSON.parse(Buffer.from(h, "base64url").toString());
+    const payload = JSON.parse(Buffer.from(p, "base64url").toString());
+    const now = Math.floor(Date.now() / 1000);
+    return { alg: header.alg, typ: header.typ, campos: Object.keys(payload), expEmSegundos: typeof payload.exp === "number" ? payload.exp - now : payload.exp, iss: payload.iss, aud: payload.aud };
+  } catch {
+    return { ilegivel: true, partes: token.split(".").length, tamanho: token.length };
+  }
 }
 
 /** Confere assinatura, validade e campos do token. */
 export async function verifyAlleToken(token: string): Promise<AlleSsoClaims> {
-  const { key, algorithms } = await verificationKey();
-  let payload: JWTPayload;
-  try {
-    ({ payload } = await jwtVerify(token, key, {
-      algorithms,
-      ...(process.env.ALLE_SSO_ISSUER ? { issuer: process.env.ALLE_SSO_ISSUER } : {}),
-      ...(process.env.ALLE_SSO_AUDIENCE ? { audience: process.env.ALLE_SSO_AUDIENCE } : {}),
-      requiredClaims: ["exp"],
-      clockTolerance: CLOCK_SKEW_S,
-    }));
-  } catch (err) {
-    if (err instanceof SsoError) throw err;
-    throw new SsoError("Link de acesso inválido ou expirado. Entre de novo pelo sistema da Alle.");
+  const { keys, algorithms } = await verificationKeys();
+  let payload: JWTPayload | null = null;
+  let lastErr: unknown = null;
+  for (const key of keys) {
+    try {
+      ({ payload } = await jwtVerify(token, key, {
+        algorithms,
+        ...(process.env.ALLE_SSO_ISSUER ? { issuer: process.env.ALLE_SSO_ISSUER } : {}),
+        ...(process.env.ALLE_SSO_AUDIENCE ? { audience: process.env.ALLE_SSO_AUDIENCE } : {}),
+        requiredClaims: ["exp"],
+        clockTolerance: CLOCK_SKEW_S,
+      }));
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Só vale tentar outra forma do segredo quando a falha é de assinatura.
+      if ((err as { code?: string })?.code !== "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") break;
+    }
+  }
+  if (!payload) {
+    const reason = reasonOf(lastErr);
+    console.warn("[sso] token recusado:", reason, peek(token));
+    throw new SsoError(`Link de acesso inválido ou expirado (${reason}). Entre de novo pelo sistema da Alle.`);
   }
 
   const parsed = claimsSchema.safeParse(payload);
