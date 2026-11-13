@@ -1137,6 +1137,9 @@ export const units = pgTable("units", {
   city: varchar("city", { length: 120 }),
   groupName: varchar("groupName", { length: 255 }),
   active: boolean("active").default(true).notNull(),
+  // Link de adesão da unidade (o mesmo do QR code impresso na academia) e a imagem do QR.
+  signupUrl: text("signupUrl"),
+  qrUrl: text("qrUrl"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Unit = typeof units.$inferSelect;
@@ -1169,6 +1172,7 @@ export type UnitPlanItem = {
   type?: string | null; // Ensino, Oferta, Prova… (vem do planejamento)
   caption?: string | null;
   imageUrls: string[];
+  storyUrls?: string[]; // stories 9:16 para repostar no mesmo dia
 };
 
 /** Planejamento semanal único, publicado pela equipe da Alle para todas as unidades. */
@@ -1200,3 +1204,27 @@ export const userUnits = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.unitId] }), index("idx_user_units_unitId").on(t.unitId)]
 );
+
+/** "Já postei": a unidade marca cada post da semana que publicou no Instagram dela. */
+export const unitPostMarks = pgTable(
+  "unit_post_marks",
+  {
+    unitId: integer("unitId").notNull(),
+    weekStart: varchar("weekStart", { length: 10 }).notNull(),
+    itemIndex: integer("itemIndex").notNull(),
+    userId: integer("userId").notNull(),
+    postedAt: timestamp("postedAt").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.unitId, t.weekStart, t.itemIndex] })]
+);
+
+/** Mural de avisos da equipe da Alle para as unidades. */
+export const unitAnnouncements = pgTable("unit_announcements", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body"),
+  pinned: boolean("pinned").default(false).notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdByUserId: integer("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});

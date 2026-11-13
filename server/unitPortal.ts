@@ -2,7 +2,7 @@ import { getMetaFetchableStorageUrl } from "./storage";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { auditLog, unitMaterials, units, unitWeeklyPlans, userUnits, users, type UnitPlanItem, type User } from "../drizzle/schema";
+import { auditLog, unitAnnouncements, unitMaterials, unitPostMarks, units, unitWeeklyPlans, userUnits, users, type UnitPlanItem, type User } from "../drizzle/schema";
 import { adminProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as store from "./agents/store";
 import * as db from "./db";
@@ -70,7 +70,7 @@ export const unitPortalRouter = router({
     return {
       name: me.name, isUnit: me.accountType === "unit", role: me.externalRole, groupName: me.groupName,
       allUnits: me.accountType !== "unit" || me.allUnits,
-      unit: current ? { id: current.id, name: current.name, code: current.code, city: current.city } : null,
+      unit: current ? { id: current.id, name: current.name, code: current.code, city: current.city, signupUrl: current.signupUrl, qrUrl: current.qrUrl } : null,
       units: list.map((u) => ({ id: u.id, name: u.name, groupName: u.groupName })),
     };
   }),
@@ -97,12 +97,52 @@ export const unitPortalRouter = router({
       if (plan && ctx.actualUser.accountType === "unit" && shouldLogView(`${ctx.actualUser.id}:${wanted}`)) {
         await db.recordAudit({ action: "unit.plan.view", actorUserId: ctx.actualUser.id, targetType: "unit_plan", targetId: wanted, metadata: { unitId: ctx.actualUser.unitId } });
       }
+      const unitId = (await currentUnit(ctx.actualUser)).current?.id ?? null;
+      const posted = plan && unitId
+        ? (await c.select({ i: unitPostMarks.itemIndex }).from(unitPostMarks).where(and(eq(unitPostMarks.unitId, unitId), eq(unitPostMarks.weekStart, wanted)))).map((r) => r.i)
+        : [];
+      // Próximas semanas já publicadas (prévia).
+      const next = published.filter((p) => p.weekStart > (plan?.weekStart ?? current)).map((p) => p.weekStart).sort().slice(0, 3);
+      const upcoming = next.length
+        ? (await c.select().from(unitWeeklyPlans).where(and(inArray(unitWeeklyPlans.weekStart, next), eq(unitWeeklyPlans.status, "published"))))
+          .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+          .map((w) => ({ weekStart: w.weekStart, weekEnd: addDays(w.weekStart, 6), title: w.title, items: w.items.map((it) => ({ date: it.date, format: it.format ?? null, title: it.title, thumb: it.imageUrls[0] ?? null })) }))
+        : [];
       return {
         weeks: published,
         plan: plan ? { weekStart: plan.weekStart, weekEnd: addDays(plan.weekStart, 6), title: plan.title, notes: plan.notes, items: plan.items } : null,
         weekStart: wanted,
+        posted,
+        upcoming,
+        canMark: ctx.actualUser.accountType === "unit" && !!unitId,
       };
     }),
+
+  /** "Já postei": marca (ou desmarca) um post da semana como publicado pela academia aberta. */
+  markPosted: protectedProcedure
+    .input(z.object({ weekStart: day, itemIndex: z.number().int().min(0).max(100), posted: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const me = ctx.actualUser;
+      if (me.accountType !== "unit") throw new TRPCError({ code: "BAD_REQUEST", message: "Só as contas das academias marcam o que postaram (aqui é uma prévia)." });
+      const unit = (await currentUnit(me)).current;
+      if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma academia aberta." });
+      const c = await conn();
+      if (input.posted) {
+        await c.insert(unitPostMarks).values({ unitId: unit.id, weekStart: input.weekStart, itemIndex: input.itemIndex, userId: me.id }).onConflictDoNothing();
+        await db.recordAudit({ action: "unit.plan.posted", actorUserId: me.id, targetType: "unit_plan", targetId: input.weekStart, metadata: { unitId: unit.id, item: input.itemIndex } });
+      } else {
+        await c.delete(unitPostMarks).where(and(eq(unitPostMarks.unitId, unit.id), eq(unitPostMarks.weekStart, input.weekStart), eq(unitPostMarks.itemIndex, input.itemIndex)));
+      }
+      return { ok: true };
+    }),
+
+  /** Mural de avisos da equipe da Alle (fixados primeiro; os vencidos somem). */
+  announcements: protectedProcedure.query(async () => {
+    const c = await conn();
+    const now = new Date();
+    const rows = await c.select().from(unitAnnouncements).orderBy(desc(unitAnnouncements.pinned), desc(unitAnnouncements.createdAt)).limit(20);
+    return rows.filter((a) => !a.expiresAt || a.expiresAt > now).slice(0, 6).map((a) => ({ id: a.id, title: a.title, body: a.body, pinned: a.pinned, createdAt: a.createdAt }));
+  }),
 
   /** Biblioteca geral + materiais da unidade (ex.: mídia kit). */
   materials: protectedProcedure.query(async ({ ctx }) => {
@@ -115,7 +155,8 @@ export const unitPortalRouter = router({
     // No kit da própria unidade, as imagens já vêm com a miniatura (o acesso foi conferido acima).
     const withThumb = (r: typeof rows[number]) => ({ ...strip(r), thumbUrl: r.contentType.startsWith("image/") ? r.fileUrl : null });
     return {
-      general: rows.filter((r) => r.unitId === null).map(strip),
+      training: rows.filter((r) => r.unitId === null && r.kind === "treinamento").map(strip),
+      general: rows.filter((r) => r.unitId === null && r.kind !== "treinamento").map(strip),
       mine: rows.filter((r) => r.unitId !== null).sort((a, b) => `${a.description ?? ""}/${a.title}`.localeCompare(`${b.description ?? ""}/${b.title}`, "pt-BR", { numeric: true })).map(withThumb),
     };
   }),
@@ -150,11 +191,12 @@ export const unitPortalRouter = router({
 
 // ─── Administração das unidades (só administradores) ────────────────────────
 
-const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view"];
+const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view", "unit.plan.posted"];
 const planItemSchema = z.object({
   date: day, time: z.string().max(10).nullable().optional(), format: z.string().max(30).nullable().optional(),
   title: z.string().trim().min(1).max(300), type: z.string().max(60).nullable().optional(), caption: z.string().max(5000).nullable().optional(),
   imageUrls: z.array(z.string().url().max(2000)).max(20),
+  storyUrls: z.array(z.string().url().max(2000)).max(10).optional(),
 });
 
 export const unitAdminRouter = router({
@@ -175,6 +217,14 @@ export const unitAdminRouter = router({
     const materials = await c.select({ unitId: unitMaterials.unitId, kind: unitMaterials.kind }).from(unitMaterials);
     const [planRow] = await c.select({ n: sql<number>`count(*)::int` }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.status, "published"));
     const [current] = await c.select({ status: unitWeeklyPlans.status }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, mondayOf()));
+    // Adesão às postagens nas últimas 4 semanas: posts já vencidos (data até hoje) x marcados como postados.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const fromWeek = addDays(mondayOf(), -21);
+    const recentPlans = await c.select({ weekStart: unitWeeklyPlans.weekStart, items: unitWeeklyPlans.items }).from(unitWeeklyPlans)
+      .where(and(eq(unitWeeklyPlans.status, "published"), gte(unitWeeklyPlans.weekStart, fromWeek)));
+    const dueKeys = new Set(recentPlans.flatMap((p) => p.items.map((it, i) => (it.date <= today ? `${p.weekStart}:${i}` : null)).filter(Boolean) as string[]));
+    const marks = await c.select().from(unitPostMarks).where(gte(unitPostMarks.weekStart, fromWeek));
+    const thisWeek = mondayOf();
 
     const list = unitRows.map((u) => {
       const accs = accounts.filter((a) => !a.allUnits && (unitsOfUser.get(a.id) ?? (a.unitId ? [a.unitId] : [])).includes(u.id));
@@ -187,6 +237,11 @@ export const unitAdminRouter = router({
         logins30d: ev.filter((e) => e.action === "sso.login").length,
         views30d: ev.filter((e) => e.action === "unit.plan.view").length,
         downloads30d: ev.filter((e) => e.action === "unit.material.download" || e.action === "unit.plan.download").length,
+        posted4w: marks.filter((m) => m.unitId === u.id && dueKeys.has(`${m.weekStart}:${m.itemIndex}`)).length,
+        due4w: dueKeys.size,
+        postedThisWeek: marks.filter((m) => m.unitId === u.id && m.weekStart === thisWeek).length,
+        hasLink: !!u.signupUrl,
+        signupUrl: u.signupUrl,
         hasMidiaKit: materials.some((m) => m.unitId === u.id && m.kind === "midia_kit"),
         ownMaterials: materials.filter((m) => m.unitId === u.id).length,
       };
@@ -203,6 +258,9 @@ export const unitAdminRouter = router({
         withMidiaKit: list.filter((u) => u.hasMidiaKit).length,
         generalMaterials: materials.filter((m) => m.unitId === null).length,
         publishedPlans: planRow?.n ?? 0,
+        postedThisWeek: list.filter((u) => u.postedThisWeek > 0).length,
+        adherence4w: (() => { const due = dueKeys.size * list.filter((u) => u.active).length; const done = list.filter((u) => u.active).reduce((s, u) => s + u.posted4w, 0); return due ? Math.round((done / due) * 100) : null; })(),
+        withLink: list.filter((u) => u.hasLink).length,
         currentWeekPublished: current?.status === "published",
       },
     };
@@ -249,12 +307,13 @@ export const unitAdminRouter = router({
       id: z.number().int().optional(),
       code: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9:_-]{0,63}$/, "Código: letras minúsculas, números, :, - e _."),
       name: z.string().trim().min(2).max(255), city: z.string().trim().max(120).optional(), active: z.boolean().default(true),
+      signupUrl: z.string().trim().url().max(500).nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const c = await conn();
       const [same] = await c.select({ id: units.id }).from(units).where(eq(units.code, input.code));
       if (same && same.id !== input.id) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma unidade com esse código." });
-      const values = { code: input.code, name: input.name, city: input.city || null, active: input.active };
+      const values = { code: input.code, name: input.name, city: input.city || null, active: input.active, ...(input.signupUrl !== undefined ? { signupUrl: input.signupUrl || null } : {}) };
       if (input.id) await c.update(units).set(values).where(eq(units.id, input.id));
       else await c.insert(units).values(values);
       await db.recordAudit({ action: input.id ? "unit.updated" : "unit.created", actorUserId: ctx.actualUser!.id, targetType: "unit", targetId: input.code });
@@ -281,7 +340,7 @@ export const unitAdminRouter = router({
 
   addMaterial: adminProcedure
     .input(z.object({
-      unitId: z.number().int().nullable(), kind: z.enum(["material", "midia_kit"]),
+      unitId: z.number().int().nullable(), kind: z.enum(["material", "midia_kit", "treinamento"]),
       title: z.string().trim().min(1).max(255), description: z.string().trim().max(2000).optional(),
       fileUrl: z.string().url().max(2000), fileName: z.string().trim().min(1).max(255),
       contentType: z.string().max(120), sizeBytes: z.number().int().min(0),
@@ -289,6 +348,7 @@ export const unitAdminRouter = router({
     .mutation(async ({ ctx, input }) => {
       const c = await conn();
       if (input.kind === "midia_kit" && input.unitId === null) throw new TRPCError({ code: "BAD_REQUEST", message: "O mídia kit é de uma unidade: escolha a unidade." });
+      if (input.kind === "treinamento" && input.unitId !== null) throw new TRPCError({ code: "BAD_REQUEST", message: "Treinamento vale para todas as unidades." });
       await c.insert(unitMaterials).values({ ...input, description: input.description || null, createdByUserId: ctx.actualUser!.id });
       return { ok: true };
     }),
@@ -296,6 +356,31 @@ export const unitAdminRouter = router({
   deleteMaterial: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
     const c = await conn();
     await c.delete(unitMaterials).where(eq(unitMaterials.id, input.id));
+    return { ok: true };
+  }),
+
+  // ── Mural de avisos ──
+  announcements: adminProcedure.query(async () => {
+    const c = await conn();
+    return c.select().from(unitAnnouncements).orderBy(desc(unitAnnouncements.pinned), desc(unitAnnouncements.createdAt));
+  }),
+
+  saveAnnouncement: adminProcedure
+    .input(z.object({
+      id: z.number().int().optional(), title: z.string().trim().min(2).max(255), body: z.string().trim().max(3000).optional(),
+      pinned: z.boolean().default(false), expiresAt: day.nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await conn();
+      const values = { title: input.title, body: input.body || null, pinned: input.pinned, expiresAt: input.expiresAt ? new Date(`${input.expiresAt}T23:59:59-03:00`) : null };
+      if (input.id) await c.update(unitAnnouncements).set(values).where(eq(unitAnnouncements.id, input.id));
+      else await c.insert(unitAnnouncements).values({ ...values, createdByUserId: ctx.actualUser!.id });
+      return { ok: true };
+    }),
+
+  deleteAnnouncement: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const c = await conn();
+    await c.delete(unitAnnouncements).where(eq(unitAnnouncements.id, input.id));
     return { ok: true };
   }),
 
@@ -331,7 +416,14 @@ export const unitAdminRouter = router({
       }
     }
     items.sort((a, b) => `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`));
-    return { items };
+    // Stories do planejamento entram como "story do dia" do post do feed da mesma data (se houver).
+    const merged: UnitPlanItem[] = [];
+    for (const it of items) {
+      const feed = it.format === "stories" ? items.find((o) => o !== it && o.date === it.date && o.format !== "stories") : null;
+      if (feed) feed.storyUrls = [...(feed.storyUrls ?? []), ...it.imageUrls].slice(0, 10);
+      else merged.push(it);
+    }
+    return { items: merged };
   }),
 
   savePlan: adminProcedure

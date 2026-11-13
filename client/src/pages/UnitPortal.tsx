@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/contexts/ThemeContext";
-import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Maximize2, Megaphone, Menu, Moon, Sun, X, ZoomIn, ZoomOut, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Maximize2, Megaphone, Menu, Moon, Sun, X, ZoomIn, ZoomOut, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ListChecks, Pin, QrCode, Send, Smartphone, GraduationCap, MessageCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -39,47 +39,91 @@ async function saveFile(url: string, fileName: string) {
   }
 }
 
-type PlanItem = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[] };
+type PlanItem = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[] };
 
-/** Detalhe de uma pauta: artes para baixar e legenda para copiar. */
-function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null; index: number; weekStart: string; onClose: () => void }) {
+const todayYmd = () => new Date().toLocaleDateString("en-CA");
+const dayLabel = (ymd: string, long = false) => {
+  const d = new Date(`${ymd}T12:00:00`);
+  return `${long ? WEEKDAYS[d.getDay()] : WEEKDAYS_SHORT[d.getDay()]}${long ? ", " : " "}${ddmm(ymd)}`;
+};
+
+/** Botão "Já postei" (marca/desmarca). Na prévia da equipe ele aparece desativado. */
+function PostedButton({ posted, canMark, pending, onToggle, size = "sm", className }: { posted: boolean; canMark: boolean; pending?: boolean; onToggle: () => void; size?: "sm" | "default"; className?: string }) {
+  return (
+    <Button size={size} variant={posted ? "outline" : "default"} disabled={!canMark || pending} onClick={onToggle}
+      title={canMark ? undefined : "Só as contas das academias marcam o que postaram"}
+      className={cn(posted && "border-emerald-500/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400", className)}>
+      {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : posted ? <Check className="mr-1.5 h-4 w-4" /> : <Send className="mr-1.5 h-4 w-4" />}
+      {posted ? "Postado" : "Já postei"}
+    </Button>
+  );
+}
+
+/** Detalhe de uma pauta: artes, story do dia, legenda e "Já postei". */
+function ItemDialog({ item, index, weekStart, posted, canMark, onTogglePosted, pending, onClose }: {
+  item: PlanItem | null; index: number; weekStart: string; posted: boolean; canMark: boolean; onTogglePosted: () => void; pending: boolean; onClose: () => void;
+}) {
   const track = trpc.unitPortal.trackPlanDownload.useMutation();
   const [copied, setCopied] = useState(false);
-  const [viewing, setViewing] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<{ list: "artes" | "stories"; i: number } | null>(null);
   if (!item) return null;
-  const d = new Date(`${item.date}T12:00:00`);
+  const stories = item.storyUrls ?? [];
   // Arte ampliada: o visualizador ocupa o lugar da janela (fechar volta para ela).
-  if (viewing !== null) return (
-    <ImageViewer
-      items={item.imageUrls.map((url, j) => ({ id: j, url, title: `Arte ${j + 1} de ${item.imageUrls.length}`, label: item.title }))}
-      index={viewing} onIndex={setViewing} onClose={() => setViewing(null)}
-      onDownload={(j) => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); saveFile(item.imageUrls[j], `${item.date}-${j + 1}.png`); }} />);
+  if (viewing !== null) {
+    const urls = viewing.list === "artes" ? item.imageUrls : stories;
+    const label = viewing.list === "artes" ? "Arte" : "Story";
+    return (
+      <ImageViewer
+        items={urls.map((url, j) => ({ id: j, url, title: `${label} ${j + 1} de ${urls.length}`, label: item.title }))}
+        index={viewing.i} onIndex={(i) => setViewing({ ...viewing, i })} onClose={() => setViewing(null)}
+        onDownload={(j) => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); saveFile(urls[j], `${item.date}-${label.toLowerCase()}-${j + 1}.png`); }} />
+    );
+  }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] w-[96vw] overflow-y-auto p-6 sm:max-w-6xl lg:p-8">
         <DialogHeader>
           <DialogTitle className="pr-6 text-xl leading-snug">{item.title}</DialogTitle>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {WEEKDAYS[d.getDay()]}, {ddmm(item.date)}{item.time ? ` · ${item.time}` : ""}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            {dayLabel(item.date, true)}{item.time ? ` · ${item.time}` : ""}
             {item.format && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", FORMAT_STYLE[item.format] ?? "bg-muted")}>{FORMAT_LABEL[item.format] ?? item.format}</span>}
             {item.type && <span className="text-xs text-primary">{item.type}</span>}
-          </p>
+            <PostedButton posted={posted} canMark={canMark} pending={pending} onToggle={onTogglePosted} className="ml-auto" />
+          </div>
         </DialogHeader>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {item.imageUrls.map((url, j) => (
-                <button key={url} type="button" title="Abrir e ampliar" className="group relative cursor-zoom-in overflow-hidden rounded-lg border bg-muted"
-                  onClick={() => setViewing(j)}>
-                  <img src={url} alt={`Arte ${j + 1}`} loading="lazy" className="aspect-[4/5] w-full object-cover" />
-                  <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
-                </button>
-              ))}
+          <div className="space-y-4">
+            <div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {item.imageUrls.map((url, j) => (
+                  <button key={url} type="button" title="Abrir e ampliar" className="group relative cursor-zoom-in overflow-hidden rounded-lg border bg-muted" onClick={() => setViewing({ list: "artes", i: j })}>
+                    <img src={url} alt={`Arte ${j + 1}`} loading="lazy" className="aspect-[4/5] w-full object-cover" />
+                    <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" className="mt-2 w-full"
+                onClick={async () => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); for (const [j, url] of item.imageUrls.entries()) await saveFile(url, `${item.date}-${j + 1}.png`); }}>
+                <Download className="mr-1.5 h-4 w-4" />{item.imageUrls.length > 1 ? `Baixar as ${item.imageUrls.length} artes` : "Baixar a arte"}
+              </Button>
             </div>
-            <Button variant="outline" size="sm" className="mt-2 w-full"
-              onClick={async () => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); for (const [j, url] of item.imageUrls.entries()) await saveFile(url, `${item.date}-${j + 1}.png`); }}>
-              <Download className="mr-1.5 h-4 w-4" />{item.imageUrls.length > 1 ? `Baixar as ${item.imageUrls.length} artes` : "Baixar a arte"}
-            </Button>
+            {stories.length > 0 && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Smartphone className="h-3.5 w-3.5" />Story do dia</p>
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {stories.map((url, j) => (
+                    <button key={url} type="button" title="Abrir e ampliar" onClick={() => setViewing({ list: "stories", i: j })} className="group relative w-28 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-muted">
+                      <img src={url} alt={`Story ${j + 1}`} loading="lazy" className="aspect-[9/16] w-full object-cover" />
+                      <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
+                    </button>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" className="mt-2"
+                  onClick={async () => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); for (const [j, url] of stories.entries()) await saveFile(url, `${item.date}-story-${j + 1}.png`); }}>
+                  <Download className="mr-1.5 h-4 w-4" />{stories.length > 1 ? `Baixar os ${stories.length} stories` : "Baixar o story"}
+                </Button>
+              </div>
+            )}
           </div>
           <div className="flex min-w-0 flex-col">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Legenda</p>
@@ -97,33 +141,247 @@ function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null
   );
 }
 
+/** Mural de avisos da equipe da Alle. */
+function Announcements() {
+  const list = trpc.unitPortal.announcements.useQuery();
+  const items = list.data ?? [];
+  if (!items.length) return null;
+  return (
+    <section className="space-y-2">
+      {items.map((a) => (
+        <div key={a.id} className={cn("flex gap-3 rounded-2xl border p-4", a.pinned ? "border-alle-orange/40 bg-alle-orange/[.07]" : "bg-card")}>
+          <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", a.pinned ? "bg-alle-orange/15 text-alle-orange" : "bg-primary/10 text-primary")}>
+            {a.pinned ? <Pin className="h-4 w-4" /> : <Megaphone className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold leading-snug">{a.title}</p>
+            {a.body && <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{a.body}</p>}
+            <p className="mt-1 text-[11px] text-muted-foreground">Equipe Alle · {new Date(a.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</p>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Post de hoje (ou o próximo da semana) em destaque. */
+function TodayCard({ items, posted, canMark, pending, onOpen, onToggle, weekStart }: {
+  items: PlanItem[]; posted: number[]; canMark: boolean; pending: number | null; onOpen: (i: number) => void; onToggle: (i: number) => void; weekStart: string;
+}) {
+  const track = trpc.unitPortal.trackPlanDownload.useMutation();
+  const [copied, setCopied] = useState(false);
+  const today = todayYmd();
+  let idx = items.findIndex((it) => it.date === today);
+  const isToday = idx >= 0;
+  if (idx < 0) idx = items.findIndex((it) => it.date > today);
+  if (idx < 0) {
+    const done = items.filter((_, i) => posted.includes(i)).length;
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-8 text-center">
+        <CalendarCheck className="h-8 w-8 text-emerald-500" />
+        <p className="font-semibold">Os posts desta semana já passaram.</p>
+        <p className="text-sm text-muted-foreground">{canMark ? `Vocês marcaram ${done} de ${items.length} como postados. Falta algum? Abra o card abaixo e clique em "Já postei".` : `${items.length} posts na semana.`}</p>
+      </div>
+    );
+  }
+  const it = items[idx];
+  const isPosted = posted.includes(idx);
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-5 py-3">
+        <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-primary-foreground">{isToday ? "Post de hoje" : "Próximo post"}</span>
+        <span className="text-sm font-semibold">{dayLabel(it.date, true)}{it.time ? ` · ${it.time}` : ""}</span>
+        {it.format && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
+        {isPosted && <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" />postado</span>}
+      </div>
+      <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+        <button type="button" onClick={() => onOpen(idx)} className="group relative block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
+          {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
+          {it.imageUrls.length > 1 && <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{it.imageUrls.length} artes</span>}
+        </button>
+        <div className="flex min-w-0 flex-col gap-3">
+          <p className="text-lg font-bold leading-snug">{it.title}</p>
+          {it.caption && <p className="line-clamp-5 whitespace-pre-wrap text-sm text-muted-foreground">{it.caption}</p>}
+          <div className="mt-auto flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={async () => { track.mutate({ weekStart, itemIndex: idx, what: "arte" }); for (const [j, url] of it.imageUrls.entries()) await saveFile(url, `${it.date}-${j + 1}.png`); }}>
+              <Download className="mr-1.5 h-4 w-4" />{it.imageUrls.length > 1 ? `Baixar as ${it.imageUrls.length} artes` : "Baixar a arte"}
+            </Button>
+            {it.caption && (
+              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(it.caption!).then(() => { setCopied(true); track.mutate({ weekStart, itemIndex: idx, what: "legenda" }); setTimeout(() => setCopied(false), 2000); })}>
+                {copied ? <><Check className="mr-1.5 h-4 w-4" />Copiada!</> : <><Copy className="mr-1.5 h-4 w-4" />Copiar legenda</>}
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => onOpen(idx)}><Maximize2 className="mr-1.5 h-4 w-4" />Ver tudo{it.storyUrls?.length ? " + story" : ""}</Button>
+            <PostedButton posted={isPosted} canMark={canMark} pending={pending === idx} onToggle={() => onToggle(idx)} className="sm:ml-auto" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Link de adesão e QR code da academia aberta. */
+function LinkCard() {
+  const me = trpc.unitPortal.me.useQuery();
+  const [copied, setCopied] = useState(false);
+  const [zoom, setZoom] = useState(false);
+  const unit = me.data?.unit;
+  if (!unit) return null;
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><QrCode className="h-3.5 w-3.5" />Link de adesão da academia</p>
+      {unit.signupUrl || unit.qrUrl ? (
+        <>
+          <div className="mt-3 flex items-center gap-3">
+            {unit.qrUrl && (
+              <button type="button" onClick={() => setZoom(true)} title="Ampliar o QR code" className="shrink-0 cursor-zoom-in rounded-xl border bg-white p-1.5">
+                <img src={unit.qrUrl} alt="QR code de adesão" className="h-24 w-24 object-contain" />
+              </button>
+            )}
+            <p className="text-xs text-muted-foreground">O aluno escaneia o QR (ou abre o link) e fala com a Ane para ver o desconto na conta de luz. Use na recepção, no WhatsApp e na bio.</p>
+          </div>
+          {unit.signupUrl && (
+            <div className="mt-3 flex items-center gap-1.5 rounded-lg border bg-muted/40 py-1 pl-2.5 pr-1">
+              <span className="min-w-0 flex-1 truncate text-xs">{unit.signupUrl.replace(/^https?:\/\//, "")}</span>
+              <button type="button" title="Copiar o link" className="rounded-md p-1.5 hover:bg-background" onClick={() => navigator.clipboard.writeText(unit.signupUrl!).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}>
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <a href={unit.signupUrl} target="_blank" rel="noreferrer" title="Abrir" className="rounded-md p-1.5 hover:bg-background"><ExternalLink className="h-3.5 w-3.5" /></a>
+            </div>
+          )}
+          {unit.qrUrl && (
+            <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => saveFile(unit.qrUrl!, `QR code - ${unit.name}.png`)}><Download className="mr-1.5 h-4 w-4" />Baixar o QR code</Button>
+          )}
+          {zoom && unit.qrUrl && (
+            <ImageViewer items={[{ id: 0, url: unit.qrUrl, title: "QR code de adesão", label: unit.name }]} index={0} onIndex={() => {}} onClose={() => setZoom(false)}
+              onDownload={() => saveFile(unit.qrUrl!, `QR code - ${unit.name}.png`)} />
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">O link de adesão desta academia ainda não foi cadastrado pela equipe da Alle.</p>
+      )}
+    </div>
+  );
+}
+
+/** Guia rápido de como postar (regras da equipe da Alle). */
+function HowToCard() {
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem("unit_howto_closed") !== "1"; } catch { return true; } });
+  const toggle = () => setOpen((o) => { try { localStorage.setItem("unit_howto_closed", o ? "1" : "0"); } catch { /* sem storage */ } return !o; });
+  const steps = [
+    "Abra o post do dia e baixe as artes. No carrossel, poste na ordem (1, 2, 3…).",
+    "Copie a legenda e cole sem mudar nada, principalmente a ressalva do desconto (o texto com *).",
+    "Publique no horário indicado no card.",
+    "Marque @alleenergia e @allpfit.",
+    "Volte aqui e clique em \"Já postei\".",
+  ];
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <button type="button" onClick={toggle} className="flex w-full items-center gap-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <ListChecks className="h-3.5 w-3.5" /><span className="flex-1">Como postar</span>{open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+      {open && (
+        <>
+          <ol className="mt-3 space-y-2">
+            {steps.map((t, i) => (
+              <li key={i} className="flex gap-2.5 text-sm"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{i + 1}</span><span>{t}</span></li>
+            ))}
+          </ol>
+          <p className="mt-3 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">Fotos, vídeos ou depoimentos de alunos só com autorização por escrito.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Próximas semanas já publicadas (prévia). */
+function UpcomingWeeks({ weeks, onPick }: { weeks: Array<{ weekStart: string; weekEnd: string; title: string | null; items: Array<{ date: string; format: string | null; title: string; thumb: string | null }> }>; onPick: (w: string) => void }) {
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Próximas semanas</h2>
+      {weeks.length === 0 ? (
+        <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">As próximas semanas aparecem aqui assim que a equipe da Alle publicar.</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {weeks.map((w) => (
+            <button key={w.weekStart} type="button" onClick={() => onPick(w.weekStart)} className="rounded-2xl border bg-card p-3 text-left transition hover:border-primary">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{w.title || `Semana de ${ddmm(w.weekStart)} a ${ddmm(w.weekEnd)}`}</p>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">em breve</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{ddmm(w.weekStart)} a {ddmm(w.weekEnd)} · {w.items.length} {w.items.length === 1 ? "post" : "posts"}</p>
+              <div className="mt-2 flex gap-1.5 overflow-hidden">
+                {w.items.slice(0, 6).map((it, i) => (
+                  <div key={i} title={`${dayLabel(it.date)} · ${it.title}`} className="w-12 shrink-0 overflow-hidden rounded-md border bg-muted">
+                    {it.thumb ? <img src={it.thumb} alt="" loading="lazy" className="aspect-[4/5] w-full object-cover" /> : <div className="aspect-[4/5]" />}
+                  </div>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PlanTab() {
   const [week, setWeek] = useState<string | undefined>(undefined);
   const plan = trpc.unitPortal.weekPlan.useQuery(week ? { weekStart: week } : undefined);
+  const utils = trpc.useUtils();
+  const [pending, setPending] = useState<number | null>(null);
+  const mark = trpc.unitPortal.markPosted.useMutation({
+    onSuccess: (_r, v) => { if (v.posted) toast.success("Marcado como postado. Obrigado!"); utils.unitPortal.weekPlan.invalidate(); },
+    onError: (e) => toast.error(e.message),
+    onSettled: () => setPending(null),
+  });
   const [open, setOpen] = useState<number | null>(null);
+  const [viewStory, setViewStory] = useState<number | null>(null);
   const data = plan.data;
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = todayYmd();
 
   if (plan.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando o planejamento…</p>;
+  const side = (
+    <div className="space-y-4">
+      <LinkCard />
+      <HowToCard />
+    </div>
+  );
   if (!data?.plan) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center">
-        <CalendarDays className="h-8 w-8 text-muted-foreground" />
-        <p className="font-medium">O planejamento desta semana ainda não foi publicado.</p>
-        <p className="text-sm text-muted-foreground">Assim que a equipe da Alle publicar, ele aparece aqui.</p>
+      <div className="space-y-5">
+        <Announcements />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed py-16 text-center">
+            <CalendarDays className="h-8 w-8 text-muted-foreground" />
+            <p className="font-medium">O planejamento desta semana ainda não foi publicado.</p>
+            <p className="text-sm text-muted-foreground">Assim que a equipe da Alle publicar, ele aparece aqui.</p>
+          </div>
+          {side}
+        </div>
+        {data && <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />}
       </div>
     );
   }
   const p = data.plan;
   const items = p.items as PlanItem[];
+  const posted = data.posted;
+  const toggle = (i: number) => { setPending(i); mark.mutate({ weekStart: p.weekStart, itemIndex: i, posted: !posted.includes(i) }); };
+  // Stories da semana: os anexados a cada post (story do dia).
+  const stories = items.flatMap((it, i) => (it.storyUrls ?? []).map((url) => ({ url, i, date: it.date, title: it.title })));
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <Announcements />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           {p.title || "Planejamento da semana"} ({ddmm(p.weekStart)} a {ddmm(p.weekEnd)})
         </h2>
         <div className="flex items-center gap-3">
-          <p className="text-xs text-muted-foreground"><span className="font-semibold text-foreground">{items.length}</span> {items.length === 1 ? "post pronto" : "posts prontos"}</p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{items.length}</span> {items.length === 1 ? "post pronto" : "posts prontos"}
+            {data.canMark && <> · <span className="font-semibold text-emerald-600 dark:text-emerald-400">{posted.length}</span> postados</>}
+          </p>
           {data.weeks.length > 1 && (
             <select value={data.weekStart} onChange={(e) => setWeek(e.target.value)} className="h-8 rounded-md border bg-background px-2 text-xs">
               {data.weeks.map((w) => <option key={w.weekStart} value={w.weekStart}>Semana de {ddmm(w.weekStart)}</option>)}
@@ -133,30 +391,75 @@ function PlanTab() {
       </div>
       {p.notes && <p className="rounded-xl bg-primary/5 p-4 text-sm">{p.notes}</p>}
 
-      <div className="rounded-2xl border bg-card p-3">
-        <div className="flex snap-x justify-center-safe gap-3 overflow-x-auto pb-2">
-          {items.map((it, i) => {
-            const d = new Date(`${it.date}T12:00:00`);
-            const isToday = it.date === today;
-            return (
-              <div key={i} className={cn("flex w-48 shrink-0 snap-start flex-col rounded-2xl border bg-card p-2.5", isToday && "border-primary ring-2 ring-primary/20")}>
-                <div className="flex items-center justify-between gap-1 text-[11px]">
-                  <span className={cn("font-semibold", isToday ? "text-primary" : "text-muted-foreground")}>{isToday ? "Hoje" : `${WEEKDAYS_SHORT[d.getDay()]} ${ddmm(it.date)}`}{it.time ? ` · ${it.time}` : ""}</span>
-                  {it.format && <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
-                </div>
-                <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
-                <p className="min-h-[1rem] text-[11px] text-primary">{it.type ?? ""}</p>
-                <button type="button" onClick={() => setOpen(i)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
-                  {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
-                  {it.imageUrls.length > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.imageUrls.length} artes</span>}
-                </button>
-                <button type="button" onClick={() => setOpen(i)} className="mt-2 text-left text-[11px] text-emerald-600 hover:underline dark:text-emerald-400">✓ pronto · baixar</button>
-              </div>
-            );
-          })}
-        </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <TodayCard items={items} posted={posted} canMark={data.canMark} pending={pending} onOpen={setOpen} onToggle={toggle} weekStart={p.weekStart} />
+        {side}
       </div>
-      <ItemDialog key={open ?? -1} item={open === null ? null : items[open]} index={open ?? 0} weekStart={p.weekStart} onClose={() => setOpen(null)} />
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Posts da semana</h2>
+        <div className="rounded-2xl border bg-card p-3">
+          <div className="flex snap-x justify-center-safe gap-3 overflow-x-auto pb-2">
+            {items.map((it, i) => {
+              const isToday = it.date === today;
+              const isPosted = posted.includes(i);
+              return (
+                <div key={i} className={cn("flex w-48 shrink-0 snap-start flex-col rounded-2xl border bg-card p-2.5", isToday && "border-primary ring-2 ring-primary/20")}>
+                  <div className="flex items-center justify-between gap-1 text-[11px]">
+                    <span className={cn("font-semibold", isToday ? "text-primary" : "text-muted-foreground")}>{isToday ? "Hoje" : dayLabel(it.date)}{it.time ? ` · ${it.time}` : ""}</span>
+                    {it.format && <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[it.format] ?? "bg-muted")}>{FORMAT_LABEL[it.format] ?? it.format}</span>}
+                  </div>
+                  <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
+                  <p className="min-h-[1rem] text-[11px] text-primary">{it.type ?? ""}</p>
+                  <button type="button" onClick={() => setOpen(i)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
+                    {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
+                    {it.imageUrls.length > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.imageUrls.length} artes</span>}
+                    {it.storyUrls?.length ? <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">+ story</span> : null}
+                    {isPosted && <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-emerald-600/90 py-1 text-[11px] font-semibold text-white"><Check className="h-3 w-3" />postado</span>}
+                  </button>
+                  {data.canMark ? (
+                    <button type="button" disabled={pending === i} onClick={() => toggle(i)}
+                      className={cn("mt-2 text-left text-[11px] font-medium hover:underline", isPosted ? "text-emerald-600 dark:text-emerald-400" : "text-primary")}>
+                      {isPosted ? "✓ postado · desfazer" : "Já postei"}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setOpen(i)} className="mt-2 text-left text-[11px] text-emerald-600 hover:underline dark:text-emerald-400">✓ pronto · baixar</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {stories.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground"><Smartphone className="h-4 w-4" />Stories da semana</h2>
+          <div className="rounded-2xl border bg-card p-3">
+            <div className="flex snap-x justify-center-safe gap-3 overflow-x-auto pb-2">
+              {stories.map((st, j) => (
+                <div key={st.url} className="flex w-32 shrink-0 snap-start flex-col">
+                  <p className="mb-1 text-[11px] font-semibold text-muted-foreground">{st.date === today ? "Hoje" : dayLabel(st.date)}</p>
+                  <button type="button" onClick={() => setViewStory(j)} title={st.title} className="group relative overflow-hidden rounded-xl border bg-muted">
+                    <img src={st.url} alt="" loading="lazy" className="aspect-[9/16] w-full object-cover" />
+                    <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
+                  </button>
+                  <button type="button" onClick={() => saveFile(st.url, `${st.date}-story-${j + 1}.png`)} className="mt-1 text-left text-[11px] text-primary hover:underline">baixar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <UpcomingWeeks weeks={data.upcoming} onPick={setWeek} />
+
+      {viewStory !== null && (
+        <ImageViewer items={stories.map((st, j) => ({ id: j, url: st.url, title: `Story · ${dayLabel(st.date)}`, label: st.title }))} index={viewStory} onIndex={setViewStory}
+          onClose={() => setViewStory(null)} onDownload={(j) => saveFile(stories[j].url, `${stories[j].date}-story-${j + 1}.png`)} />
+      )}
+      <ItemDialog key={open ?? -1} item={open === null ? null : items[open]} index={open ?? 0} weekStart={p.weekStart}
+        posted={open !== null && posted.includes(open)} canMark={data.canMark} pending={pending === open} onTogglePosted={() => open !== null && toggle(open)} onClose={() => setOpen(null)} />
     </div>
   );
 }
@@ -230,6 +533,78 @@ function ImageViewer({ items, index, onIndex, onClose, onDownload }: {
   );
 }
 
+/** Treinamento da equipe: como explicar o benefício ao aluno (só fatos da base da Alle) + materiais. */
+const TRAINING_SCRIPT: Array<{ title: string; lines: string[] }> = [
+  { title: "O que é", lines: [
+    "A Alle Energia faz parte do ecossistema Allp Fit e leva a energia digital para quem treina aqui.",
+    "É desconto na conta de luz todo mês, sem obra, sem instalar placa, sem fidelidade e sem custo.",
+    "A pessoa continua com a mesma distribuidora de energia da região dela.",
+  ] },
+  { title: "Quem pode", lines: [
+    "Quem tem vínculo com a Allp Fit (alunos, gestores e a própria unidade).",
+    "Conta de luz acima de R$ 200, de casa, comércio ou propriedade rural, em imóvel próprio ou alugado.",
+  ] },
+  { title: "Quanto", lines: [
+    "Até 15% para pessoa física e até 35% para empresa (PJ). A maioria dos alunos é pessoa física: não prometa 35%.",
+    "Nunca prometa um valor exato: o desconto depende da análise da fatura.",
+  ] },
+  { title: "Passo a passo do aluno", lines: [
+    "Escaneia o QR code da unidade (ou abre o link) e fala com a Ane, da Alle Energia, no WhatsApp.",
+    "Envia a fatura de luz e a equipe analisa a conta.",
+    "O titular da fatura assina o termo de adesão que chega por e-mail.",
+    "O desconto pode levar até 90 dias depois da assinatura para aparecer.",
+  ] },
+  { title: "Documentos", lines: ["Fatura de luz recente (dos últimos 3 meses), RG e CPF ou CNH, e-mail e telefone."] },
+  { title: "Se o aluno perguntar algo fora daqui", lines: [
+    "Por exemplo, como o desconto aparece na conta ou o que acontece se cancelar a matrícula: não responda de cabeça. Peça para ele falar com a Ane, que tira a dúvida.",
+  ] },
+];
+
+function TrainingSection({ files, onOpen, onDownload }: { files: Array<{ id: number; title: string; fileName: string; sizeBytes: number }>; onOpen: (id: number) => void; onDownload: (id: number) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="space-y-3">
+      <h2 className="flex items-center gap-2 text-lg font-bold"><GraduationCap className="h-5 w-5 text-primary" />Treinamento da equipe</h2>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="rounded-2xl border bg-card p-4">
+          <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-alle-orange/15 text-alle-orange"><MessageCircle className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Como explicar o benefício ao aluno</span>
+              <span className="block text-xs text-muted-foreground">Roteiro rápido para professores e recepção</span>
+            </span>
+            {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {open && (
+            <div className="mt-4 space-y-3">
+              {TRAINING_SCRIPT.map((b) => (
+                <div key={b.title}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">{b.title}</p>
+                  <ul className="mt-1 space-y-1">{b.lines.map((l) => <li key={l} className="flex gap-2 text-sm"><span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />{l}</li>)}</ul>
+                </div>
+              ))}
+              <p className="rounded-lg bg-muted/50 p-2.5 text-[11px] text-muted-foreground">*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.</p>
+            </div>
+          )}
+        </div>
+        <div className="space-y-2">
+          {files.length ? files.map((m) => (
+            <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-card p-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-5 w-5" /></span>
+              <button type="button" onClick={() => onOpen(m.id)} className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-sm font-medium hover:text-primary">{m.title}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</span>
+              </button>
+              <button type="button" title="Abrir" onClick={() => onOpen(m.id)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"><ExternalLink className="h-4 w-4" /></button>
+              <button type="button" title="Baixar" onClick={() => onDownload(m.id)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary"><Download className="h-4 w-4" /></button>
+            </div>
+          )) : <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">Os materiais de treinamento aparecem aqui.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MaterialsTab() {
   const materials = trpc.unitPortal.materials.useQuery();
   const download = trpc.unitPortal.download.useMutation({ onError: (e) => toast.error(e.message) });
@@ -247,7 +622,7 @@ function MaterialsTab() {
   const [viewing, setViewing] = useState<number | null>(null);
   const logView = trpc.unitPortal.download.useMutation();
   if (materials.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando os materiais…</p>;
-  const { general = [], mine = [] } = materials.data ?? {};
+  const { general = [], mine = [], training = [] } = materials.data ?? {};
   const images = mine.filter((m) => m.thumbUrl);
   const docs = mine.filter((m) => !m.thumbUrl);
   const Card = ({ m }: { m: (typeof general)[number] }) => (
@@ -267,6 +642,7 @@ function MaterialsTab() {
   );
   return (
     <div className="space-y-8">
+      <TrainingSection files={training} onOpen={openDoc} onDownload={get} />
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-lg font-bold"><Megaphone className="h-5 w-5 text-primary" />Mídia kit da sua unidade</h2>

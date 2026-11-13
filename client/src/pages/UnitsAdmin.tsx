@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Download, ExternalLink, FolderOpen, Loader2, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Activity, Building2, CalendarDays, Download, ExternalLink, FolderOpen, Loader2, Megaphone, Plus, Search, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -16,7 +16,7 @@ import { Link } from "wouter";
 // Painel do super admin: unidades (academias parceiras), acessos, plano da semana e materiais.
 
 const ACTION_LABEL: Record<string, string> = {
-  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material", "unit.material.view": "Abriu material",
+  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material", "unit.material.view": "Abriu material", "unit.plan.posted": "Marcou como postado",
 };
 const fmtDateTime = (d: string | Date | null) => (d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 const ddmm = (ymd: string) => `${ymd.slice(8)}/${ymd.slice(5, 7)}`;
@@ -42,7 +42,7 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
 function Overview({ onOpen }: { onOpen: (id: number) => void }) {
   const overview = trpc.unitAdmin.overview.useQuery(undefined, { refetchInterval: 60_000 });
   const [q, setQ] = useState("");
-  const [editing, setEditing] = useState<{ id?: number; code: string; name: string; city: string; active: boolean } | null>(null);
+  const [editing, setEditing] = useState<{ id?: number; code: string; name: string; city: string; active: boolean; signupUrl: string } | null>(null);
   const utils = trpc.useUtils();
   const save = trpc.unitAdmin.saveUnit.useMutation({
     onSuccess: () => { toast.success("Unidade salva."); setEditing(null); utils.unitAdmin.overview.invalidate(); },
@@ -58,6 +58,9 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
         <Stat label="Contas de unidade" value={t?.accounts ?? "…"} hint={t ? `${t.allUnitsAccounts} veem todas · ${t.neverAccessed} unidades nunca acessaram` : undefined} />
         <Stat label="Acessaram (30 dias)" value={t ? `${t.accessed30d}/${t.units}` : "…"} hint="unidades com pelo menos 1 login" />
         <Stat label="Plano da semana" value={t ? (t.currentWeekPublished ? "Publicado" : "Não publicado") : "…"} hint={t ? `${t.withMidiaKit} unidades com mídia kit · ${t.generalMaterials} materiais gerais` : undefined} />
+        <Stat label="Adesão às postagens" value={t ? (t.adherence4w === null ? "—" : `${t.adherence4w}%`) : "…"} hint="posts marcados como postados, últimas 4 semanas" />
+        <Stat label="Postaram nesta semana" value={t ? `${t.postedThisWeek}/${t.activeUnits}` : "…"} hint="unidades com pelo menos 1 “Já postei”" />
+        <Stat label="Com link de adesão" value={t ? `${t.withLink}/${t.units}` : "…"} hint="link e QR code no portal" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -65,7 +68,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar unidade, código ou cidade" className="pl-9" />
         </div>
-        <Button onClick={() => setEditing({ code: "", name: "", city: "", active: true })}><Plus className="mr-1.5 h-4 w-4" />Nova unidade</Button>
+        <Button onClick={() => setEditing({ code: "", name: "", city: "", active: true, signupUrl: "" })}><Plus className="mr-1.5 h-4 w-4" />Nova unidade</Button>
       </div>
 
       <Card className="border-border/60"><CardContent className="overflow-x-auto p-0">
@@ -74,7 +77,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
         ) : (
           <table className="w-full text-sm">
             <thead className="border-b text-left text-xs text-muted-foreground">
-              <tr><th className="p-3">Unidade</th><th className="p-3">Contas</th><th className="p-3">Último acesso</th><th className="p-3 text-right">Logins 30d</th><th className="p-3 text-right">Viu plano</th><th className="p-3 text-right">Downloads</th><th className="p-3">Mídia kit</th><th className="p-3" /></tr>
+              <tr><th className="p-3">Unidade</th><th className="p-3">Contas</th><th className="p-3">Último acesso</th><th className="p-3 text-right">Logins 30d</th><th className="p-3 text-right">Viu plano</th><th className="p-3 text-right">Downloads</th><th className="p-3 text-right" title="Posts marcados como postados nas últimas 4 semanas">Postou (4 sem.)</th><th className="p-3">Mídia kit</th><th className="p-3">Link</th><th className="p-3" /></tr>
             </thead>
             <tbody>
               {list.map((u) => (
@@ -85,8 +88,10 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
                   <td className="p-3 text-right tabular-nums">{u.logins30d}</td>
                   <td className="p-3 text-right tabular-nums">{u.views30d}</td>
                   <td className="p-3 text-right tabular-nums">{u.downloads30d}</td>
+                  <td className="p-3 text-right tabular-nums">{u.due4w ? <span className={cn(u.posted4w === 0 ? "text-amber-600" : u.posted4w >= u.due4w ? "text-emerald-600" : "")}>{u.posted4w}/{u.due4w}</span> : "—"}</td>
                   <td className="p-3">{u.hasMidiaKit ? <span className="text-emerald-600">✓</span> : <span className="text-muted-foreground">—</span>}</td>
-                  <td className="p-3 text-right"><Button size="sm" variant="ghost" onClick={() => setEditing({ id: u.id, code: u.code, name: u.name, city: u.city ?? "", active: u.active })}>Editar</Button></td>
+                  <td className="p-3">{u.signupUrl ? <a href={u.signupUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline" title={u.signupUrl}>✓</a> : <span className="text-muted-foreground">—</span>}</td>
+                  <td className="p-3 text-right"><Button size="sm" variant="ghost" onClick={() => setEditing({ id: u.id, code: u.code, name: u.name, city: u.city ?? "", active: u.active, signupUrl: u.signupUrl ?? "" })}>Editar</Button></td>
                 </tr>
               ))}
             </tbody>
@@ -102,9 +107,10 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
               <label className="block space-y-1 text-sm"><span className="font-medium">Nome</span><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Allp Fit Capim Macio" /></label>
               <label className="block space-y-1 text-sm"><span className="font-medium">Código no sistema da Alle</span><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value.toLowerCase() })} placeholder="capim-macio" /><span className="text-xs text-muted-foreground">Preenchido sozinho no primeiro login. Antes disso fica "kit:…" e a academia é ligada pelo <b>nome</b>: ajuste o nome para ficar igual ao do sistema da Alle, se for diferente.</span></label>
               <label className="block space-y-1 text-sm"><span className="font-medium">Cidade</span><Input value={editing.city} onChange={(e) => setEditing({ ...editing, city: e.target.value })} placeholder="Natal/RN" /></label>
+              <label className="block space-y-1 text-sm"><span className="font-medium">Link de adesão</span><Input value={editing.signupUrl} onChange={(e) => setEditing({ ...editing, signupUrl: e.target.value })} placeholder="https://qrcode.allpfit.com.br/r/…" /><span className="text-xs text-muted-foreground">Aparece no portal da academia com o QR code. O QR vem da importação da pasta de QR codes.</span></label>
               <label className="flex items-center justify-between rounded-lg border p-3 text-sm"><span>Unidade ativa (pode acessar)</span><Switch checked={editing.active} onCheckedChange={(v) => setEditing({ ...editing, active: v })} /></label>
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-                <Button disabled={save.isPending} onClick={() => save.mutate({ ...editing, city: editing.city || undefined })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar</Button></div>
+                <Button disabled={save.isPending} onClick={() => save.mutate({ ...editing, city: editing.city || undefined, signupUrl: editing.signupUrl.trim() || null })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar</Button></div>
             </div>
           )}
         </DialogContent>
@@ -164,7 +170,17 @@ function ActivityTab() {
 }
 
 // ── Planejamento semanal ───────────────────────────────────────────────────
-type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[] };
+type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[] };
+
+/** Envia um arquivo pelo upload direto (presigned) e devolve a URL pública. */
+async function uploadFile(file: File): Promise<string> {
+  const pre = await fetch("/api/request-presigned-upload", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ contentType: file.type || "application/octet-stream" }) });
+  const { presignedUrl, publicUrl } = (await pre.json()) as { presignedUrl: string | null; publicUrl: string | null };
+  if (!pre.ok || !presignedUrl || !publicUrl) throw new Error("Não foi possível preparar o envio.");
+  const put = await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  if (!put.ok) throw new Error("O envio do arquivo falhou.");
+  return publicUrl;
+}
 function PlanTab() {
   const [week, setWeek] = useState(mondayOf());
   const saved = trpc.unitAdmin.getPlan.useQuery({ weekStart: week });
@@ -180,6 +196,7 @@ function PlanTab() {
     onError: (e) => toast.error(e.message),
   });
   const setItem = (i: number, patch: Partial<Item>) => current && setDraft({ ...current, items: current.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
+  const [uploading, setUploading] = useState<number | null>(null);
 
   return (
     <div className="space-y-4">
@@ -208,6 +225,25 @@ function PlanTab() {
                   <button type="button" className="ml-auto text-muted-foreground hover:text-destructive" title="Tirar da semana" onClick={() => setDraft({ ...current, items: current.items.filter((_, j) => j !== i) })}><Trash2 className="h-4 w-4" /></button></div>
                 <Input value={it.title} onChange={(e) => setItem(i, { title: e.target.value })} />
                 <Textarea rows={4} value={it.caption ?? ""} onChange={(e) => setItem(i, { caption: e.target.value })} className="text-sm" placeholder="Legenda que a unidade vai copiar" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Story do dia:</span>
+                  {(it.storyUrls ?? []).map((u) => (
+                    <span key={u} className="relative">
+                      <img src={u} alt="" className="h-16 w-9 rounded border object-cover" />
+                      <button type="button" title="Tirar" onClick={() => setItem(i, { storyUrls: (it.storyUrls ?? []).filter((x) => x !== u) })} className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive px-1 text-[10px] leading-4 text-white">×</button>
+                    </span>
+                  ))}
+                  <label className={cn("inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted", uploading === i && "pointer-events-none opacity-60")}>
+                    {uploading === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}Adicionar story (9:16)
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
+                      const files = [...(e.target.files ?? [])]; e.target.value = "";
+                      if (!files.length) return;
+                      setUploading(i);
+                      try { const urls = []; for (const f of files) urls.push(await uploadFile(f)); setItem(i, { storyUrls: [...(it.storyUrls ?? []), ...urls].slice(0, 10) }); }
+                      catch (err) { toast.error((err as Error).message); } finally { setUploading(null); }
+                    }} />
+                  </label>
+                </div>
               </div>
             </CardContent></Card>
           ))}
@@ -223,6 +259,55 @@ function PlanTab() {
   );
 }
 
+// ── Mural de avisos ────────────────────────────────────────────────────────
+function AnnouncementsTab() {
+  const list = trpc.unitAdmin.announcements.useQuery();
+  const utils = trpc.useUtils();
+  const empty = { title: "", body: "", pinned: false, expiresAt: "" };
+  const [form, setForm] = useState<{ id?: number; title: string; body: string; pinned: boolean; expiresAt: string }>(empty);
+  const save = trpc.unitAdmin.saveAnnouncement.useMutation({
+    onSuccess: () => { toast.success(form.id ? "Aviso atualizado." : "Aviso publicado para todas as unidades."); setForm(empty); utils.unitAdmin.announcements.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const del = trpc.unitAdmin.deleteAnnouncement.useMutation({ onSuccess: () => utils.unitAdmin.announcements.invalidate() });
+  const now = new Date();
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <Card className="border-border/60"><CardContent className="space-y-3 p-4">
+        <p className="font-semibold">{form.id ? "Editar aviso" : "Novo aviso"}</p>
+        <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ex.: Quarta é dia de collab: fixem o post" />
+        <Textarea rows={4} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Detalhes (opcional)" />
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1 text-sm"><span className="font-medium">Some depois de</span><Input type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} /><span className="text-xs text-muted-foreground">vazio = fica até apagar</span></label>
+          <label className="flex items-center justify-between gap-2 self-start rounded-lg border p-3 text-sm"><span>Fixar no topo</span><Switch checked={form.pinned} onCheckedChange={(v) => setForm({ ...form, pinned: v })} /></label>
+        </div>
+        <div className="flex justify-end gap-2">
+          {form.id && <Button variant="outline" onClick={() => setForm(empty)}>Cancelar</Button>}
+          <Button disabled={save.isPending || form.title.trim().length < 2} onClick={() => save.mutate({ id: form.id, title: form.title, body: form.body || undefined, pinned: form.pinned, expiresAt: form.expiresAt || null })}>
+            {save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{form.id ? "Salvar" : "Publicar aviso"}
+          </Button>
+        </div>
+      </CardContent></Card>
+      <Card className="border-border/60"><CardContent className="p-0">
+        {!list.data?.length ? <p className="p-6 text-sm text-muted-foreground">Nenhum aviso ainda. Os avisos aparecem no topo do portal de todas as unidades.</p> : list.data.map((a) => {
+          const expired = a.expiresAt && new Date(a.expiresAt) < now;
+          return (
+            <div key={a.id} className={cn("flex items-start gap-3 border-b p-3 text-sm last:border-0", expired && "opacity-50")}>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{a.pinned && <span className="mr-1.5 rounded-full bg-alle-orange/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-alle-orange">fixado</span>}{a.title}</p>
+                {a.body && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{a.body}</p>}
+                <p className="mt-1 text-[11px] text-muted-foreground">{fmtDateTime(a.createdAt)}{a.expiresAt ? ` · ${expired ? "venceu" : "some"} em ${new Date(a.expiresAt).toLocaleDateString("pt-BR")}` : ""}</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setForm({ id: a.id, title: a.title, body: a.body ?? "", pinned: a.pinned, expiresAt: a.expiresAt ? new Date(a.expiresAt).toLocaleDateString("en-CA") : "" })}>Editar</Button>
+              <button type="button" title="Apagar" className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (confirm(`Apagar o aviso "${a.title}"?`)) del.mutate({ id: a.id }); }}><Trash2 className="h-4 w-4" /></button>
+            </div>
+          );
+        })}
+      </CardContent></Card>
+    </div>
+  );
+}
+
 // ── Materiais ──────────────────────────────────────────────────────────────
 function MaterialsTab() {
   const overview = trpc.unitAdmin.overview.useQuery();
@@ -231,7 +316,7 @@ function MaterialsTab() {
   const add = trpc.unitAdmin.addMaterial.useMutation({ onError: (e) => toast.error(e.message) });
   const del = trpc.unitAdmin.deleteMaterial.useMutation({ onSuccess: () => utils.unitAdmin.materials.invalidate() });
   const [target, setTarget] = useState<string>("geral");
-  const [kind, setKind] = useState<"material" | "midia_kit">("material");
+  const [kind, setKind] = useState<"material" | "midia_kit" | "treinamento">("material");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const unitName = useMemo(() => new Map((overview.data?.units ?? []).map((u) => [u.id, u.name])), [overview.data]);
@@ -240,6 +325,7 @@ function MaterialsTab() {
     if (!file) return;
     const unitId = target === "geral" ? null : Number(target);
     if (kind === "midia_kit" && unitId === null) return toast.error("O mídia kit é de uma unidade: escolha a unidade.");
+    if (kind === "treinamento" && unitId !== null) return toast.error("Treinamento vale para todas as unidades.");
     setBusy(true);
     try {
       const pre = await fetch("/api/request-presigned-upload", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ contentType: file.type || "application/octet-stream" }) });
@@ -263,13 +349,14 @@ function MaterialsTab() {
     <div className="space-y-4">
       <Card className="border-border/60"><CardContent className="grid gap-2 p-4 md:grid-cols-[1fr_1fr_1.4fr_auto] md:items-end">
         <label className="space-y-1 text-sm"><span className="font-medium">Para quem</span>
-          <select value={target} onChange={(e) => { setTarget(e.target.value); if (e.target.value === "geral") setKind("material"); }} className="h-9 w-full rounded-md border bg-background px-2">
+          <select value={target} onChange={(e) => { setTarget(e.target.value); setKind("material"); }} className="h-9 w-full rounded-md border bg-background px-2">
             <option value="geral">Todas as unidades (biblioteca geral)</option>
             {(overview.data?.units ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select></label>
         <label className="space-y-1 text-sm"><span className="font-medium">Tipo</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as "material" | "midia_kit")} className="h-9 w-full rounded-md border bg-background px-2" disabled={target === "geral"}>
-            <option value="material">Material</option><option value="midia_kit">Mídia kit</option>
+          <select value={kind} onChange={(e) => setKind(e.target.value as "material" | "midia_kit" | "treinamento")} className="h-9 w-full rounded-md border bg-background px-2">
+            <option value="material">Material</option>
+            {target === "geral" ? <option value="treinamento">Treinamento da equipe</option> : <option value="midia_kit">Mídia kit</option>}
           </select></label>
         <label className="space-y-1 text-sm"><span className="font-medium">Título (opcional)</span><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mídia kit novembro" /></label>
         <label className={cn("inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground", busy && "pointer-events-none opacity-60")}>
@@ -281,7 +368,7 @@ function MaterialsTab() {
         {!materials.data?.length ? <p className="p-6 text-sm text-muted-foreground">Nenhum material enviado ainda.</p> : materials.data.map((m) => (
           <div key={m.id} className="flex items-center gap-3 border-b p-3 text-sm last:border-0">
             <FolderOpen className="h-4 w-4 shrink-0 text-primary" />
-            <div className="min-w-0 flex-1"><p className="truncate font-medium">{m.title}</p><p className="truncate text-xs text-muted-foreground">{m.unitId ? `${unitName.get(m.unitId) ?? "Unidade"} · ${m.kind === "midia_kit" ? "Mídia kit" : "Material"}` : "Todas as unidades"} · {m.fileName}</p></div>
+            <div className="min-w-0 flex-1"><p className="truncate font-medium">{m.title}</p><p className="truncate text-xs text-muted-foreground">{m.unitId ? `${unitName.get(m.unitId) ?? "Unidade"} · ${m.kind === "midia_kit" ? "Mídia kit" : "Material"}` : `Todas as unidades · ${m.kind === "treinamento" ? "Treinamento" : "Material"}`} · {m.fileName}</p></div>
             <a href={m.fileUrl} target="_blank" rel="noreferrer" className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Abrir"><ExternalLink className="h-4 w-4" /></a>
             <button type="button" className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Apagar" onClick={() => { if (confirm(`Apagar "${m.title}"?`)) del.mutate({ id: m.id }); }}><Trash2 className="h-4 w-4" /></button>
           </div>
@@ -293,10 +380,10 @@ function MaterialsTab() {
 
 export default function UnitsAdmin() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "materiais">("geral");
+  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "avisos" | "materiais">("geral");
   const [open, setOpen] = useState<number | null>(null);
   if (user && user.role !== "admin") return <AppLayout activeModule="units"><p className="p-8 text-sm text-muted-foreground">Apenas administradores.</p></AppLayout>;
-  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento semanal", CalendarDays], ["materiais", "Materiais e mídia kits", Download]] as const;
+  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento semanal", CalendarDays], ["avisos", "Avisos", Megaphone], ["materiais", "Materiais e mídia kits", Download]] as const;
   return (
     <AppLayout activeModule="units">
       <main className="min-h-screen p-4 md:p-8">
@@ -318,6 +405,7 @@ export default function UnitsAdmin() {
           {tab === "geral" && <Overview onOpen={setOpen} />}
           {tab === "atividade" && <ActivityTab />}
           {tab === "plano" && <PlanTab />}
+          {tab === "avisos" && <AnnouncementsTab />}
           {tab === "materiais" && <MaterialsTab />}
           {open !== null && <UnitDetail unitId={open} onClose={() => setOpen(null)} />}
         </div>
