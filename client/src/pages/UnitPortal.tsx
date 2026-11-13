@@ -148,6 +148,12 @@ export default function UnitPortal() {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const [, navigate] = useLocation();
   const me = trpc.unitPortal.me.useQuery(undefined, { enabled: isAuthenticated });
+  const utils = trpc.useUtils();
+  const select = trpc.unitPortal.selectUnit.useMutation({
+    onSuccess: () => utils.unitPortal.invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+  const myUnits = me.data?.units ?? [];
   const [tab, setTab] = useState<"plano" | "materiais">("plano");
   useEffect(() => { if (!loading && !isAuthenticated) navigate("/login"); }, [loading, isAuthenticated, navigate]);
   if (loading || !isAuthenticated) return null;
@@ -158,8 +164,18 @@ export default function UnitPortal() {
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <img src="/app/logo.png" alt="Alle Energia" className="h-9 w-9" />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-bold leading-tight">{me.data?.unit?.name ?? "Portal da unidade"}</p>
-            <p className="truncate text-xs text-muted-foreground">Alle Energia · {user?.name}</p>
+            {myUnits.length > 1 ? (
+              <select value={me.data?.unit?.id ?? ""} disabled={select.isPending} aria-label="Academia"
+                onChange={(e) => select.mutate({ unitId: Number(e.target.value) })}
+                className="max-w-full truncate rounded-md border bg-background px-2 py-1 font-bold">
+                {myUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            ) : (
+              <p className="truncate font-bold leading-tight">{me.data?.unit?.name ?? "Portal da unidade"}</p>
+            )}
+            <p className="truncate text-xs text-muted-foreground">
+              Alle Energia · {user?.name}{me.data?.groupName ? ` · ${me.data.groupName}` : ""}{myUnits.length > 1 ? ` · ${myUnits.length} academias` : ""}
+            </p>
           </div>
           <Button variant="ghost" size="sm" onClick={() => logout()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>
         </div>

@@ -71,6 +71,13 @@
       "when": 1794571255791,
       "tag": "0009_unit_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794574713161,
+      "tag": "0010_sso_multi_unit",
+      "breakpoints": true
     }
   ]
 }

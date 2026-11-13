@@ -55,7 +55,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Unidades" value={t?.units ?? "…"} hint={t ? `${t.activeUnits} ativas` : undefined} />
-        <Stat label="Contas de unidade" value={t?.accounts ?? "…"} hint={t ? `${t.neverAccessed} unidades nunca acessaram` : undefined} />
+        <Stat label="Contas de unidade" value={t?.accounts ?? "…"} hint={t ? `${t.allUnitsAccounts} veem todas · ${t.neverAccessed} unidades nunca acessaram` : undefined} />
         <Stat label="Acessaram (30 dias)" value={t ? `${t.accessed30d}/${t.units}` : "…"} hint="unidades com pelo menos 1 login" />
         <Stat label="Plano da semana" value={t ? (t.currentWeekPublished ? "Publicado" : "Não publicado") : "…"} hint={t ? `${t.withMidiaKit} unidades com mídia kit · ${t.generalMaterials} materiais gerais` : undefined} />
       </div>
@@ -79,7 +79,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
             <tbody>
               {list.map((u) => (
                 <tr key={u.id} className={cn("border-b last:border-0 hover:bg-muted/40", !u.active && "opacity-50")}>
-                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}</p></td>
+                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code}{u.groupName ? ` · ${u.groupName}` : ""}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}</p></td>
                   <td className="p-3">{u.accounts}</td>
                   <td className="p-3 whitespace-nowrap">{u.lastAccess ? fmtDateTime(u.lastAccess) : <span className="text-amber-600">nunca</span>}</td>
                   <td className="p-3 text-right tabular-nums">{u.logins30d}</td>
@@ -129,7 +129,10 @@ function UnitDetail({ unitId, onClose }: { unitId: number; onClose: () => void }
         <h3 className="mt-2 text-sm font-semibold">Contas</h3>
         {accounts.data?.length ? accounts.data.map((a) => (
           <div key={a.id} className="flex items-center gap-3 rounded-lg border p-2 text-sm">
-            <div className="min-w-0 flex-1"><p className="truncate font-medium">{a.name}</p><p className="truncate text-xs text-muted-foreground">{a.email} · último acesso {fmtDateTime(a.lastSignedIn)}</p></div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{a.name}{a.role ? <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary">{a.role}</span> : null}{a.allUnits ? <span className="ml-1 text-[10px] text-muted-foreground">todas as academias</span> : null}</p>
+              <p className="truncate text-xs text-muted-foreground">{a.email}{a.groupName ? ` · ${a.groupName}` : ""} · último acesso {fmtDateTime(a.lastSignedIn)}</p>
+            </div>
             <label className="flex items-center gap-2 text-xs">{a.isActive ? "Ativa" : "Bloqueada"}<Switch checked={a.isActive} onCheckedChange={(v) => setActive.mutate({ userId: a.id, active: v })} /></label>
           </div>
         )) : <p className="text-sm text-muted-foreground">Nenhuma conta ainda: ela é criada no primeiro login pelo sistema da Alle.</p>}
@@ -151,7 +154,7 @@ function ActivityTab() {
         <table className="w-full text-sm">
           <thead className="border-b text-left text-xs text-muted-foreground"><tr><th className="p-3">Quando</th><th className="p-3">Unidade</th><th className="p-3">Pessoa</th><th className="p-3">O que fez</th></tr></thead>
           <tbody>{activity.data.map((r, i) => (
-            <tr key={i} className="border-b last:border-0"><td className="whitespace-nowrap p-3">{fmtDateTime(r.at)}</td><td className="p-3">{r.unitName}</td><td className="p-3">{r.userName}<p className="text-xs text-muted-foreground">{r.email}</p></td>
+            <tr key={i} className="border-b last:border-0"><td className="whitespace-nowrap p-3">{fmtDateTime(r.at)}</td><td className="p-3">{r.unitName}</td><td className="p-3">{r.userName}<p className="text-xs text-muted-foreground">{r.email}{r.role ? ` · ${r.role}` : ""}</p></td>
               <td className="p-3">{ACTION_LABEL[r.action] ?? r.action}{r.detail && r.action !== "sso.login" ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</td></tr>
           ))}</tbody>
         </table>

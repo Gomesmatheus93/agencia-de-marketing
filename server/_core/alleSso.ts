@@ -1,103 +1,169 @@
-import { eq } from "drizzle-orm";
-import { jwtVerify } from "jose";
-import { ssoUsedTokens, units, users } from "../../drizzle/schema";
+import { createHash } from "node:crypto";
+import { and, eq, inArray } from "drizzle-orm";
+import { importSPKI, jwtVerify, type JWTPayload } from "jose";
+import { z } from "zod";
+import { ssoUsedTokens, units, userUnits, users } from "../../drizzle/schema";
 import * as db from "../db";
 
-// Login unificado com o ecossistema da Alle.
+// Login unificado com o ecossistema da Alle: rota /sso recebe um JWT.
 //
-// O sistema da Alle gera um link  https://agencia.alleenergia.com/sso/alle?token=<JWT>
-// com um JWT assinado em HS256 com o segredo ALLE_SSO_SECRET (o mesmo dos dois lados):
+// Campos do token (ver docs/login-unificado-alle.md):
+//   sub, email, nome, role (cargo), academias: [{ id, nome }], todas_academias, grupo_nome, exp (+ iat, jti opcionais)
+//   - gestor e visualizador: 1 academia na lista;
+//   - regional: todas as academias do grupo;
+//   - super admin e direção: todas_academias = true e a lista vazia.
 //
-//   { "sub": "<id da pessoa no sistema da Alle>", "email": "...", "name": "...",
-//     "unit_code": "<código da unidade>", "unit_name": "<nome da unidade>",
-//     "iss": "alle", "aud": "agencia-alle", "iat": <agora>, "exp": <agora + até 5 min>,
-//     "jti": "<id único do token>" }
-//
-// Na primeira vez, a plataforma cria a unidade e a conta (tipo "unit"); depois só entra.
-// Cada token vale uma vez (jti) e por poucos minutos.
+// Quem entra por aqui é sempre "conta de unidade": vê só o portal das academias liberadas.
+// Cargos do sistema da Alle não viram administradores da plataforma.
 
 export class SsoError extends Error {}
 
-const MAX_TOKEN_LIFETIME_S = 10 * 60;
-const CODE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const DEFAULT_MAX_TTL_S = 10 * 60;
+const CLOCK_SKEW_S = 60;
 
-function secret() {
-  const value = process.env.ALLE_SSO_SECRET ?? "";
-  if (value.length < 32) throw new SsoError("Login unificado não configurado (ALLE_SSO_SECRET ausente ou curto).");
-  return new TextEncoder().encode(value);
+const claimsSchema = z.object({
+  sub: z.union([z.string(), z.number()]).transform(String).pipe(z.string().min(1).max(128)),
+  email: z.string().trim().toLowerCase().email().max(255),
+  nome: z.string().trim().max(100).optional(),
+  name: z.string().trim().max(100).optional(),
+  role: z.string().trim().max(40).optional().default(""),
+  academias: z.array(z.object({
+    id: z.union([z.string(), z.number()]).transform((v) => String(v).trim().toLowerCase()).pipe(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, "id de academia inválido")),
+    nome: z.string().trim().min(1).max(255),
+  })).max(500).optional().default([]),
+  todas_academias: z.boolean().optional().default(false),
+  grupo_nome: z.string().trim().max(255).nullish(),
+  exp: z.number(),
+  iat: z.number().optional(),
+  jti: z.string().max(128).optional(),
+});
+
+export type AlleSsoClaims = {
+  sub: string; email: string; name: string; role: string; groupName: string | null;
+  allUnits: boolean; academias: Array<{ code: string; name: string }>; replayKey: string;
+};
+
+/** Chave de verificação: pública (RS256/ES256) se ALLE_SSO_PUBLIC_KEY existir; senão o segredo HS256. */
+async function verificationKey() {
+  const pem = process.env.ALLE_SSO_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
+  if (pem) {
+    const alg = process.env.ALLE_SSO_ALG || "RS256"; // ES256 para chave de curva elíptica
+    return { key: await importSPKI(pem, alg), algorithms: [alg] };
+  }
+  const secret = process.env.ALLE_SSO_SECRET ?? "";
+  if (secret.length < 32) throw new SsoError("Login unificado não configurado (ALLE_SSO_SECRET ausente ou curto).");
+  return { key: new TextEncoder().encode(secret), algorithms: ["HS256"] };
 }
 
-export type AlleSsoClaims = { sub: string; email: string; name: string; unitCode: string; unitName: string; jti: string };
-
-/** Confere assinatura, emissor, público, validade e campos do token. */
+/** Confere assinatura, validade e campos do token. */
 export async function verifyAlleToken(token: string): Promise<AlleSsoClaims> {
-  let payload: Record<string, unknown>;
+  const { key, algorithms } = await verificationKey();
+  let payload: JWTPayload;
   try {
-    ({ payload } = await jwtVerify(token, secret(), {
-      algorithms: ["HS256"],
-      issuer: process.env.ALLE_SSO_ISSUER || "alle",
-      audience: process.env.ALLE_SSO_AUDIENCE || "agencia-alle",
-      requiredClaims: ["sub", "exp", "iat", "jti"],
+    ({ payload } = await jwtVerify(token, key, {
+      algorithms,
+      ...(process.env.ALLE_SSO_ISSUER ? { issuer: process.env.ALLE_SSO_ISSUER } : {}),
+      ...(process.env.ALLE_SSO_AUDIENCE ? { audience: process.env.ALLE_SSO_AUDIENCE } : {}),
+      requiredClaims: ["exp"],
+      clockTolerance: CLOCK_SKEW_S,
     }));
   } catch (err) {
     if (err instanceof SsoError) throw err;
     throw new SsoError("Link de acesso inválido ou expirado. Entre de novo pelo sistema da Alle.");
   }
-  const exp = Number(payload.exp), iat = Number(payload.iat);
-  if (exp - iat > MAX_TOKEN_LIFETIME_S) throw new SsoError("Link de acesso com validade longa demais.");
-  const email = String(payload.email ?? "").trim().toLowerCase();
-  const unitCode = String(payload.unit_code ?? "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new SsoError("O token não traz um e-mail válido.");
-  if (!CODE_RE.test(unitCode)) throw new SsoError("O token não traz um código de unidade válido.");
+
+  const parsed = claimsSchema.safeParse(payload);
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path.join(".") || "token";
+    throw new SsoError(`O token não traz o campo "${field}" no formato esperado.`);
+  }
+  const c = parsed.data;
+  const now = Math.floor(Date.now() / 1000);
+  const maxTtl = Number(process.env.ALLE_SSO_MAX_TTL_SECONDS ?? DEFAULT_MAX_TTL_S);
+  if (c.exp - now > maxTtl + CLOCK_SKEW_S) throw new SsoError("Link de acesso com validade longa demais.");
+  if (!c.todas_academias && c.academias.length === 0) throw new SsoError("Nenhuma academia liberada para este usuário no sistema da Alle.");
+
   return {
-    sub: String(payload.sub).slice(0, 128),
-    email,
-    name: String(payload.name ?? "").trim().slice(0, 100) || email.split("@")[0],
-    unitCode,
-    unitName: String(payload.unit_name ?? "").trim().slice(0, 255) || unitCode,
-    jti: String(payload.jti).slice(0, 128),
+    sub: c.sub,
+    email: c.email,
+    name: c.nome || c.name || c.email.split("@")[0],
+    role: c.role,
+    groupName: c.grupo_nome || null,
+    allUnits: c.todas_academias,
+    academias: c.todas_academias ? [] : c.academias.map((a) => ({ code: a.id, name: a.nome })),
+    // Cada token vale uma vez: pelo jti ou, sem ele, pelo próprio token.
+    replayKey: c.jti ? `jti:${c.jti}` : `sha:${createHash("sha256").update(token).digest("hex").slice(0, 100)}`,
   };
 }
 
 /**
- * Cria ou atualiza a unidade e a conta e devolve o usuário para abrir a sessão.
- * Nunca transforma uma conta da equipe (standard) em conta de unidade.
+ * Cria ou atualiza as academias e a conta, sincroniza as academias liberadas e devolve
+ * o usuário para abrir a sessão. Nunca transforma uma conta da equipe em conta de unidade.
  */
 export async function loginWithAlleToken(token: string) {
   const claims = await verifyAlleToken(token);
   const conn = await db.getDb();
   if (!conn) throw new Error("Banco indisponível.");
 
-  // Cada token vale uma vez.
-  const used = await conn.insert(ssoUsedTokens).values({ jti: claims.jti }).onConflictDoNothing().returning({ jti: ssoUsedTokens.jti });
+  const used = await conn.insert(ssoUsedTokens).values({ jti: claims.replayKey }).onConflictDoNothing().returning({ jti: ssoUsedTokens.jti });
   if (!used.length) throw new SsoError("Este link de acesso já foi usado. Entre de novo pelo sistema da Alle.");
 
-  // Unidade: cria na primeira vez; unidade desativada não entra.
-  let [unit] = await conn.select().from(units).where(eq(units.code, claims.unitCode));
-  if (!unit) [unit] = await conn.insert(units).values({ code: claims.unitCode, name: claims.unitName }).returning();
-  if (!unit.active) throw new SsoError("Esta unidade está com o acesso desativado. Fale com a equipe da Alle.");
+  // Academias: cria as novas, atualiza nome e grupo.
+  const unitIds: number[] = [];
+  for (const a of claims.academias) {
+    const [existing] = await conn.select().from(units).where(eq(units.code, a.code));
+    if (existing) {
+      if (existing.name !== a.name || (claims.groupName && existing.groupName !== claims.groupName)) {
+        await conn.update(units).set({ name: a.name, ...(claims.groupName ? { groupName: claims.groupName } : {}) }).where(eq(units.id, existing.id));
+      }
+      if (existing.active) unitIds.push(existing.id);
+    } else {
+      const [created] = await conn.insert(units).values({ code: a.code, name: a.name, groupName: claims.groupName }).returning({ id: units.id });
+      unitIds.push(created.id);
+    }
+  }
+  if (!claims.allUnits && unitIds.length === 0) throw new SsoError("As academias deste usuário estão com o acesso desativado. Fale com a equipe da Alle.");
 
   // Conta: pela identidade no sistema da Alle; se não houver, pelo e-mail.
-  const openId = `alle_sso_${claims.sub}`;
   let user = (await conn.select().from(users).where(eq(users.externalId, claims.sub)))[0] ?? null;
   if (!user) {
     const byEmail = await db.getUserByEmail(claims.email);
-    if (byEmail && byEmail.accountType !== "unit") {
-      throw new SsoError("Este e-mail já tem uma conta da equipe na plataforma. Use o login normal.");
-    }
+    if (byEmail && byEmail.accountType !== "unit") throw new SsoError("Este e-mail já tem uma conta da equipe na plataforma. Use o login normal.");
     if (byEmail) user = byEmail as typeof user;
   }
   if (user && user.accountType !== "unit") throw new SsoError("Conta incompatível com o acesso de unidade.");
   if (user && !user.isActive) throw new SsoError("Esta conta está desativada. Fale com a equipe da Alle.");
-
   if (!user) {
+    const openId = `alle_sso_${claims.sub}`;
     await db.upsertUser({ openId, name: claims.name, email: claims.email, loginMethod: "alle_sso" });
     user = (await db.getUserByOpenId(openId)) as typeof user;
+  } else {
+    await db.upsertUser({ openId: user.openId, name: claims.name }); // nome atualizado (criptografado)
   }
+
+  // Academias liberadas: substitui pelas do token.
+  await conn.delete(userUnits).where(eq(userUnits.userId, user!.id));
+  if (!claims.allUnits && unitIds.length) await conn.insert(userUnits).values(unitIds.map((unitId) => ({ userId: user!.id, unitId })));
+
+  // Academia aberta no portal: mantém a atual se ainda for permitida; senão a primeira.
+  let current: number | null = user!.unitId ?? null;
+  if (claims.allUnits) {
+    if (current) {
+      const [ok] = await conn.select({ id: units.id }).from(units).where(and(eq(units.id, current), eq(units.active, true)));
+      if (!ok) current = null;
+    }
+    if (!current) current = (await conn.select({ id: units.id }).from(units).where(eq(units.active, true)).orderBy(units.name).limit(1))[0]?.id ?? null;
+  } else if (!current || !unitIds.includes(current)) {
+    current = unitIds[0];
+  }
+
   await conn.update(users).set({
-    accountType: "unit", unitId: unit.id, externalId: claims.sub,
+    accountType: "unit", unitId: current, externalId: claims.sub,
+    externalRole: claims.role || null, groupName: claims.groupName, allUnits: claims.allUnits,
     emailVerifiedAt: user!.emailVerifiedAt ?? new Date(), lastSignedIn: new Date(),
   }).where(eq(users.id, user!.id));
+
   const fresh = await db.getUserById(user!.id);
-  return { user: fresh!, unit };
+  const unitRows = unitIds.length ? await conn.select().from(units).where(inArray(units.id, unitIds)) : [];
+  return { user: fresh!, units: unitRows, allUnits: claims.allUnits };
 }

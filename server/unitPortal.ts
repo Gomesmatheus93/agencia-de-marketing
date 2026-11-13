@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { auditLog, unitMaterials, units, unitWeeklyPlans, users, type UnitPlanItem } from "../drizzle/schema";
+import { auditLog, unitMaterials, units, unitWeeklyPlans, userUnits, users, type UnitPlanItem, type User } from "../drizzle/schema";
 import { adminProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as store from "./agents/store";
 import * as db from "./db";
@@ -39,14 +39,48 @@ function shouldLogView(key: string) {
   return true;
 }
 
+/**
+ * Academias que a pessoa pode ver: todas (direção/super admin do sistema da Alle, e a equipe da
+ * agência em prévia) ou as liberadas no login unificado (gestor/visualizador: 1; regional: o grupo).
+ */
+async function accessibleUnits(me: User) {
+  const c = await conn();
+  if (me.accountType !== "unit" || me.allUnits) {
+    return c.select().from(units).where(eq(units.active, true)).orderBy(units.name);
+  }
+  const links = await c.select({ unitId: userUnits.unitId }).from(userUnits).where(eq(userUnits.userId, me.id));
+  const ids = links.length ? links.map((l) => l.unitId) : me.unitId ? [me.unitId] : [];
+  if (!ids.length) return [];
+  return c.select().from(units).where(and(inArray(units.id, ids), eq(units.active, true))).orderBy(units.name);
+}
+
+/** Academia aberta no portal (a escolhida, se ainda for permitida; senão a primeira). */
+async function currentUnit(me: User) {
+  const list = await accessibleUnits(me);
+  return { list, current: list.find((u) => u.id === me.unitId) ?? list[0] ?? null };
+}
+
 // ─── Portal (contas de unidade; a equipe também consegue ver, como prévia) ────
 
 export const unitPortalRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
     const me = ctx.actualUser;
+    const { list, current } = await currentUnit(me);
+    return {
+      name: me.name, isUnit: me.accountType === "unit", role: me.externalRole, groupName: me.groupName,
+      allUnits: me.accountType !== "unit" || me.allUnits,
+      unit: current ? { id: current.id, name: current.name, code: current.code, city: current.city } : null,
+      units: list.map((u) => ({ id: u.id, name: u.name, groupName: u.groupName })),
+    };
+  }),
+
+  /** Troca a academia aberta no portal (só entre as liberadas). */
+  selectUnit: protectedProcedure.input(z.object({ unitId: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const list = await accessibleUnits(ctx.actualUser);
+    if (!list.some((u) => u.id === input.unitId)) throw new TRPCError({ code: "FORBIDDEN", message: "Academia não liberada para você." });
     const c = await conn();
-    const [unit] = me.unitId ? await c.select().from(units).where(eq(units.id, me.unitId)) : [];
-    return { name: me.name, isUnit: me.accountType === "unit", unit: unit ? { id: unit.id, name: unit.name, code: unit.code, city: unit.city } : null };
+    await c.update(users).set({ unitId: input.unitId }).where(eq(users.id, ctx.actualUser.id));
+    return { ok: true };
   }),
 
   /** Planejamento publicado da semana (padrão: a semana atual) e as semanas disponíveis. */
@@ -72,7 +106,7 @@ export const unitPortalRouter = router({
   /** Biblioteca geral + materiais da unidade (ex.: mídia kit). */
   materials: protectedProcedure.query(async ({ ctx }) => {
     const c = await conn();
-    const unitId = ctx.actualUser.unitId;
+    const unitId = (await currentUnit(ctx.actualUser)).current?.id ?? null;
     const rows = await c.select().from(unitMaterials)
       .where(unitId ? or(isNull(unitMaterials.unitId), eq(unitMaterials.unitId, unitId)) : isNull(unitMaterials.unitId))
       .orderBy(desc(unitMaterials.createdAt));
@@ -90,7 +124,7 @@ export const unitPortalRouter = router({
       const c = await conn();
       const [m] = await c.select().from(unitMaterials).where(eq(unitMaterials.id, input.materialId));
       const me = ctx.actualUser;
-      const allowed = m && (m.unitId === null || m.unitId === me.unitId || me.accountType !== "unit");
+      const allowed = m && (m.unitId === null || me.accountType !== "unit" || (await accessibleUnits(me)).some((u) => u.id === m.unitId));
       if (!allowed) throw new TRPCError({ code: "NOT_FOUND", message: "Material não encontrado." });
       if (me.accountType === "unit") {
         await db.recordAudit({ action: "unit.material.download", actorUserId: me.id, targetType: "unit_material", targetId: String(m.id), metadata: { unitId: me.unitId, title: m.title } });
@@ -124,21 +158,25 @@ export const unitAdminRouter = router({
     const c = await conn();
     const since = new Date(Date.now() - 30 * 86_400_000);
     const unitRows = await c.select().from(units).orderBy(units.name);
-    const accounts = await c.select({ id: users.id, unitId: users.unitId, lastSignedIn: users.lastSignedIn, isActive: users.isActive })
+    const accounts = await c.select({ id: users.id, unitId: users.unitId, lastSignedIn: users.lastSignedIn, isActive: users.isActive, allUnits: users.allUnits })
       .from(users).where(eq(users.accountType, "unit"));
-    const events = await c.select({ actor: auditLog.actorUserId, action: auditLog.action })
+    const links = await c.select().from(userUnits);
+    const unitsOfUser = new Map<number, number[]>();
+    for (const l of links) unitsOfUser.set(l.userId, [...(unitsOfUser.get(l.userId) ?? []), l.unitId]);
+    const events = await c.select({ actor: auditLog.actorUserId, action: auditLog.action, metadata: auditLog.metadata })
       .from(auditLog).where(and(inArray(auditLog.action, UNIT_ACTIONS), gte(auditLog.createdAt, since)));
-    const unitOfUser = new Map(accounts.map((a) => [a.id, a.unitId]));
+    // Cada evento conta para a academia aberta no momento (metadata.unitId).
+    const eventUnit = (e: { metadata: unknown }) => (e.metadata as { unitId?: number } | null)?.unitId ?? null;
     const materials = await c.select({ unitId: unitMaterials.unitId, kind: unitMaterials.kind }).from(unitMaterials);
     const [planRow] = await c.select({ n: sql<number>`count(*)::int` }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.status, "published"));
     const [current] = await c.select({ status: unitWeeklyPlans.status }).from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, mondayOf()));
 
     const list = unitRows.map((u) => {
-      const accs = accounts.filter((a) => a.unitId === u.id);
-      const ev = events.filter((e) => e.actor && unitOfUser.get(e.actor) === u.id);
+      const accs = accounts.filter((a) => !a.allUnits && (unitsOfUser.get(a.id) ?? (a.unitId ? [a.unitId] : [])).includes(u.id));
+      const ev = events.filter((e) => eventUnit(e) === u.id);
       const last = accs.map((a) => a.lastSignedIn).filter(Boolean).sort((a, b) => +b! - +a!)[0] ?? null;
       return {
-        id: u.id, code: u.code, name: u.name, city: u.city, active: u.active,
+        id: u.id, code: u.code, name: u.name, city: u.city, groupName: u.groupName, active: u.active,
         accounts: accs.length,
         lastAccess: last,
         logins30d: ev.filter((e) => e.action === "sso.login").length,
@@ -154,6 +192,7 @@ export const unitAdminRouter = router({
         units: list.length,
         activeUnits: list.filter((u) => u.active).length,
         accounts: accounts.length,
+        allUnitsAccounts: accounts.filter((a) => a.allUnits).length,
         accessed30d: list.filter((u) => u.logins30d > 0).length,
         neverAccessed: list.filter((u) => !u.lastAccess).length,
         withMidiaKit: list.filter((u) => u.hasMidiaKit).length,
@@ -179,8 +218,8 @@ export const unitAdminRouter = router({
       return rows
         .map((r) => {
           const p = r.actor ? byId.get(r.actor) : undefined;
-          const unitId = p?.unitId ?? null;
-          return { at: r.at, action: r.action, userName: p?.name ?? "—", email: p?.email ?? null, unitId, unitName: unitId ? unitName.get(unitId) ?? "—" : "—", detail: (r.metadata as { title?: string } | null)?.title ?? r.targetId ?? null };
+          const unitId = (r.metadata as { unitId?: number } | null)?.unitId ?? p?.unitId ?? null;
+          return { at: r.at, action: r.action, userName: p?.name ?? "—", email: p?.email ?? null, role: p?.externalRole ?? null, unitId, unitName: unitId ? unitName.get(unitId) ?? "—" : "—", detail: (r.metadata as { title?: string } | null)?.title ?? r.targetId ?? null };
         })
         .filter((r) => !input.unitId || r.unitId === input.unitId)
         .slice(0, input.limit);
@@ -189,9 +228,15 @@ export const unitAdminRouter = router({
   /** Contas de uma unidade. */
   unitAccounts: adminProcedure.input(z.object({ unitId: z.number().int() })).query(async ({ input }) => {
     const c = await conn();
-    const rows = await c.select({ id: users.id }).from(users).where(and(eq(users.accountType, "unit"), eq(users.unitId, input.unitId)));
-    const people = await Promise.all(rows.map((r) => db.getUserById(r.id)));
-    return people.filter(Boolean).map((p) => ({ id: p!.id, name: p!.name, email: p!.email, lastSignedIn: p!.lastSignedIn, isActive: p!.isActive, createdAt: p!.createdAt }));
+    // Contas com esta academia liberada (vínculo) e, à parte, quem vê todas.
+    const linked = await c.select({ id: userUnits.userId }).from(userUnits).where(eq(userUnits.unitId, input.unitId));
+    const all = await c.select({ id: users.id }).from(users).where(and(eq(users.accountType, "unit"), eq(users.allUnits, true)));
+    const ids = [...new Set([...linked, ...all].map((r) => r.id))];
+    const people = await Promise.all(ids.map((id) => db.getUserById(id)));
+    return people.filter(Boolean).map((p) => ({
+      id: p!.id, name: p!.name, email: p!.email, lastSignedIn: p!.lastSignedIn, isActive: p!.isActive, createdAt: p!.createdAt,
+      role: p!.externalRole, groupName: p!.groupName, allUnits: p!.allUnits,
+    }));
   }),
 
   saveUnit: adminProcedure

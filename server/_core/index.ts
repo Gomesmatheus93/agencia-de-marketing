@@ -792,16 +792,22 @@ async function startServer() {
     }
   });
 
-  // Login unificado com o sistema da Alle (academias parceiras): /sso/alle?token=<JWT>.
-  app.get("/sso/alle", async (req, res) => {
+  // Login unificado com o sistema da Alle (academias parceiras): recebe um JWT em
+  // GET /sso?token=…, POST /sso (campo "token" em formulário ou JSON) ou Authorization: Bearer.
+  const ssoHandler = async (req: express.Request, res: express.Response) => {
     const page = (status: number, msg: string) =>
       res.status(status).type("html").send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso Alle</title><body style="font-family:system-ui;max-width:480px;margin:15vh auto;padding:0 16px;color:#1E0A01"><h2 style="color:#7B2FBE">Não foi possível entrar</h2><p>${msg.replace(/[<>&]/g, "")}</p></body>`);
-    const token = typeof req.query.token === "string" ? req.query.token : "";
-    if (!token || token.length > 4096) return page(400, "Link de acesso incompleto. Entre de novo pelo sistema da Alle.");
+    const bearer = String(req.headers.authorization ?? "").match(/^Bearer\s+(.+)$/i)?.[1];
+    const raw = (typeof req.query.token === "string" && req.query.token) || (typeof req.body?.token === "string" && req.body.token) || bearer || "";
+    const token = raw.trim();
+    if (!token || token.length > 8192) return page(400, "Link de acesso incompleto. Entre de novo pelo sistema da Alle.");
     try {
-      const { user, unit } = await loginWithAlleToken(token);
+      const { user, units: allowed, allUnits } = await loginWithAlleToken(token);
       await sdk.issueSessionCookies(req, res, user);
-      await db.recordAudit({ action: "sso.login", actorUserId: user.id, ip: req.ip ?? null, userAgent: String(req.headers["user-agent"] ?? "").slice(0, 255), metadata: { unitId: unit.id, unitCode: unit.code } });
+      await db.recordAudit({
+        action: "sso.login", actorUserId: user.id, ip: req.ip ?? null, userAgent: String(req.headers["user-agent"] ?? "").slice(0, 255),
+        metadata: { unitId: user.unitId, role: user.externalRole, allUnits, units: allowed.map((u) => u.code) },
+      });
       res.set("Cache-Control", "no-store");
       res.redirect(302, "/app/unidade");
     } catch (err) {
@@ -809,7 +815,10 @@ async function startServer() {
       console.error("[sso] erro no login unificado:", err);
       return page(500, "Erro ao entrar. Tente de novo em instantes.");
     }
-  });
+  };
+  app.get("/sso", ssoHandler);
+  app.post("/sso", ssoHandler);
+  app.get("/sso/alle", ssoHandler); // apelido antigo
 
   // Link curto do WhatsApp (ex.: /wa/ane) → link configurado no robô do Direct.
   // Robôs de prévia (Instagram/Facebook/WhatsApp) não contam como clique.

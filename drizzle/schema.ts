@@ -54,6 +54,10 @@ export const users = pgTable("users", {
   unitId: integer("unitId"),
   // ID da pessoa no sistema da Alle (login unificado).
   externalId: varchar("externalId", { length: 128 }).unique(),
+  // Login unificado: cargo no sistema da Alle, grupo, e se vê todas as academias.
+  externalRole: varchar("externalRole", { length: 40 }),
+  groupName: varchar("groupName", { length: 255 }),
+  allUnits: boolean("allUnits").default(false).notNull(),
 }, (t) => [
   uniqueIndex("uq_users_emailHash").on(t.emailHash),
   index("idx_users_emailDomain").on(t.emailDomain),
@@ -1131,6 +1135,7 @@ export const units = pgTable("units", {
   code: varchar("code", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 255 }).notNull(),
   city: varchar("city", { length: 120 }),
+  groupName: varchar("groupName", { length: 255 }),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -1184,3 +1189,13 @@ export const ssoUsedTokens = pgTable("sso_used_tokens", {
   jti: varchar("jti", { length: 128 }).primaryKey(),
   usedAt: timestamp("usedAt").defaultNow().notNull(),
 });
+
+/** Academias que cada conta de unidade pode ver (gestor/visualizador: 1; regional: as do grupo). */
+export const userUnits = pgTable(
+  "user_units",
+  {
+    userId: integer("userId").notNull(),
+    unitId: integer("unitId").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.unitId] }), index("idx_user_units_unitId").on(t.unitId)]
+);
