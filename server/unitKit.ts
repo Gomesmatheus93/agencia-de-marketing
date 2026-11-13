@@ -681,7 +681,28 @@ function assertApprover(u: { email?: string | null } | null | undefined) {
 }
 
 // Geração em segundo plano (uma por vez), com progresso para a tela acompanhar.
-let job: { format: KitFormat; total: number; done: number; error: string | null; finishedAt: Date | null } | null = null;
+// Gera um ou vários materiais em sequência (todos de uma vez: display, banner, panfleto, windbanner).
+type Job = { formats: KitFormat[]; format: KitFormat; total: number; done: number; error: string | null; finishedAt: Date | null };
+let job: Job | null = null;
+
+/** Troca, no mídia kit de cada unidade, a versão aprovada pela gerada. Devolve quantas foram enviadas. */
+async function approveFormat(format: KitFormat, approverId: number) {
+  const c = await conn();
+  const desc = `Impressão › ${KIT_FORMATS[format].label}`;
+  const pending = await c.select({ id: unitMaterials.id, unitId: unitMaterials.unitId }).from(unitMaterials)
+    .where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
+  if (!pending.length) return 0;
+  await c.transaction(async (tx) => {
+    for (const p of pending) {
+      await tx.delete(unitMaterials).where(and(eq(unitMaterials.unitId, p.unitId!), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, false)));
+    }
+    await tx.update(unitMaterials).set({ pending: false }).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
+    await tx.insert(unitKitTemplates).values({ format, fields: stateFrom(format, null) as unknown as Record<string, string>, approvedAt: new Date(), approvedByUserId: approverId })
+      .onConflictDoUpdate({ target: unitKitTemplates.format, set: { approvedAt: new Date(), approvedByUserId: approverId } });
+  });
+  await db.recordAudit({ action: "unit.kit.approved", actorUserId: approverId, targetType: "unit_kit", targetId: format, metadata: { units: pending.length } });
+  return pending.length;
+}
 
 export const unitKitRouter = router({
   formats: adminProcedure.query(() => Object.entries(KIT_FORMATS).map(([id, f]) => ({ id, ...f, ratio: f.hCm / f.wCm, px: pxOf(id as KitFormat) }))),
@@ -716,21 +737,42 @@ export const unitKitRouter = router({
   /** Aprova a versão gerada: ela substitui a anterior no mídia kit de cada unidade. */
   approve: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
     assertApprover(ctx.actualUser);
+    const sent = await approveFormat(input.format, ctx.actualUser!.id);
+    if (!sent) throw new TRPCError({ code: "BAD_REQUEST", message: "Não há versão gerada aguardando aprovação." });
+    return { sent };
+  }),
+
+  /** Aprova de uma vez todos os materiais que estão aguardando. */
+  approveAll: adminProcedure.mutation(async ({ ctx }) => {
+    assertApprover(ctx.actualUser);
+    if (job && !job.finishedAt) throw new TRPCError({ code: "CONFLICT", message: "Espere a geração terminar para aprovar." });
+    const out: Record<string, number> = {};
+    for (const f of Object.keys(KIT_FORMATS) as KitFormat[]) out[f] = await approveFormat(f, ctx.actualUser!.id);
+    const total = Object.values(out).reduce((a, b) => a + b, 0);
+    if (!total) throw new TRPCError({ code: "BAD_REQUEST", message: "Não há material aguardando aprovação." });
+    return { total, byFormat: out };
+  }),
+
+  /** Mídia kit de cada unidade: o que já foi enviado e o que aguarda aprovação, por material. */
+  kitsByUnit: adminProcedure.query(async () => {
     const c = await conn();
-    const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
-    const pending = await c.select({ id: unitMaterials.id, unitId: unitMaterials.unitId }).from(unitMaterials)
-      .where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
-    if (!pending.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Não há versão gerada aguardando aprovação." });
-    await c.transaction(async (tx) => {
-      for (const p of pending) {
-        await tx.delete(unitMaterials).where(and(eq(unitMaterials.unitId, p.unitId!), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, false)));
-      }
-      await tx.update(unitMaterials).set({ pending: false }).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
-      await tx.insert(unitKitTemplates).values({ format: input.format, fields: stateFrom(input.format, null) as unknown as Record<string, string>, approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
-        .onConflictDoUpdate({ target: unitKitTemplates.format, set: { approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id } });
-    });
-    await db.recordAudit({ action: "unit.kit.approved", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: pending.length } });
-    return { sent: pending.length };
+    const unitRows = await c.select({ id: units.id, name: units.name, active: units.active, qrData: units.qrData, signupUrl: units.signupUrl, code: units.code }).from(units).orderBy(units.name);
+    const mats = await c.select({ unitId: unitMaterials.unitId, description: unitMaterials.description, pending: unitMaterials.pending, previewUrl: unitMaterials.previewUrl, fileUrl: unitMaterials.fileUrl, createdAt: unitMaterials.createdAt })
+      .from(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), like(unitMaterials.description, "Impressão › %")));
+    const formats = Object.keys(KIT_FORMATS) as KitFormat[];
+    return unitRows.filter((u) => u.active).map((u) => ({
+      id: u.id, name: u.name, hasQr: !!(u.qrData || u.signupUrl), linked: !u.code.startsWith("kit:"),
+      materials: formats.map((f) => {
+        const desc = `Impressão › ${KIT_FORMATS[f].label}`;
+        const mine = mats.filter((m) => m.unitId === u.id && m.description === desc);
+        const sent = mine.find((m) => !m.pending), pend = mine.find((m) => m.pending);
+        return {
+          format: f, label: KIT_FORMATS[f].label,
+          sent: sent ? { previewUrl: sent.previewUrl, pdfUrl: sent.fileUrl, at: sent.createdAt } : null,
+          pending: pend ? { previewUrl: pend.previewUrl, pdfUrl: pend.fileUrl, at: pend.createdAt } : null,
+        };
+      }),
+    }));
   }),
 
   /** Descarta a versão gerada (as unidades continuam com a anterior). */
@@ -819,20 +861,25 @@ export const unitKitRouter = router({
     return { url: r.url };
   }),
 
-  /** Gera para todas as academias com QR (em segundo plano). */
-  generateAll: adminProcedure.input(z.object({ format: formatSchema })).mutation(async ({ ctx, input }) => {
+  /** Gera para todas as academias com QR, um ou vários materiais em sequência (em segundo plano). */
+  generateAll: adminProcedure.input(z.object({ formats: z.array(formatSchema).min(1).max(4) })).mutation(async ({ ctx, input }) => {
     if (job && !job.finishedAt) throw new TRPCError({ code: "CONFLICT", message: `Já existe uma geração em andamento (${KIT_FORMATS[job.format].label}).` });
+    const formats = [...new Set(input.formats)];
     const list = await unitsWithQr();
-    const state = await stateOf(input.format);
-    const current = { format: input.format, total: list.length, done: 0, error: null as string | null, finishedAt: null as Date | null };
+    const states = await Promise.all(formats.map((f) => stateOf(f)));
+    const current: Job = { formats, format: formats[0], total: list.length * formats.length, done: 0, error: null, finishedAt: null };
     job = current;
     void (async () => {
       try {
-        await generateFor(input.format, state, list, "pendente", (d) => { current.done = d; });
-        const c = await conn();
-        await c.insert(unitKitTemplates).values({ format: input.format, fields: state as unknown as Record<string, string>, generatedAt: new Date(), generatedCount: list.length })
-          .onConflictDoUpdate({ target: unitKitTemplates.format, set: { generatedAt: new Date(), generatedCount: list.length } });
-        await db.recordAudit({ action: "unit.kit.generated", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: list.length } });
+        for (const [i, format] of formats.entries()) {
+          current.format = format;
+          const before = i * list.length;
+          await generateFor(format, states[i], list, "pendente", (d) => { current.done = before + d; });
+          const c = await conn();
+          await c.insert(unitKitTemplates).values({ format, fields: states[i] as unknown as Record<string, string>, generatedAt: new Date(), generatedCount: list.length })
+            .onConflictDoUpdate({ target: unitKitTemplates.format, set: { generatedAt: new Date(), generatedCount: list.length } });
+        }
+        await db.recordAudit({ action: "unit.kit.generated", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: formats.join(","), metadata: { units: list.length } });
       } catch (err) {
         console.error("[mídia kit] erro na geração:", err);
         current.error = (err as Error).message;
@@ -840,8 +887,8 @@ export const unitKitRouter = router({
         current.finishedAt = new Date();
       }
     })();
-    return { total: list.length };
+    return { total: current.total, units: list.length };
   }),
 
-  job: adminProcedure.query(() => (job ? { ...job, label: KIT_FORMATS[job.format].label } : null)),
+  job: adminProcedure.query(() => (job ? { ...job, label: job.formats.length > 1 ? `Todos os materiais (agora: ${KIT_FORMATS[job.format].label})` : KIT_FORMATS[job.format].label } : null)),
 });

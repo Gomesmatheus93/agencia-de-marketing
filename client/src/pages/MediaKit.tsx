@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { SvgEditorModal } from "@/components/agents/ArtEditor";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, Columns3, Download, Loader2, PenLine, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, Check, Columns3, Download, Layers, Loader2, Palette, PenLine, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -134,8 +134,34 @@ function KitDesigner() {
   const setField = (k: string, v: string) => fields && setDraft((d) => ({ ...d, [key]: { ...fields, [k]: v } }));
   const running = job.data && !job.data.finishedAt;
   const inUse = tpl?.variants.find((v) => v.id === tpl.variant);
+  const approveAll = trpc.unitKit.approveAll.useMutation({ onSuccess: (r) => { toast.success(`Aprovado! ${r.total} materiais enviados ao mídia kit das academias.`); utils.unitKit.invalidate(); }, onError: (e) => toast.error(e.message) });
+  const totalPending = (templates.data ?? []).reduce((a, t) => a + t.pendingCount, 0);
+  const designsInUse = (templates.data ?? []).map((t) => `${formats.data?.find((f) => f.id === t.format)?.label ?? t.format}: ${t.variants.find((v) => v.id === t.variant)?.label ?? ""}`).join("\n");
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/30 bg-primary/[.04] p-4">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary"><Layers className="h-5 w-5" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Gerar o mídia kit completo de todas as academias</p>
+          <p className="text-sm text-muted-foreground">Display, banner, panfleto e windbanner, com o design em uso de cada um e o QR code de cada academia ({kitUnits.data?.length ?? 0} academias com QR). Tudo fica aguardando aprovação.</p>
+        </div>
+        <Button disabled={!!running || genAll.isPending || !kitUnits.data?.length}
+          onClick={() => { if (confirm(`Gerar os 4 materiais de ${kitUnits.data?.length ?? 0} academias (${(kitUnits.data?.length ?? 0) * 4} PDFs) com estes designs?\n\n${designsInUse}\n\nNada vai para as academias antes da aprovação.`)) genAll.mutate({ formats: ["display", "banner", "panfleto", "windbanner"] }); }}>
+          <Sparkles className="mr-1.5 h-4 w-4" />Gerar todos os materiais
+        </Button>
+        {canApprove && totalPending > 0 && (
+          <Button variant="outline" className="border-emerald-500/50 text-emerald-700 hover:bg-emerald-500/10" disabled={approveAll.isPending || !!running}
+            onClick={() => { if (confirm(`Aprovar e enviar ${totalPending} materiais ao mídia kit das academias?`)) approveAll.mutate(); }}>
+            {approveAll.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}Aprovar todos ({totalPending})
+          </Button>
+        )}
+      </div>
+      {job.data && !job.data.finishedAt && job.data.formats.length > 1 && (
+        <div className="rounded-xl border p-3 text-sm">
+          <div className="flex items-center justify-between"><span>{job.data.label}…</span><span className="text-xs text-muted-foreground">{job.data.done} de {job.data.total} PDFs</span></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(job.data.done / Math.max(1, job.data.total)) * 100}%` }} /></div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {(formats.data ?? []).map((f) => {
           const t = templates.data?.find((x) => x.format === f.id);
@@ -233,7 +259,7 @@ function KitDesigner() {
               {exportOne.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}PDF de conferência
             </Button>
             <Button size="sm" className="ml-auto" disabled={dirty || !!running || genAll.isPending}
-              onClick={() => { if (confirm(`Gerar o ${fmt?.label} de ${kitUnits.data?.length ?? 0} academias para revisão? Nada vai para as academias antes da aprovação.`)) genAll.mutate({ format: format as never }); }}>
+              onClick={() => { if (confirm(`Gerar o ${fmt?.label} de ${kitUnits.data?.length ?? 0} academias para revisão? Nada vai para as academias antes da aprovação.`)) genAll.mutate({ formats: [format as never] }); }}>
               <Sparkles className="mr-1.5 h-4 w-4" />Gerar para aprovação ({kitUnits.data?.length ?? 0} academias)
             </Button>
           </div>
@@ -285,8 +311,82 @@ function KitDesigner() {
   );
 }
 
+/** Mídia kit de cada academia: o que já foi enviado e o que aguarda aprovação. */
+function KitsByUnit() {
+  const q = trpc.unitKit.kitsByUnit.useQuery(undefined, { refetchInterval: 30_000 });
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"todas" | "completas" | "faltando" | "aguardando" | "semqr">("todas");
+  const [view, setView] = useState<{ url: string; title: string } | null>(null);
+  const list = q.data ?? [];
+  const complete = (u: (typeof list)[number]) => u.materials.every((m) => m.sent);
+  const waiting = (u: (typeof list)[number]) => u.materials.some((m) => m.pending);
+  const shown = list.filter((u) => u.name.toLowerCase().includes(search.toLowerCase())).filter((u) =>
+    filter === "todas" ? true : filter === "completas" ? complete(u) : filter === "faltando" ? u.hasQr && !complete(u) : filter === "aguardando" ? waiting(u) : !u.hasQr);
+  const counts = { todas: list.length, completas: list.filter(complete).length, faltando: list.filter((u) => u.hasQr && !complete(u)).length, aguardando: list.filter(waiting).length, semqr: list.filter((u) => !u.hasQr).length };
+  const LABEL = { todas: "Todas", completas: "Kit completo", faltando: "Faltando material", aguardando: "Aguardando aprovação", semqr: "Sem QR" } as const;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar academia" className="h-9 max-w-xs" />
+        {(Object.keys(LABEL) as Array<keyof typeof LABEL>).map((k) => (
+          <button key={k} type="button" onClick={() => setFilter(k)} className={cn("rounded-full px-3 py-1.5 text-xs font-medium", filter === k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}>
+            {LABEL[k]} ({counts[k]})
+          </button>
+        ))}
+      </div>
+      {q.isLoading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : (
+        <div className="space-y-3">
+          {shown.map((u) => (
+            <Card key={u.id} className="border-border/60"><CardContent className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
+              <div className="min-w-[220px] lg:w-[240px]">
+                <p className="font-semibold">{u.name}</p>
+                <p className="text-xs">
+                  {!u.hasQr ? <span className="text-amber-600">sem QR code: cadastre o link da academia</span>
+                    : complete(u) ? <span className="text-emerald-600">kit completo</span>
+                    : <span className="text-muted-foreground">{u.materials.filter((m) => m.sent).length} de 4 enviados</span>}
+                </p>
+                {!u.linked && <p className="text-[11px] text-muted-foreground">aguardando 1º acesso</p>}
+              </div>
+              <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
+                {u.materials.map((m) => {
+                  const file = m.pending ?? m.sent;
+                  return (
+                    <div key={m.format} className="flex items-center gap-2 rounded-xl border bg-muted/20 p-2">
+                      <button type="button" disabled={!file?.previewUrl} onClick={() => file?.previewUrl && setView({ url: file.previewUrl, title: `${m.label} · ${u.name}` })}
+                        className="flex h-16 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-background">
+                        {file?.previewUrl ? <img src={file.previewUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <span className="text-[10px] text-muted-foreground">—</span>}
+                      </button>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold">{m.label}</p>
+                        {m.pending ? <p className="text-[11px] font-medium text-amber-600">aguardando aprovação</p>
+                          : m.sent ? <p className="text-[11px] text-emerald-600">enviado</p>
+                          : <p className="text-[11px] text-muted-foreground">não gerado</p>}
+                        {file && <a href={file.pdfUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">abrir PDF</a>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent></Card>
+          ))}
+          {!shown.length && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nenhuma academia neste filtro.</p>}
+        </div>
+      )}
+      {view && (
+        <Dialog open onOpenChange={(o) => !o && setView(null)}>
+          <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader><DialogTitle>{view.title}</DialogTitle></DialogHeader>
+            <img src={view.url} alt="" className="mx-auto max-h-[78vh] w-auto rounded shadow" />
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 export default function MediaKit() {
   const { user } = useAuth();
+  const [tab, setTab] = useState<"criar" | "unidades">("criar");
   if (user && user.role !== "admin") return <AppLayout activeModule="midiakit"><p className="p-8 text-sm text-muted-foreground">Apenas administradores.</p></AppLayout>;
   return (
     <AppLayout activeModule="midiakit">
@@ -296,7 +396,14 @@ export default function MediaKit() {
             <h1 className="text-2xl font-bold tracking-tight">Mídia kit das academias</h1>
             <p className="text-sm text-muted-foreground">Display, banner, panfleto e windbanner com o QR code de cada academia. Edite e gere para revisão. O envio ao mídia kit das unidades só acontece depois da aprovação do Matheus.</p>
           </header>
-          <KitDesigner />
+          <nav className="flex gap-1 border-b">
+            {([["criar", "Criar e aprovar", Palette], ["unidades", "Kits por unidade", Building2]] as const).map(([id, label, Icon]) => (
+              <button key={id} type="button" onClick={() => setTab(id)} className={cn("flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium", tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                <Icon className="h-4 w-4" />{label}
+              </button>
+            ))}
+          </nav>
+          {tab === "criar" ? <KitDesigner /> : <KitsByUnit />}
         </div>
       </main>
     </AppLayout>
