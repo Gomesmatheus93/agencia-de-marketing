@@ -1,12 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/contexts/ThemeContext";
-import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Maximize2, Megaphone, Menu, Moon, Sun, X, ZoomIn, ZoomOut, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ListChecks, Pin, QrCode, Send, Smartphone, GraduationCap, MessageCircle } from "lucide-react";
+import { CalendarDays, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, Loader2, LogOut, Maximize2, Megaphone, Menu, Moon, Sun, X, ZoomIn, ZoomOut, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ListChecks, Pin, QrCode, Send, Smartphone, GraduationCap, MessageCircle, LifeBuoy, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -728,9 +730,166 @@ function MaterialsTab() {
   );
 }
 
+/** Suporte: a academia abre chamados e conversa com a equipe da Alle. */
+const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  aberto: { label: "Aguardando a Alle", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  respondido: { label: "Respondido", cls: "bg-primary/10 text-primary" },
+  resolvido: { label: "Resolvido", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+};
+const fmtWhen = (d: string | Date) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function SupportThread({ id, onBack }: { id: number; onBack: () => void }) {
+  const utils = trpc.useUtils();
+  const q = trpc.unitSupport.get.useQuery({ id }, { refetchInterval: 20_000 });
+  const [text, setText] = useState("");
+  const reply = trpc.unitSupport.reply.useMutation({
+    onSuccess: () => { setText(""); utils.unitSupport.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const resolve = trpc.unitSupport.resolve.useMutation({ onSuccess: () => { toast.success("Chamado marcado como resolvido."); utils.unitSupport.invalidate(); } });
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [q.data?.messages.length]);
+  useEffect(() => { if (q.data) utils.unitSupport.unread.invalidate(); }, [q.data, utils]);
+  if (q.isLoading) return <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p>;
+  if (!q.data) return null;
+  const t = q.data.ticket;
+  const st = STATUS_LABEL[t.status] ?? STATUS_LABEL.aberto;
+  return (
+    <div className="flex h-full min-h-[520px] flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b p-4">
+        <button type="button" onClick={onBack} className="rounded-lg p-1.5 hover:bg-muted lg:hidden" title="Voltar"><ChevronLeft className="h-4 w-4" /></button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{t.subject}</p>
+          <p className="text-xs text-muted-foreground">Chamado #{t.id} · aberto em {fmtWhen(t.createdAt)}</p>
+        </div>
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", st.cls)}>{st.label}</span>
+        {t.status !== "resolvido" && <Button size="sm" variant="outline" disabled={resolve.isPending} onClick={() => resolve.mutate({ id: t.id })}><Check className="mr-1.5 h-4 w-4" />Resolvido</Button>}
+      </div>
+      <div className="flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
+        {q.data.messages.map((m) => (
+          <div key={m.id} className={cn("flex", m.fromTeam ? "justify-start" : "justify-end")}>
+            <div className={cn("max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm", m.fromTeam ? "rounded-bl-md border bg-card" : "rounded-br-md bg-primary text-primary-foreground")}>
+              <p className={cn("mb-0.5 text-[11px] font-semibold", m.fromTeam ? "text-primary" : "text-primary-foreground/80")}>{m.author}</p>
+              <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+              <p className={cn("mt-1 text-right text-[10px]", m.fromTeam ? "text-muted-foreground" : "text-primary-foreground/70")}>{fmtWhen(m.createdAt)}</p>
+            </div>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div className="border-t p-3">
+        <div className="flex items-end gap-2">
+          <Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.status === "resolvido" ? "Escreva para reabrir o chamado…" : "Escreva sua mensagem…"} className="min-h-[44px] flex-1 resize-none"
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim().length >= 2) reply.mutate({ id: t.id, body: text }); }} />
+          <Button disabled={reply.isPending || text.trim().length < 2} onClick={() => reply.mutate({ id: t.id, body: text })}>
+            {reply.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}<span className="ml-1.5 hidden sm:inline">Enviar</span>
+          </Button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">Ctrl + Enter envia. A equipe da Alle recebe um aviso a cada mensagem.</p>
+      </div>
+    </div>
+  );
+}
+
+function NewTicket({ onCreated, onCancel }: { onCreated: (id: number) => void; onCancel: () => void }) {
+  const cats = trpc.unitSupport.categories.useQuery();
+  const utils = trpc.useUtils();
+  const [category, setCategory] = useState("post");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const create = trpc.unitSupport.create.useMutation({
+    onSuccess: (r) => { toast.success("Chamado aberto! A equipe da Alle vai responder por aqui."); utils.unitSupport.invalidate(); onCreated(r.id); },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <div className="space-y-4 p-5">
+      <div>
+        <p className="text-lg font-bold">Novo chamado</p>
+        <p className="text-sm text-muted-foreground">Conte o que precisa. A resposta aparece aqui e chega também no seu e-mail.</p>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium">Sobre o quê?</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(cats.data ?? []).map((c) => (
+            <button key={c.id} type="button" onClick={() => setCategory(c.id)}
+              className={cn("rounded-xl border px-3 py-2.5 text-left text-sm transition", category === c.id ? "border-primary bg-primary/5 font-semibold text-primary" : "hover:border-primary/40")}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block space-y-1.5 text-sm"><span className="font-medium">Assunto</span>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} placeholder="Ex.: A arte de quarta não abre" /></label>
+      <label className="block space-y-1.5 text-sm"><span className="font-medium">Mensagem</span>
+        <Textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Descreva com detalhes: qual post, qual material, o que aconteceu…" /></label>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button disabled={create.isPending || subject.trim().length < 3 || body.trim().length < 2} onClick={() => create.mutate({ category: category as never, subject, body })}>
+          {create.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}Enviar chamado
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SupportTab() {
+  const list = trpc.unitSupport.list.useQuery(undefined, { refetchInterval: 30_000 });
+  const me = trpc.unitPortal.me.useQuery();
+  const [selected, setSelected] = useState<number | "novo" | null>(null);
+  const tickets = list.data ?? [];
+  const current = selected ?? (tickets[0]?.id ?? "novo");
+  const isPreview = me.data && !me.data.isUnit;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-card px-5 py-4">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><LifeBuoy className="h-5 w-5" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">Fale com a equipe da Alle</p>
+          <p className="text-sm text-muted-foreground">Dúvidas sobre posts, materiais, acesso ou o benefício dos alunos. Respondemos por aqui e avisamos no seu e-mail.</p>
+        </div>
+        <Button onClick={() => setSelected("novo")} disabled={!!isPreview} title={isPreview ? "Só as contas das academias abrem chamados" : undefined}><Plus className="mr-1.5 h-4 w-4" />Novo chamado</Button>
+      </div>
+      <div className="grid overflow-hidden rounded-2xl border bg-card lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className={cn("border-b lg:border-b-0 lg:border-r", current !== "novo" && selected !== null && "hidden lg:block")}>
+          <p className="border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Seus chamados</p>
+          {list.isLoading ? <p className="p-4 text-sm text-muted-foreground">Carregando…</p> : tickets.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">Nenhum chamado ainda.</p>
+          ) : (
+            <ul className="max-h-[560px] overflow-y-auto">
+              {tickets.map((t) => {
+                const st = STATUS_LABEL[t.status] ?? STATUS_LABEL.aberto;
+                return (
+                  <li key={t.id}>
+                    <button type="button" onClick={() => setSelected(t.id)} className={cn("flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition hover:bg-muted/50", current === t.id && "bg-primary/5")}>
+                      <span className="flex items-center gap-2">
+                        {t.unreadByUnit && <span className="h-2 w-2 shrink-0 rounded-full bg-alle-orange" title="Resposta nova" />}
+                        <span className={cn("min-w-0 flex-1 truncate text-sm", t.unreadByUnit ? "font-bold" : "font-medium")}>{t.subject}</span>
+                      </span>
+                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className={cn("rounded-full px-1.5 py-0.5 font-medium", st.cls)}>{st.label}</span>{fmtWhen(t.lastMessageAt)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </aside>
+        <div className="min-w-0">
+          {current === "novo" ? (
+            isPreview ? <p className="p-6 text-sm text-muted-foreground">Prévia: só as contas das academias abrem chamados. As respostas da equipe ficam no painel de Unidades → Suporte.</p>
+              : <NewTicket onCreated={(id) => setSelected(id)} onCancel={() => setSelected(tickets[0]?.id ?? null)} />
+          ) : <SupportThread key={current} id={current} onBack={() => setSelected("novo")} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV = [
   { id: "plano", path: "/unidade", label: "Planejamento da semana", icon: CalendarDays },
   { id: "materiais", path: "/unidade/materiais", label: "Materiais e mídia kit", icon: FolderOpen },
+  { id: "suporte", path: "/unidade/suporte", label: "Suporte", icon: LifeBuoy },
 ] as const;
 
 export default function UnitPortal() {
@@ -745,7 +904,8 @@ export default function UnitPortal() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const myUnits = me.data?.units ?? [];
-  const tab = location.startsWith("/unidade/materiais") ? "materiais" : "plano";
+  const tab = location.startsWith("/unidade/materiais") ? "materiais" : location.startsWith("/unidade/suporte") ? "suporte" : "plano";
+  const supportUnread = trpc.unitSupport.unread.useQuery(undefined, { enabled: isAuthenticated, refetchInterval: 60_000 }).data ?? 0;
   const active = NAV.find((n) => n.id === tab)!;
   useEffect(() => { if (!loading && !isAuthenticated) navigate("/login"); }, [loading, isAuthenticated, navigate]);
   if (loading || !isAuthenticated) return null;
@@ -806,6 +966,7 @@ export default function UnitPortal() {
                 isActive ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
               <Icon className={cn("h-5 w-5 flex-shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
               <span className="flex-1 truncate text-left">{item.label}</span>
+              {item.id === "suporte" && supportUnread > 0 && <span className={cn("rounded-full px-1.5 text-xs font-bold", isActive ? "bg-white text-primary" : "bg-alle-orange text-white")}>{supportUnread}</span>}
             </button>
           );
         })}
@@ -879,7 +1040,7 @@ export default function UnitPortal() {
           </div>
         </header>
         <div className="flex-1 overflow-auto px-4 py-6 lg:px-8">
-          {tab === "plano" ? <PlanTab /> : <MaterialsTab />}
+          {tab === "plano" ? <PlanTab /> : tab === "materiais" ? <MaterialsTab /> : <SupportTab />}
         </div>
       </main>
     </div>

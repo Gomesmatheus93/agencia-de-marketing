@@ -1228,3 +1228,34 @@ export const unitAnnouncements = pgTable("unit_announcements", {
   createdByUserId: integer("createdByUserId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+/** Suporte: chamados abertos pelas unidades e respondidos pela equipe da Alle. */
+export const unitSupportTickets = pgTable(
+  "unit_support_tickets",
+  {
+    id: serial("id").primaryKey(),
+    unitId: integer("unitId").notNull(),
+    userId: integer("userId").notNull(), // quem abriu
+    subject: varchar("subject", { length: 200 }).notNull(),
+    category: varchar("category", { length: 40 }).notNull(),
+    status: varchar("status", { length: 16 }).default("aberto").notNull(), // aberto | respondido | resolvido
+    unreadByTeam: boolean("unreadByTeam").default(true).notNull(),
+    unreadByUnit: boolean("unreadByUnit").default(false).notNull(),
+    lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_unit_support_unit").on(t.unitId)]
+);
+
+export const unitSupportMessages = pgTable(
+  "unit_support_messages",
+  {
+    id: serial("id").primaryKey(),
+    ticketId: integer("ticketId").notNull(),
+    authorUserId: integer("authorUserId").notNull(),
+    fromTeam: boolean("fromTeam").default(false).notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("idx_unit_support_msg_ticket").on(t.ticketId)]
+);

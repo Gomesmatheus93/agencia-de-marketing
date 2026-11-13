@@ -8,15 +8,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Download, ExternalLink, FolderOpen, Loader2, Megaphone, Plus, Search, Trash2, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Activity, Building2, CalendarDays, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Trash2, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 
 // Painel do super admin: unidades (academias parceiras), acessos, plano da semana e materiais.
 
 const ACTION_LABEL: Record<string, string> = {
-  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material", "unit.material.view": "Abriu material", "unit.plan.posted": "Marcou como postado",
+  "sso.login": "Entrou na plataforma", "unit.plan.view": "Viu o planejamento", "unit.plan.download": "Baixou do planejamento", "unit.material.download": "Baixou material", "unit.material.view": "Abriu material", "unit.plan.posted": "Marcou como postado", "unit.support.opened": "Abriu um chamado",
 };
 const fmtDateTime = (d: string | Date | null) => (d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 const ddmm = (ymd: string) => `${ymd.slice(8)}/${ymd.slice(5, 7)}`;
@@ -308,6 +308,92 @@ function AnnouncementsTab() {
   );
 }
 
+// ── Suporte ────────────────────────────────────────────────────────────────
+const SUPPORT_STATUS: Record<string, { label: string; cls: string }> = {
+  aberto: { label: "Aguardando resposta", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  respondido: { label: "Respondido", cls: "bg-primary/10 text-primary" },
+  resolvido: { label: "Resolvido", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+};
+
+function SupportTab({ initial }: { initial: number | null }) {
+  const [filter, setFilter] = useState<"todos" | "aberto" | "respondido" | "resolvido">("todos");
+  const list = trpc.unitSupportAdmin.list.useQuery({ status: filter }, { refetchInterval: 30_000 });
+  const [selected, setSelected] = useState<number | null>(initial);
+  const current = selected ?? list.data?.[0]?.id ?? null;
+  const utils = trpc.useUtils();
+  const thread = trpc.unitSupportAdmin.get.useQuery({ id: current ?? 0 }, { enabled: current !== null, refetchInterval: 20_000 });
+  const [text, setText] = useState("");
+  const reply = trpc.unitSupportAdmin.reply.useMutation({
+    onSuccess: (_r, v) => { toast.success(v.resolve ? "Respondido e resolvido. A unidade recebe um e-mail." : "Resposta enviada. A unidade recebe um e-mail."); setText(""); utils.unitSupportAdmin.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const setStatus = trpc.unitSupportAdmin.setStatus.useMutation({ onSuccess: () => utils.unitSupportAdmin.invalidate() });
+  useEffect(() => { if (thread.data) utils.unitSupportAdmin.unread.invalidate(); }, [thread.data, utils]);
+  const t = thread.data?.ticket;
+  return (
+    <div className="grid overflow-hidden rounded-2xl border bg-card lg:grid-cols-[360px_minmax(0,1fr)]">
+      <aside className="border-b lg:border-b-0 lg:border-r">
+        <div className="flex flex-wrap gap-1 border-b p-2">
+          {(["todos", "aberto", "respondido", "resolvido"] as const).map((f) => (
+            <button key={f} type="button" onClick={() => { setFilter(f); setSelected(null); }} className={cn("rounded-full px-2.5 py-1 text-xs font-medium", filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+              {f === "todos" ? "Todos" : SUPPORT_STATUS[f].label}
+            </button>
+          ))}
+        </div>
+        {list.isLoading ? <p className="p-4 text-sm text-muted-foreground">Carregando…</p> : !list.data?.length ? <p className="p-4 text-sm text-muted-foreground">Nenhum chamado{filter !== "todos" ? " neste filtro" : " ainda"}.</p> : (
+          <ul className="max-h-[640px] overflow-y-auto">
+            {list.data.map((r) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setSelected(r.id)} className={cn("flex w-full flex-col gap-1 border-b px-4 py-3 text-left hover:bg-muted/50", current === r.id && "bg-primary/5")}>
+                  <span className="flex items-center gap-2">
+                    {r.unreadByTeam && <span className="h-2 w-2 shrink-0 rounded-full bg-alle-orange" title="Mensagem nova" />}
+                    <span className={cn("min-w-0 flex-1 truncate text-sm", r.unreadByTeam ? "font-bold" : "font-medium")}>{r.subject}</span>
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">{r.unitName} · {r.openedBy}</span>
+                  <span className="flex items-center gap-2 text-[11px] text-muted-foreground"><span className={cn("rounded-full px-1.5 py-0.5 font-medium", SUPPORT_STATUS[r.status]?.cls)}>{SUPPORT_STATUS[r.status]?.label ?? r.status}</span>{fmtDateTime(r.lastMessageAt)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </aside>
+      <div className="flex min-h-[560px] min-w-0 flex-col">
+        {!t ? <p className="p-6 text-sm text-muted-foreground">{current === null ? "Selecione um chamado." : "Carregando…"}</p> : (
+          <>
+            <div className="flex flex-wrap items-center gap-2 border-b p-4">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{t.subject}</p>
+                <p className="text-xs text-muted-foreground">#{t.id} · {t.unitName} · {t.categoryLabel} · {t.openedBy}{t.openedByRole ? ` (${t.openedByRole})` : ""}{t.openedByEmail ? ` · ${t.openedByEmail}` : ""}</p>
+              </div>
+              <select value={t.status} onChange={(e) => setStatus.mutate({ id: t.id, status: e.target.value as "aberto" | "respondido" | "resolvido" })} className="h-8 rounded-md border bg-background px-2 text-xs">
+                {Object.entries(SUPPORT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
+              {thread.data!.messages.map((m) => (
+                <div key={m.id} className={cn("flex", m.fromTeam ? "justify-end" : "justify-start")}>
+                  <div className={cn("max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm", m.fromTeam ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md border bg-card")}>
+                    <p className={cn("mb-0.5 text-[11px] font-semibold", m.fromTeam ? "text-primary-foreground/80" : "text-primary")}>{m.author}</p>
+                    <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                    <p className={cn("mt-1 text-right text-[10px]", m.fromTeam ? "text-primary-foreground/70" : "text-muted-foreground")}>{fmtDateTime(m.createdAt)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 border-t p-3">
+              <Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Responder à unidade…" />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" disabled={reply.isPending || text.trim().length < 2} onClick={() => reply.mutate({ id: t.id, body: text, resolve: true })}>Responder e resolver</Button>
+                <Button disabled={reply.isPending || text.trim().length < 2} onClick={() => reply.mutate({ id: t.id, body: text })}>{reply.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Responder</Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Materiais ──────────────────────────────────────────────────────────────
 function MaterialsTab() {
   const overview = trpc.unitAdmin.overview.useQuery();
@@ -380,10 +466,12 @@ function MaterialsTab() {
 
 export default function UnitsAdmin() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "avisos" | "materiais">("geral");
+  const supportFromLink = (() => { const n = Number(new URLSearchParams(window.location.search).get("suporte")); return Number.isInteger(n) && n > 0 ? n : null; })();
+  const [tab, setTab] = useState<"geral" | "atividade" | "plano" | "avisos" | "suporte" | "materiais">(supportFromLink ? "suporte" : "geral");
+  const supportUnread = trpc.unitSupportAdmin.unread.useQuery(undefined, { enabled: user?.role === "admin", refetchInterval: 60_000 }).data ?? 0;
   const [open, setOpen] = useState<number | null>(null);
   if (user && user.role !== "admin") return <AppLayout activeModule="units"><p className="p-8 text-sm text-muted-foreground">Apenas administradores.</p></AppLayout>;
-  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento semanal", CalendarDays], ["avisos", "Avisos", Megaphone], ["materiais", "Materiais e mídia kits", Download]] as const;
+  const tabs = [["geral", "Visão geral", Building2], ["atividade", "Atividade", Activity], ["plano", "Planejamento semanal", CalendarDays], ["avisos", "Avisos", Megaphone], ["suporte", "Suporte", LifeBuoy], ["materiais", "Materiais e mídia kits", Download]] as const;
   return (
     <AppLayout activeModule="units">
       <main className="min-h-screen p-4 md:p-8">
@@ -399,6 +487,7 @@ export default function UnitsAdmin() {
             {tabs.map(([id, label, Icon]) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={cn("flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium", tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
                 <Icon className="h-4 w-4" />{label}
+                {id === "suporte" && supportUnread > 0 && <span className="rounded-full bg-alle-orange px-1.5 text-[11px] font-bold text-white">{supportUnread}</span>}
               </button>
             ))}
           </nav>
@@ -406,6 +495,7 @@ export default function UnitsAdmin() {
           {tab === "atividade" && <ActivityTab />}
           {tab === "plano" && <PlanTab />}
           {tab === "avisos" && <AnnouncementsTab />}
+          {tab === "suporte" && <SupportTab initial={supportFromLink} />}
           {tab === "materiais" && <MaterialsTab />}
           {open !== null && <UnitDetail unitId={open} onClose={() => setOpen(null)} />}
         </div>

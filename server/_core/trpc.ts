@@ -70,7 +70,7 @@ const withIpRateLimit = (limit: number, windowMs: number) =>
 
 // Conta de unidade (academia parceira) só usa o portal da unidade, o login e o próprio perfil.
 // A regra fica no servidor: esconder o menu não basta (ninguém chama agentes de IA, analytics etc.).
-const UNIT_ALLOWED_PATHS = [/^auth\./, /^unitPortal\./, /^profile\./];
+const UNIT_ALLOWED_PATHS = [/^auth\./, /^unitPortal\./, /^unitSupport\./, /^profile\./];
 export function isUnitPathAllowed(path: string) {
   return UNIT_ALLOWED_PATHS.some((re) => re.test(path));
 }

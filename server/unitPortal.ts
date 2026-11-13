@@ -24,7 +24,7 @@ const addDays = (ymd: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
-async function conn() {
+export async function conn() {
   const c = await db.getDb();
   if (!c) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
   return c;
@@ -56,7 +56,7 @@ async function accessibleUnits(me: User) {
 }
 
 /** Academia aberta no portal (a escolhida, se ainda for permitida; senão a primeira). */
-async function currentUnit(me: User) {
+export async function currentUnit(me: User) {
   const list = await accessibleUnits(me);
   return { list, current: list.find((u) => u.id === me.unitId) ?? list[0] ?? null };
 }
@@ -191,7 +191,7 @@ export const unitPortalRouter = router({
 
 // ─── Administração das unidades (só administradores) ────────────────────────
 
-const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view", "unit.plan.posted"];
+const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view", "unit.plan.posted", "unit.support.opened"];
 const planItemSchema = z.object({
   date: day, time: z.string().max(10).nullable().optional(), format: z.string().max(30).nullable().optional(),
   title: z.string().trim().min(1).max(300), type: z.string().max(60).nullable().optional(), caption: z.string().max(5000).nullable().optional(),
