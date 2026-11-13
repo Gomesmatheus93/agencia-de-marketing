@@ -27,7 +27,7 @@ A resposta grava a sessão e **redireciona (302)** para o portal (`/app/unidade`
 ### Assinatura
 
 - **Padrão:** HS256 com o segredo compartilhado `ALLE_SSO_SECRET` (pelo menos 32 caracteres), configurado nos dois lados.
-- **Alternativa:** RS256 ou ES256 com chave pública. Nesse caso, a agência configura `ALLE_SSO_PUBLIC_KEY` (PEM) e `ALLE_SSO_ALG` (`RS256` ou `ES256`).
+- **Alternativa:** RS256 ou ES256 com chave pública. A agência configura `ALLE_SSO_ALG` e a chave: `ALLE_SSO_PUBLIC_KEY` (PEM, certificado ou JWK em JSON) ou `ALLE_SSO_JWKS_URL` (URL de JWKS).
 - **Opcional:** se a agência definir `ALLE_SSO_ISSUER` ou `ALLE_SSO_AUDIENCE`, o token precisa trazer o `iss` ou o `aud` correspondente.
 
 ### Campos

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import { importSPKI, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, importJWK, importSPKI, importX509, jwtVerify, type JWTPayload } from "jose";
 import { z } from "zod";
 import { ssoUsedTokens, units, userUnits, users } from "../../drizzle/schema";
 import * as db from "../db";
@@ -48,11 +48,32 @@ export type AlleSsoClaims = {
  * O segredo é tentado como texto e, se tiver cara de hex ou base64, também decodificado
  * (alguns sistemas assinam com os bytes do segredo, não com o texto).
  */
-async function verificationKeys() {
-  const pem = process.env.ALLE_SSO_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
-  if (pem) {
-    const alg = process.env.ALLE_SSO_ALG || "RS256"; // ES256 para chave de curva elíptica
-    return { keys: [await importSPKI(pem, alg)], algorithms: [alg] };
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+type VerifyKey = Uint8Array | CryptoKey | ReturnType<typeof createRemoteJWKSet>;
+
+async function verificationKeys(): Promise<{ keys: VerifyKey[]; algorithms: string[] }> {
+  const alg = (process.env.ALLE_SSO_ALG || "RS256").trim(); // ES256 para chave de curva elíptica
+  // URL de chaves públicas (JWKS) do sistema da Alle, se eles publicarem uma.
+  const jwksUrl = process.env.ALLE_SSO_JWKS_URL?.trim();
+  if (jwksUrl) {
+    jwks ??= createRemoteJWKSet(new URL(jwksUrl));
+    return { keys: [jwks], algorithms: [alg] };
+  }
+  // Chave pública colada na variável: PEM (BEGIN PUBLIC KEY), certificado (BEGIN CERTIFICATE) ou JWK em JSON.
+  const pub = process.env.ALLE_SSO_PUBLIC_KEY?.replace(/\\n/g, "\n").trim().replace(/^["']|["']$/g, "");
+  if (pub) {
+    try {
+      if (pub.startsWith("{")) {
+        const jwk = JSON.parse(pub);
+        return { keys: [await importJWK(jwk, jwk.alg || alg)], algorithms: [jwk.alg || alg] };
+      }
+      if (pub.includes("BEGIN CERTIFICATE")) return { keys: [await importX509(pub, alg)], algorithms: [alg] };
+      return { keys: [await importSPKI(pub, alg)], algorithms: [alg] };
+    } catch (err) {
+      console.error("[sso] ALLE_SSO_PUBLIC_KEY inválida:", (err as Error).message);
+      throw new SsoError("Login unificado mal configurado (chave pública inválida). Fale com a equipe da Alle.");
+    }
   }
   const secret = (process.env.ALLE_SSO_SECRET ?? "").trim();
   if (secret.length < 32) throw new SsoError("Login unificado não configurado (ALLE_SSO_SECRET ausente ou curto).");
@@ -93,7 +114,7 @@ export async function verifyAlleToken(token: string): Promise<AlleSsoClaims> {
   let lastErr: unknown = null;
   for (const key of keys) {
     try {
-      ({ payload } = await jwtVerify(token, key, {
+      ({ payload } = await jwtVerify(token, key as Parameters<typeof jwtVerify>[1], {
         algorithms,
         ...(process.env.ALLE_SSO_ISSUER ? { issuer: process.env.ALLE_SSO_ISSUER } : {}),
         ...(process.env.ALLE_SSO_AUDIENCE ? { audience: process.env.ALLE_SSO_AUDIENCE } : {}),
