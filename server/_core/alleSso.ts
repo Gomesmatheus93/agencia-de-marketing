@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, X509Certificate, type KeyObject } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
+import { PENDING_UNIT_PREFIX, unitKey } from "./unitKey";
 import { createRemoteJWKSet, importJWK, jwtVerify, type JWTPayload } from "jose";
 import { z } from "zod";
 import { ssoUsedTokens, units, userUnits, users } from "../../drizzle/schema";
@@ -191,8 +192,19 @@ export async function loginWithAlleToken(token: string) {
 
   // Academias: cria as novas, atualiza nome e grupo.
   const unitIds: number[] = [];
+  // Academias cadastradas pelo mídia kit ainda sem código do sistema da Alle: casam pelo nome.
+  let pending: Array<typeof units.$inferSelect> | null = null;
   for (const a of claims.academias) {
-    const [existing] = await conn.select().from(units).where(eq(units.code, a.code));
+    let [existing] = await conn.select().from(units).where(eq(units.code, a.code));
+    if (!existing) {
+      pending ??= await conn.select().from(units).where(like(units.code, `${PENDING_UNIT_PREFIX}%`));
+      const match: typeof units.$inferSelect | undefined = pending.find((u) => unitKey(u.name) === unitKey(a.name));
+      if (match) {
+        await conn.update(units).set({ code: a.code }).where(eq(units.id, match.id));
+        pending = pending.filter((u): boolean => u.id !== match.id);
+        existing = { ...match, code: a.code };
+      }
+    }
     if (existing) {
       if (existing.name !== a.name || (claims.groupName && existing.groupName !== claims.groupName)) {
         await conn.update(units).set({ name: a.name, ...(claims.groupName ? { groupName: claims.groupName } : {}) }).where(eq(units.id, existing.id));

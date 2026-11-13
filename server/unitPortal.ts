@@ -1,3 +1,4 @@
+import { getMetaFetchableStorageUrl } from "./storage";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -111,11 +112,14 @@ export const unitPortalRouter = router({
       .where(unitId ? or(isNull(unitMaterials.unitId), eq(unitMaterials.unitId, unitId)) : isNull(unitMaterials.unitId))
       .orderBy(desc(unitMaterials.createdAt));
     const strip = ({ fileUrl: _f, createdByUserId: _c, ...m }: typeof rows[number]) => m;
+    // No kit da própria unidade, as imagens já vêm com a miniatura (o acesso foi conferido acima).
+    const withThumb = (r: typeof rows[number]) => ({ ...strip(r), thumbUrl: r.contentType.startsWith("image/") ? r.fileUrl : null });
     return {
       general: rows.filter((r) => r.unitId === null).map(strip),
-      mine: rows.filter((r) => r.unitId !== null).map(strip),
+      mine: rows.filter((r) => r.unitId !== null).sort((a, b) => `${a.description ?? ""}/${a.title}`.localeCompare(`${b.description ?? ""}/${b.title}`, "pt-BR", { numeric: true })).map(withThumb),
     };
   }),
+
 
   /** Libera o arquivo (confere se é desta unidade) e registra o download. */
   download: protectedProcedure
@@ -242,7 +246,7 @@ export const unitAdminRouter = router({
   saveUnit: adminProcedure
     .input(z.object({
       id: z.number().int().optional(),
-      code: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, "Código: letras minúsculas, números, - e _."),
+      code: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9:_-]{0,63}$/, "Código: letras minúsculas, números, :, - e _."),
       name: z.string().trim().min(2).max(255), city: z.string().trim().max(120).optional(), active: z.boolean().default(true),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -344,3 +348,31 @@ export const unitAdminRouter = router({
       return { ok: true };
     }),
 });
+
+/**
+ * Mídia kit completo da academia aberta, em .zip (montado no servidor: o bucket não libera CORS).
+ * Usado pela rota GET /api/unidade/midia-kit.zip.
+ */
+export async function buildUnitKitZip(me: User): Promise<{ zip: Buffer; fileName: string } | null> {
+  const unit = (await currentUnit(me)).current;
+  if (!unit) return null;
+  const c = await conn();
+  const rows = await c.select().from(unitMaterials).where(eq(unitMaterials.unitId, unit.id));
+  if (!rows.length) return null;
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  const used = new Set<string>();
+  for (const r of rows) {
+    const res = await fetch(await getMetaFetchableStorageUrl(r.fileUrl), { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`Falha ao buscar ${r.fileName}`);
+    let name = [r.description?.replace(/ › /g, "/"), r.fileName].filter(Boolean).join("/");
+    for (let n = 2; used.has(name); n++) name = name.replace(/(\.[^.]+)?$/, ` (${n})$1`);
+    used.add(name);
+    zip.file(name, Buffer.from(await res.arrayBuffer()), { binary: true });
+  }
+  if (me.accountType === "unit") {
+    await db.recordAudit({ action: "unit.material.download", actorUserId: me.id, targetType: "unit_kit", targetId: String(unit.id), metadata: { unitId: unit.id, title: "Mídia kit completo", files: rows.length } });
+  }
+  const out = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+  return { zip: out, fileName: `Midia kit - ${unit.name}.zip` };
+}

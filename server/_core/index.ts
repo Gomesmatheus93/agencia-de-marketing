@@ -24,6 +24,7 @@ import { assertCryptoKeys } from "./crypto";
 import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
 import { handleIncomingDm, resolveShortLink } from "../dmAutoReply";
 import { SsoError, loginWithAlleToken } from "./alleSso";
+import { buildUnitKitZip } from "../unitPortal";
 import { notifyInboxActivity } from "../inboxRouter";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
@@ -816,6 +817,22 @@ async function startServer() {
       return page(500, "Erro ao entrar. Tente de novo em instantes.");
     }
   };
+  // Mídia kit completo da academia aberta (só o da própria academia).
+  app.get("/api/unidade/midia-kit.zip", async (req, res) => {
+    let me;
+    try { me = await sdk.authenticateRequest(req); } catch { res.status(401).send("Entre de novo."); return; }
+    try {
+      const out = await buildUnitKitZip(me);
+      if (!out) { res.status(404).type("text/plain").send("Mídia kit ainda não disponível."); return; }
+      res.set("Content-Type", "application/zip");
+      res.set("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(out.fileName)}`);
+      res.set("Cache-Control", "no-store");
+      res.send(out.zip);
+    } catch (err) {
+      console.error("[unidade] erro no zip do mídia kit:", err);
+      res.status(500).type("text/plain").send("Erro ao montar o mídia kit.");
+    }
+  });
   app.get("/sso", ssoHandler);
   app.post("/sso", ssoHandler);
   app.get("/sso/alle", ssoHandler); // apelido antigo

@@ -79,7 +79,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
             <tbody>
               {list.map((u) => (
                 <tr key={u.id} className={cn("border-b last:border-0 hover:bg-muted/40", !u.active && "opacity-50")}>
-                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code}{u.groupName ? ` · ${u.groupName}` : ""}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}</p></td>
+                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code.startsWith("kit:") ? <span className="text-amber-600 dark:text-amber-400">aguardando 1º acesso</span> : "ligada ao sistema da Alle"}{u.groupName ? ` · ${u.groupName}` : ""}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}</p></td>
                   <td className="p-3">{u.accounts}</td>
                   <td className="p-3 whitespace-nowrap">{u.lastAccess ? fmtDateTime(u.lastAccess) : <span className="text-amber-600">nunca</span>}</td>
                   <td className="p-3 text-right tabular-nums">{u.logins30d}</td>
@@ -100,7 +100,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
           {editing && (
             <div className="space-y-3">
               <label className="block space-y-1 text-sm"><span className="font-medium">Nome</span><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Allp Fit Capim Macio" /></label>
-              <label className="block space-y-1 text-sm"><span className="font-medium">Código no sistema da Alle</span><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value.toLowerCase() })} placeholder="capim-macio" /><span className="text-xs text-muted-foreground">Precisa ser igual ao "unit_code" que o sistema da Alle envia no login.</span></label>
+              <label className="block space-y-1 text-sm"><span className="font-medium">Código no sistema da Alle</span><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value.toLowerCase() })} placeholder="capim-macio" /><span className="text-xs text-muted-foreground">Preenchido sozinho no primeiro login. Antes disso fica "kit:…" e a academia é ligada pelo <b>nome</b>: ajuste o nome para ficar igual ao do sistema da Alle, se for diferente.</span></label>
               <label className="block space-y-1 text-sm"><span className="font-medium">Cidade</span><Input value={editing.city} onChange={(e) => setEditing({ ...editing, city: e.target.value })} placeholder="Natal/RN" /></label>
               <label className="flex items-center justify-between rounded-lg border p-3 text-sm"><span>Unidade ativa (pode acessar)</span><Switch checked={editing.active} onCheckedChange={(v) => setEditing({ ...editing, active: v })} /></label>
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
@@ -125,7 +125,7 @@ function UnitDetail({ unitId, onClose }: { unitId: number; onClose: () => void }
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader><DialogTitle>{unit?.name ?? "Unidade"}</DialogTitle></DialogHeader>
-        <p className="text-xs text-muted-foreground">{unit?.code}{unit?.city ? ` · ${unit.city}` : ""} · {unit?.ownMaterials ?? 0} materiais próprios</p>
+        <p className="text-xs text-muted-foreground">{unit?.code.startsWith("kit:") ? "aguardando 1º acesso" : "ligada ao sistema da Alle"}{unit?.city ? ` · ${unit.city}` : ""} · {unit?.ownMaterials ?? 0} materiais próprios</p>
         <h3 className="mt-2 text-sm font-semibold">Contas</h3>
         {accounts.data?.length ? accounts.data.map((a) => (
           <div key={a.id} className="flex items-center gap-3 rounded-lg border p-2 text-sm">

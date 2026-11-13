@@ -157,6 +157,8 @@ function PlanTab() {
 function MaterialsTab() {
   const materials = trpc.unitPortal.materials.useQuery();
   const download = trpc.unitPortal.download.useMutation({ onError: (e) => toast.error(e.message) });
+  // O zip é montado no servidor e baixa direto (o navegador mostra o progresso).
+  const downloadAll = () => { window.location.href = "/api/unidade/midia-kit.zip"; };
   if (materials.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando os materiais…</p>;
   const { general = [], mine = [] } = materials.data ?? {};
   const Card = ({ m }: { m: (typeof general)[number] }) => (
@@ -174,12 +176,47 @@ function MaterialsTab() {
       </Button>
     </div>
   );
+  // Mídia kit agrupado pela pasta de origem (Banner, Display, Panfleto…).
+  const groups = new Map<string, typeof mine>();
+  for (const m of mine) {
+    const g = m.description || "Arquivos";
+    groups.set(g, [...(groups.get(g) ?? []), m]);
+  }
   return (
     <div className="space-y-8">
-      <section className="space-y-3">
-        <h2 className="flex items-center gap-2 text-lg font-bold"><Megaphone className="h-5 w-5 text-primary" />Mídia kit da sua unidade</h2>
-        {mine.length ? <div className="grid gap-2 md:grid-cols-2">{mine.map((m) => <Card key={m.id} m={m} />)}</div>
-          : <p className="text-sm text-muted-foreground">O mídia kit da sua unidade ainda não foi disponibilizado.</p>}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-lg font-bold"><Megaphone className="h-5 w-5 text-primary" />Mídia kit da sua unidade</h2>
+          {mine.length > 1 && (
+            <Button size="sm" onClick={downloadAll}>
+              <Download className="mr-1.5 h-4 w-4" />Baixar o kit completo (.zip)
+            </Button>
+          )}
+        </div>
+        {mine.length ? (
+          [...groups.entries()].map(([group, files]) => (
+            <div key={group} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {files.map((m) => (
+                  <button key={m.id} type="button" disabled={download.isPending} title={`Baixar ${m.fileName}`}
+                    onClick={async () => { const r = await download.mutateAsync({ materialId: m.id }); saveFile(r.url, r.fileName); }}
+                    className="group flex flex-col overflow-hidden rounded-xl border bg-card text-left transition hover:border-primary">
+                    <div className="relative flex aspect-[4/3] items-center justify-center bg-muted">
+                      {m.thumbUrl ? <img src={m.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-1" />
+                        : <FileText className="h-10 w-10 text-primary/60" />}
+                      <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Download className="h-6 w-6" /></span>
+                    </div>
+                    <div className="min-w-0 p-2">
+                      <p className="truncate text-xs font-medium">{m.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">{m.fileName.split(".").pop()?.toUpperCase()} · {fmtSize(m.sizeBytes)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : <p className="text-sm text-muted-foreground">O mídia kit da sua unidade ainda não foi disponibilizado.</p>}
       </section>
       <section className="space-y-3">
         <h2 className="flex items-center gap-2 text-lg font-bold"><FolderOpen className="h-5 w-5 text-primary" />Materiais da Alle</h2>
