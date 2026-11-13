@@ -26,18 +26,21 @@ export type KitFormat = keyof typeof KIT_FORMATS;
 const formatSchema = z.enum(Object.keys(KIT_FORMATS) as [KitFormat, ...KitFormat[]]);
 
 export const KIT_DEFAULTS = {
-  kicker: "ATÉ",
-  percent: "15%",
-  line1: "de desconto na sua",
-  line2: "CONTA DE LUZ",
+  eyebrow: "ALUNO ALLP FIT,",
+  headline1: "VOCÊ JÁ TEM",
+  headline2: "DESCONTO NA",
+  headline3: "CONTA DE LUZ.",
+  highlight: "Só falta ativar!",
+  offer: "ATÉ 15%* DE DESCONTO TODO MÊS",
+  stepsTitle: "ATIVE EM 3 PASSOS",
+  step1: "Aponte a câmera|para o QR code ao lado",
+  step2: "Fale com a Ane|no WhatsApp da Alle Energia",
+  step3: "Envie sua conta de luz|e a gente analisa pra você",
+  qrLabel: "ATIVE AGORA",
+  qrSub: "Leia com a câmera do celular",
   benefit1: "Sem custo",
   benefit2: "Sem obra",
   benefit3: "Sem fidelidade",
-  benefit4: "Sem placa solar",
-  audience: "Exclusivo para alunos Allp Fit",
-  qrTitle: "Aponte a câmera",
-  qrText: "e fale com a Ane no WhatsApp",
-  footer: "@alleenergia  ·  alleenergia.com",
   disclaimer: "*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.",
   wbLine1: "Desconto na",
   wbLine2: "conta de luz",
@@ -69,52 +72,74 @@ function wrap(text: string, max: number): string[] {
 
 type Slot = { x: number; y: number; size: number };
 
-/** Cartaz (display, banner e panfleto): fundo roxo, oferta grande, Ane com a fatura, benefícios e QR. */
+/**
+ * Cartaz (display, banner e panfleto), focado em ativação: o aluno já tem o desconto, falta ativar.
+ * Topo roxo com a mensagem e a Ane (recortada na borda da faixa, sem invadir o resto);
+ * base clara com os 3 passos e o QR em destaque ("Ative agora").
+ */
 function posterSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
-  const F = 96; // rodapé
-  const pillH = 64, pillY = H - F - 58 - pillH;
-  const panelH = 400, panelTop = pillY - 24 - panelH;
-  const l2Y = panelTop - 56, l1Y = l2Y - 64, pctY = l1Y - 40, kickY = pctY - 176;
-  const qr = { x: 92, y: panelTop + 46, size: 236 };
-  const photoH = 640, photoW = (photoH * 900) / 1297;
-  const benefits = [f.benefit1, f.benefit2, f.benefit3, f.benefit4];
-  const check = (cx: number, cy: number) =>
-    `<circle cx="${cx}" cy="${cy}" r="30" fill="#ff7300"/><path d="M${cx - 13} ${cy + 1} l9 9 l17 -19" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`;
-  const benefitSvg = benefits.map((b, i) => {
-    const cx = i % 2 === 0 ? 420 : 700, cy = panelTop + (i < 2 ? 130 : 262);
-    const [first, ...rest] = b.trim().split(/\s+/);
-    return check(cx, cy) + T(cx + 44, cy - 6, 22, 700, "#ff7300", first.toUpperCase()) + T(cx + 44, cy + 24, 26, 900, "#44015e", rest.join(" ").toUpperCase());
+  const Z = Math.round(H - 640); // divisa: a base clara tem a mesma altura em todos os formatos
+  const hl = 58, hlGap = 66;
+  const h3Y = Z - 196, h2Y = h3Y - hlGap, h1Y = h2Y - hlGap, eyeY = h1Y - 74;
+  const hiY = h3Y + 34, offerY = hiY + 92;
+  // Ane: caixa à direita, apoiada exatamente na divisa.
+  const aneW = 470, aneH = Math.min(Z - 130, 560);
+  // QR em destaque na base, à direita.
+  const bY = H - 100; // linha dos benefícios
+  const card = { x: 584, y: Z + 52, w: 352, h: bY - 64 - (Z + 52) };
+  const qrSize = Math.min(card.w - 92, card.h - 168);
+  const qr = { x: card.x + (card.w - qrSize) / 2, y: card.y + 94, size: qrSize };
+  const steps = [f.step1, f.step2, f.step3].map((t) => t.split("|"));
+  const stepSvg = steps.map(([title, sub], i) => {
+    const y = Z + 162 + i * 104;
+    return `<circle cx="96" cy="${y}" r="30" fill="#7B2FBE"/>${T(96, y + 11, 30, 900, "#ffffff", String(i + 1), "middle")}`
+      + T(144, y - 4, 29, 800, "#2a0a3d", title ?? "") + T(144, y + 28, 21, 500, "#6b5a78", sub ?? "")
+      + (i < steps.length - 1 ? `<line x1="96" y1="${y + 34}" x2="96" y2="${y + 70}" stroke="#7B2FBE" stroke-opacity="0.25" stroke-width="4" stroke-dasharray="2 8" stroke-linecap="round"/>` : "");
   }).join("");
-  const disc = wrap(f.disclaimer, 118);
+  const benefits = [f.benefit1, f.benefit2, f.benefit3].filter(Boolean);
+  const bw = (W - 128) / benefits.length;
+  const benefitSvg = benefits.map((b, i) => {
+    const cx = 64 + bw * i + bw / 2;
+    return `<circle cx="${cx - 92}" cy="${bY - 9}" r="15" fill="#ff7300"/><path d="M${cx - 99} ${bY - 9} l5 5 l9 -10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`
+      + T(cx - 68, bY, 24, 800, "#2a0a3d", b.toUpperCase());
+  }).join("");
+  const disc = wrap(f.disclaimer, 120);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#8a3bd0"/><stop offset="0.55" stop-color="#7B2FBE"/><stop offset="1" stop-color="#5B1D9A"/></linearGradient>
-    <linearGradient id="or" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff6a00"/></linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#8b3fd2"/><stop offset="1" stop-color="#5e1ca3"/></linearGradient>
+    <linearGradient id="or" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff6400"/></linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.62" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <clipPath id="top"><rect width="${W}" height="${Z}"/></clipPath>
   </defs>
-  <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <path d="M${W} 0 L${W} ${H * 0.34} C${W - 140} ${H * 0.27} ${W - 230} ${H * 0.13} ${W - 250} 0 Z" fill="url(#or)" opacity="0.92"/>
-  <path d="M${W} 0 L${W} ${H * 0.2} C${W - 70} ${H * 0.16} ${W - 120} ${H * 0.08} ${W - 130} 0 Z" fill="#ffffff" opacity="0.10"/>
-  <image href="alle:raio-mono" x="-120" y="${kickY - 120}" width="430" height="686" opacity="0.07"/>
-  <image href="alle:logo-branco" x="64" y="62" width="238" height="70"/>
-  ${T(336, 112, 40, 700, "#ffffff", "+", "middle")}
-  <image href="alle:allpfit-branco" x="372" y="72" width="236" height="51"/>
-  ${T(64, kickY, 46, 800, "#ffffff", f.kicker)}
-  <text x="64" y="${pctY}" font-family="Montserrat" font-size="230" font-weight="900" fill="#ff7300" letter-spacing="-6">${esc(f.percent)}<tspan font-size="96" dy="-118">*</tspan></text>
-  ${T(66, l1Y, 40, 600, "#ffffff", f.line1)}
-  ${T(64, l2Y, 58, 900, "#ffffff", f.line2)}
-  <rect x="40" y="${panelTop}" width="${W - 80}" height="${panelH}" rx="40" fill="#FFF8F2"/>
-  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="26" fill="#ffffff" stroke="#ff7300" stroke-width="6"/>
-  ${T(qr.x + qr.size / 2, panelTop + 344, 26, 800, "#44015e", f.qrTitle, "middle")}
-  ${T(qr.x + qr.size / 2, panelTop + 374, 19, 500, "#5B1D9A", f.qrText, "middle")}
-  <line x1="376" y1="${panelTop + 70}" x2="376" y2="${panelTop + 340}" stroke="#7B2FBE" stroke-opacity="0.15" stroke-width="3"/>
+  <rect width="${W}" height="${H}" fill="#FFF8F2"/>
+  <g clip-path="url(#top)">
+    <rect width="${W}" height="${Z}" fill="url(#bg)"/>
+    <rect width="${W}" height="${Z}" fill="url(#glow)"/>
+    <image href="alle:raio-mono" x="610" y="${Z - 700}" width="470" height="750" opacity="0.08"/>
+    <circle cx="${W - 235}" cy="${Z - 250}" r="250" fill="url(#or)" opacity="0.95"/>
+    <image href="alle:ane-solto" x="${W - aneW - 10}" y="${Z - aneH}" width="${aneW}" height="${aneH}" preserveAspectRatio="xMidYMax meet"/>
+  </g>
+  <image href="alle:logo-branco" x="64" y="56" width="218" height="64"/>
+  <rect x="300" y="66" width="2" height="44" fill="#ffffff" opacity="0.4"/>
+  <image href="alle:allpfit-branco" x="320" y="66" width="208" height="45"/>
+  ${T(64, eyeY, 30, 800, "#ff8a1f", f.eyebrow, "start", 'letter-spacing="2"')}
+  ${T(62, h1Y, hl, 900, "#ffffff", f.headline1)}
+  ${T(62, h2Y, hl, 900, "#ffffff", f.headline2)}
+  ${T(62, h3Y, hl, 900, "#ffffff", f.headline3)}
+  <rect x="58" y="${hiY}" width="${Math.min(470, 40 + f.highlight.length * 23)}" height="70" rx="14" fill="url(#or)"/>
+  ${T(78, hiY + 48, 40, 900, "#ffffff", f.highlight)}
+  <rect x="58" y="${offerY}" width="${Math.min(480, 40 + f.offer.length * 13.4)}" height="46" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2"/>
+  ${T(78, offerY + 31, 21, 700, "#ffffff", f.offer, "start", 'letter-spacing="0.5"')}
+  ${T(64, Z + 86, 26, 900, "#7B2FBE", f.stepsTitle, "start", 'letter-spacing="2"')}
+  <rect x="64" y="${Z + 102}" width="70" height="5" rx="2.5" fill="#ff7300"/>
+  ${stepSvg}
+  <rect x="${card.x}" y="${card.y}" width="${card.w}" height="${card.h}" rx="32" fill="url(#or)"/>
+  ${T(card.x + card.w / 2, card.y + 62, 38, 900, "#ffffff", f.qrLabel, "middle", 'letter-spacing="1"')}
+  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="20" fill="#ffffff"/>
+  ${T(card.x + card.w / 2, card.y + card.h - 24, 19, 700, "#ffffff", f.qrSub, "middle")}
+  <line x1="64" y1="${bY - 44}" x2="${W - 64}" y2="${bY - 44}" stroke="#2a0a3d" stroke-opacity="0.08" stroke-width="2"/>
   ${benefitSvg}
-  <image href="alle:ane-tablet" x="${W - photoW + 10}" y="${panelTop + 62 - photoH}" width="${photoW}" height="${photoH}" preserveAspectRatio="xMidYMax meet"/>
-  <rect x="40" y="${pillY}" width="${W - 80}" height="${pillH}" rx="${pillH / 2}" fill="url(#or)"/>
-  ${T(W / 2, pillY + 42, 28, 800, "#ffffff", f.audience.toUpperCase(), "middle", 'letter-spacing="1"')}
-  ${disc.map((l, i) => T(W / 2, H - F - 36 + i * 19 - (disc.length - 2) * 19, 14, 500, "#ffffff", l, "middle", 'fill-opacity="0.78"')).join("")}
-  <rect x="0" y="${H - F}" width="${W}" height="${F}" fill="#44015e"/>
-  <image href="alle:raio" x="56" y="${H - F + 20}" width="35" height="56"/>
-  ${T(W / 2, H - F / 2 + 10, 28, 700, "#ffffff", f.footer, "middle")}
+  ${disc.map((l, i) => T(W / 2, H - 40 + i * 18 - (disc.length - 2) * 18, 13.5, 500, "#6b5a78", l, "middle")).join("")}
 </svg>`;
   return { svg, slots: [qr] };
 }

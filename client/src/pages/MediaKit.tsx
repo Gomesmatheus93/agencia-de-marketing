@@ -15,10 +15,10 @@ import { toast } from "sonner";
 
 // ── Design do mídia kit impresso ───────────────────────────────────────────
 const KIT_FIELD_GROUPS: Array<{ title: string; layouts: string[]; fields: Array<[string, string, boolean?]> }> = [
-  { title: "Oferta", layouts: ["poster"], fields: [["kicker", "Acima do número"], ["percent", "Número em destaque"], ["line1", "Linha 1"], ["line2", "Linha 2 (grande)"]] },
-  { title: "Benefícios (a 1ª palavra vira o título pequeno)", layouts: ["poster"], fields: [["benefit1", "Benefício 1"], ["benefit2", "Benefício 2"], ["benefit3", "Benefício 3"], ["benefit4", "Benefício 4"]] },
-  { title: "QR code", layouts: ["poster"], fields: [["qrTitle", "Chamada"], ["qrText", "Complemento"]] },
-  { title: "Faixa e rodapé", layouts: ["poster"], fields: [["audience", "Faixa laranja"], ["footer", "Rodapé"], ["disclaimer", "Ressalva (obrigatória com o %)", true]] },
+  { title: "Mensagem principal", layouts: ["poster"], fields: [["eyebrow", "Chamada (laranja, acima)"], ["headline1", "Título, linha 1"], ["headline2", "Título, linha 2"], ["headline3", "Título, linha 3"], ["highlight", "Destaque laranja"], ["offer", "Selo da oferta"]] },
+  { title: "Como ativar (use | para separar título e complemento)", layouts: ["poster"], fields: [["stepsTitle", "Título dos passos"], ["step1", "Passo 1"], ["step2", "Passo 2"], ["step3", "Passo 3"]] },
+  { title: "QR code", layouts: ["poster"], fields: [["qrLabel", "Chamada no quadro"], ["qrSub", "Texto embaixo do QR"]] },
+  { title: "Benefícios e ressalva", layouts: ["poster"], fields: [["benefit1", "Benefício 1"], ["benefit2", "Benefício 2"], ["benefit3", "Benefício 3"], ["disclaimer", "Ressalva (obrigatória com o %)", true]] },
   { title: "Bandeira", layouts: ["flag"], fields: [["wbLine1", "Linha 1"], ["wbLine2", "Linha 2 (grande)"]] },
 ];
 
