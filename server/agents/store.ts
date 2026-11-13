@@ -24,12 +24,20 @@ export async function createThread(
   return thread;
 }
 
-export async function listThreads(userId: number, agentSlug: string, mode: AgentThread["mode"] = "chat"): Promise<AgentThread[]> {
+/** Tarefa feita para o planejamento das academias (não entra no planejamento/painel da Alle). */
+export const isForUnits = (t: Pick<AgentThread, "taskInput">) => (t.taskInput as { forUnits?: boolean } | null)?.forUnits === true;
+
+/**
+ * scope "alle" (padrão) deixa de fora as tarefas das academias; "unidades" traz só elas; "todos" traz tudo.
+ */
+export async function listThreads(userId: number, agentSlug: string, mode: AgentThread["mode"] = "chat", scope: "alle" | "unidades" | "todos" = "alle"): Promise<AgentThread[]> {
   const db = await requireDb();
-  return db.select().from(agentThreads)
+  const rows = await db.select().from(agentThreads)
     .where(and(eq(agentThreads.userId, userId), eq(agentThreads.agentSlug, agentSlug), eq(agentThreads.mode, mode)))
     // Tarefas em ordem de criação: editar o resultado (texto, arte) não muda a posição.
     .orderBy(desc(mode === "task" ? agentThreads.createdAt : agentThreads.updatedAt));
+  if (scope === "todos") return rows;
+  return rows.filter((t) => (scope === "unidades") === isForUnits(t));
 }
 
 /** Conteúdos criados a partir das pautas de um planejamento (taskInput.planLink.threadId). */

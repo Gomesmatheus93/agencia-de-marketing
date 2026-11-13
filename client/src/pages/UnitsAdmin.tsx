@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Send, Sparkles, Trash2, Upload } from "lucide-react";
+import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Send, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -170,8 +170,8 @@ function ActivityTab() {
 }
 
 // ── Planejamento das unidades (mensal, enviado semana a semana) ────────────
-type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[] };
-type Week = { weekStart: string; weekEnd: string; state: string; releaseAt: string | Date | null; title: string; notes: string; items: Item[] };
+type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[]; planIndex?: number | null; brief?: string | null };
+type Week = { weekStart: string; weekEnd: string; state: string; releaseAt: string | Date | null; title: string; notes: string; items: Item[]; ai?: { threadId: number; status: string } | null; creating?: number[] };
 
 const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -262,6 +262,12 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
             </div>
             <label className="block space-y-1 text-sm"><span className="font-medium">Título (o que as unidades veem no card)</span><Input value={it.title} onChange={(e) => set({ title: e.target.value })} placeholder="Ex.: Aluno Allp Fit: desconto na conta de luz" /></label>
             <label className="block space-y-1 text-sm"><span className="font-medium">Tipo de pauta (opcional)</span><Input value={it.type ?? ""} onChange={(e) => set({ type: e.target.value || null })} placeholder="Ensino, Oferta, Prova…" /></label>
+            {it.brief && (
+              <div className="rounded-xl bg-primary/5 p-3 text-xs">
+                <p className="mb-1 font-semibold text-primary">Direção da IA para esta pauta</p>
+                <p className="whitespace-pre-wrap text-muted-foreground">{it.brief}</p>
+              </div>
+            )}
             <label className="block space-y-1 text-sm"><span className="font-medium">Legenda</span><Textarea rows={10} value={it.caption ?? ""} onChange={(e) => set({ caption: e.target.value })} placeholder="Legenda que a unidade vai copiar, com a ressalva do desconto e @alleenergia @allpfit" /></label>
           </div>
           <div className="space-y-4">
@@ -313,8 +319,8 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
           {onDelete ? <Button variant="ghost" className="text-destructive" onClick={() => { if (confirm("Tirar este post do planejamento das unidades?")) onDelete(); }}><Trash2 className="mr-1.5 h-4 w-4" />Excluir</Button> : <span />}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button disabled={saving || !it.title.trim() || !it.imageUrls.length} title={!it.imageUrls.length ? "Adicione pelo menos uma arte" : undefined} onClick={() => onSave({ ...it, title: it.title.trim() })}>
-              {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar post
+            <Button disabled={saving || !it.title.trim() || (!it.imageUrls.length && it.planIndex == null)} title={!it.imageUrls.length && it.planIndex == null ? "Adicione pelo menos uma arte" : undefined} onClick={() => onSave({ ...it, title: it.title.trim() })}>
+              {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}{it.imageUrls.length ? "Salvar post" : "Salvar pauta"}
             </Button>
           </div>
         </div>
@@ -324,10 +330,15 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
   );
 }
 
-function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
+function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, onPlanAI, onCreateArts, busy }: {
   week: Week; onEdit: (i: number) => void; onNew: (date: string) => void; onSaveMeta: (patch: { title?: string; notes?: string }) => void;
-  onRelease: (mode: "agendar" | "agora" | "rascunho", releaseAt?: string) => void; busy: boolean;
+  onRelease: (mode: "agendar" | "agora" | "rascunho", releaseAt?: string) => void; onPlanAI: () => void; onCreateArts: (indexes?: number[]) => void; busy: boolean;
 }) {
+  const creating = week.creating ?? [];
+  const noArt = week.items.map((it, i) => ({ it, i })).filter(({ it }) => !it.imageUrls.length);
+  const toCreate = noArt.filter(({ it, i }) => it.planIndex != null && !creating.includes(i));
+  const planning = week.ai?.status === "planejando";
+  const blockSend = noArt.length > 0;
   const today = new Date().toLocaleDateString("en-CA");
   const [release, setRelease] = useState(toLocalInput(week.releaseAt ?? `${week.weekStart}T00:00:00-03:00`));
   const [title, setTitle] = useState(week.title);
@@ -339,7 +350,11 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-semibold">Semana de {ddmm(week.weekStart)} a {ddmm(week.weekEnd)}</p>
         <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", st.cls)}>{st.label}</span>
-        <span className="text-xs text-muted-foreground">{week.items.length} {week.items.length === 1 ? "post" : "posts"}</span>
+        <span className="text-xs text-muted-foreground">{week.items.length} {week.items.length === 1 ? "post" : "posts"}{noArt.length ? ` · ${noArt.length} sem arte` : ""}</span>
+        <Button size="sm" variant="outline" className="border-primary/40 text-primary" disabled={busy || planning} onClick={onPlanAI}>
+          {planning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}{planning ? "Planejando…" : "Planejar a semana com IA"}
+        </Button>
+        {toCreate.length > 0 && <Button size="sm" variant="outline" disabled={busy} onClick={() => onCreateArts()}><Wand2 className="mr-1.5 h-4 w-4" />Criar as artes ({toCreate.length})</Button>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {week.state === "liberada" ? (
             <>
@@ -351,12 +366,16 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">Enviar em
                 <Input type="datetime-local" value={release} onChange={(e) => setRelease(e.target.value)} className="h-8 w-[190px] text-xs" /></label>
               {week.state === "agendada" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRelease("rascunho")}>Cancelar envio</Button>}
-              <Button size="sm" variant="outline" disabled={busy || !week.items.length} onClick={() => onRelease("agendar", new Date(release).toISOString())}><Clock3 className="mr-1.5 h-4 w-4" />{week.state === "agendada" ? "Reagendar" : "Agendar envio"}</Button>
-              <Button size="sm" disabled={busy || !week.items.length} onClick={() => { if (confirm(`Enviar agora a semana de ${ddmm(week.weekStart)} para todas as unidades?`)) onRelease("agora"); }}><Send className="mr-1.5 h-4 w-4" />Enviar agora</Button>
+              <Button size="sm" variant="outline" disabled={busy || !week.items.length || blockSend} title={blockSend ? "Há pautas sem arte" : undefined} onClick={() => onRelease("agendar", new Date(release).toISOString())}><Clock3 className="mr-1.5 h-4 w-4" />{week.state === "agendada" ? "Reagendar" : "Agendar envio"}</Button>
+              <Button size="sm" disabled={busy || !week.items.length || blockSend} title={blockSend ? "Há pautas sem arte" : undefined} onClick={() => { if (confirm(`Enviar agora a semana de ${ddmm(week.weekStart)} para todas as unidades?`)) onRelease("agora"); }}><Send className="mr-1.5 h-4 w-4" />Enviar agora</Button>
             </>
           )}
         </div>
       </div>
+      {planning && <p className="flex items-center gap-2 rounded-lg bg-primary/5 p-2.5 text-xs text-primary"><Loader2 className="h-3.5 w-3.5 animate-spin" />O agente de planejamento está montando as pautas desta semana (leva de 1 a 3 minutos). Elas aparecem aqui sozinhas.</p>}
+      {week.ai?.status === "erro" && <p className="rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">O planejamento com IA não terminou. Tente de novo.</p>}
+      {creating.length > 0 && <p className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-800"><Loader2 className="h-3.5 w-3.5 animate-spin" />Criando {creating.length} {creating.length === 1 ? "arte" : "artes"} com os agentes (alguns minutos cada). Elas entram nas pautas sozinhas.</p>}
+      {blockSend && !planning && <p className="text-xs text-amber-700">Para enviar a semana, todas as pautas precisam ter arte.</p>}
       <div className="grid gap-2 md:grid-cols-2">
         <Input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== week.title && onSaveMeta({ title })} placeholder="Título da semana (opcional, ex.: Semana da Black Friday)" className="h-8 text-sm" />
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== week.notes && onSaveMeta({ notes })} placeholder="Recado para as unidades (opcional)" className="h-8 text-sm" />
@@ -369,13 +388,21 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
             <div key={d} className={cn("flex min-h-[170px] flex-col gap-1.5 rounded-xl border bg-muted/20 p-2", d === today && "border-primary ring-1 ring-primary/30")}>
               <p className={cn("text-[11px] font-semibold uppercase", d === today ? "text-primary" : "text-muted-foreground")}>{WD[dd.getDay()]} {ddmm(d)}</p>
               {posts.map(({ it, i }) => (
-                <button key={i} type="button" onClick={() => onEdit(i)} className="overflow-hidden rounded-lg border bg-card text-left transition hover:border-primary">
-                  {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className="aspect-[4/5] w-full object-cover" />}
+                <div key={i} className={cn("overflow-hidden rounded-lg border bg-card text-left transition hover:border-primary", !it.imageUrls.length && "border-dashed")}>
+                <button type="button" onClick={() => onEdit(i)} className="block w-full text-left">
+                  {it.imageUrls[0] ? <img src={it.imageUrls[0]} alt="" loading="lazy" className="aspect-[4/5] w-full object-cover" />
+                    : <span className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-1 bg-muted/40 p-2 text-center text-[10px] text-muted-foreground">
+                        {creating.includes(i) ? <><Loader2 className="h-4 w-4 animate-spin text-primary" />criando a arte…</> : <><Sparkles className="h-4 w-4" />pauta sem arte</>}
+                      </span>}
                   <div className="p-1.5">
                     <p className="flex items-center gap-1 text-[10px]">{it.time && <span className="font-semibold">{it.time}</span>}{it.format && <span className={cn("rounded px-1", FORMAT_CLS[it.format] ?? "bg-muted")}>{FORMATS.find(([v]) => v === it.format)?.[1] ?? it.format}</span>}{it.storyUrls?.length ? <span className="text-muted-foreground">+story</span> : null}</p>
                     <p className="line-clamp-2 text-[11px] font-medium leading-tight">{it.title}</p>
                   </div>
                 </button>
+                {!it.imageUrls.length && it.planIndex != null && !creating.includes(i) && (
+                  <button type="button" disabled={busy} onClick={() => onCreateArts([i])} className="flex w-full items-center justify-center gap-1 border-t py-1 text-[10px] font-semibold text-primary hover:bg-primary/5"><Wand2 className="h-3 w-3" />Criar arte</button>
+                )}
+                </div>
               ))}
               <button type="button" onClick={() => onNew(d)} className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[11px] text-muted-foreground hover:border-primary hover:text-primary"><Plus className="h-3 w-3" />Post</button>
             </div>
@@ -389,8 +416,22 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, busy }: {
 function PlanTab() {
   const now = new Date();
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
-  const q = trpc.unitAdmin.monthPlans.useQuery({ month });
+  const q = trpc.unitAdmin.monthPlans.useQuery({ month }, {
+    // Enquanto a IA planeja ou cria artes, atualiza sozinho.
+    refetchInterval: (query) => ((query.state.data ?? []).some((w) => w.ai?.status === "planejando" || (w.creating?.length ?? 0) > 0) ? 8000 : false),
+  });
   const utils = trpc.useUtils();
+  const [aiWeek, setAiWeek] = useState<Week | null>(null);
+  const [aiPosts, setAiPosts] = useState(5);
+  const [aiNotes, setAiNotes] = useState("");
+  const planAI = trpc.unitAdmin.planWeekAI.useMutation({
+    onSuccess: () => { toast.success("A IA começou a planejar a semana. As pautas aparecem em 1 a 3 minutos."); setAiWeek(null); setAiNotes(""); utils.unitAdmin.monthPlans.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const createArts = trpc.unitAdmin.createArts.useMutation({
+    onSuccess: (r) => { toast.success(r.started ? `${r.started} ${r.started === 1 ? "arte sendo criada" : "artes sendo criadas"} pelos agentes.` : "Nada para criar."); utils.unitAdmin.monthPlans.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
   const save = trpc.unitAdmin.savePlan.useMutation({ onError: (e) => toast.error(e.message) });
   const [editing, setEditing] = useState<{ week: Week; index: number | null; item: Item } | null>(null);
   const [y, m] = month.split("-").map(Number);
@@ -417,15 +458,37 @@ function PlanTab() {
         <span className="text-sm text-muted-foreground">{total} {total === 1 ? "post" : "posts"} no mês</span>
       </div>
       <p className="rounded-xl bg-primary/5 p-3 text-sm text-muted-foreground">
-        Este é o calendário <b>das academias</b>, separado do planejamento da Alle. Monte o mês, crie as artes (envie ou use uma criação dos agentes) e cada semana vai para o portal das unidades na data de envio. Padrão: segunda-feira 00h da própria semana.
+        Este é o calendário <b>das academias</b>, separado do planejamento da Alle. Em cada semana: <b>Planejar a semana com IA</b> monta as pautas, <b>Criar as artes</b> gera as artes com os agentes (ou envie as suas) e a semana vai para o portal das unidades na data de envio. Padrão: segunda-feira 00h da própria semana.
       </p>
       {q.isLoading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : weeks.map((w) => (
         <WeekCard key={`${w.weekStart}-${w.state}-${String(w.releaseAt)}`} week={w} busy={save.isPending}
           onNew={(date) => setEditing({ week: w, index: null, item: { date, time: "12:00", format: "imagem", title: "", caption: "", imageUrls: [], storyUrls: [] } })}
           onEdit={(i) => setEditing({ week: w, index: i, item: w.items[i] })}
           onSaveMeta={(patch) => persist(w, patch).then(() => toast.success("Semana atualizada."))}
-          onRelease={(mode, at) => persist(w, {}, { mode, at }).then(() => toast.success(mode === "agora" ? "Semana enviada para as unidades!" : mode === "agendar" ? "Envio agendado." : "Semana voltou para rascunho."))} />
+          onRelease={(mode, at) => persist(w, {}, { mode, at }).then(() => toast.success(mode === "agora" ? "Semana enviada para as unidades!" : mode === "agendar" ? "Envio agendado." : "Semana voltou para rascunho."))}
+          onPlanAI={() => setAiWeek(w)}
+          onCreateArts={(indexes) => createArts.mutate({ weekStart: w.weekStart, indexes })} />
       ))}
+      {aiWeek && (
+        <Dialog open onOpenChange={(o) => !o && setAiWeek(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader><DialogTitle>Planejar a semana de {ddmm(aiWeek.weekStart)} com IA</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">O agente de planejamento monta as pautas para o Instagram das academias (alunos, QR da recepção e a Ane). Elas chegam sem arte: depois é só clicar em “Criar as artes”.{aiWeek.items.length ? " As pautas novas entram junto com os posts que a semana já tem." : ""}</p>
+            <label className="block space-y-1 text-sm"><span className="font-medium">Quantos posts na semana</span>
+              <select value={aiPosts} onChange={(e) => setAiPosts(Number(e.target.value))} className="h-9 w-full rounded-md border bg-background px-2">
+                {[2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select></label>
+            <label className="block space-y-1 text-sm"><span className="font-medium">O que a semana precisa ter (opcional)</span>
+              <Textarea rows={4} value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} placeholder="Ex.: semana da Black Friday; um post explicando o passo a passo com a Ane; foco em quem ainda não ativou" /></label>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAiWeek(null)}>Cancelar</Button>
+              <Button disabled={planAI.isPending} onClick={() => planAI.mutate({ weekStart: aiWeek.weekStart, posts: aiPosts, notes: aiNotes.trim() || undefined })}>
+                {planAI.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}Planejar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       {editing && (
         <PostEditor week={editing.week} initial={editing.item} saving={save.isPending} onClose={() => setEditing(null)}
           onSave={async (it) => {

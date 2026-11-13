@@ -1178,6 +1178,8 @@ export type UnitPlanItem = {
   caption?: string | null;
   imageUrls: string[];
   storyUrls?: string[]; // stories 9:16 para repostar no mesmo dia
+  planIndex?: number | null; // pauta do plano feito pela IA (para ligar a arte criada)
+  brief?: string | null; // ângulo, gancho e direção da legenda vindos da IA
 };
 
 /** Planejamento semanal único, publicado pela equipe da Alle para todas as unidades. */
@@ -1191,6 +1193,9 @@ export const unitWeeklyPlans = pgTable("unit_weekly_plans", {
   publishedAt: timestamp("publishedAt"),
   // Quando a semana aparece para as unidades (envio agendado). Nulo = assim que publicada.
   releaseAt: timestamp("releaseAt"),
+  // Plano feito pelo agente de planejamento para esta semana (e se as pautas já vieram para cá).
+  aiThreadId: integer("aiThreadId"),
+  aiAppliedThreadId: integer("aiAppliedThreadId"),
   createdByUserId: integer("createdByUserId").notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
 });

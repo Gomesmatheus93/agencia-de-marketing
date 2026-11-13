@@ -5,6 +5,8 @@ import { z } from "zod";
 import { auditLog, unitAnnouncements, unitMaterials, unitPostMarks, units, unitWeeklyPlans, userUnits, users, type UnitPlanItem, type User } from "../drizzle/schema";
 import { adminProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as store from "./agents/store";
+import { sendUserMessage } from "./agents/runtime";
+import { TASKS } from "./agents/tasks";
 import * as db from "./db";
 
 // Portal das unidades (academias parceiras) e painel de administração das unidades.
@@ -192,6 +194,85 @@ export const unitPortalRouter = router({
     }),
 });
 
+
+// ─── Planejamento das academias com IA ──────────────────────────────────────
+// O agente de planejamento monta as pautas da semana; os agentes de criação fazem as artes.
+// Tudo marcado com forUnits: não entra no planejamento nem no painel do Instagram da Alle.
+
+const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram da Alle).
+- Estes posts serão publicados no Instagram de cada unidade Allp Fit, para os ALUNOS da academia.
+- Objetivo: o aluno ativar o desconto na conta de luz lendo o QR code da recepção da unidade e falando com a Ane no WhatsApp.
+- CTA: "procure o QR code na recepção" ou "fale com a Ane". NÃO use "Comenta ENERGIA" (essa automação só existe no perfil da Alle) nem "link na bio".
+- Não cite uma unidade específica: o plano vale para todas. Sem collab (collab = null).
+- Os alunos são pessoa física: até 15% de desconto, sempre com a ressalva. Nunca prometa valor exato.
+- Formatos: só carrossel, imagem e stories (sem reel: as unidades não recebem vídeo).
+- NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.`;
+
+const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
+- CTA: QR code na recepção da unidade e falar com a Ane no WhatsApp. NÃO use "Comenta ENERGIA" nem "link na bio".
+- Alunos são pessoa física: até 15% de desconto, com a ressalva quando o percentual aparecer.
+- Não cite uma unidade específica. Na legenda, marque @alleenergia e @allpfit.`;
+
+/** Inicia uma tarefa de agente (igual à tela dos agentes), marcada como das academias. */
+async function startUnitTask(userId: number, agentSlug: string, input: Record<string, unknown>, planLink?: { threadId: number; index: number }) {
+  const task = TASKS[agentSlug];
+  if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Agente não encontrado." });
+  const parsed = task.input.safeParse(input);
+  if (!parsed.success) throw new TRPCError({ code: "BAD_REQUEST", message: parsed.error.issues[0]?.message ?? "Dados inválidos" });
+  const thread = await store.createThread(userId, task.agentSlug, `Academias · ${task.title(parsed.data)}`.slice(0, 255), {
+    input: { ...(parsed.data as Record<string, unknown>), forUnits: true, ...(planLink ? { planLink } : {}) },
+  });
+  await sendUserMessage(userId, thread.id, task.brief(parsed.data));
+  return thread.id;
+}
+
+type AiPlanItem = { date: string; time?: string; format?: string; type?: string; title: string; angle?: string; hook?: string; captionIdea?: string };
+const briefOf = (it: AiPlanItem) => [it.angle && `Ângulo: ${it.angle}`, it.hook && `Gancho: ${it.hook}`, it.captionIdea && `Legenda: ${it.captionIdea}`].filter(Boolean).join("\n");
+const imagesOf = (r: Record<string, any>): string[] => (r.slides?.map((s: any) => s.imageUrl) ?? r.frames?.map((f: any) => f.imageUrl) ?? (r.imageUrl ? [r.imageUrl] : [])).filter(Boolean);
+
+/**
+ * Sincroniza uma semana com a IA: traz as pautas do plano (uma vez) e encaixa as artes que ficaram prontas.
+ * Devolve o estado do plano e quais pautas estão com a arte sendo criada.
+ */
+async function syncAiWeek(userId: number, row: typeof unitWeeklyPlans.$inferSelect) {
+  if (!row.aiThreadId) return { ai: null, creating: [] as number[] };
+  const c = await conn();
+  const thread = await store.getThread(userId, row.aiThreadId);
+  let items = [...row.items];
+  let changed = false;
+  const plan = (thread?.result ?? null) as { items?: AiPlanItem[] } | null;
+  if (plan?.items && row.aiAppliedThreadId !== row.aiThreadId) {
+    const end = addDays(row.weekStart, 6);
+    plan.items.forEach((it, i) => {
+      if (it.date < row.weekStart || it.date > end || it.format === "reel") return;
+      items.push({ date: it.date, time: it.time ?? null, format: it.format ?? "imagem", type: it.type ?? null, title: it.title, caption: null, imageUrls: [], planIndex: i, brief: briefOf(it) });
+    });
+    items.sort((a, b) => `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`));
+    changed = true;
+  }
+  // Artes prontas dos agentes de criação, ligadas a cada pauta.
+  const outputs = await store.listPlanOutputs(userId, row.aiThreadId);
+  const creating: number[] = [];
+  items = items.map((it, idx) => {
+    if (it.planIndex == null || it.imageUrls.length) return it;
+    const mine = outputs.filter((o) => Number((o.taskInput as { planLink?: { index?: number } } | null)?.planLink?.index) === it.planIndex);
+    const done = mine.find((o) => imagesOf((o.result ?? {}) as Record<string, any>).length);
+    if (done) {
+      const r = (done.result ?? {}) as Record<string, any>;
+      changed = true;
+      return { ...it, imageUrls: imagesOf(r).slice(0, 20), caption: it.caption || (r.caption ?? null) };
+    }
+    if (mine.some((o) => o.status === "running")) creating.push(idx);
+    return it;
+  });
+  if (changed) {
+    await c.update(unitWeeklyPlans).set({ items, aiAppliedThreadId: row.aiThreadId }).where(eq(unitWeeklyPlans.id, row.id));
+    row.items = items;
+  }
+  const status = !thread ? "erro" : thread.status === "running" ? "planejando" : plan?.items ? "pronto" : thread.status === "failed" ? "erro" : "planejando";
+  return { ai: { threadId: row.aiThreadId, status }, creating };
+}
+
 // ─── Administração das unidades (só administradores) ────────────────────────
 
 const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download", "unit.material.view", "unit.plan.posted", "unit.support.opened"];
@@ -200,6 +281,8 @@ const planItemSchema = z.object({
   title: z.string().trim().min(1).max(300), type: z.string().max(60).nullable().optional(), caption: z.string().max(5000).nullable().optional(),
   imageUrls: z.array(z.string().url().max(2000)).max(20),
   storyUrls: z.array(z.string().url().max(2000)).max(10).optional(),
+  planIndex: z.number().int().min(0).nullable().optional(),
+  brief: z.string().max(3000).nullable().optional(),
 });
 
 export const unitAdminRouter = router({
@@ -395,7 +478,7 @@ export const unitAdminRouter = router({
   }),
 
   /** Planejamento do mês das unidades: as semanas (segunda a domingo) que tocam o mês. */
-  monthPlans: adminProcedure.input(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })).query(async ({ input }) => {
+  monthPlans: adminProcedure.input(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })).query(async ({ ctx, input }) => {
     const first = `${input.month}-01`;
     const [y, m] = input.month.split("-").map(Number);
     const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
@@ -404,12 +487,56 @@ export const unitAdminRouter = router({
     const c = await conn();
     const rows = await c.select().from(unitWeeklyPlans).where(inArray(unitWeeklyPlans.weekStart, weeks));
     const now = new Date();
-    return weeks.map((w) => {
+    return Promise.all(weeks.map(async (w) => {
       const r = rows.find((x) => x.weekStart === w);
+      const sync = r ? await syncAiWeek(ctx.user.id, r) : { ai: null, creating: [] as number[] };
       const state = !r ? "vazia" : r.status !== "published" ? "rascunho" : r.releaseAt && r.releaseAt > now ? "agendada" : "liberada";
-      return { weekStart: w, weekEnd: addDays(w, 6), state, releaseAt: r?.releaseAt ?? null, title: r?.title ?? "", notes: r?.notes ?? "", items: r?.items ?? [] };
-    });
+      return { weekStart: w, weekEnd: addDays(w, 6), state, releaseAt: r?.releaseAt ?? null, title: r?.title ?? "", notes: r?.notes ?? "", items: r?.items ?? [], ai: sync.ai, creating: sync.creating };
+    }));
   }),
+
+  /** Planeja a semana das academias com o agente de planejamento (as pautas chegam sem arte). */
+  planWeekAI: adminProcedure
+    .input(z.object({ weekStart: day, posts: z.number().int().min(1).max(7).default(5), notes: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (mondayOf(new Date(`${input.weekStart}T15:00:00Z`)) !== input.weekStart) throw new TRPCError({ code: "BAD_REQUEST", message: "A semana precisa começar numa segunda-feira." });
+      const c = await conn();
+      const [row] = await c.select().from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, input.weekStart));
+      if (row?.aiThreadId) {
+        const t = await store.getThread(ctx.user.id, row.aiThreadId);
+        if (t?.status === "running") throw new TRPCError({ code: "CONFLICT", message: "A IA ainda está planejando esta semana." });
+      }
+      const threadId = await startUnitTask(ctx.user.id, "planejamento", {
+        startDate: input.weekStart, period: "semana", postsPerWeek: input.posts, goal: "vendas",
+        notes: `${UNIT_PLAN_NOTES}${input.notes ? `\n\nPEDIDO DA EQUIPE PARA ESTA SEMANA:\n${input.notes}` : ""}`,
+      });
+      if (row) await c.update(unitWeeklyPlans).set({ aiThreadId: threadId }).where(eq(unitWeeklyPlans.id, row.id));
+      else await c.insert(unitWeeklyPlans).values({ weekStart: input.weekStart, items: [], status: "draft", createdByUserId: ctx.actualUser!.id, aiThreadId: threadId });
+      await db.recordAudit({ action: "unit.plan.ai", actorUserId: ctx.actualUser!.id, targetType: "unit_plan", targetId: input.weekStart });
+      return { threadId };
+    }),
+
+  /** Cria com os agentes as artes das pautas sem arte (todas, ou só as indicadas). */
+  createArts: adminProcedure
+    .input(z.object({ weekStart: day, indexes: z.array(z.number().int().min(0)).max(30).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await conn();
+      const [row] = await c.select().from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, input.weekStart));
+      if (!row?.aiThreadId) throw new TRPCError({ code: "BAD_REQUEST", message: "Planeje a semana com a IA primeiro." });
+      const { creating } = await syncAiWeek(ctx.user.id, row);
+      let started = 0;
+      for (const [idx, it] of row.items.entries()) {
+        if (input.indexes && !input.indexes.includes(idx)) continue;
+        if (it.planIndex == null || it.imageUrls.length || creating.includes(idx)) continue;
+        const topic = `${it.title}${it.brief ? `\n\n${it.brief}` : ""}`.slice(0, 2900);
+        const link = { threadId: row.aiThreadId, index: it.planIndex };
+        if (it.format === "carrossel") await startUnitTask(ctx.user.id, "carrossel", { topic, slides: 6, style: "auto", notes: UNIT_ART_NOTES }, link);
+        else if (it.format === "stories") await startUnitTask(ctx.user.id, "stories", { topic, frames: 3, notes: UNIT_ART_NOTES }, link);
+        else await startUnitTask(ctx.user.id, "legendas", { topic, format: "feed_4x5", notes: UNIT_ART_NOTES }, link);
+        started++;
+      }
+      return { started };
+    }),
 
   /** Artes prontas dos agentes (carrossel, post e stories) para usar num post das unidades. */
   creations: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(60).default(30) })).query(async ({ ctx, input }) => {
@@ -475,6 +602,8 @@ export const unitAdminRouter = router({
       await c.insert(unitWeeklyPlans).values({ weekStart: input.weekStart, ...values })
         .onConflictDoUpdate({ target: unitWeeklyPlans.weekStart, set: values });
       if (input.items.some((it) => it.date < input.weekStart || it.date > addDays(input.weekStart, 6))) throw new TRPCError({ code: "BAD_REQUEST", message: "Há post com data fora desta semana." });
+      const noArt = input.items.filter((it) => !it.imageUrls.length).length;
+      if (input.publish && noArt) throw new TRPCError({ code: "BAD_REQUEST", message: `${noArt} ${noArt === 1 ? "pauta ainda está" : "pautas ainda estão"} sem arte. Crie as artes (ou tire as pautas) antes de enviar.` });
       await db.recordAudit({ action: input.publish ? "unit.plan.published" : "unit.plan.saved", actorUserId: ctx.actualUser!.id, targetType: "unit_plan", targetId: input.weekStart });
       return { ok: true };
     }),
