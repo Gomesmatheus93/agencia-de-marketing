@@ -17,36 +17,70 @@ import { conn } from "./unitPortal";
 // Saída por academia: PDF no tamanho real (cm) para a gráfica + uma prévia em JPG para o portal.
 
 export const KIT_FORMATS = {
-  display: { label: "Display", wCm: 21, hCm: 29.7, dpi: 300, layout: "poster" },
-  banner: { label: "Banner", wCm: 90.02, hCm: 120.24, dpi: 120, layout: "poster" },
-  panfleto: { label: "Panfleto", wCm: 37.31, hCm: 52.92, dpi: 150, layout: "poster" },
+  display: { label: "Display", wCm: 21, hCm: 29.7, dpi: 300, layout: "chat" },
+  banner: { label: "Banner", wCm: 90.02, hCm: 120.24, dpi: 120, layout: "impact" },
+  panfleto: { label: "Panfleto", wCm: 37.31, hCm: 52.92, dpi: 150, layout: "voucher" },
   windbanner: { label: "Windbanner", wCm: 111.57, hCm: 156.9, dpi: 100, layout: "flag" },
 } as const;
 export type KitFormat = keyof typeof KIT_FORMATS;
 const formatSchema = z.enum(Object.keys(KIT_FORMATS) as [KitFormat, ...KitFormat[]]);
 
-export const KIT_DEFAULTS = {
-  eyebrow: "ALUNO ALLP FIT,",
-  headline1: "VOCÊ JÁ TEM",
-  headline2: "DESCONTO NA",
-  headline3: "CONTA DE LUZ.",
-  highlight: "Só falta ativar!",
-  offer: "ATÉ 15%* DE DESCONTO TODO MÊS",
-  stepsTitle: "ATIVE EM 3 PASSOS",
-  step1: "Aponte a câmera|para o QR code ao lado",
-  step2: "Fale com a Ane|no WhatsApp da Alle Energia",
-  step3: "Envie sua conta de luz|e a gente analisa pra você",
-  qrLabel: "ATIVE AGORA",
-  qrSub: "Leia com a câmera do celular",
-  benefit1: "Sem custo",
-  benefit2: "Sem obra",
-  benefit3: "Sem fidelidade",
-  disclaimer: "*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.",
-  wbLine1: "Desconto na",
-  wbLine2: "conta de luz",
+const DISCLAIMER = "*Até 35% de desconto para PJ e até 15% para PF na fatura de energia, sujeito à análise da fatura e às condições do benefício.";
+
+/** Textos padrão de cada material (todos editáveis na tela). */
+export const KIT_DEFAULTS: Record<KitFormat, Record<string, string>> = {
+  // Display (balcão, lido de perto): conversa com a Ane.
+  display: {
+    eyebrow: "ALUNO ALLP FIT,",
+    headline1: "VOCÊ JÁ TEM DESCONTO",
+    headline2: "NA CONTA DE LUZ.",
+    stickerTop: "ATÉ",
+    stickerMain: "15%*",
+    stickerBottom: "DE DESCONTO",
+    chatName: "Ane · Alle Energia",
+    chat1: "Oi! Você é aluno Allp Fit?",
+    chat2: "Sou sim!",
+    chat3: "Então você já tem direito ao desconto na conta de luz. Vamos ativar?",
+    benefit1: "Sem custo",
+    benefit2: "Sem obra",
+    benefit3: "Sem fidelidade",
+    qrLabel: "ESCANEIE E ATIVE",
+    qrSub: "Aponte a câmera e fale com a Ane",
+    disclaimer: DISCLAIMER,
+  },
+  // Banner (parede, visto de longe): frase grande, QR gigante e a Ane.
+  banner: {
+    headline1: "SEU DESCONTO",
+    headline2: "JÁ ESTÁ AQUI.",
+    sub: "Só falta ativar pelo QR code.",
+    offer: "ATÉ 15%* DE DESCONTO TODO MÊS",
+    qrLabel: "ATIVE AGORA",
+    qrSub: "Aponte a câmera do celular",
+    bubble: "Fala comigo!",
+    benefits: "SEM CUSTO  ·  SEM OBRA  ·  SEM FIDELIDADE",
+    disclaimer: DISCLAIMER,
+  },
+  // Panfleto (na mão, guardado): vale-desconto com canhoto de resgate.
+  panfleto: {
+    eyebrow: "ALUNO ALLP FIT",
+    headline1: "SEU DESCONTO JÁ ESTÁ",
+    headline2: "SEPARADO. É SÓ RESGATAR.",
+    voucherTitle: "VALE-DESCONTO NA CONTA DE LUZ",
+    voucherKicker: "ATÉ",
+    voucherValue: "15%*",
+    voucherSub: "de desconto todo mês",
+    stubTitle: "RESGATE AQUI",
+    stubText: "Aponte a câmera e fale com a Ane no WhatsApp da Alle Energia.",
+    step1: "Escaneie o QR",
+    step2: "Fale com a Ane",
+    step3: "Envie sua conta de luz",
+    benefits: "SEM CUSTO  ·  SEM OBRA  ·  SEM FIDELIDADE",
+    disclaimer: DISCLAIMER,
+  },
+  windbanner: { wbLine1: "Desconto na", wbLine2: "conta de luz" },
 };
-export type KitFields = typeof KIT_DEFAULTS;
-const fieldsSchema = z.object(Object.fromEntries(Object.keys(KIT_DEFAULTS).map((k) => [k, z.string().max(220)])) as Record<keyof KitFields, z.ZodString>);
+export type KitFields = Record<string, string>;
+const fieldsSchema = z.record(z.string().max(40), z.string().max(240));
 
 const W = 1000;
 const heightOf = (f: KitFormat) => Math.round((W * KIT_FORMATS[f].hCm) / KIT_FORMATS[f].wCm * 10) / 10;
@@ -72,74 +106,161 @@ function wrap(text: string, max: number): string[] {
 
 type Slot = { x: number; y: number; size: number };
 
-/**
- * Cartaz (display, banner e panfleto), focado em ativação: o aluno já tem o desconto, falta ativar.
- * Topo roxo com a mensagem e a Ane (recortada na borda da faixa, sem invadir o resto);
- * base clara com os 3 passos e o QR em destaque ("Ative agora").
- */
-function posterSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
-  const Z = Math.round(H - 640); // divisa: a base clara tem a mesma altura em todos os formatos
-  const hl = 58, hlGap = 66;
-  const h3Y = Z - 196, h2Y = h3Y - hlGap, h1Y = h2Y - hlGap, eyeY = h1Y - 74;
-  const hiY = h3Y + 34, offerY = hiY + 92;
-  // Ane: caixa à direita, apoiada exatamente na divisa.
-  const aneW = 470, aneH = Math.min(Z - 130, 560);
-  // QR em destaque na base, à direita.
-  const bY = H - 100; // linha dos benefícios
-  const card = { x: 584, y: Z + 52, w: 352, h: bY - 64 - (Z + 52) };
-  const qrSize = Math.min(card.w - 92, card.h - 168);
-  const qr = { x: card.x + (card.w - qrSize) / 2, y: card.y + 94, size: qrSize };
-  const steps = [f.step1, f.step2, f.step3].map((t) => t.split("|"));
-  const stepSvg = steps.map(([title, sub], i) => {
-    const y = Z + 162 + i * 104;
-    return `<circle cx="96" cy="${y}" r="30" fill="#7B2FBE"/>${T(96, y + 11, 30, 900, "#ffffff", String(i + 1), "middle")}`
-      + T(144, y - 4, 29, 800, "#2a0a3d", title ?? "") + T(144, y + 28, 21, 500, "#6b5a78", sub ?? "")
-      + (i < steps.length - 1 ? `<line x1="96" y1="${y + 34}" x2="96" y2="${y + 70}" stroke="#7B2FBE" stroke-opacity="0.25" stroke-width="4" stroke-dasharray="2 8" stroke-linecap="round"/>` : "");
-  }).join("");
-  const benefits = [f.benefit1, f.benefit2, f.benefit3].filter(Boolean);
-  const bw = (W - 128) / benefits.length;
-  const benefitSvg = benefits.map((b, i) => {
-    const cx = 64 + bw * i + bw / 2;
-    return `<circle cx="${cx - 92}" cy="${bY - 9}" r="15" fill="#ff7300"/><path d="M${cx - 99} ${bY - 9} l5 5 l9 -10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`
-      + T(cx - 68, bY, 24, 800, "#2a0a3d", b.toUpperCase());
-  }).join("");
-  const disc = wrap(f.disclaimer, 120);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-  <defs>
+// ── Peças comuns ────────────────────────────────────────────────────────────
+const DEFS = `<defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#8b3fd2"/><stop offset="1" stop-color="#5e1ca3"/></linearGradient>
     <linearGradient id="or" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff6400"/></linearGradient>
-    <radialGradient id="glow" cx="0.78" cy="0.62" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
-    <clipPath id="top"><rect width="${W}" height="${Z}"/></clipPath>
-  </defs>
+    <radialGradient id="glow" cx="0.8" cy="0.3" r="0.6"><stop offset="0" stop-color="#ffffff" stop-opacity="0.15"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>`;
+const svgOpen = (H: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${DEFS}`;
+const check = (cx: number, cy: number, r: number, fill = "#ff7300") =>
+  `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/><path d="M${cx - r * 0.45} ${cy} l${r * 0.3} ${r * 0.3} l${r * 0.55} ${-r * 0.6}" fill="none" stroke="#fff" stroke-width="${r * 0.26}" stroke-linecap="round" stroke-linejoin="round"/>`;
+/** Largura aproximada de um texto em Montserrat (para dimensionar pílulas e balões). */
+const textW = (t: string, size: number, weight = 700) => t.length * size * (weight >= 800 ? 0.68 : 0.58);
+const discLines = (t: string, max: number, x: number, yLast: number, size: number, fill: string, anchor = "start") => {
+  const lines = wrap(t, max);
+  return lines.map((l, i) => T(x, yLast - (lines.length - 1 - i) * size * 1.35, size, 500, fill, l, anchor)).join("");
+};
+
+/** Display (A4, balcão): conversa com a Ane em balões, selo da oferta e faixa roxa com o QR. */
+function chatSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
+  const Z = H - 500; // início da faixa roxa
+  const bubble = (side: "ane" | "aluno", text: string, y: number) => {
+    const lines = wrap(text, 40);
+    const w = Math.min(660, Math.max(...lines.map((l) => textW(l, 27, 600))) + 56);
+    const h = 30 + lines.length * 38;
+    const x = side === "ane" ? 64 : W - 64 - w;
+    const fill = side === "ane" ? "#ffffff" : "url(#or)";
+    const color = side === "ane" ? "#2a0a3d" : "#ffffff";
+    const tail = side === "ane" ? `M${x + 26} ${y + h - 2} l-22 22 l44 -8 Z` : `M${x + w - 26} ${y + h - 2} l22 22 l-44 -8 Z`;
+    return { h, svg: `<path d="${tail}" fill="${side === "ane" ? "#ffffff" : "#ff7300"}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="26" fill="${fill}" ${side === "ane" ? 'stroke="#e7dcf3" stroke-width="2"' : ""}/>`
+      + lines.map((l, i) => T(x + 28, y + 46 + i * 38, 27, 600, color, l)).join("") };
+  };
+  let y = 498;
+  const chat = [["ane", f.chat1], ["aluno", f.chat2], ["ane", f.chat3]].filter(([, t]) => t).map(([side, t]) => {
+    const b = bubble(side as "ane" | "aluno", t, y);
+    y += b.h + 28;
+    return b.svg;
+  }).join("");
+  const benefits = [f.benefit1, f.benefit2, f.benefit3].filter(Boolean);
+  let bx = 64;
+  const chips = benefits.map((b) => {
+    const w = textW(b.toUpperCase(), 20, 800) + 72;
+    const out = `<rect x="${bx}" y="${y + 6}" width="${w}" height="48" rx="24" fill="#ffffff" stroke="#7B2FBE" stroke-opacity="0.25" stroke-width="2"/>${check(bx + 26, y + 30, 13)}${T(bx + 48, y + 37, 20, 800, "#44015e", b.toUpperCase())}`;
+    bx += w + 12;
+    return out;
+  }).join("");
+  const qr = { x: 92, y: Z + 112, size: 246 };
+  const aneH = 560, aneW = (aneH * 742) / 1020;
+  const svg = `${svgOpen(H)}
   <rect width="${W}" height="${H}" fill="#FFF8F2"/>
-  <g clip-path="url(#top)">
-    <rect width="${W}" height="${Z}" fill="url(#bg)"/>
-    <rect width="${W}" height="${Z}" fill="url(#glow)"/>
-    <image href="alle:raio-mono" x="610" y="${Z - 700}" width="470" height="750" opacity="0.08"/>
-    <circle cx="${W - 235}" cy="${Z - 250}" r="250" fill="url(#or)" opacity="0.95"/>
-    <image href="alle:ane-solto" x="${W - aneW - 10}" y="${Z - aneH}" width="${aneW}" height="${aneH}" preserveAspectRatio="xMidYMax meet"/>
+  <circle cx="${W + 40}" cy="-40" r="330" fill="#7B2FBE" opacity="0.06"/>
+  <image href="alle:logo" x="64" y="56" width="218" height="64"/>
+  <rect x="300" y="66" width="2" height="44" fill="#44015e" opacity="0.2"/>
+  <image href="alle:allpfit-roxo" x="320" y="66" width="208" height="45"/>
+  <g transform="translate(${W - 150} 150) rotate(-10)">
+    <circle r="104" fill="url(#or)"/><circle r="90" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="3" stroke-dasharray="4 7"/>
+    ${T(0, -34, 24, 800, "#ffffff", f.stickerTop, "middle")}${T(0, 24, 62, 900, "#ffffff", f.stickerMain, "middle")}${T(0, 56, 17, 800, "#ffffff", f.stickerBottom, "middle")}
   </g>
-  <image href="alle:logo-branco" x="64" y="56" width="218" height="64"/>
-  <rect x="300" y="66" width="2" height="44" fill="#ffffff" opacity="0.4"/>
-  <image href="alle:allpfit-branco" x="320" y="66" width="208" height="45"/>
-  ${T(64, eyeY, 30, 800, "#ff8a1f", f.eyebrow, "start", 'letter-spacing="2"')}
-  ${T(62, h1Y, hl, 900, "#ffffff", f.headline1)}
-  ${T(62, h2Y, hl, 900, "#ffffff", f.headline2)}
-  ${T(62, h3Y, hl, 900, "#ffffff", f.headline3)}
-  <rect x="58" y="${hiY}" width="${Math.min(470, 40 + f.highlight.length * 23)}" height="70" rx="14" fill="url(#or)"/>
-  ${T(78, hiY + 48, 40, 900, "#ffffff", f.highlight)}
-  <rect x="58" y="${offerY}" width="${Math.min(480, 40 + f.offer.length * 13.4)}" height="46" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2"/>
-  ${T(78, offerY + 31, 21, 700, "#ffffff", f.offer, "start", 'letter-spacing="0.5"')}
-  ${T(64, Z + 86, 26, 900, "#7B2FBE", f.stepsTitle, "start", 'letter-spacing="2"')}
-  <rect x="64" y="${Z + 102}" width="70" height="5" rx="2.5" fill="#ff7300"/>
+  ${T(64, 270, 28, 800, "#ff7300", f.eyebrow, "start", 'letter-spacing="2"')}
+  ${T(62, 340, 54, 900, "#44015e", f.headline1)}
+  ${T(62, 402, 54, 900, "#44015e", f.headline2)}
+  <circle cx="74" cy="${464}" r="8" fill="#22c55e"/>${T(92, 471, 20, 700, "#6b5a78", f.chatName)}
+  ${chat}
+  ${chips}
+  <path d="M0 ${Z + 40} Q0 ${Z} 40 ${Z} L${W - 40} ${Z} Q${W} ${Z} ${W} ${Z + 40} L${W} ${H} L0 ${H} Z" fill="url(#bg)"/>
+  <rect x="0" y="${Z}" width="${W}" height="${H - Z}" fill="url(#glow)"/>
+  <image href="alle:raio-mono" x="${W - 360}" y="${Z + 10}" width="300" height="480" opacity="0.07"/>
+  ${T(64, Z + 66, 32, 900, "#ffffff", f.qrLabel, "start", 'letter-spacing="1"')}
+  <rect x="${qr.x - 28}" y="${qr.y - 22}" width="${qr.size + 56}" height="${qr.size + 44}" rx="28" fill="#ffffff"/>
+  ${T(64, qr.y + qr.size + 60, 21, 700, "#ffffff", f.qrSub)}
+  <path d="M${qr.x + qr.size + 52} ${qr.y + qr.size / 2} q60 -10 90 -90" fill="none" stroke="#ff8a1f" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 12"/>
+  ${discLines(f.disclaimer, 64, 64, H - 26, 12.5, "#e9dcf7")}
+  <image href="alle:ane-ombro" x="${W - aneW + 6}" y="${H - aneH}" width="${aneW}" height="${aneH}"/>
+</svg>`;
+  return { svg, slots: [qr] };
+}
+
+/** Banner (90×120, parede): frase gigante, QR enorme com "ATIVE AGORA" e a Ane grande com balão. */
+function impactSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
+  const card = { x: 64, y: 586, w: 430 };
+  const qrSize = 350;
+  const qr = { x: card.x + (card.w - qrSize) / 2, y: card.y + 96, size: qrSize };
+  const cardH = 96 + qrSize + 92;
+  const aneH = Math.min(H - 600, 680), aneW = (aneH * 742) / 1020;
+  const aneX = W - aneW + 20, aneY = H - aneH;
+  const bw = textW(f.bubble, 30, 800) + 60;
+  const offerW = textW(f.offer, 22, 800) + 56;
+  const svg = `${svgOpen(H)}
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <rect width="${W}" height="${H}" fill="url(#glow)"/>
+  <path d="M${W} ${H * 0.36} C${W - 260} ${H * 0.42} ${W - 330} ${H * 0.7} ${W - 250} ${H} L${W} ${H} Z" fill="url(#or)"/>
+  <image href="alle:raio-mono" x="-120" y="120" width="520" height="830" opacity="0.06"/>
+  <image href="alle:logo-branco" x="64" y="58" width="238" height="70"/>
+  <rect x="322" y="70" width="2" height="48" fill="#ffffff" opacity="0.4"/>
+  <image href="alle:allpfit-branco" x="344" y="70" width="226" height="49"/>
+  ${T(60, 286, 92, 900, "#ffffff", f.headline1)}
+  ${T(60, 384, 92, 900, "#ff8a1f", f.headline2)}
+  ${T(64, 452, 36, 700, "#ffffff", f.sub)}
+  <rect x="64" y="486" width="${offerW}" height="52" rx="26" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="2.5"/>
+  ${T(92, 520, 22, 800, "#ffffff", f.offer, "start", 'letter-spacing="0.5"')}
+  <rect x="${card.x}" y="${card.y}" width="${card.w}" height="${cardH}" rx="36" fill="url(#or)"/>
+  ${T(card.x + card.w / 2, card.y + 66, 46, 900, "#ffffff", f.qrLabel, "middle", 'letter-spacing="1"')}
+  <rect x="${qr.x - 18}" y="${qr.y - 18}" width="${qr.size + 36}" height="${qr.size + 36}" rx="22" fill="#ffffff"/>
+  ${T(card.x + card.w / 2, card.y + cardH - 30, 22, 700, "#ffffff", f.qrSub, "middle")}
+  ${wrap(f.benefits, 24).map((l, i) => T(64, card.y + cardH + 52 + i * 30, 20, 800, "#ffffff", l, "start", 'letter-spacing="0.5"')).join("")}
+  ${discLines(f.disclaimer, 56, 64, H - 34, 13, "#e9dcf7")}
+  <image href="alle:ane-ombro" x="${aneX}" y="${aneY}" width="${aneW}" height="${aneH}"/>
+  <g transform="translate(${Math.min(aneX + aneW * 0.66, W - 40 - bw / 2)} ${aneY - 14})">
+    <rect x="${-bw / 2}" y="-74" width="${bw}" height="70" rx="35" fill="#ffffff"/>
+    <path d="M-34 -10 l-6 36 l34 -36 Z" fill="#ffffff"/>
+    ${T(0, -28, 30, 800, "#7B2FBE", f.bubble, "middle")}
+  </g>
+</svg>`;
+  return { svg, slots: [qr] };
+}
+
+/** Panfleto (37×53): vale-desconto com picote e canhoto de resgate com o QR, mais os 3 passos. */
+function voucherSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
+  const vx = 72, vw = W - 144, vy = 470, perfY = 806, vb = 1140;
+  const qr = { x: vx + 64, y: perfY + 48, size: 270 };
+  const steps = [f.step1, f.step2, f.step3];
+  const colW = (W - 144) / 3;
+  const stepY = vb + 66;
+  const stepSvg = steps.map((t, i) => {
+    const cx = 72 + colW * i + colW / 2;
+    return `<circle cx="${cx}" cy="${stepY}" r="30" fill="#7B2FBE"/>${T(cx, stepY + 11, 30, 900, "#ffffff", String(i + 1), "middle")}`
+      + T(cx, stepY + 70, 23, 800, "#2a0a3d", t, "middle")
+      + (i < 2 ? `<path d="M${cx + 52} ${stepY} h${colW - 104}" stroke="#ff7300" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round"/>` : "");
+  }).join("");
+  const stubLines = wrap(f.stubText, 26);
+  const svg = `${svgOpen(H)}
+  <rect width="${W}" height="${H}" fill="#FFF8F2"/>
+  <path d="M0 0 H${W} V300 C${W * 0.7} 360 ${W * 0.3} 260 0 330 Z" fill="url(#bg)"/>
+  <image href="alle:raio-mono" x="${W - 330}" y="-60" width="300" height="480" opacity="0.08"/>
+  <image href="alle:logo-branco" x="72" y="56" width="218" height="64"/>
+  <rect x="308" y="66" width="2" height="44" fill="#ffffff" opacity="0.4"/>
+  <image href="alle:allpfit-branco" x="328" y="66" width="208" height="45"/>
+  ${T(72, 196, 26, 800, "#ff8a1f", f.eyebrow, "start", 'letter-spacing="3"')}
+  ${T(W / 2, 400, 46, 900, "#44015e", f.headline1, "middle")}
+  ${T(W / 2, 452, 46, 900, "#ff7300", f.headline2, "middle")}
+  <rect x="${vx}" y="${vy + 12}" width="${vw}" height="${vb - vy}" rx="36" fill="#7B2FBE" opacity="0.12"/>
+  <rect x="${vx}" y="${vy}" width="${vw}" height="${vb - vy}" rx="36" fill="#ffffff"/>
+  <rect x="${vx + 18}" y="${vy + 18}" width="${vw - 36}" height="${perfY - vy - 36}" rx="24" fill="none" stroke="#7B2FBE" stroke-opacity="0.35" stroke-width="3" stroke-dasharray="10 9"/>
+  ${T(W / 2, vy + 86, 25, 800, "#7B2FBE", f.voucherTitle, "middle", 'letter-spacing="2"')}
+  ${T(W / 2 - 230, vy + 196, 44, 800, "#44015e", f.voucherKicker, "middle")}
+  ${T(W / 2 + 40, vy + 252, 200, 900, "#ff7300", f.voucherValue, "middle", 'letter-spacing="-4"')}
+  ${T(W / 2, vy + 306, 32, 600, "#2a0a3d", f.voucherSub, "middle")}
+  <line x1="${vx + 40}" y1="${perfY}" x2="${vx + vw - 40}" y2="${perfY}" stroke="#7B2FBE" stroke-opacity="0.45" stroke-width="3" stroke-dasharray="14 10"/>
+  <circle cx="${vx}" cy="${perfY}" r="28" fill="#FFF8F2"/><circle cx="${vx + vw}" cy="${perfY}" r="28" fill="#FFF8F2"/>
+  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="20" fill="#ffffff" stroke="#ff7300" stroke-width="5"/>
+  ${T(qr.x + qr.size + 64, perfY + 110, 40, 900, "#7B2FBE", f.stubTitle)}
+  <path d="M${qr.x + qr.size + 64} ${perfY + 136} h80" stroke="#ff7300" stroke-width="6" stroke-linecap="round"/>
+  ${stubLines.map((l, i) => T(qr.x + qr.size + 64, perfY + 190 + i * 34, 24, 600, "#2a0a3d", l)).join("")}
   ${stepSvg}
-  <rect x="${card.x}" y="${card.y}" width="${card.w}" height="${card.h}" rx="32" fill="url(#or)"/>
-  ${T(card.x + card.w / 2, card.y + 62, 38, 900, "#ffffff", f.qrLabel, "middle", 'letter-spacing="1"')}
-  <rect x="${qr.x - 16}" y="${qr.y - 16}" width="${qr.size + 32}" height="${qr.size + 32}" rx="20" fill="#ffffff"/>
-  ${T(card.x + card.w / 2, card.y + card.h - 24, 19, 700, "#ffffff", f.qrSub, "middle")}
-  <line x1="64" y1="${bY - 44}" x2="${W - 64}" y2="${bY - 44}" stroke="#2a0a3d" stroke-opacity="0.08" stroke-width="2"/>
-  ${benefitSvg}
-  ${disc.map((l, i) => T(W / 2, H - 40 + i * 18 - (disc.length - 2) * 18, 13.5, 500, "#6b5a78", l, "middle")).join("")}
+  <line x1="72" y1="${H - 112}" x2="${W - 72}" y2="${H - 112}" stroke="#2a0a3d" stroke-opacity="0.08" stroke-width="2"/>
+  ${T(W / 2, H - 70, 20, 800, "#44015e", f.benefits, "middle", 'letter-spacing="0.5"')}
+  ${discLines(f.disclaimer, 120, W / 2, H - 28, 12.5, "#6b5a78", "middle")}
 </svg>`;
   return { svg, slots: [qr] };
 }
@@ -179,7 +300,13 @@ function flagSvg(H: number, f: KitFields): { svg: string; slots: Slot[] } {
 
 function buildSvg(format: KitFormat, fields: KitFields) {
   const H = heightOf(format);
-  return KIT_FORMATS[format].layout === "flag" ? flagSvg(H, fields) : posterSvg(H, fields);
+  const f = { ...KIT_DEFAULTS[format], ...fields };
+  switch (KIT_FORMATS[format].layout) {
+    case "flag": return flagSvg(H, f);
+    case "chat": return chatSvg(H, f);
+    case "impact": return impactSvg(H, f);
+    default: return voucherSvg(H, f);
+  }
 }
 
 const withAssets = (svg: string) => svg.replace(/href="(alle:[a-z-]+)"/g, (m, k: string) => (BRAND_ASSETS[k] ? `href="${BRAND_ASSETS[k]}"` : m));
@@ -269,10 +396,14 @@ async function generateFor(format: KitFormat, fields: KitFields, list: Array<{ i
   return results;
 }
 
+/** Só os campos do layout atual (textos salvos de um layout antigo são ignorados). */
+const pick = (defaults: Record<string, string>, saved?: Record<string, string> | null) =>
+  Object.fromEntries(Object.keys(defaults).map((k) => [k, saved?.[k] ?? defaults[k]]));
+
 async function fieldsOf(format: KitFormat): Promise<KitFields> {
   const c = await conn();
   const [row] = await c.select().from(unitKitTemplates).where(eq(unitKitTemplates.format, format));
-  return { ...KIT_DEFAULTS, ...(row?.fields ?? {}) } as KitFields;
+  return pick(KIT_DEFAULTS[format], row?.fields);
 }
 
 async function unitsWithQr(unitIds?: number[]) {
@@ -310,7 +441,7 @@ export const unitKitRouter = router({
       const desc = `Impressão › ${KIT_FORMATS[format as KitFormat].label}`;
       const pending = mats.filter((m) => m.description === desc && m.pending);
       return {
-        format, fields: { ...KIT_DEFAULTS, ...(r?.fields ?? {}) }, updatedAt: r?.updatedAt ?? null,
+        format, fields: pick(KIT_DEFAULTS[format as KitFormat], r?.fields), updatedAt: r?.updatedAt ?? null,
         generatedAt: r?.generatedAt ?? null, generatedCount: r?.generatedCount ?? 0, approvedAt: r?.approvedAt ?? null,
         pendingCount: pending.length,
         sentCount: mats.filter((m) => m.description === desc && !m.pending).length,
@@ -333,7 +464,7 @@ export const unitKitRouter = router({
         await tx.delete(unitMaterials).where(and(eq(unitMaterials.unitId, p.unitId!), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, false)));
       }
       await tx.update(unitMaterials).set({ pending: false }).where(and(eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc), eq(unitMaterials.pending, true)));
-      await tx.insert(unitKitTemplates).values({ format: input.format, fields: KIT_DEFAULTS, approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
+      await tx.insert(unitKitTemplates).values({ format: input.format, fields: KIT_DEFAULTS[input.format], approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id })
         .onConflictDoUpdate({ target: unitKitTemplates.format, set: { approvedAt: new Date(), approvedByUserId: ctx.actualUser!.id } });
     });
     await db.recordAudit({ action: "unit.kit.approved", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { units: pending.length } });
@@ -350,6 +481,7 @@ export const unitKitRouter = router({
   }),
 
   defaults: adminProcedure.query(() => KIT_DEFAULTS),
+
 
   /** Unidades que podem receber o material (têm QR ou link). */
   units: adminProcedure.query(async () => (await unitsWithQr()).map((u) => ({ id: u.id, name: u.name }))),

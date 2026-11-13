@@ -14,13 +14,25 @@ import { toast } from "sonner";
 // a equipe edita, gera para revisão, aprova e só então o material vai para o portal das unidades.
 
 // ── Design do mídia kit impresso ───────────────────────────────────────────
-const KIT_FIELD_GROUPS: Array<{ title: string; layouts: string[]; fields: Array<[string, string, boolean?]> }> = [
-  { title: "Mensagem principal", layouts: ["poster"], fields: [["eyebrow", "Chamada (laranja, acima)"], ["headline1", "Título, linha 1"], ["headline2", "Título, linha 2"], ["headline3", "Título, linha 3"], ["highlight", "Destaque laranja"], ["offer", "Selo da oferta"]] },
-  { title: "Como ativar (use | para separar título e complemento)", layouts: ["poster"], fields: [["stepsTitle", "Título dos passos"], ["step1", "Passo 1"], ["step2", "Passo 2"], ["step3", "Passo 3"]] },
-  { title: "QR code", layouts: ["poster"], fields: [["qrLabel", "Chamada no quadro"], ["qrSub", "Texto embaixo do QR"]] },
-  { title: "Benefícios e ressalva", layouts: ["poster"], fields: [["benefit1", "Benefício 1"], ["benefit2", "Benefício 2"], ["benefit3", "Benefício 3"], ["disclaimer", "Ressalva (obrigatória com o %)", true]] },
-  { title: "Bandeira", layouts: ["flag"], fields: [["wbLine1", "Linha 1"], ["wbLine2", "Linha 2 (grande)"]] },
-];
+/** Rótulos dos campos de texto (cada material usa só os seus). */
+const FIELD_LABEL: Record<string, string> = {
+  eyebrow: "Chamada (acima do título)", headline1: "Título, linha 1", headline2: "Título, linha 2",
+  stickerTop: "Selo: em cima", stickerMain: "Selo: número", stickerBottom: "Selo: embaixo",
+  chatName: "Nome na conversa", chat1: "Balão da Ane 1", chat2: "Balão do aluno", chat3: "Balão da Ane 2",
+  benefit1: "Benefício 1", benefit2: "Benefício 2", benefit3: "Benefício 3", benefits: "Benefícios (uma linha)",
+  sub: "Frase de apoio", offer: "Selo da oferta", bubble: "Balão da Ane",
+  qrLabel: "Chamada do QR", qrSub: "Texto do QR",
+  voucherTitle: "Título do vale", voucherKicker: "Antes do número", voucherValue: "Número do vale", voucherSub: "Depois do número",
+  stubTitle: "Canhoto: título", stubText: "Canhoto: texto", step1: "Passo 1", step2: "Passo 2", step3: "Passo 3",
+  wbLine1: "Linha 1", wbLine2: "Linha 2 (grande)", disclaimer: "Ressalva (obrigatória com o %)",
+};
+const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText"]);
+const LAYOUT_NOTE: Record<string, string> = {
+  chat: "Display de balcão: conversa com a Ane, selo da oferta e a faixa roxa com o QR.",
+  impact: "Banner de parede: frase grande para ler de longe, QR gigante e a Ane com balão.",
+  voucher: "Panfleto: vale-desconto com picote e canhoto de resgate com o QR.",
+  flag: "Windbanner: as duas faces da bandeira lado a lado no molde, cada uma com o QR da academia.",
+};
 
 function KitDesigner() {
   const formats = trpc.unitKit.formats.useQuery();
@@ -81,23 +93,20 @@ function KitDesigner() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card className="border-border/60"><CardContent className="space-y-4 p-4">
-          {fields && fmt && KIT_FIELD_GROUPS.filter((g) => g.layouts.includes(fmt.layout)).map((g) => (
-            <div key={g.title} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {g.fields.map(([k, label, long]) => (
-                  <label key={k} className={cn("space-y-1 text-sm", long && "sm:col-span-2")}>
-                    <span className="text-xs text-muted-foreground">{label}</span>
-                    {long ? <Textarea rows={3} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
-                      : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
-                  </label>
-                ))}
-              </div>
+          {fmt && <p className="rounded-lg bg-primary/5 p-2.5 text-xs text-muted-foreground">{LAYOUT_NOTE[fmt.layout]}</p>}
+          {fields && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Object.keys(defaults.data?.[format as keyof typeof defaults.data] ?? fields).map((k) => (
+                <label key={k} className={cn("space-y-1 text-sm", LONG_FIELDS.has(k) && "sm:col-span-2")}>
+                  <span className="text-xs text-muted-foreground">{FIELD_LABEL[k] ?? k}</span>
+                  {LONG_FIELDS.has(k) ? <Textarea rows={k === "disclaimer" ? 3 : 2} value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="text-sm" />
+                    : <Input value={fields[k] ?? ""} onChange={(e) => setField(k, e.target.value)} className="h-9" />}
+                </label>
+              ))}
             </div>
-          ))}
-          {fmt?.layout === "flag" && <p className="text-xs text-muted-foreground">O windbanner leva as duas faces da bandeira lado a lado no molde, cada uma com o QR da academia.</p>}
+          )}
           <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-            {defaults.data && <Button variant="ghost" size="sm" onClick={() => setDraft((d) => ({ ...d, [format]: { ...defaults.data } }))}>Voltar ao texto padrão</Button>}
+            {defaults.data && <Button variant="ghost" size="sm" onClick={() => setDraft((d) => ({ ...d, [format]: { ...defaults.data![format as keyof typeof defaults.data] } }))}>Voltar ao texto padrão</Button>}
             <Button size="sm" disabled={!dirty || save.isPending} onClick={() => fields && save.mutate({ format: format as never, fields: fields as never })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar texto</Button>
           </div>
         </CardContent></Card>
