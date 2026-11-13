@@ -148,7 +148,7 @@ export const unitPortalRouter = router({
 const UNIT_ACTIONS = ["sso.login", "unit.plan.view", "unit.plan.download", "unit.material.download"];
 const planItemSchema = z.object({
   date: day, time: z.string().max(10).nullable().optional(), format: z.string().max(30).nullable().optional(),
-  title: z.string().trim().min(1).max(300), caption: z.string().max(5000).nullable().optional(),
+  title: z.string().trim().min(1).max(300), type: z.string().max(60).nullable().optional(), caption: z.string().max(5000).nullable().optional(),
   imageUrls: z.array(z.string().url().max(2000)).max(20),
 });
 
@@ -308,7 +308,7 @@ export const unitAdminRouter = router({
     const items: UnitPlanItem[] = [];
     const covered = new Set<string>();
     for (const plan of plans) {
-      const planItems = ((plan.result as { items?: Array<{ date: string; time?: string; format?: string; title: string }> } | null)?.items ?? []);
+      const planItems = ((plan.result as { items?: Array<{ date: string; time?: string; format?: string; title: string; type?: string }> } | null)?.items ?? []);
       const inWeek = planItems.map((it, index) => ({ it, index })).filter(({ it }) => it.date >= input.weekStart && it.date <= end && !covered.has(it.date));
       if (!inWeek.length) continue;
       const outputs = new Map<number, { images: string[]; caption: string | null }>();
@@ -322,7 +322,7 @@ export const unitAdminRouter = router({
         const out = outputs.get(index);
         covered.add(it.date);
         if (!out) continue; // sem arte criada, a unidade não tem o que postar
-        items.push({ date: it.date, time: it.time ?? null, format: it.format ?? null, title: it.title, caption: out.caption, imageUrls: out.images });
+        items.push({ date: it.date, time: it.time ?? null, format: it.format ?? null, title: it.title, type: it.type ?? null, caption: out.caption, imageUrls: out.images });
       }
     }
     items.sort((a, b) => `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`));

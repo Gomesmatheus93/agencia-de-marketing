@@ -1166,6 +1166,7 @@ export type UnitPlanItem = {
   time?: string | null;
   format?: string | null;
   title: string;
+  type?: string | null; // Ensino, Oferta, Prova… (vem do planejamento)
   caption?: string | null;
   imageUrls: string[];
 };

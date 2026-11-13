@@ -164,7 +164,7 @@ function ActivityTab() {
 }
 
 // ── Planejamento semanal ───────────────────────────────────────────────────
-type Item = { date: string; time?: string | null; format?: string | null; title: string; caption?: string | null; imageUrls: string[] };
+type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[] };
 function PlanTab() {
   const [week, setWeek] = useState(mondayOf());
   const saved = trpc.unitAdmin.getPlan.useQuery({ weekStart: week });
