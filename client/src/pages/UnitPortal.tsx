@@ -56,18 +56,18 @@ function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null
       onDownload={(j) => { track.mutate({ weekStart, itemIndex: index, what: "arte" }); saveFile(item.imageUrls[j], `${item.date}-${j + 1}.png`); }} />);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[94vh] w-[96vw] overflow-y-auto p-6 sm:max-w-6xl lg:p-8">
         <DialogHeader>
-          <DialogTitle className="pr-6 leading-snug">{item.title}</DialogTitle>
+          <DialogTitle className="pr-6 text-xl leading-snug">{item.title}</DialogTitle>
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {WEEKDAYS[d.getDay()]}, {ddmm(item.date)}{item.time ? ` · ${item.time}` : ""}
             {item.format && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", FORMAT_STYLE[item.format] ?? "bg-muted")}>{FORMAT_LABEL[item.format] ?? item.format}</span>}
             {item.type && <span className="text-xs text-primary">{item.type}</span>}
           </p>
         </DialogHeader>
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {item.imageUrls.map((url, j) => (
                 <button key={url} type="button" title="Abrir e ampliar" className="group relative cursor-zoom-in overflow-hidden rounded-lg border bg-muted"
                   onClick={() => setViewing(j)}>
@@ -83,7 +83,7 @@ function ItemDialog({ item, index, weekStart, onClose }: { item: PlanItem | null
           </div>
           <div className="flex min-w-0 flex-col">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Legenda</p>
-            <p className="max-h-80 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-sm">{item.caption || "—"}</p>
+            <p className="max-h-[62vh] min-h-48 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-4 text-[15px] leading-relaxed">{item.caption || "—"}</p>
             {item.caption && (
               <Button variant="outline" size="sm" className="mt-2"
                 onClick={() => navigator.clipboard.writeText(item.caption!).then(() => { setCopied(true); track.mutate({ weekStart, itemIndex: index, what: "legenda" }); setTimeout(() => setCopied(false), 2000); })}>
@@ -134,7 +134,7 @@ function PlanTab() {
       {p.notes && <p className="rounded-xl bg-primary/5 p-4 text-sm">{p.notes}</p>}
 
       <div className="rounded-2xl border bg-card p-3">
-        <div className="flex snap-x gap-3 overflow-x-auto pb-2">
+        <div className="flex snap-x justify-center-safe gap-3 overflow-x-auto pb-2">
           {items.map((it, i) => {
             const d = new Date(`${it.date}T12:00:00`);
             const isToday = it.date === today;
