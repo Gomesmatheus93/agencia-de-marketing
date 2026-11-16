@@ -347,7 +347,9 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
               {it.imageUrls.length ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {it.imageUrls.map((u, i) => (
-                    <div key={u + i} className="group relative overflow-hidden rounded-lg border bg-muted">
+                    <div key={u + i} className="overflow-hidden rounded-lg border bg-muted">
+                      {/* A barra de reordenar/tirar fica sobre a imagem, sem cobrir o botão Editar. */}
+                      <div className="group relative">
                       <button type="button" title="Ampliar" onClick={() => setViewing({ list: "artes", i })} className="block w-full cursor-zoom-in">
                         <img src={u} alt="" className="aspect-[4/5] w-full object-cover" />
                       </button>
@@ -356,6 +358,7 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                         <button type="button" title="Mover para trás" onClick={() => move(i, -1)} className="px-1 text-xs text-white">‹</button>
                         <button type="button" title="Tirar" onClick={() => set({ imageUrls: it.imageUrls.filter((_, j) => j !== i) })} className="px-1 text-white"><Trash2 className="h-3.5 w-3.5" /></button>
                         <button type="button" title="Mover para frente" onClick={() => move(i, 1)} className="px-1 text-xs text-white">›</button>
+                      </div>
                       </div>
                       {editIndexOf(u) >= 0 && (
                         <button type="button" onClick={() => setEditingArt({ threadId: it.artThreadId!, kind: origin.data!.kind, index: editIndexOf(u) })}
