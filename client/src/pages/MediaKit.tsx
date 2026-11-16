@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { SvgEditorModal } from "@/components/agents/ArtEditor";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Check, Columns3, Download, Layers, Loader2, Palette, PenLine, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, Trash2, Check, Columns3, Download, Layers, Loader2, Palette, PenLine, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -381,6 +381,12 @@ function KitDesigner() {
 /** Mídia kit de cada academia: o que já foi enviado e o que aguarda aprovação. */
 function KitsByUnit() {
   const q = trpc.unitKit.kitsByUnit.useQuery(undefined, { refetchInterval: 30_000 });
+  const utils = trpc.useUtils();
+  const approver = trpc.unitKit.approver.useQuery();
+  const del = trpc.unitKit.deleteUnitMaterial.useMutation({
+    onSuccess: (r) => { toast.success(r.deleted ? "Material excluído do mídia kit." : "Nada para excluir."); utils.unitKit.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"todas" | "completas" | "faltando" | "aguardando" | "semqr">("todas");
   const [view, setView] = useState<{ url: string; title: string } | null>(null);
@@ -429,7 +435,21 @@ function KitsByUnit() {
                         {m.pending ? <p className="text-[11px] font-medium text-amber-600">aguardando aprovação</p>
                           : m.sent ? <p className="text-[11px] text-emerald-600">enviado</p>
                           : <p className="text-[11px] text-muted-foreground">não gerado</p>}
-                        {file && <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">abrir PNG</a>}
+                        {file && (
+                          <span className="flex items-center gap-2">
+                            <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">abrir PNG</a>
+                            {(m.pending || approver.data?.canApprove) && (
+                              <button type="button" disabled={del.isPending} title="Excluir este material"
+                                onClick={() => {
+                                  const which = m.pending && m.sent ? (confirm(`${m.label} de ${u.name}: tem uma versão enviada e outra aguardando aprovação.\n\nOK = excluir só a que aguarda aprovação\nCancelar = escolher outra opção`) ? "pendente" : approver.data?.canApprove && confirm(`Excluir as duas versões do ${m.label} de ${u.name}? A academia deixa de ver o material.`) ? "ambos" : null)
+                                    : m.pending ? (confirm(`Excluir o ${m.label} de ${u.name} que aguarda aprovação?`) ? "pendente" : null)
+                                    : (confirm(`Excluir o ${m.label} de ${u.name}? A academia deixa de ver o material no mídia kit.`) ? "enviado" : null);
+                                  if (which) del.mutate({ unitId: u.id, format: m.format as never, which: which as never });
+                                }}
+                                className="inline-flex items-center gap-0.5 text-[11px] text-destructive hover:underline"><Trash2 className="h-3 w-3" />excluir</button>
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

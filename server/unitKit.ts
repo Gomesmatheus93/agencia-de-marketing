@@ -734,6 +734,22 @@ export const unitKitRouter = router({
     return { total, byFormat: out };
   }),
 
+  /** Exclui um material do mídia kit de uma academia (a versão enviada e/ou a que aguarda aprovação). */
+  deleteUnitMaterial: adminProcedure
+    .input(z.object({ unitId: z.number().int(), format: formatSchema, which: z.enum(["pendente", "enviado", "ambos"]).default("ambos") }))
+    .mutation(async ({ ctx, input }) => {
+      // Tirar um material já enviado das academias é como enviar: só quem aprova pode.
+      if (input.which !== "pendente") assertApprover(ctx.actualUser);
+      const c = await conn();
+      const desc = `Impressão › ${KIT_FORMATS[input.format].label}`;
+      const cond = [eq(unitMaterials.unitId, input.unitId), eq(unitMaterials.kind, "midia_kit"), eq(unitMaterials.description, desc)];
+      if (input.which === "pendente") cond.push(eq(unitMaterials.pending, true));
+      if (input.which === "enviado") cond.push(eq(unitMaterials.pending, false));
+      const gone = await c.delete(unitMaterials).where(and(...cond)).returning({ id: unitMaterials.id });
+      await db.recordAudit({ action: "unit.kit.deleted", actorUserId: ctx.actualUser!.id, targetType: "unit_kit", targetId: input.format, metadata: { unitId: input.unitId, which: input.which, files: gone.length } });
+      return { deleted: gone.length };
+    }),
+
   /** Mídia kit de cada unidade: o que já foi enviado e o que aguarda aprovação, por material. */
   kitsByUnit: adminProcedure.query(async () => {
     const c = await conn();
