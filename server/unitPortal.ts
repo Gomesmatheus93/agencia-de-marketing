@@ -211,11 +211,16 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 - CTA: "procure o QR code na recepção" ou "fale com a Ane". NÃO use "Comenta ENERGIA" (essa automação só existe no perfil da Alle) nem "link na bio".
 - Não cite uma unidade específica: o plano vale para todas. Sem collab (collab = null).
 - Os alunos são pessoa física: até 15% de desconto, sempre com a ressalva. Nunca prometa valor exato.
-- Formatos: só carrossel, imagem e stories (sem reel: as unidades não recebem vídeo).
+- Formatos: só carrossel, imagem e stories (sem reel: as unidades não recebem vídeo). Misture feed e stories: de 2 a 3 pautas da semana em stories (uma arte só, 9:16) e o resto no feed (carrossel e imagem), sem repetir o mesmo formato dois dias seguidos.
 - NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.`;
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
-- É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: use o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (capa e miolo): fundo roxo profundo com as faixas diagonais laranja, co-branding no topo à esquerda (alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual), pessoa recortada à direita encostada na borda de baixo quando couber, cards laranja arredondados para os destaques.
+- É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: siga o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (co-branding no topo à esquerda: alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual; faixas diagonais; pessoa recortada encostada na borda de baixo quando couber; cards arredondados para os destaques).
+- FUNDO: use o fundo indicado em "Fundo desta arte" (as artes da semana alternam o fundo para o feed não ficar igual):
+  · roxo: #5A16A8 com camada #3d0b80 a ~35%, faixas e cards laranja;
+  · laranja: #F47B20 (ou degradê #ff8a1f → #ff6400), faixas diagonais em roxo #5A16A8 e branco translúcido, cards e destaques em ROXO #5A16A8 (nunca card laranja sobre fundo laranja);
+  · roxo profundo: degradê #3A0057 → #7A00AA, faixas e cards laranja.
+- Fotos da Ane: as fotos são recortes com os braços cortados nas laterais; nunca deixe a lateral cortada aparecendo no meio da arte: encoste a foto na borda da arte ou use alle:ane (braços cruzados).
 - FOCO SÓ EM CONVERSÃO, COM POUCA INFORMAÇÃO: por tela, um título curto, no máximo uma linha de apoio e a chamada (escaneie o QR Code na recepção / fale com a Ane). Nada além disso; no máximo cerca de 20 palavras por tela. Carrossel enxuto.
 - NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, use só o asterisco (ex.: "até 15%*").
 - CONTRASTE SEMPRE ALTO: nunca texto preto ou escuro. Texto branco sobre o roxo e branco sobre os cards laranja (o laranja nunca leva texto escuro).
@@ -557,13 +562,16 @@ export const unitAdminRouter = router({
       // Ao refazer não sincroniza antes (senão a arte antiga voltaria antes de a nova começar).
       const { creating } = input.redo ? { creating: [] as number[] } : await syncAiWeek(ctx.user.id, row);
       let started = 0;
+      // Fundo em rodízio (roxo, laranja, roxo profundo), para a semana não ficar toda igual.
+      const BACKGROUNDS = ["roxo", "laranja", "roxo profundo"];
       for (const [idx, it] of row.items.entries()) {
         if (input.indexes && !input.indexes.includes(idx)) continue;
         if (it.planIndex == null || it.imageUrls.length || creating.includes(idx)) continue;
-        const topic = `${it.title}${it.brief ? `\n\n${it.brief}` : ""}`.slice(0, 2900);
+        const bg = it.brief?.match(/Fundo desta arte: ([^\n]+)/)?.[1] ?? BACKGROUNDS[idx % BACKGROUNDS.length];
+        const topic = `${it.title}${it.brief ? `\n\n${it.brief.replace(/Fundo desta arte: [^\n]+\n?/, "")}` : ""}\n\nFundo desta arte: ${bg}.`.slice(0, 2900);
         const link = { threadId: row.aiThreadId, index: it.planIndex };
         if (it.format === "carrossel") await startUnitTask(ctx.user.id, "carrossel", { topic, slides: 5, style: "auto", notes: UNIT_ART_NOTES }, link);
-        else if (it.format === "stories") await startUnitTask(ctx.user.id, "stories", { topic, frames: 3, notes: UNIT_ART_NOTES }, link);
+        else if (it.format === "stories") await startUnitTask(ctx.user.id, "stories", { topic, frames: 1, notes: UNIT_ART_NOTES }, link);
         else await startUnitTask(ctx.user.id, "legendas", { topic, format: "feed_4x5", notes: UNIT_ART_NOTES }, link);
         started++;
       }

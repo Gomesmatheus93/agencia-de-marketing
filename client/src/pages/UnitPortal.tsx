@@ -99,7 +99,7 @@ function ItemDialog({ item, index, weekStart, posted, canMark, onTogglePosted, p
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {item.imageUrls.map((url, j) => (
                   <button key={url} type="button" title="Abrir e ampliar" className="group relative cursor-zoom-in overflow-hidden rounded-lg border bg-muted" onClick={() => setViewing({ list: "artes", i: j })}>
-                    <img src={url} alt={`Arte ${j + 1}`} loading="lazy" className="aspect-[4/5] w-full object-cover" />
+                    <img src={url} alt={`Arte ${j + 1}`} loading="lazy" className={cn("aspect-[4/5] w-full", item.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />
                     <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex"><Maximize2 className="h-5 w-5" /></span>
                   </button>
                 ))}
@@ -198,7 +198,7 @@ function TodayCard({ items, posted, canMark, pending, onOpen, onToggle, weekStar
       </div>
       <div className="grid flex-1 gap-5 p-5 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
         <button type="button" onClick={() => onOpen(idx)} className="group relative block aspect-[4/5] self-start overflow-hidden rounded-xl border bg-muted" title="Abrir">
-          {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
+          {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" className={cn("h-full w-full transition group-hover:scale-[1.03]", it.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />}
           {it.imageUrls.length > 1 && <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{it.imageUrls.length} artes</span>}
         </button>
         <div className="flex min-w-0 flex-col gap-3">
@@ -439,7 +439,7 @@ function PlanTab() {
                   <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
                   <p className="min-h-[1rem] text-[11px] text-primary">{it.type ?? ""}</p>
                   <button type="button" onClick={() => setOpen(i)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
-                    {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />}
+                    {it.imageUrls[0] && <img src={it.imageUrls[0]} alt="" loading="lazy" className={cn("h-full w-full transition group-hover:scale-[1.03]", it.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />}
                     {it.imageUrls.length > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.imageUrls.length} artes</span>}
                     {it.storyUrls?.length ? <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">+ story</span> : null}
                     {isPosted && <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-emerald-600/90 py-1 text-[11px] font-semibold text-white"><Check className="h-3 w-3" />postado</span>}

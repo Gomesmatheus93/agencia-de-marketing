@@ -351,7 +351,7 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                       {/* A barra de reordenar/tirar fica sobre a imagem, sem cobrir o botão Editar. */}
                       <div className="group relative">
                       <button type="button" title="Ampliar" onClick={() => setViewing({ list: "artes", i })} className="block w-full cursor-zoom-in">
-                        <img src={u} alt="" className="aspect-[4/5] w-full object-cover" />
+                        <img src={u} alt="" className={cn("aspect-[4/5] w-full", it.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />
                       </button>
                       <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] font-bold text-white">{i + 1}</span>
                       <div className="absolute inset-x-0 bottom-0 hidden justify-between bg-black/60 p-1 group-hover:flex">
@@ -469,7 +469,7 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, onPlanAI, onCrea
               {posts.map(({ it, i }) => (
                 <div key={i} className={cn("overflow-hidden rounded-lg border bg-card text-left transition hover:border-primary", !it.imageUrls.length && "border-dashed")}>
                 <button type="button" onClick={() => onEdit(i)} className="block w-full text-left">
-                  {it.imageUrls[0] ? <img src={it.imageUrls[0]} alt="" loading="lazy" className="aspect-[4/5] w-full object-cover" />
+                  {it.imageUrls[0] ? <img src={it.imageUrls[0]} alt="" loading="lazy" className={cn("aspect-[4/5] w-full", it.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />
                     : <span className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-1 bg-muted/40 p-2 text-center text-[10px] text-muted-foreground">
                         {creating.includes(i) ? <><Loader2 className="h-4 w-4 animate-spin text-primary" />criando a arte…</> : <><Sparkles className="h-4 w-4" />pauta sem arte</>}
                       </span>}
