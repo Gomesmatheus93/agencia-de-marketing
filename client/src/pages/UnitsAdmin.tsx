@@ -342,7 +342,7 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                 </label>
               </div>
               {it.imageUrls.length > 0 && (
-                <p className="mb-2 text-xs text-muted-foreground">Clique numa arte para ampliar. Passe o mouse para reordenar, tirar ou {origin.data ? "editar (✎)" : "trocar"}.</p>
+                <p className="mb-2 text-xs text-muted-foreground">Clique numa arte para ampliar{origin.data ? " ou em “Editar” para abrir o editor de artes" : ""}. Passe o mouse para reordenar ou tirar.</p>
               )}
               {it.imageUrls.length ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -355,9 +355,14 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                       <div className="absolute inset-x-0 bottom-0 hidden justify-between bg-black/60 p-1 group-hover:flex">
                         <button type="button" title="Mover para trás" onClick={() => move(i, -1)} className="px-1 text-xs text-white">‹</button>
                         <button type="button" title="Tirar" onClick={() => set({ imageUrls: it.imageUrls.filter((_, j) => j !== i) })} className="px-1 text-white"><Trash2 className="h-3.5 w-3.5" /></button>
-                        {editIndexOf(u) >= 0 && <button type="button" title="Editar arte" onClick={() => setEditingArt({ threadId: it.artThreadId!, kind: origin.data!.kind, index: editIndexOf(u) })} className="px-1 text-white"><PenLine className="h-3.5 w-3.5" /></button>}
                         <button type="button" title="Mover para frente" onClick={() => move(i, 1)} className="px-1 text-xs text-white">›</button>
                       </div>
+                      {editIndexOf(u) >= 0 && (
+                        <button type="button" onClick={() => setEditingArt({ threadId: it.artThreadId!, kind: origin.data!.kind, index: editIndexOf(u) })}
+                          className="flex w-full items-center justify-center gap-1 border-t bg-background py-1.5 text-xs font-semibold text-primary hover:bg-primary/10">
+                          <PenLine className="h-3.5 w-3.5" />Editar
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
