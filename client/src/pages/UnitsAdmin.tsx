@@ -266,7 +266,54 @@ function ArtViewer({ urls, index, onIndex, onClose }: { urls: string[]; index: n
 }
 
 /** Editor de um post das unidades. */
-function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week: Week; initial: Item; onSave: (it: Item) => void; onDelete?: () => void; onClose: () => void; saving: boolean }) {
+/** Modelos de fundo: troca o fundo da arte e do story do post, mantendo o conteúdo. */
+function ModelPicker({ weekStart, itemIndex, onApplied }: { weekStart: string; itemIndex: number; onApplied: (r: { imageUrls: string[]; storyUrls: string[] }) => void }) {
+  const list = trpc.unitArt.backgrounds.useQuery();
+  const utils = trpc.useUtils();
+  const apply = trpc.unitArt.applyModel.useMutation({
+    onSuccess: (r) => { onApplied(r); toast.success("Modelo aplicado na arte e no story. Clique em “Salvar post” para guardar."); },
+    onError: (e) => toast.error(e.message),
+  });
+  const add = trpc.unitArt.addBackground.useMutation({ onSuccess: () => { toast.success("Modelo adicionado."); utils.unitArt.backgrounds.invalidate(); }, onError: (e) => toast.error(e.message) });
+  const del = trpc.unitArt.deleteBackground.useMutation({ onSuccess: () => utils.unitArt.backgrounds.invalidate() });
+  const [tone, setTone] = useState<"escuro" | "laranja" | "claro">("escuro");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <p className="flex-1 text-sm font-medium">Modelo de fundo</p>
+        <select value={tone} onChange={(e) => setTone(e.target.value as typeof tone)} className="h-8 rounded-md border bg-background px-2 text-xs" title="Tom do fundo novo (define a cor do texto)">
+          <option value="escuro">Fundo escuro</option><option value="laranja">Fundo laranja</option><option value="claro">Fundo claro</option>
+        </select>
+        <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-muted", busy && "pointer-events-none opacity-60")}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Novo modelo
+          <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+            setBusy(true);
+            try { const url = await uploadFile(f); await add.mutateAsync({ name: f.name.replace(/\.[^.]+$/, "").slice(0, 80), tone, url }); }
+            catch (err) { toast.error((err as Error).message); } finally { setBusy(false); }
+          }} />
+        </label>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {(list.data ?? []).map((b) => (
+          <div key={b.id} className="group relative w-20 shrink-0">
+            <button type="button" disabled={apply.isPending} title={`Aplicar “${b.name}”`} onClick={() => apply.mutate({ weekStart, itemIndex, backgroundId: b.id })}
+              className="block w-full overflow-hidden rounded-lg border transition hover:border-primary hover:ring-2 hover:ring-primary/30">
+              <img src={b.feedUrl} alt={b.name} loading="lazy" className="aspect-[4/5] w-full object-cover" />
+            </button>
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={b.name}>{b.name}</p>
+            <button type="button" title="Apagar modelo" onClick={() => { if (confirm(`Apagar o modelo “${b.name}”?`)) del.mutate({ id: b.id }); }}
+              className="absolute right-1 top-1 hidden rounded bg-black/60 p-0.5 text-white group-hover:block"><Trash2 className="h-3 w-3" /></button>
+          </div>
+        ))}
+      </div>
+      {apply.isPending && <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Aplicando o modelo na arte e no story…</p>}
+    </div>
+  );
+}
+
+function PostEditor({ week, initial, itemIndex, onSave, onDelete, onClose, saving }: { week: Week; initial: Item; itemIndex: number | null; onSave: (it: Item) => void; onDelete?: () => void; onClose: () => void; saving: boolean }) {
   const [it, setIt] = useState<Item>(initial);
   const [busy, setBusy] = useState<"artes" | "stories" | null>(null);
   const [picker, setPicker] = useState(false);
@@ -371,6 +418,9 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                 </div>
               ) : <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Envie as artes ou use uma criação dos agentes.</p>}
             </div>
+            {it.artThreadId && itemIndex !== null && (
+              <ModelPicker weekStart={week.weekStart} itemIndex={itemIndex} onApplied={(r) => set({ imageUrls: r.imageUrls, storyUrls: r.storyUrls })} />
+            )}
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <p className="flex-1 text-sm font-medium">Story do dia (9:16, opcional)</p>
@@ -576,7 +626,7 @@ function PlanTab() {
         </Dialog>
       )}
       {editing && (
-        <PostEditor week={editing.week} initial={editing.item} saving={save.isPending} onClose={() => setEditing(null)}
+        <PostEditor week={editing.week} initial={editing.item} itemIndex={editing.index} saving={save.isPending} onClose={() => setEditing(null)}
           onSave={async (it) => {
             const items = editing.index === null ? [...editing.week.items, it] : editing.week.items.map((x, j) => (j === editing.index ? it : x));
             await persist(editing.week, { items });

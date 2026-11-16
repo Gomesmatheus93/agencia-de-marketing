@@ -1286,3 +1286,14 @@ export const unitKitTemplates = pgTable("unit_kit_templates", {
   approvedAt: timestamp("approvedAt"),
   approvedByUserId: integer("approvedByUserId"),
 });
+
+/** Modelos de fundo das artes das academias (o post troca de fundo sem mudar o conteúdo). */
+export const unitArtBackgrounds = pgTable("unit_art_backgrounds", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 80 }).notNull(),
+  // Tom do fundo: define a cor do texto e dos logos ("escuro" = texto branco; "laranja"; "claro" = texto roxo).
+  tone: varchar("tone", { length: 12 }).notNull(),
+  feedUrl: text("feedUrl").notNull(), // 1080x1350
+  storyUrl: text("storyUrl").notNull(), // 1080x1920
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
