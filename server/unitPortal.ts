@@ -215,11 +215,11 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 - NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.`;
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
-- É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: siga o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (co-branding no topo à esquerda: alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual; faixas diagonais; pessoa recortada encostada na borda de baixo quando couber; cards arredondados para os destaques).
-- FUNDO: use o fundo indicado em "Fundo desta arte" (as artes da semana alternam o fundo para o feed não ficar igual):
-  · roxo: #5A16A8 com camada #3d0b80 a ~35%, faixas e cards laranja;
-  · laranja: #F47B20 (ou degradê #ff8a1f → #ff6400), faixas diagonais em roxo #5A16A8 e branco translúcido, cards e destaques em ROXO #5A16A8 (nunca card laranja sobre fundo laranja);
-  · roxo profundo: degradê #3A0057 → #7A00AA, faixas e cards laranja.
+- É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: siga o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (co-branding no topo à esquerda: alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual; pessoa recortada encostada na borda de baixo quando couber; cards arredondados para os destaques).
+- FUNDO SIMPLES: uma cor chapada, a indicada em "Fundo desta arte" (as artes da semana alternam a cor). Sem faixas diagonais, sem marca d'água do raio, sem formas ou faixas decorativas, sem degradê no fundo:
+  · roxo: #5A16A8, cards e destaques laranja;
+  · laranja: #F47B20, cards e destaques em ROXO #5A16A8 (nunca card laranja sobre fundo laranja);
+  · roxo profundo: #3A0057, cards e destaques laranja.
 - Fotos da Ane: as fotos são recortes com os braços cortados nas laterais; nunca deixe a lateral cortada aparecendo no meio da arte: encoste a foto na borda da arte ou use alle:ane (braços cruzados).
 - FOCO SÓ EM CONVERSÃO, COM POUCA INFORMAÇÃO: por tela, um título curto, no máximo uma linha de apoio e a chamada (escaneie o QR Code na recepção / fale com a Ane). Nada além disso; no máximo cerca de 20 palavras por tela. Carrossel enxuto.
 - NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, escreva sem asterisco (ex.: "até 15%").
