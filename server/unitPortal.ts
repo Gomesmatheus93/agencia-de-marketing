@@ -222,7 +222,8 @@ const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: 
   · roxo profundo: degradê #3A0057 → #7A00AA, faixas e cards laranja.
 - Fotos da Ane: as fotos são recortes com os braços cortados nas laterais; nunca deixe a lateral cortada aparecendo no meio da arte: encoste a foto na borda da arte ou use alle:ane (braços cruzados).
 - FOCO SÓ EM CONVERSÃO, COM POUCA INFORMAÇÃO: por tela, um título curto, no máximo uma linha de apoio e a chamada (escaneie o QR Code na recepção / fale com a Ane). Nada além disso; no máximo cerca de 20 palavras por tela. Carrossel enxuto.
-- NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, use só o asterisco (ex.: "até 15%*").
+- NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, escreva sem asterisco (ex.: "até 15%").
+- Na arte, a ação final é "Ative seu benefício" (não "envie sua fatura").
 - CONTRASTE SEMPRE ALTO: nunca texto preto ou escuro. Texto branco sobre o roxo e branco sobre os cards laranja (o laranja nunca leva texto escuro).
 - Não escreva "assistente virtual" nem diga se a Ane é pessoa ou IA: só "a Ane".
 - CTA: QR code na recepção da unidade e falar com a Ane no WhatsApp. NÃO use "Comenta ENERGIA" nem "link na bio".
