@@ -332,12 +332,13 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
 
 function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, onPlanAI, onCreateArts, busy }: {
   week: Week; onEdit: (i: number) => void; onNew: (date: string) => void; onSaveMeta: (patch: { title?: string; notes?: string }) => void;
-  onRelease: (mode: "agendar" | "agora" | "rascunho", releaseAt?: string) => void; onPlanAI: () => void; onCreateArts: (indexes?: number[]) => void; busy: boolean;
+  onRelease: (mode: "agendar" | "agora" | "rascunho", releaseAt?: string) => void; onPlanAI: () => void; onCreateArts: (indexes?: number[], redo?: boolean) => void; busy: boolean;
 }) {
   const creating = week.creating ?? [];
   const noArt = week.items.map((it, i) => ({ it, i })).filter(({ it }) => !it.imageUrls.length);
   const toCreate = noArt.filter(({ it, i }) => it.planIndex != null && !creating.includes(i));
   const planning = week.ai?.status === "planejando";
+  const redoable = week.items.filter((it) => it.planIndex != null && it.imageUrls.length);
   const blockSend = noArt.length > 0;
   const today = new Date().toLocaleDateString("en-CA");
   const [release, setRelease] = useState(toLocalInput(week.releaseAt ?? `${week.weekStart}T00:00:00-03:00`));
@@ -355,6 +356,7 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, onPlanAI, onCrea
           {planning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}{planning ? "Planejando…" : "Planejar a semana com IA"}
         </Button>
         {toCreate.length > 0 && <Button size="sm" variant="outline" disabled={busy} onClick={() => onCreateArts()}><Wand2 className="mr-1.5 h-4 w-4" />Criar as artes ({toCreate.length})</Button>}
+        {redoable.length > 0 && !creating.length && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { if (confirm(`Refazer as ${redoable.length} artes desta semana com os agentes? As atuais saem das pautas.`)) onCreateArts(undefined, true); }}><Wand2 className="mr-1.5 h-4 w-4" />Refazer as artes</Button>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {week.state === "liberada" ? (
             <>
@@ -467,7 +469,7 @@ function PlanTab() {
           onSaveMeta={(patch) => persist(w, patch).then(() => toast.success("Semana atualizada."))}
           onRelease={(mode, at) => persist(w, {}, { mode, at }).then(() => toast.success(mode === "agora" ? "Semana enviada para as unidades!" : mode === "agendar" ? "Envio agendado." : "Semana voltou para rascunho."))}
           onPlanAI={() => setAiWeek(w)}
-          onCreateArts={(indexes) => createArts.mutate({ weekStart: w.weekStart, indexes })} />
+          onCreateArts={(indexes, redo) => createArts.mutate({ weekStart: w.weekStart, indexes, redo })} />
       ))}
       {aiWeek && (
         <Dialog open onOpenChange={(o) => !o && setAiWeek(null)}>

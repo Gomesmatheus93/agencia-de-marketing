@@ -210,8 +210,12 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
 - É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: use o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (capa e miolo): fundo roxo profundo com as faixas diagonais laranja, co-branding no topo à esquerda (alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual), pessoa recortada à direita encostada na borda de baixo quando couber, cards laranja arredondados para os destaques.
+- FOCO SÓ EM CONVERSÃO, COM POUCA INFORMAÇÃO: por tela, um título curto, no máximo uma linha de apoio e a chamada (escaneie o QR Code na recepção / fale com a Ane). Nada além disso; no máximo cerca de 20 palavras por tela. Carrossel enxuto.
+- NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, use só o asterisco (ex.: "até 15%*").
+- CONTRASTE SEMPRE ALTO: nunca texto preto ou escuro. Texto branco sobre o roxo e branco sobre os cards laranja (o laranja nunca leva texto escuro).
+- Não escreva "assistente virtual" nem diga se a Ane é pessoa ou IA: só "a Ane".
 - CTA: QR code na recepção da unidade e falar com a Ane no WhatsApp. NÃO use "Comenta ENERGIA" nem "link na bio".
-- Alunos são pessoa física: até 15% de desconto, com a ressalva quando o percentual aparecer.
+- Alunos são pessoa física: até 15% de desconto (a ressalva fica na legenda).
 - Não cite uma unidade específica. Na legenda, marque @alleenergia e @allpfit.`;
 
 /** Inicia uma tarefa de agente (igual à tela dos agentes), marcada como das academias. */
@@ -256,14 +260,17 @@ async function syncAiWeek(userId: number, row: typeof unitWeeklyPlans.$inferSele
   const creating: number[] = [];
   items = items.map((it, idx) => {
     if (it.planIndex == null || it.imageUrls.length) return it;
-    const mine = outputs.filter((o) => Number((o.taskInput as { planLink?: { index?: number } } | null)?.planLink?.index) === it.planIndex);
-    const done = mine.find((o) => imagesOf((o.result ?? {}) as Record<string, any>).length);
-    if (done) {
-      const r = (done.result ?? {}) as Record<string, any>;
+    // Vale sempre a criação mais nova da pauta (ao refazer, a arte antiga não volta).
+    const latest = outputs
+      .filter((o) => Number((o.taskInput as { planLink?: { index?: number } } | null)?.planLink?.index) === it.planIndex)
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))[0];
+    if (!latest) return it;
+    if (latest.status === "running") { creating.push(idx); return it; }
+    const r = (latest.result ?? {}) as Record<string, any>;
+    if (imagesOf(r).length) {
       changed = true;
       return { ...it, imageUrls: imagesOf(r).slice(0, 20), caption: it.caption || (r.caption ?? null) };
     }
-    if (mine.some((o) => o.status === "running")) creating.push(idx);
     return it;
   });
   if (changed) {
@@ -519,19 +526,25 @@ export const unitAdminRouter = router({
 
   /** Cria com os agentes as artes das pautas sem arte (todas, ou só as indicadas). */
   createArts: adminProcedure
-    .input(z.object({ weekStart: day, indexes: z.array(z.number().int().min(0)).max(30).optional() }))
+    .input(z.object({ weekStart: day, indexes: z.array(z.number().int().min(0)).max(30).optional(), redo: z.boolean().default(false) }))
     .mutation(async ({ ctx, input }) => {
       const c = await conn();
       const [row] = await c.select().from(unitWeeklyPlans).where(eq(unitWeeklyPlans.weekStart, input.weekStart));
       if (!row?.aiThreadId) throw new TRPCError({ code: "BAD_REQUEST", message: "Planeje a semana com a IA primeiro." });
-      const { creating } = await syncAiWeek(ctx.user.id, row);
+      if (input.redo) {
+        // Refazer: tira a arte atual das pautas escolhidas (a nova entra quando ficar pronta).
+        row.items = row.items.map((it, idx) => (it.planIndex != null && (!input.indexes || input.indexes.includes(idx)) ? { ...it, imageUrls: [] } : it));
+        await c.update(unitWeeklyPlans).set({ items: row.items }).where(eq(unitWeeklyPlans.id, row.id));
+      }
+      // Ao refazer não sincroniza antes (senão a arte antiga voltaria antes de a nova começar).
+      const { creating } = input.redo ? { creating: [] as number[] } : await syncAiWeek(ctx.user.id, row);
       let started = 0;
       for (const [idx, it] of row.items.entries()) {
         if (input.indexes && !input.indexes.includes(idx)) continue;
         if (it.planIndex == null || it.imageUrls.length || creating.includes(idx)) continue;
         const topic = `${it.title}${it.brief ? `\n\n${it.brief}` : ""}`.slice(0, 2900);
         const link = { threadId: row.aiThreadId, index: it.planIndex };
-        if (it.format === "carrossel") await startUnitTask(ctx.user.id, "carrossel", { topic, slides: 6, style: "auto", notes: UNIT_ART_NOTES }, link);
+        if (it.format === "carrossel") await startUnitTask(ctx.user.id, "carrossel", { topic, slides: 5, style: "auto", notes: UNIT_ART_NOTES }, link);
         else if (it.format === "stories") await startUnitTask(ctx.user.id, "stories", { topic, frames: 3, notes: UNIT_ART_NOTES }, link);
         else await startUnitTask(ctx.user.id, "legendas", { topic, format: "feed_4x5", notes: UNIT_ART_NOTES }, link);
         started++;
