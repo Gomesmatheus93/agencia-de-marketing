@@ -209,6 +209,7 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 - NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.`;
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
+- É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: use o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (capa e miolo): fundo roxo profundo com as faixas diagonais laranja, co-branding no topo à esquerda (alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual), pessoa recortada à direita encostada na borda de baixo quando couber, cards laranja arredondados para os destaques.
 - CTA: QR code na recepção da unidade e falar com a Ane no WhatsApp. NÃO use "Comenta ENERGIA" nem "link na bio".
 - Alunos são pessoa física: até 15% de desconto, com a ressalva quando o percentual aparecer.
 - Não cite uma unidade específica. Na legenda, marque @alleenergia e @allpfit.`;
