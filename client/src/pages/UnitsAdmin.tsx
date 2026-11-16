@@ -469,12 +469,19 @@ function WeekCard({ week, onEdit, onNew, onSaveMeta, onRelease, onPlanAI, onCrea
               {posts.map(({ it, i }) => (
                 <div key={i} className={cn("overflow-hidden rounded-lg border bg-card text-left transition hover:border-primary", !it.imageUrls.length && "border-dashed")}>
                 <button type="button" onClick={() => onEdit(i)} className="block w-full text-left">
+                  {it.imageUrls[0] && it.storyUrls?.length ? <p className="bg-muted/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Tamanho feed</p> : null}
                   {it.imageUrls[0] ? <img src={it.imageUrls[0]} alt="" loading="lazy" className={cn("aspect-[4/5] w-full", it.format === "stories" ? "bg-black/80 object-contain" : "object-cover")} />
                     : <span className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-1 bg-muted/40 p-2 text-center text-[10px] text-muted-foreground">
                         {creating.includes(i) ? <><Loader2 className="h-4 w-4 animate-spin text-primary" />criando a arte…</> : <><Sparkles className="h-4 w-4" />pauta sem arte</>}
                       </span>}
+                  {it.storyUrls?.[0] ? (
+                    <>
+                      <p className="border-t bg-muted/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Tamanho story{it.storyUrls.length > 1 ? ` (${it.storyUrls.length})` : ""}</p>
+                      <img src={it.storyUrls[0]} alt="" loading="lazy" className="aspect-[9/16] w-full object-cover" />
+                    </>
+                  ) : null}
                   <div className="p-1.5">
-                    <p className="flex items-center gap-1 text-[10px]">{it.time && <span className="font-semibold">{it.time}</span>}{it.format && <span className={cn("rounded px-1", FORMAT_CLS[it.format] ?? "bg-muted")}>{FORMATS.find(([v]) => v === it.format)?.[1] ?? it.format}</span>}{it.storyUrls?.length ? <span className="text-muted-foreground">+story</span> : null}</p>
+                    <p className="flex items-center gap-1 text-[10px]">{it.time && <span className="font-semibold">{it.time}</span>}{it.format && <span className={cn("rounded px-1", FORMAT_CLS[it.format] ?? "bg-muted")}>{FORMATS.find(([v]) => v === it.format)?.[1] ?? it.format}</span>}</p>
                     <p className="line-clamp-2 text-[11px] font-medium leading-tight">{it.title}</p>
                   </div>
                 </button>
