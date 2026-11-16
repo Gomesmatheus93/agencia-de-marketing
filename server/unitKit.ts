@@ -648,9 +648,10 @@ const variantSchema = z.string().min(1).max(40);
 
 async function unitsWithQr(unitIds?: number[]) {
   const c = await conn();
-  const rows = await c.select({ id: units.id, name: units.name, qrData: units.qrData, signupUrl: units.signupUrl, active: units.active })
+  const rows = await c.select({ id: units.id, name: units.name, qrData: units.qrData, signupUrl: units.signupUrl, active: units.active, benefit: units.benefitAvailable })
     .from(units).where(or(isNotNull(units.qrData), isNotNull(units.signupUrl)));
-  return rows.filter((u) => u.active && (!unitIds || unitIds.includes(u.id))).map((u) => ({ id: u.id, name: u.name, qr: (u.qrData ?? u.signupUrl)! }));
+  // Academias sem o benefício na região não recebem material.
+  return rows.filter((u) => u.active && u.benefit && (!unitIds || unitIds.includes(u.id))).map((u) => ({ id: u.id, name: u.name, qr: (u.qrData ?? u.signupUrl)! }));
 }
 
 // Quem aprova o envio às unidades (só essa pessoa; os outros administradores só preparam).
@@ -736,12 +737,12 @@ export const unitKitRouter = router({
   /** Mídia kit de cada unidade: o que já foi enviado e o que aguarda aprovação, por material. */
   kitsByUnit: adminProcedure.query(async () => {
     const c = await conn();
-    const unitRows = await c.select({ id: units.id, name: units.name, active: units.active, qrData: units.qrData, signupUrl: units.signupUrl, code: units.code }).from(units).orderBy(units.name);
+    const unitRows = await c.select({ id: units.id, name: units.name, active: units.active, qrData: units.qrData, signupUrl: units.signupUrl, code: units.code, benefit: units.benefitAvailable }).from(units).orderBy(units.name);
     const mats = await c.select({ unitId: unitMaterials.unitId, description: unitMaterials.description, pending: unitMaterials.pending, previewUrl: unitMaterials.previewUrl, fileUrl: unitMaterials.fileUrl, createdAt: unitMaterials.createdAt })
       .from(unitMaterials).where(and(eq(unitMaterials.kind, "midia_kit"), like(unitMaterials.description, "Impressão › %")));
     const formats = Object.keys(KIT_FORMATS) as KitFormat[];
     return unitRows.filter((u) => u.active).map((u) => ({
-      id: u.id, name: u.name, hasQr: !!(u.qrData || u.signupUrl), linked: !u.code.startsWith("kit:"),
+      id: u.id, name: u.name, hasQr: !!(u.qrData || u.signupUrl), linked: !u.code.startsWith("kit:"), benefit: u.benefit,
       materials: formats.map((f) => {
         const desc = `Impressão › ${KIT_FORMATS[f].label}`;
         const mine = mats.filter((m) => m.unitId === u.id && m.description === desc);

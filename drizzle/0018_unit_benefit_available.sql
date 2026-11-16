@@ -1,0 +1,1 @@
+ALTER TABLE "units" ADD COLUMN "benefitAvailable" boolean DEFAULT true NOT NULL;

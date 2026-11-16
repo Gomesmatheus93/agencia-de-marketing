@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, LifeBuoy, Loader2, Megaphone, Plus, Search, Send, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
+import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, ChevronLeft, ChevronRight, LifeBuoy, Loader2, Megaphone, Plus, X, ZoomIn, ZoomOut, Search, Send, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -42,7 +42,7 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
 function Overview({ onOpen }: { onOpen: (id: number) => void }) {
   const overview = trpc.unitAdmin.overview.useQuery(undefined, { refetchInterval: 60_000 });
   const [q, setQ] = useState("");
-  const [editing, setEditing] = useState<{ id?: number; code: string; name: string; city: string; active: boolean; signupUrl: string } | null>(null);
+  const [editing, setEditing] = useState<{ id?: number; code: string; name: string; city: string; active: boolean; signupUrl: string; benefitAvailable: boolean } | null>(null);
   const utils = trpc.useUtils();
   const save = trpc.unitAdmin.saveUnit.useMutation({
     onSuccess: () => { toast.success("Unidade salva."); setEditing(null); utils.unitAdmin.overview.invalidate(); },
@@ -68,7 +68,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar unidade, código ou cidade" className="pl-9" />
         </div>
-        <Button onClick={() => setEditing({ code: "", name: "", city: "", active: true, signupUrl: "" })}><Plus className="mr-1.5 h-4 w-4" />Nova unidade</Button>
+        <Button onClick={() => setEditing({ code: "", name: "", city: "", active: true, signupUrl: "", benefitAvailable: true })}><Plus className="mr-1.5 h-4 w-4" />Nova unidade</Button>
       </div>
 
       <Card className="border-border/60"><CardContent className="overflow-x-auto p-0">
@@ -82,7 +82,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
             <tbody>
               {list.map((u) => (
                 <tr key={u.id} className={cn("border-b last:border-0 hover:bg-muted/40", !u.active && "opacity-50")}>
-                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code.startsWith("kit:") ? <span className="text-amber-600 dark:text-amber-400">aguardando 1º acesso</span> : "ligada ao sistema da Alle"}{u.groupName ? ` · ${u.groupName}` : ""}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}</p></td>
+                  <td className="p-3"><button type="button" onClick={() => onOpen(u.id)} className="text-left font-medium hover:text-primary">{u.name}</button><p className="text-xs text-muted-foreground">{u.code.startsWith("kit:") ? <span className="text-amber-600 dark:text-amber-400">aguardando 1º acesso</span> : "ligada ao sistema da Alle"}{u.groupName ? ` · ${u.groupName}` : ""}{u.city ? ` · ${u.city}` : ""}{!u.active ? " · desativada" : ""}{!u.benefitAvailable ? <span className="ml-1 rounded-full bg-destructive/10 px-1.5 text-[10px] font-semibold text-destructive">sem benefício na região</span> : null}</p></td>
                   <td className="p-3">{u.accounts}</td>
                   <td className="p-3 whitespace-nowrap">{u.lastAccess ? fmtDateTime(u.lastAccess) : <span className="text-amber-600">nunca</span>}</td>
                   <td className="p-3 text-right tabular-nums">{u.logins30d}</td>
@@ -91,7 +91,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
                   <td className="p-3 text-right tabular-nums">{u.due4w ? <span className={cn(u.posted4w === 0 ? "text-amber-600" : u.posted4w >= u.due4w ? "text-emerald-600" : "")}>{u.posted4w}/{u.due4w}</span> : "—"}</td>
                   <td className="p-3">{u.hasMidiaKit ? <span className="text-emerald-600">✓</span> : <span className="text-muted-foreground">—</span>}</td>
                   <td className="p-3">{u.signupUrl ? <a href={u.signupUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline" title={u.signupUrl}>✓</a> : <span className="text-muted-foreground">—</span>}</td>
-                  <td className="p-3 text-right"><Button size="sm" variant="ghost" onClick={() => setEditing({ id: u.id, code: u.code, name: u.name, city: u.city ?? "", active: u.active, signupUrl: u.signupUrl ?? "" })}>Editar</Button></td>
+                  <td className="p-3 text-right"><Button size="sm" variant="ghost" onClick={() => setEditing({ id: u.id, code: u.code, name: u.name, city: u.city ?? "", active: u.active, signupUrl: u.signupUrl ?? "", benefitAvailable: u.benefitAvailable })}>Editar</Button></td>
                 </tr>
               ))}
             </tbody>
@@ -108,6 +108,7 @@ function Overview({ onOpen }: { onOpen: (id: number) => void }) {
               <label className="block space-y-1 text-sm"><span className="font-medium">Código no sistema da Alle</span><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value.toLowerCase() })} placeholder="capim-macio" /><span className="text-xs text-muted-foreground">Preenchido sozinho no primeiro login. Antes disso fica "kit:…" e a academia é ligada pelo <b>nome</b>: ajuste o nome para ficar igual ao do sistema da Alle, se for diferente.</span></label>
               <label className="block space-y-1 text-sm"><span className="font-medium">Cidade</span><Input value={editing.city} onChange={(e) => setEditing({ ...editing, city: e.target.value })} placeholder="Natal/RN" /></label>
               <label className="block space-y-1 text-sm"><span className="font-medium">Link de adesão</span><Input value={editing.signupUrl} onChange={(e) => setEditing({ ...editing, signupUrl: e.target.value })} placeholder="https://qrcode.allpfit.com.br/r/…" /><span className="text-xs text-muted-foreground">Aparece no portal da academia com o QR code. O QR vem da importação da pasta de QR codes.</span></label>
+              <label className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm"><span>Benefício disponível na região<span className="block text-xs text-muted-foreground">Desligado (ex.: Enel SP, CPFL Piratininga): a academia não recebe a campanha nem os materiais.</span></span><Switch checked={editing.benefitAvailable} onCheckedChange={(v) => setEditing({ ...editing, benefitAvailable: v })} /></label>
               <label className="flex items-center justify-between rounded-lg border p-3 text-sm"><span>Unidade ativa (pode acessar)</span><Switch checked={editing.active} onCheckedChange={(v) => setEditing({ ...editing, active: v })} /></label>
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
                 <Button disabled={save.isPending} onClick={() => save.mutate({ ...editing, city: editing.city || undefined, signupUrl: editing.signupUrl.trim() || null })}>{save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar</Button></div>
@@ -225,11 +226,50 @@ function CreationPicker({ onPick, onClose }: { onPick: (c: { title: string; imag
   );
 }
 
+/** Arte em tela cheia: zoom (rolagem, botões, duplo clique), arrastar e setas. */
+function ArtViewer({ urls, index, onIndex, onClose }: { urls: string[]; index: number; onIndex: (i: number) => void; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [drag, setDrag] = useState<{ x: number; y: number; px: number; py: number } | null>(null);
+  const setZ = (z: number) => { const n = Math.min(5, Math.max(1, z)); setZoom(n); if (n === 1) setPos({ x: 0, y: 0 }); };
+  const go = (d: number) => { const n = index + d; if (n >= 0 && n < urls.length) { onIndex(n); setZ(1); } };
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight") go(1); if (e.key === "ArrowLeft") go(-1); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90 text-white">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <span className="flex-1 text-sm">Arte {index + 1} de {urls.length}</span>
+        <button type="button" onClick={() => setZ(zoom - 0.5)} disabled={zoom <= 1} className="rounded-lg p-2 hover:bg-white/10 disabled:opacity-30"><ZoomOut className="h-5 w-5" /></button>
+        <span className="w-12 text-center text-xs">{Math.round(zoom * 100)}%</span>
+        <button type="button" onClick={() => setZ(zoom + 0.5)} disabled={zoom >= 5} className="rounded-lg p-2 hover:bg-white/10 disabled:opacity-30"><ZoomIn className="h-5 w-5" /></button>
+        <a href={urls[index]} target="_blank" rel="noreferrer" title="Abrir em nova aba" className="rounded-lg p-2 hover:bg-white/10"><ExternalLink className="h-5 w-5" /></a>
+        <button type="button" onClick={onClose} title="Fechar (Esc)" className="rounded-lg p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
+      </div>
+      <div className={cn("relative flex-1 select-none overflow-hidden", zoom > 1 ? "cursor-grab" : "cursor-zoom-in")}
+        onWheel={(e) => setZ(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))}
+        onDoubleClick={() => setZ(zoom > 1 ? 1 : 2.5)}
+        onPointerDown={(e) => zoom > 1 && setDrag({ x: e.clientX, y: e.clientY, px: pos.x, py: pos.y })}
+        onPointerMove={(e) => drag && setPos({ x: drag.px + e.clientX - drag.x, y: drag.py + e.clientY - drag.y })}
+        onPointerUp={() => setDrag(null)} onPointerLeave={() => setDrag(null)}>
+        <img src={urls[index]} alt="" draggable={false} className="pointer-events-none absolute inset-0 m-auto max-h-full max-w-full object-contain p-4"
+          style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom})` }} />
+        {index > 0 && <button type="button" onClick={() => go(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 hover:bg-black/70"><ChevronLeft className="h-6 w-6" /></button>}
+        {index < urls.length - 1 && <button type="button" onClick={() => go(1)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 hover:bg-black/70"><ChevronRight className="h-6 w-6" /></button>}
+      </div>
+      <p className="pb-3 text-center text-[11px] text-white/50">Rolagem ou duplo clique para ampliar · arraste para mover · setas para trocar · Esc para fechar</p>
+    </div>
+  );
+}
+
 /** Editor de um post das unidades. */
 function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week: Week; initial: Item; onSave: (it: Item) => void; onDelete?: () => void; onClose: () => void; saving: boolean }) {
   const [it, setIt] = useState<Item>(initial);
   const [busy, setBusy] = useState<"artes" | "stories" | null>(null);
   const [picker, setPicker] = useState(false);
+  const [viewing, setViewing] = useState<{ list: "artes" | "stories"; i: number } | null>(null);
   const set = (patch: Partial<Item>) => setIt((x) => ({ ...x, ...patch }));
   const days = Array.from({ length: 7 }, (_, i) => addDaysYmd(week.weekStart, i));
   const upload = async (files: File[], target: "artes" | "stories") => {
@@ -243,6 +283,11 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const move = (i: number, d: number) => { const arr = [...it.imageUrls]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ imageUrls: arr }); };
+  // Arte ampliada: ocupa o lugar da janela (o estado do post continua guardado; fechar volta para ela).
+  if (viewing) {
+    const urls = viewing.list === "artes" ? it.imageUrls : (it.storyUrls ?? []);
+    return <ArtViewer urls={urls} index={Math.min(viewing.i, urls.length - 1)} onIndex={(i) => setViewing({ ...viewing, i })} onClose={() => setViewing(null)} />;
+  }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl">
@@ -284,7 +329,9 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {it.imageUrls.map((u, i) => (
                     <div key={u + i} className="group relative overflow-hidden rounded-lg border bg-muted">
-                      <img src={u} alt="" className="aspect-[4/5] w-full object-cover" />
+                      <button type="button" title="Ampliar" onClick={() => setViewing({ list: "artes", i })} className="block w-full cursor-zoom-in">
+                        <img src={u} alt="" className="aspect-[4/5] w-full object-cover" />
+                      </button>
                       <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] font-bold text-white">{i + 1}</span>
                       <div className="absolute inset-x-0 bottom-0 hidden justify-between bg-black/60 p-1 group-hover:flex">
                         <button type="button" title="Mover para trás" onClick={() => move(i, -1)} className="px-1 text-xs text-white">‹</button>
@@ -307,7 +354,9 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
               <div className="flex flex-wrap gap-2">
                 {(it.storyUrls ?? []).map((u) => (
                   <span key={u} className="relative">
-                    <img src={u} alt="" className="h-28 w-16 rounded-md border object-cover" />
+                    <button type="button" title="Ampliar" onClick={() => setViewing({ list: "stories", i: (it.storyUrls ?? []).indexOf(u) })} className="cursor-zoom-in">
+                      <img src={u} alt="" className="h-28 w-16 rounded-md border object-cover" />
+                    </button>
                     <button type="button" title="Tirar" onClick={() => set({ storyUrls: (it.storyUrls ?? []).filter((x) => x !== u) })} className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive px-1.5 text-[11px] leading-5 text-white">×</button>
                   </span>
                 ))}

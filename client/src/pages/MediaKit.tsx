@@ -408,7 +408,8 @@ function KitsByUnit() {
               <div className="min-w-[220px] lg:w-[240px]">
                 <p className="font-semibold">{u.name}</p>
                 <p className="text-xs">
-                  {!u.hasQr ? <span className="text-amber-600">sem QR code: cadastre o link da academia</span>
+                  {!u.benefit ? <span className="text-destructive">sem benefício na região: não recebe material</span>
+                    : !u.hasQr ? <span className="text-amber-600">sem QR code: cadastre o link da academia</span>
                     : complete(u) ? <span className="text-emerald-600">kit completo</span>
                     : <span className="text-muted-foreground">{u.materials.filter((m) => m.sent).length} de 4 enviados</span>}
                 </p>

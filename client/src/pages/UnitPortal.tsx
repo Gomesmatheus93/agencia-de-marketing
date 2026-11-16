@@ -352,6 +352,18 @@ function PlanTab() {
   const today = todayYmd();
 
   if (plan.isLoading) return <p className="flex items-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando o planejamento…</p>;
+  if (data?.noBenefit) {
+    return (
+      <div className="space-y-5">
+        <Announcements />
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed bg-card py-16 text-center">
+          <CalendarDays className="h-8 w-8 text-muted-foreground" />
+          <p className="font-medium">O benefício da Alle Energia ainda não está disponível na região desta academia.</p>
+          <p className="max-w-md text-sm text-muted-foreground">Por isso, a campanha e os posts da semana não aparecem aqui. Assim que o benefício chegar à sua região, a equipe da Alle avisa.</p>
+        </div>
+      </div>
+    );
+  }
   if (!data?.plan) {
     return (
       <div className="space-y-5">

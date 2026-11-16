@@ -75,7 +75,7 @@ export const unitPortalRouter = router({
     return {
       name: me.name, isUnit: me.accountType === "unit", role: me.externalRole, groupName: me.groupName,
       allUnits: me.accountType !== "unit" || me.allUnits,
-      unit: current ? { id: current.id, name: current.name, code: current.code, city: current.city, signupUrl: current.signupUrl, qrUrl: current.qrUrl } : null,
+      unit: current ? { id: current.id, name: current.name, code: current.code, city: current.city, signupUrl: current.signupUrl, qrUrl: current.qrUrl, benefitAvailable: current.benefitAvailable } : null,
       units: list.map((u) => ({ id: u.id, name: u.name, groupName: u.groupName })),
     };
   }),
@@ -94,6 +94,11 @@ export const unitPortalRouter = router({
     .input(z.object({ weekStart: day.optional() }).optional())
     .query(async ({ ctx, input }) => {
       const c = await conn();
+      // Academia sem o benefício na região (ex.: Enel SP, CPFL Piratininga): não recebe a campanha.
+      const opened = (await currentUnit(ctx.actualUser)).current;
+      if (opened && !opened.benefitAvailable) {
+        return { weeks: [] as Array<{ weekStart: string; title: string | null }>, plan: null, weekStart: mondayOf(), posted: [] as number[], upcoming: [], canMark: false, noBenefit: true };
+      }
       const published = await c.select({ weekStart: unitWeeklyPlans.weekStart, title: unitWeeklyPlans.title })
         .from(unitWeeklyPlans).where(released()).orderBy(desc(unitWeeklyPlans.weekStart)).limit(12);
       const current = mondayOf();
@@ -120,6 +125,7 @@ export const unitPortalRouter = router({
         posted,
         upcoming,
         canMark: ctx.actualUser.accountType === "unit" && !!unitId,
+        noBenefit: false,
       };
     }),
 
@@ -335,6 +341,7 @@ export const unitAdminRouter = router({
         due4w: dueKeys.size,
         postedThisWeek: marks.filter((m) => m.unitId === u.id && m.weekStart === thisWeek).length,
         hasLink: !!u.signupUrl,
+        benefitAvailable: u.benefitAvailable,
         signupUrl: u.signupUrl,
         hasMidiaKit: materials.some((m) => m.unitId === u.id && m.kind === "midia_kit"),
         ownMaterials: materials.filter((m) => m.unitId === u.id).length,
@@ -353,7 +360,8 @@ export const unitAdminRouter = router({
         generalMaterials: materials.filter((m) => m.unitId === null).length,
         publishedPlans: planRow?.n ?? 0,
         postedThisWeek: list.filter((u) => u.postedThisWeek > 0).length,
-        adherence4w: (() => { const due = dueKeys.size * list.filter((u) => u.active).length; const done = list.filter((u) => u.active).reduce((s, u) => s + u.posted4w, 0); return due ? Math.round((done / due) * 100) : null; })(),
+        adherence4w: (() => { const eligible = list.filter((u) => u.active && u.benefitAvailable); const due = dueKeys.size * eligible.length; const done = eligible.reduce((s, u) => s + u.posted4w, 0); return due ? Math.round((done / due) * 100) : null; })(),
+        noBenefit: list.filter((u) => !u.benefitAvailable).length,
         withLink: list.filter((u) => u.hasLink).length,
         currentWeekPublished: current?.status === "published" && (!current.releaseAt || current.releaseAt <= new Date()),
       },
@@ -402,12 +410,13 @@ export const unitAdminRouter = router({
       code: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9:_-]{0,63}$/, "Código: letras minúsculas, números, :, - e _."),
       name: z.string().trim().min(2).max(255), city: z.string().trim().max(120).optional(), active: z.boolean().default(true),
       signupUrl: z.string().trim().url().max(500).nullable().optional(),
+      benefitAvailable: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const c = await conn();
       const [same] = await c.select({ id: units.id }).from(units).where(eq(units.code, input.code));
       if (same && same.id !== input.id) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma unidade com esse código." });
-      const values = { code: input.code, name: input.name, city: input.city || null, active: input.active, ...(input.signupUrl !== undefined ? { signupUrl: input.signupUrl || null } : {}) };
+      const values = { code: input.code, name: input.name, city: input.city || null, active: input.active, ...(input.signupUrl !== undefined ? { signupUrl: input.signupUrl || null } : {}), ...(input.benefitAvailable !== undefined ? { benefitAvailable: input.benefitAvailable } : {}) };
       if (input.id) await c.update(units).set(values).where(eq(units.id, input.id));
       else await c.insert(units).values(values);
       await db.recordAudit({ action: input.id ? "unit.updated" : "unit.created", actorUserId: ctx.actualUser!.id, targetType: "unit", targetId: input.code });

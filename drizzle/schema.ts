@@ -1142,6 +1142,9 @@ export const units = pgTable("units", {
   qrUrl: text("qrUrl"),
   // Conteúdo exato do QR impresso (às vezes difere do link exibido): o QR do mídia kit é gerado com ele.
   qrData: text("qrData"),
+  // Benefício disponível na região (ex.: áreas da Enel SP e da CPFL Piratininga não oferecem hoje).
+  // Sem benefício: a academia não recebe o planejamento da campanha nem os materiais gerados.
+  benefitAvailable: boolean("benefitAvailable").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Unit = typeof units.$inferSelect;
