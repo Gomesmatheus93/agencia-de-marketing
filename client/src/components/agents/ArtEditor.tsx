@@ -131,6 +131,11 @@ export type SvgSource = {
   emptyMessage?: string;
 };
 
+/** Abre o editor de uma arte de agente sem botão próprio (quem chama controla quando abrir). */
+export function AgentArtEditor({ threadId, target, onClose, onSaved }: { threadId: number; target: ArtTarget; onClose: () => void; onSaved: () => void }) {
+  return createPortal(<ArtStudio threadId={threadId} target={target} onClose={onClose} onSaved={onSaved} />, document.body);
+}
+
 /** Abre o editor de artes para qualquer SVG (tela cheia). */
 export function SvgEditorModal({ source, onClose }: { source: SvgSource; onClose: () => void }) {
   return createPortal(<ArtStudio adapter={source} onClose={onClose} onSaved={() => {}} />, document.body);

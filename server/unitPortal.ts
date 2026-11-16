@@ -275,7 +275,7 @@ async function syncAiWeek(userId: number, row: typeof unitWeeklyPlans.$inferSele
     const r = (latest.result ?? {}) as Record<string, any>;
     if (imagesOf(r).length) {
       changed = true;
-      return { ...it, imageUrls: imagesOf(r).slice(0, 20), caption: it.caption || (r.caption ?? null) };
+      return { ...it, imageUrls: imagesOf(r).slice(0, 20), caption: it.caption || (r.caption ?? null), artThreadId: latest.id };
     }
     return it;
   });
@@ -297,6 +297,7 @@ const planItemSchema = z.object({
   storyUrls: z.array(z.string().url().max(2000)).max(10).optional(),
   planIndex: z.number().int().min(0).nullable().optional(),
   brief: z.string().max(3000).nullable().optional(),
+  artThreadId: z.number().int().nullable().optional(),
 });
 
 export const unitAdminRouter = router({
@@ -532,6 +533,14 @@ export const unitAdminRouter = router({
       await db.recordAudit({ action: "unit.plan.ai", actorUserId: ctx.actualUser!.id, targetType: "unit_plan", targetId: input.weekStart });
       return { threadId };
     }),
+
+  /** Artes de uma criação dos agentes, na ordem (para abrir a certa no editor e trazer a versão editada). */
+  artInfo: adminProcedure.input(z.object({ threadId: z.number().int() })).query(async ({ ctx, input }) => {
+    const t = await store.getThread(ctx.user.id, input.threadId);
+    if (!t?.result) throw new TRPCError({ code: "NOT_FOUND", message: "Criação não encontrada." });
+    const r = t.result as Record<string, any>;
+    return { kind: (r.slides ? "slide" : r.frames ? "frame" : "post") as "slide" | "frame" | "post", images: imagesOf(r) };
+  }),
 
   /** Cria com os agentes as artes das pautas sem arte (todas, ou só as indicadas). */
   createArts: adminProcedure

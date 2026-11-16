@@ -1183,6 +1183,7 @@ export type UnitPlanItem = {
   storyUrls?: string[]; // stories 9:16 para repostar no mesmo dia
   planIndex?: number | null; // pauta do plano feito pela IA (para ligar a arte criada)
   brief?: string | null; // ângulo, gancho e direção da legenda vindos da IA
+  artThreadId?: number | null; // criação do agente de onde vieram as artes (para editar no editor de artes)
 };
 
 /** Planejamento semanal único, publicado pela equipe da Alle para todas as unidades. */

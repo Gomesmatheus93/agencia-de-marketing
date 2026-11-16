@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import { AgentArtEditor } from "@/components/agents/ArtEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, ChevronLeft, ChevronRight, LifeBuoy, Loader2, Megaphone, Plus, X, ZoomIn, ZoomOut, Search, Send, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
+import { Activity, Building2, CalendarDays, Clock3, Download, ExternalLink, FolderOpen, ChevronLeft, ChevronRight, LifeBuoy, Loader2, Megaphone, PenLine, Plus, X, ZoomIn, ZoomOut, Search, Send, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -171,7 +172,7 @@ function ActivityTab() {
 }
 
 // ── Planejamento das unidades (mensal, enviado semana a semana) ────────────
-type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[]; planIndex?: number | null; brief?: string | null };
+type Item = { date: string; time?: string | null; format?: string | null; title: string; type?: string | null; caption?: string | null; imageUrls: string[]; storyUrls?: string[]; planIndex?: number | null; brief?: string | null; artThreadId?: number | null };
 type Week = { weekStart: string; weekEnd: string; state: string; releaseAt: string | Date | null; title: string; notes: string; items: Item[]; ai?: { threadId: number; status: string } | null; creating?: number[] };
 
 const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -198,7 +199,7 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 /** Escolher uma arte pronta dos agentes (carrossel, post, stories). */
-function CreationPicker({ onPick, onClose }: { onPick: (c: { title: string; images: string[]; caption: string | null; format: string }) => void; onClose: () => void }) {
+function CreationPicker({ onPick, onClose }: { onPick: (c: { id: number; title: string; images: string[]; caption: string | null; format: string }) => void; onClose: () => void }) {
   const list = trpc.unitAdmin.creations.useQuery({ limit: 30 });
   const LABEL: Record<string, string> = { carrossel: "Carrossel", legendas: "Post", stories: "Stories" };
   return (
@@ -270,7 +271,12 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
   const [busy, setBusy] = useState<"artes" | "stories" | null>(null);
   const [picker, setPicker] = useState(false);
   const [viewing, setViewing] = useState<{ list: "artes" | "stories"; i: number } | null>(null);
+  const [editingArt, setEditingArt] = useState<{ threadId: number; kind: "slide" | "frame" | "post"; index: number } | null>(null);
   const set = (patch: Partial<Item>) => setIt((x) => ({ ...x, ...patch }));
+  const utils = trpc.useUtils();
+  // Artes que vieram de uma criação dos agentes podem ser editadas no editor de artes.
+  const origin = trpc.unitAdmin.artInfo.useQuery({ threadId: it.artThreadId ?? 0 }, { enabled: !!it.artThreadId, retry: false });
+  const editIndexOf = (url: string) => (origin.data ? origin.data.images.indexOf(url) : -1);
   const days = Array.from({ length: 7 }, (_, i) => addDaysYmd(week.weekStart, i));
   const upload = async (files: File[], target: "artes" | "stories") => {
     if (!files.length) return;
@@ -283,6 +289,16 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const move = (i: number, d: number) => { const arr = [...it.imageUrls]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ imageUrls: arr }); };
+  // Editor de artes: ocupa o lugar da janela; ao salvar, a arte nova entra no post.
+  if (editingArt) {
+    return <AgentArtEditor threadId={editingArt.threadId} target={{ kind: editingArt.kind, index: editingArt.index }} onClose={() => setEditingArt(null)}
+      onSaved={async () => {
+        const info = await utils.unitAdmin.artInfo.fetch({ threadId: editingArt.threadId });
+        utils.unitAdmin.artInfo.invalidate();
+        set({ imageUrls: info.images.slice(0, 20) });
+        toast.success("Arte editada. Clique em “Salvar post” para guardar no planejamento.");
+      }} />;
+  }
   // Arte ampliada: ocupa o lugar da janela (o estado do post continua guardado; fechar volta para ela).
   if (viewing) {
     const urls = viewing.list === "artes" ? it.imageUrls : (it.storyUrls ?? []);
@@ -325,6 +341,9 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                   <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; upload(f, "artes"); }} />
                 </label>
               </div>
+              {it.imageUrls.length > 0 && (
+                <p className="mb-2 text-xs text-muted-foreground">Clique numa arte para ampliar. Passe o mouse para reordenar, tirar ou {origin.data ? "editar (✎)" : "trocar"}.</p>
+              )}
               {it.imageUrls.length ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {it.imageUrls.map((u, i) => (
@@ -336,6 +355,7 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
                       <div className="absolute inset-x-0 bottom-0 hidden justify-between bg-black/60 p-1 group-hover:flex">
                         <button type="button" title="Mover para trás" onClick={() => move(i, -1)} className="px-1 text-xs text-white">‹</button>
                         <button type="button" title="Tirar" onClick={() => set({ imageUrls: it.imageUrls.filter((_, j) => j !== i) })} className="px-1 text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+                        {editIndexOf(u) >= 0 && <button type="button" title="Editar arte" onClick={() => setEditingArt({ threadId: it.artThreadId!, kind: origin.data!.kind, index: editIndexOf(u) })} className="px-1 text-white"><PenLine className="h-3.5 w-3.5" /></button>}
                         <button type="button" title="Mover para frente" onClick={() => move(i, 1)} className="px-1 text-xs text-white">›</button>
                       </div>
                     </div>
@@ -373,7 +393,7 @@ function PostEditor({ week, initial, onSave, onDelete, onClose, saving }: { week
             </Button>
           </div>
         </div>
-        {picker && <CreationPicker onClose={() => setPicker(false)} onPick={(c) => set({ imageUrls: c.images, caption: it.caption?.trim() ? it.caption : c.caption, title: it.title.trim() ? it.title : c.title, format: c.format === "stories" ? "stories" : c.images.length > 1 ? "carrossel" : "imagem" })} />}
+        {picker && <CreationPicker onClose={() => setPicker(false)} onPick={(c) => set({ artThreadId: c.id, imageUrls: c.images, caption: it.caption?.trim() ? it.caption : c.caption, title: it.title.trim() ? it.title : c.title, format: c.format === "stories" ? "stories" : c.images.length > 1 ? "carrossel" : "imagem" })} />}
       </DialogContent>
     </Dialog>
   );
