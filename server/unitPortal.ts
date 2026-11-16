@@ -216,10 +216,7 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
 - É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: siga o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (co-branding no topo à esquerda: alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual; pessoa recortada encostada na borda de baixo quando couber; cards arredondados para os destaques).
-- FUNDO SIMPLES: uma cor chapada, a indicada em "Fundo desta arte" (as artes da semana alternam a cor). Sem faixas diagonais, sem marca d'água do raio, sem formas ou faixas decorativas, sem degradê no fundo:
-  · roxo: #5A16A8, cards e destaques laranja;
-  · laranja: #F47B20, cards e destaques em ROXO #5A16A8 (nunca card laranja sobre fundo laranja);
-  · roxo profundo: #3A0057, cards e destaques laranja.
+- FUNDO (padrão das peças da Allp Fit): roxo com brilho no centro (radialGradient #8B2FD9 → #5E17A8 → #2E0A63 nas bordas), textura sutil de pontos brancos (~7% de opacidade) no meio e duas fitas laranja curvas nos cantos (degradê #ffa040 → #ff5a00): uma no canto superior direito e outra no inferior esquerdo, cada uma com um filete branco translúcido. Sem outras faixas, marca d'água ou formas. Cards e botões laranja; nunca card ou botão roxo sobre o fundo roxo.
 - Fotos da Ane: as fotos são recortes com os braços cortados nas laterais; nunca deixe a lateral cortada aparecendo no meio da arte: encoste a foto na borda da arte ou use alle:ane (braços cruzados).
 - FOCO SÓ EM CONVERSÃO, COM POUCA INFORMAÇÃO: por tela, um título curto, no máximo uma linha de apoio e a chamada (escaneie o QR Code na recepção / fale com a Ane). Nada além disso; no máximo cerca de 20 palavras por tela. Carrossel enxuto.
 - NADA DE OBSERVAÇÃO NA ARTE: sem ressalva, sem "exemplo ilustrativo", sem notas, rodapés ou letras miúdas. Tudo isso vai na LEGENDA. Se o percentual aparecer na arte, escreva sem asterisco (ex.: "até 15%").
@@ -563,13 +560,10 @@ export const unitAdminRouter = router({
       // Ao refazer não sincroniza antes (senão a arte antiga voltaria antes de a nova começar).
       const { creating } = input.redo ? { creating: [] as number[] } : await syncAiWeek(ctx.user.id, row);
       let started = 0;
-      // Fundo em rodízio (roxo, laranja, roxo profundo), para a semana não ficar toda igual.
-      const BACKGROUNDS = ["roxo", "laranja", "roxo profundo"];
       for (const [idx, it] of row.items.entries()) {
         if (input.indexes && !input.indexes.includes(idx)) continue;
         if (it.planIndex == null || it.imageUrls.length || creating.includes(idx)) continue;
-        const bg = it.brief?.match(/Fundo desta arte: ([^\n]+)/)?.[1] ?? BACKGROUNDS[idx % BACKGROUNDS.length];
-        const topic = `${it.title}${it.brief ? `\n\n${it.brief.replace(/Fundo desta arte: [^\n]+\n?/, "")}` : ""}\n\nFundo desta arte: ${bg}.`.slice(0, 2900);
+        const topic = `${it.title}${it.brief ? `\n\n${it.brief.replace(/Fundo desta arte: [^\n]+\n?/, "")}` : ""}`.slice(0, 2900);
         const link = { threadId: row.aiThreadId, index: it.planIndex };
         if (it.format === "carrossel") await startUnitTask(ctx.user.id, "carrossel", { topic, slides: 5, style: "auto", notes: UNIT_ART_NOTES }, link);
         else if (it.format === "stories") await startUnitTask(ctx.user.id, "stories", { topic, frames: 1, notes: UNIT_ART_NOTES }, link);
