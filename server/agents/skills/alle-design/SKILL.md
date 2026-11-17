@@ -90,10 +90,9 @@ na cintura:
 | `alle:ane-coque` | 899×1012 | braços cruzados, cabelo preso em coque (fotos novas) | confiança, oferta, capa |
 | `alle:ane-queixo` | 883×1000 | mão no queixo, pensativa e sorrindo | pergunta, dúvida, "você sabia?", quebra de objeção |
 | `alle:ane-oculos` | 1016×1020 | ajustando os óculos | dica, explicação, "presta atenção", novidade |
-| `alle:ane-escritorio` | 986×1020 | de frente, no escritório, braço apoiado | atendimento, bastidor, "estou aqui pra te ajudar" |
 | `alle:ane-costas` | 773×1020 | de costas, olhando para trás e sorrindo | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
 
-**Alterne as fotos (são 11):** prefira as fotos novas (ane-sorrindo, ane-coque, ane-queixo, ane-oculos, ane-escritorio, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
+**Alterne as fotos (são 10):** prefira as fotos novas (ane-sorrindo, ane-coque, ane-queixo, ane-oculos, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
 carrossel com a Ane em 2 slides, use uma foto diferente em cada. A largura é sempre
 altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509 de largura).
 

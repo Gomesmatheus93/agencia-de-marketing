@@ -302,7 +302,6 @@ export const ANE_PHOTOS: Record<string, { label: string; w: number; h: number }>
   "ane-coque": { label: "Braços cruzados, coque (nova)", w: 899, h: 1012 },
   "ane-queixo": { label: "Mão no queixo (nova)", w: 883, h: 1000 },
   "ane-oculos": { label: "Ajustando os óculos (nova)", w: 1016, h: 1020 },
-  "ane-escritorio": { label: "No escritório (nova)", w: 986, h: 1020 },
   "ane-costas": { label: "Olhando para trás (nova)", w: 773, h: 1020 },
 };
 
@@ -1235,7 +1234,7 @@ const banSeal: Draw = (H, f) => {
   const [l1, l2] = splitLast(f.headline3);
   const cy = 445;
   const card = qrCard(64, H - 425, 270, "#ffffff", f.qrLabel, "", "#3A0057");
-  const a = aneAt("aneS", W - 470 * (986 / 1020) + 40, H - 470, 470, "left", "ane-escritorio");
+  const a = aneAt("aneS", W - 470 * (874 / 1006) + 40, H - 470, 470, "left", "ane-sorrindo");
   return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
   ${logos("roxo", (W - LOGOS_W) / 2, 50)}
   <circle cx="${W / 2}" cy="${cy}" r="280" fill="url(#nOr)"/><circle cx="${W / 2}" cy="${cy}" r="250" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="8 12"/>
