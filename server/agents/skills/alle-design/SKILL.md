@@ -86,13 +86,11 @@ na cintura:
 | `alle:ane-caneca` | 1016×1020 | segurando a caneca da Alle | dica, conversa leve, bastidor (a caneca fica do lado esquerdo dela: deixe espaço) |
 | `alle:ane-tablet` | 900×1297 | de frente, segurando o tablet com uma fatura da Alle (camisa polo roxa) | fatura, desconto, passo a passo, "manda a sua conta" |
 | `alle:ane-ombro` | 742×1020 | de costas, olhando por cima do ombro | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
-| `alle:ane-sorrindo` | 874×1006 | de frente, cabelo solto, sorriso aberto (fotos novas) | convite, CTA, "fala comigo" |
-| `alle:ane-coque` | 899×1012 | braços cruzados, cabelo preso em coque (fotos novas) | confiança, oferta, capa |
+| `alle:ane-sorrindo` | 874×1006 | de frente, cabelo solto, sorriso aberto (fotos novas) | convite, CTA, "fala comigo". O lado direito da foto é cortado: use SEMPRE encostada na borda direita da arte |
 | `alle:ane-queixo` | 883×1000 | mão no queixo, pensativa e sorrindo | pergunta, dúvida, "você sabia?", quebra de objeção |
-| `alle:ane-oculos` | 1016×1020 | ajustando os óculos | dica, explicação, "presta atenção", novidade |
 | `alle:ane-costas` | 773×1020 | de costas, olhando para trás e sorrindo | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
 
-**Alterne as fotos (são 10):** prefira as fotos novas (ane-sorrindo, ane-coque, ane-queixo, ane-oculos, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
+**Alterne as fotos (são 8):** prefira as fotos novas (ane-sorrindo, ane-queixo, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
 carrossel com a Ane em 2 slides, use uma foto diferente em cada. A largura é sempre
 altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509 de largura).
 

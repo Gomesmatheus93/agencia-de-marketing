@@ -38,9 +38,7 @@ const BRAND_IMAGES = [
   { href: "alle:ane-ombro", label: "Ane · olhando por cima do ombro", w: 742, h: 1020 },
   { href: "alle:ane-tablet", label: "Ane · com o tablet da fatura", w: 900, h: 1297 },
   { href: "alle:ane-sorrindo", label: "Ane · sorrindo, cabelo solto (nova)", w: 874, h: 1006 },
-  { href: "alle:ane-coque", label: "Ane · braços cruzados, coque (nova)", w: 899, h: 1012 },
   { href: "alle:ane-queixo", label: "Ane · mão no queixo (nova)", w: 883, h: 1000 },
-  { href: "alle:ane-oculos", label: "Ane · ajustando os óculos (nova)", w: 1016, h: 1020 },
   { href: "alle:ane-costas", label: "Ane · olhando para trás (nova)", w: 773, h: 1020 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
