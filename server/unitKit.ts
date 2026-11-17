@@ -124,17 +124,29 @@ export function variantsOf(format: KitFormat): Variant[] {
     { id: "ativacao", label: "Ativação (2ª versão)", note: "Topo roxo com a mensagem e a Ane, base clara com os 3 passos e o QR.", defaults: ACTIVATION_DEFAULTS, draw: activationSvg },
     { id: "original", label: "Primeira versão", note: "Oferta grande, Ane com a fatura, benefícios e faixa “exclusivo”.", defaults: ORIGINAL_DEFAULTS, draw: originalSvg },
   ];
-  const novas: Variant[] = format === "windbanner"
-    ? [
-      { id: "ativar-roxo", label: "Ativar · roxo", note: "Bandeira roxa: seu desconto já é seu, só falta ativar, com o QR.", defaults: ATIVAR_DEFAULTS, draw: ativarFlag("roxo") },
-      { id: "ativar-laranja", label: "Ativar · laranja", note: "Bandeira laranja com a mesma mensagem e o QR.", defaults: ATIVAR_DEFAULTS, draw: ativarFlag("laranja") },
-      { id: "ativar-claro", label: "Ativar · claro", note: "Bandeira clara com o raio da marca e o QR.", defaults: ATIVAR_DEFAULTS, draw: ativarFlag("claro") },
-    ]
-    : [
-      { id: "ativar-roxo", label: "Ativar · roxo", note: "Fundo roxo da parceria: seu desconto já é seu, só falta ativar. QR num card e a Ane à direita.", defaults: ATIVAR_DEFAULTS, draw: ativarPoster("roxo") },
-      { id: "ativar-laranja", label: "Ativar · laranja", note: "Fundo laranja: a mesma mensagem, botão roxo, QR à direita e a Ane à esquerda.", defaults: ATIVAR_DEFAULTS, draw: ativarPoster("laranja") },
-      { id: "ativar-claro", label: "Ativar · claro", note: "Fundo claro com o raio da marca, QR grande e os 3 passos, sem foto.", defaults: ATIVAR_DEFAULTS, draw: ativarSteps },
-    ];
+  const V = (id: string, label: string, note: string, draw: Draw): Variant => ({ id, label, note, defaults: ATIVAR_DEFAULTS, draw });
+  const novas: Variant[] = {
+    display: [
+      V("disp-dividido", "Dividido", "Roxo em cima com a mensagem e branco embaixo com o QR e os 3 passos.", dispSplit),
+      V("disp-selo", "Selo", "Laranja com um selo grande “JÁ É SEU!” e o QR num card roxo.", dispStamp),
+      V("disp-celular", "Celular", "Celular desenhado com o QR na tela e a Ane ao lado.", dispPhone),
+    ],
+    banner: [
+      V("ban-tipografico", "Tipográfico", "“JÁ É SEU.” gigante para ler de longe, QR grande e a Ane.", banType),
+      V("ban-diagonal", "Diagonal", "Laranja e roxo na diagonal, QR num círculo branco e a Ane.", banDiag),
+      V("ban-arco", "Arco", "Fundo claro com a Ane dentro de um arco roxo e o QR num card laranja.", banArch),
+    ],
+    panfleto: [
+      V("pan-checklist", "Checklist", "Lista grande com os benefícios marcados e o QR ao lado.", panCheck),
+      V("pan-balao", "Balão", "A Ane com um balão de fala grande e o QR no canto.", panBubble),
+      V("pan-etiqueta", "Etiqueta", "Uma etiqueta de presente “JÁ É SEU.” e o QR embaixo.", panTag),
+    ],
+    windbanner: [
+      V("wb-vertical", "Vertical roxo", "“JÁ É SEU.” na vertical e o QR embaixo.", flagDraw(wbVertical)),
+      V("wb-ane", "Laranja com a Ane", "O QR no meio, na altura de leitura, e a Ane embaixo.", flagDraw(wbAne)),
+      V("wb-passos", "Claro com passos", "Os 3 passos numerados e o QR.", flagDraw(wbSteps)),
+    ],
+  }[format];
   switch (format) {
     case "display": return [...novas, { id: "conversa", label: "Conversa com a Ane (nova)", note: "Balões de conversa, selo da oferta e a faixa roxa com o QR.", defaults: KIT_DEFAULTS.display, draw: chatSvg }, ...older];
     case "banner": return [...novas, { id: "impacto", label: "Impacto (nova)", note: "Frase grande para ler de longe, QR gigante e a Ane com balão.", defaults: KIT_DEFAULTS.banner, draw: impactSvg }, ...older];
@@ -946,89 +958,173 @@ const headline = (f: KitFields, t: (typeof TONE)[Tone], y0: number, size = 78) =
   T(62, y0 + 2 * size + 30, size, 900, t.tx, f.headline2) +
   T(62, y0 + 3 * size + 42, size, 900, t.hi, f.headline3);
 
-/** Opção 1 e 2: título à esquerda, QR num card e a Ane de braços cruzados encostada na borda de baixo. */
-function ativarPoster(tone: Tone) {
-  return (H: number, f: KitFields): { svg: string; slots: Slot[] } => {
-    const t = TONE[tone];
-    const aneH = Math.min(tone === "laranja" ? 680 : 740, H - 640), aneW = aneH * ANE_RATIO;
-    const aneLeft = tone === "laranja";
-    const ane = { x: aneLeft ? -20 : W - aneW + 20, y: H - aneH, w: aneW, h: aneH, side: (aneLeft ? "right" : "left") as "left" | "right" };
-    const cardW = 380, cardH = 470, cardX = aneLeft ? W - 64 - cardW : 64, cardY = H - cardH - 110;
-    const qr = { x: cardX + (cardW - 290) / 2, y: cardY + 82, size: 290 };
-    const qrBox = tone === "laranja" ? `<rect x="${qr.x - 14}" y="${qr.y - 14}" width="${qr.size + 28}" height="${qr.size + 28}" rx="18" fill="#ffffff"/>` : "";
-    const ctaY = 640;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${NDEFS(H, "aneA", ane)}
-  <rect width="${W}" height="${H}" fill="${t.bg}"/>${tone === "roxo" ? `<rect width="${W}" height="${H}" fill="${t.bg2}" opacity=".35"/>` : ""}
-  ${stripes(H, t)}
-  ${logosRow(t)}
-  ${headline(f, t, 250)}
-  ${tone === "laranja"
-    ? `<rect x="56" y="${ctaY - 62}" width="${Math.min(620, textW(f.cta, 58, 900) + 60)}" height="86" rx="43" fill="#3A0057"/>${T(86, ctaY, 58, 900, "#ffffff", f.cta)}`
-    : T(62, ctaY, 64, 900, t.tx, f.cta)}
-  <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="34" fill="${t.card}" ${tone === "roxo" ? "" : 'stroke="#ffffff" stroke-opacity="0.15"'}/>
-  ${T(cardX + cardW / 2, cardY + 56, 30, 900, t.cardTx, f.qrLabel, "middle", 'letter-spacing="1"')}
-  ${qrBox}
-  ${T(cardX + cardW / 2, cardY + cardH - 30, 22, 600, t.cardTx, f.qrSub, "middle")}
-  ${aneLeft ? T(W - 64, ctaY + 62, 26, 700, t.tx, f.benefits, "end") : T(64, ctaY + 62, 26, 700, t.tx, f.benefits)}
-  <image href="alle:ane" x="${ane.x}" y="${ane.y}" width="${aneW}" height="${aneH}" mask="url(#aneA)"/>
-</svg>`;
-    return { svg, slots: [qr] };
+// ── 12 layouts distintos (3 por material), todos com a mensagem de ativação ──
+type Draw = (H: number, f: KitFields) => { svg: string; slots: Slot[] };
+const open = (H: number, defs = "") => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs><linearGradient id="nOr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffa040"/><stop offset="1" stop-color="#ff5a00"/></linearGradient><linearGradient id="nPu" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#7A22C8"/><stop offset="1" stop-color="#3A0057"/></linearGradient>${defs}</defs>`;
+/** Ane de braços cruzados com a lateral esquerda (ou direita) suavizada. */
+const aneAt = (id: string, x: number, y: number, h: number, side: "left" | "right" = "left") => {
+  const w = h * ANE_RATIO;
+  const stops = side === "left" ? `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".18" stop-color="#fff"/>` : `<stop offset=".82" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>`;
+  return {
+    defs: `<linearGradient id="${id}g" x1="0" x2="1">${stops}</linearGradient><mask id="${id}" maskUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}"><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id}g)"/></mask>`,
+    img: `<image href="alle:ane" x="${x}" y="${y}" width="${w}" height="${h}" mask="url(#${id})"/>`, w,
   };
-}
+};
+const logos = (tone: Tone, x = 64, y = 64) => logosRow(TONE[tone], x, y);
+const qrCard = (x: number, y: number, size: number, fill: string, label: string, sub: string, labelColor: string) => {
+  const pad = 40, w = size + pad * 2, h = size + 150;
+  const box = fill === "#ffffff" ? "" : `<rect x="${x + pad - 14}" y="${y + 70}" width="${size + 28}" height="${size + 28}" rx="18" fill="#ffffff"/>`;
+  return {
+    svg: `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="32" fill="${fill}"/>${T(x + w / 2, y + 50, 28, 900, labelColor, label, "middle", 'letter-spacing="1"')}${box}${sub ? T(x + w / 2, y + h - 22, 21, 600, labelColor, sub, "middle") : ""}`,
+    slot: { x: x + pad, y: y + 84, size }, w, h,
+  };
+};
 
-/** Opção 3: fundo claro com o raio da marca, QR grande e os 3 passos ao lado (sem foto). */
-function ativarSteps(H: number, f: KitFields): { svg: string; slots: Slot[] } {
-  const t = TONE.claro;
-  const qr = { x: 104, y: H - 560, size: 340 };
-  const stepsX = qr.x + qr.size + 90;
-  const steps = [f.step1, f.step2, f.step3].map((s, i) => {
-    const y = qr.y + 40 + i * 120;
-    return `<circle cx="${stepsX + 28}" cy="${y}" r="28" fill="url(#nOr)"/>${T(stepsX + 28, y + 10, 28, 900, "#ffffff", String(i + 1), "middle")}` +
-      wrap(s, 16).map((l, j) => T(stepsX + 74, y + 10 + j * 34, 30, 800, t.tx, l)).join("");
-  }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${NDEFS(H, "x")}
-  <rect width="${W}" height="${H}" fill="${t.bg}"/>
-  <image href="alle:raio" x="${W - 420}" y="80" width="470" height="750" opacity="0.18"/>
-  ${logosRow(t)}
-  ${headline(f, t, 250)}
-  ${T(62, 640, 64, 900, t.hi, f.cta)}
-  <rect x="${qr.x - 40}" y="${qr.y - 90}" width="${W - 2 * (qr.x - 40)}" height="${qr.size + 150}" rx="40" fill="#ffffff" stroke="#F3E8FA" stroke-width="4"/>
-  ${T(qr.x, qr.y - 34, 30, 900, t.tx, f.qrLabel, "start", 'letter-spacing="1"')}
-  <rect x="${qr.x - 12}" y="${qr.y - 12}" width="${qr.size + 24}" height="${qr.size + 24}" rx="20" fill="none" stroke="#ff6a00" stroke-width="6"/>
-  ${steps}
-  ${T(W / 2, H - 50, 26, 700, t.tx, f.benefits, "middle")}
-</svg>`;
-  return { svg, slots: [qr] };
-}
+// Display 1 · dividido: roxo em cima com a mensagem, branco embaixo com QR e os 3 passos.
+const dispSplit: Draw = (H, f) => {
+  const Z = Math.round(H * 0.5);
+  const qr = { x: 100, y: Z + 120, size: 300 };
+  const steps = [f.step1, f.step2, f.step3].map((s, i) => `<circle cx="${500}" cy="${qr.y + 40 + i * 115}" r="28" fill="url(#nOr)"/>${T(500, qr.y + 50 + i * 115, 28, 900, "#fff", String(i + 1), "middle")}${T(546, qr.y + 50 + i * 115, 30, 800, "#3A0057", s)}`).join("");
+  return { slots: [qr], svg: `${open(H)}<rect width="${W}" height="${H}" fill="#FFF8F2"/><rect width="${W}" height="${Z}" fill="url(#nPu)"/>
+  <image href="alle:raio-mono" x="${W - 330}" y="60" width="300" height="480" opacity="0.1"/>${logos("roxo")}
+  ${T(64, 230, 30, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(62, 315, 70, 300, "#fff", f.headline1)}${T(62, 395, 70, 900, "#fff", f.headline2)}${T(62, 475, 70, 900, "#ffa040", f.headline3)}
+  <rect x="${W / 2 - 230}" y="${Z - 46}" width="460" height="92" rx="46" fill="url(#nOr)"/>${T(W / 2, Z + 16, 46, 900, "#fff", f.cta, "middle")}
+  ${T(qr.x, qr.y - 22, 26, 900, "#3A0057", f.qrLabel, "start", 'letter-spacing="1"')}<rect x="${qr.x - 12}" y="${qr.y - 12}" width="${qr.size + 24}" height="${qr.size + 24}" rx="20" fill="#fff" stroke="#ff6a00" stroke-width="6"/>
+  ${steps}${T(W / 2, H - 50, 26, 700, "#3A0057", f.benefits, "middle")}</svg>` };
+};
 
-/** Windbanner nas três cores: as duas faces da bandeira com a mensagem de ativação e o QR. */
-function ativarFlag(tone: Tone) {
-  return (H: number, f: KitFields): { svg: string; slots: Slot[] } => {
-    const t = TONE[tone];
-    const pw = 470, xs = [20, 510];
-    const slots: Slot[] = [];
-    const panel = (x0: number) => {
-      const cx = x0 + pw / 2;
-      const card = { x: cx - 120, y: H - 330, size: 240 };
-      slots.push({ x: card.x + 16, y: card.y + 16, size: card.size - 32 });
+// Display 2 · selo: laranja com um grande selo branco "JÁ É SEU!" e o QR num card roxo.
+const dispStamp: Draw = (H, f) => {
+  const card = qrCard(W / 2 - 190, H - 520, 300, "#3A0057", f.qrLabel, f.qrSub, "#fff");
+  return { slots: [card.slot], svg: `${open(H)}<rect width="${W}" height="${H}" fill="#F47B20"/>
+  <path d="M0 0 L260 0 L0 260 Z" fill="#5A16A8" opacity=".9"/><path d="M${W} ${H} L${W - 260} ${H} L${W} ${H - 260} Z" fill="#5A16A8" opacity=".9"/>
+  ${logos("laranja", 230, 60)}
+  <g transform="translate(${W / 2} 440) rotate(-8)"><circle r="215" fill="#fff"/><circle r="190" fill="none" stroke="#F47B20" stroke-width="5" stroke-dasharray="6 10"/>
+  ${T(0, -70, 36, 800, "#5A16A8", f.kicker, "middle")}${T(0, 20, 96, 900, "#3A0057", "JÁ É", "middle")}${T(0, 120, 104, 900, "#ff6a00", "SEU!", "middle")}</g>
+  ${T(W / 2, 735, 40, 600, "#fff", `${f.headline1} ${f.headline2}`, "middle")}${T(W / 2, 805, 54, 900, "#3A0057", f.cta, "middle")}
+  ${card.svg}</svg>` };
+};
+
+// Display 3 · celular: um celular desenhado com o QR na tela ("aponte a câmera") e a Ane ao lado.
+const dispPhone: Draw = (H, f) => {
+  const ph = { x: 70, y: H - 760, w: 400, h: 720 };
+  const qr = { x: ph.x + 50, y: ph.y + 220, size: 300 };
+  const a = aneAt("aneP", W - 0.85 * 640 + 20, H - 640, 640);
+  return { slots: [qr], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="#2E0A63"/><circle cx="${W}" cy="${H}" r="560" fill="#5A16A8"/>
+  ${logos("roxo")}${T(64, 240, 30, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(62, 315, 62, 300, "#fff", f.headline1)}${T(62, 390, 62, 900, "#fff", f.headline2)}${T(62, 465, 62, 900, "#ffa040", f.headline3)}${T(62, 545, 50, 900, "#fff", f.cta)}
+  <rect x="${ph.x}" y="${ph.y}" width="${ph.w}" height="${ph.h}" rx="56" fill="#fff" stroke="#ff6a00" stroke-width="10"/><rect x="${ph.x + 150}" y="${ph.y + 24}" width="100" height="16" rx="8" fill="#3A0057" opacity=".25"/>
+  ${T(ph.x + ph.w / 2, ph.y + 120, 34, 900, "#3A0057", "Aponte a câmera", "middle")}${T(ph.x + ph.w / 2, ph.y + 166, 22, 600, "#5A16A8", f.qrSub, "middle")}
+  ${T(ph.x + ph.w / 2, ph.y + ph.h - 110, 28, 900, "#ff6a00", f.qrLabel, "middle")}${a.img}</svg>` };
+};
+
+// Banner 1 · tipográfico: "JÁ É SEU." gigante para ler de longe, QR grande e a Ane.
+const banType: Draw = (H, f) => {
+  const card = qrCard(64, H - 520, 340, "#ffffff", f.qrLabel, "", "#3A0057");
+  const a = aneAt("aneT", W - 0.85 * 600 + 20, H - 600, 600);
+  return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="url(#nPu)"/><path d="M${W - 200} 0 L${W} 0 L${W} 200 Z" fill="url(#nOr)"/>
+  ${logos("roxo")}${T(64, 215, 32, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(58, 360, 150, 900, "#fff", "JÁ É", "start", 'letter-spacing="-4"')}${T(52, 540, 190, 900, "#ffa040", "SEU.", "start", 'letter-spacing="-6"')}
+  ${T(64, 610, 36, 500, "#fff", `${f.headline1} ${f.headline2}`)}${T(64, 680, 52, 900, "#fff", f.cta)}
+  ${card.svg}${a.img}</svg>` };
+};
+
+// Banner 2 · diagonal: laranja e roxo divididos na diagonal, QR num círculo branco.
+const banDiag: Draw = (H, f) => {
+  const c = { cx: W - 260, cy: H - 330, r: 200 };
+  const qr = { x: c.cx - 125, y: c.cy - 125, size: 250 };
+  const a = aneAt("aneD", -20, H - 620, 620, "right");
+  return { slots: [qr], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="#3A0057"/><path d="M0 0 L${W} 0 L${W} ${H * 0.28} L0 ${H * 0.66} Z" fill="#F47B20"/>
+  ${logos("laranja")}${T(64, 240, 30, 800, "#3A0057", f.kicker, "start", 'letter-spacing="2"')}${T(62, 325, 74, 300, "#fff", f.headline1)}${T(62, 410, 74, 900, "#fff", f.headline2)}${T(62, 495, 74, 900, "#3A0057", f.headline3)}
+  ${T(W - 64, 700, 52, 900, "#fff", f.cta, "end")}${T(W - 64, 750, 26, 600, "#fff", f.benefits, "end")}
+  <circle cx="${c.cx}" cy="${c.cy}" r="${c.r}" fill="#fff"/><circle cx="${c.cx}" cy="${c.cy}" r="${c.r + 14}" fill="none" stroke="#ffa040" stroke-width="8"/>
+  ${T(c.cx, c.cy + c.r + 60, 28, 900, "#ffa040", f.qrLabel, "middle", 'letter-spacing="1"')}${a.img}</svg>` };
+};
+
+// Banner 3 · arco: fundo claro com a Ane dentro de um arco roxo e o QR num card laranja.
+const banArch: Draw = (H, f) => {
+  const arch = { x: 500, y: H - 820, w: 450, h: 820 };
+  const ah = 640, a = aneAt("aneA3", arch.x + arch.w / 2 - (ah * ANE_RATIO) / 2, H - ah, ah);
+  const card = qrCard(64, H - 500, 300, "url(#nOr)", f.qrLabel, f.qrSub, "#fff");
+  return { slots: [card.slot], svg: `${open(H, `${a.defs}<clipPath id="arch"><rect x="${arch.x}" y="${arch.y}" width="${arch.w}" height="${arch.h + 300}" rx="${arch.w / 2}"/></clipPath>`)}<rect width="${W}" height="${H}" fill="#FFF8F2"/>
+  <rect x="${arch.x}" y="${arch.y}" width="${arch.w}" height="${arch.h + 300}" rx="${arch.w / 2}" fill="#5A16A8"/>
+  ${logos("claro")}${T(64, 240, 30, 800, "#ff6a00", f.kicker, "start", 'letter-spacing="2"')}${T(62, 320, 66, 300, "#3A0057", f.headline1)}${T(62, 395, 66, 900, "#3A0057", f.headline2)}${T(62, 470, 66, 900, "#ff6a00", f.headline3)}
+  ${T(64, 560, 48, 900, "#3A0057", f.cta)}${T(64, 610, 24, 600, "#3A0057", f.benefits)}
+  ${card.svg}<g clip-path="url(#arch)">${a.img}</g></svg>` };
+};
+
+// Panfleto 1 · checklist: lista grande com os benefícios marcados e o QR ao lado.
+const panCheck: Draw = (H, f) => {
+  const card = qrCard(W - 64 - 380, 640, 300, "#5A16A8", f.qrLabel, f.qrSub, "#fff");
+  const items = [...f.benefits.split("·").map((s) => s.trim()).filter(Boolean), f.cta];
+  const list = items.map((s, i) => `${check(100, 700 + i * 110, 30, i === items.length - 1 ? "#ff6a00" : "#5A16A8")}${T(150, 712 + i * 110, 36, 900, i === items.length - 1 ? "#ff6a00" : "#3A0057", s)}`).join("");
+  return { slots: [card.slot], svg: `${open(H)}<rect width="${W}" height="${H}" fill="#F3E8FA"/><rect x="0" y="${H - 120}" width="${W}" height="120" fill="#5A16A8"/>
+  ${logos("claro")}${T(64, 240, 30, 800, "#ff6a00", f.kicker, "start", 'letter-spacing="2"')}${T(62, 330, 74, 300, "#3A0057", f.headline1)}${T(62, 415, 74, 900, "#3A0057", f.headline2)}${T(62, 500, 74, 900, "#ff6a00", f.headline3)}
+  ${list}${card.svg}${T(W / 2, H - 48, 34, 900, "#fff", `${f.step1} · ${f.step2}`, "middle")}</svg>` };
+};
+
+// Panfleto 2 · balão: a Ane "falando" num balão grande e o QR no canto.
+const panBubble: Draw = (H, f) => {
+  const a = aneAt("aneB", -20, H - 700, 700, "right");
+  const card = qrCard(W - 64 - 380, H - 500, 300, "url(#nOr)", f.qrLabel, f.qrSub, "#fff");
+  const b = { x: 300, y: 200, w: 636, h: 440 };
+  return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="#5A16A8"/><rect width="${W}" height="${H}" fill="#3d0b80" opacity=".35"/>
+  ${logos("roxo")}
+  <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="44" fill="#fff"/><path d="M${b.x + 70} ${b.y + b.h - 4} L${b.x + 10} ${b.y + b.h + 90} L${b.x + 170} ${b.y + b.h - 4} Z" fill="#fff"/>
+  ${T(b.x + 50, b.y + 85, 32, 800, "#ff6a00", f.kicker)}${T(b.x + 50, b.y + 160, 54, 300, "#3A0057", f.headline1)}${T(b.x + 50, b.y + 228, 54, 900, "#3A0057", f.headline2)}${T(b.x + 50, b.y + 296, 54, 900, "#ff6a00", f.headline3)}${T(b.x + 50, b.y + 380, 46, 900, "#5A16A8", f.cta)}
+  ${card.svg}${a.img}</svg>` };
+};
+
+// Panfleto 3 · etiqueta de presente: uma tag roxa "já é seu" e o QR embaixo, sem foto.
+const panTag: Draw = (H, f) => {
+  const card = qrCard(W / 2 - 190, H - 540, 300, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
+  return { slots: [card.slot], svg: `${open(H)}<rect width="${W}" height="${H}" fill="#F47B20"/>
+  ${logos("laranja", 230, 60)}
+  <g transform="translate(${W / 2} 470) rotate(-5)"><path d="M-400 -230 L330 -230 L420 0 L330 230 L-400 230 Z" fill="#3A0057"/><circle cx="330" cy="0" r="26" fill="#F47B20"/>
+  ${T(-350, -150, 32, 800, "#ffa040", f.kicker)}${T(-350, -70, 58, 300, "#fff", f.headline1)}${T(-350, 0, 58, 900, "#fff", f.headline2)}${T(-350, 110, 104, 900, "#ffa040", "JÁ É SEU.")}</g>
+  ${T(W / 2, 800, 54, 900, "#fff", f.cta, "middle")}${card.svg}${T(W / 2, H - 40, 24, 700, "#3A0057", f.benefits, "middle")}</svg>` };
+};
+
+/** Windbanner: monta as duas faces com o mesmo conteúdo e o formato da bandeira. */
+function flagOf(bg: string, inner: (x0: number, cx: number, H: number, id: string) => { svg: string; slot: Slot; defs?: string }): Draw {
+  return (H) => {
+    const pw = 470, slots: Slot[] = [];
+    let defs = "";
+    const panels = [20, 510].map((x0, i) => {
       const shape = `M${x0} ${H - 20} L${x0} 300 C${x0} 130 ${x0 + 100} 40 ${x0 + 235} 40 C${x0 + 370} 40 ${x0 + pw} 130 ${x0 + pw} 300 L${x0 + pw} ${H - 20} Z`;
-      return `<clipPath id="nf${x0}"><path d="${shape}"/></clipPath>
-      <g clip-path="url(#nf${x0})"><rect x="${x0}" y="0" width="${pw}" height="${H}" fill="${t.bg}"/>
-        ${tone === "claro" ? `<image href="alle:raio" x="${x0 + 150}" y="${H * 0.3}" width="380" height="606" opacity="0.15"/>` : `<path d="M${x0 + pw} ${H * 0.8} C${x0 + 300} ${H * 0.84} ${x0 + 140} ${H * 0.9} ${x0} ${H * 0.92} L${x0} ${H} L${x0 + pw} ${H} Z" fill="${t.stripe}" opacity="0.9"/>`}
-      </g>
-      ${tone === "claro" ? `<path d="${shape}" fill="none" stroke="#F3E8FA" stroke-width="4"/>` : ""}
-      <image href="alle:${t.allp}" x="${cx - 140}" y="150" width="280" height="60"/>
-      <image href="alle:${t.alle}" x="-290" y="-85" width="580" height="170" transform="translate(${cx} 520) rotate(-90)"/>
-      ${T(cx, H - 560, 34, 300, t.tx, f.headline1, "middle")}
-      ${T(cx, H - 516, 34, 800, t.tx, f.headline2, "middle")}
-      ${T(cx, H - 458, 52, 900, t.hi, f.headline3, "middle")}
-      ${T(cx, H - 388, 40, 900, t.tx, f.cta, "middle")}
-      <rect x="${card.x}" y="${card.y}" width="${card.size}" height="${card.size}" rx="24" fill="#ffffff" ${tone === "claro" ? 'stroke="#ff6a00" stroke-width="6"' : ""}/>`;
-    };
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${NDEFS(H, "w")}
-  <rect width="${W}" height="${H}" fill="#ffffff"/>
-  ${xs.map(panel).join("")}
-</svg>`;
-    return { svg, slots };
+      const r = inner(x0, x0 + pw / 2, H, `p${i}`);
+      slots.push(r.slot); defs += r.defs ?? "";
+      return `<clipPath id="fc${i}"><path d="${shape}"/></clipPath><g clip-path="url(#fc${i})"><rect x="${x0}" y="0" width="${pw}" height="${H}" fill="${bg}"/>${r.svg}</g>${bg === "#FFF8F2" ? `<path d="${shape}" fill="none" stroke="#E6D3F5" stroke-width="4"/>` : ""}`;
+    });
+    return { slots, svg: `${open(H, defs)}<rect width="${W}" height="${H}" fill="#ffffff"/>${panels.join("")}</svg>` };
   };
 }
+const qrSq = (cx: number, y: number, size: number, stroke = "") => ({ svg: `<rect x="${cx - size / 2 - 16}" y="${y - 16}" width="${size + 32}" height="${size + 32}" rx="22" fill="#fff" ${stroke}/>`, slot: { x: cx - size / 2, y, size } });
+
+// Windbanner 1 · "JÁ É SEU." na vertical, roxo.
+const wbVertical = (f: KitFields) => flagOf("#5A16A8", (x0, cx, H) => {
+  const q = qrSq(cx, H - 330, 220);
+  return { slot: q.slot, svg: `<path d="M${x0} ${H * 0.82} L${x0 + 470} ${H * 0.7} L${x0 + 470} ${H} L${x0} ${H} Z" fill="url(#nOr)"/>
+  <image href="alle:allpfit-branco" x="${cx - 130}" y="150" width="260" height="56"/>
+  <g transform="translate(${cx + 40} ${H * 0.42}) rotate(-90)">${T(0, 0, 120, 900, "#ffa040", "JÁ É SEU.", "middle")}</g>
+  <g transform="translate(${cx - 95} ${H * 0.42}) rotate(-90)">${T(0, 0, 40, 300, "#fff", `${f.headline1} ${f.headline2}`, "middle")}</g>
+  ${T(cx, H * 0.7 - 10, 40, 900, "#fff", f.cta, "middle")}${q.svg}` };
+});
+// Windbanner 2 · laranja com a Ane embaixo e o QR no meio (altura de leitura).
+const wbAne = (f: KitFields) => flagOf("#F47B20", (x0, cx, H, id) => {
+  const q = qrSq(cx, H * 0.4, 220);
+  const ah = 520, aw = ah * ANE_RATIO;
+  return { slot: q.slot, defs: `<linearGradient id="${id}f" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".15" stop-color="#fff"/><stop offset=".85" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><mask id="${id}m" maskUnits="userSpaceOnUse" x="${cx - aw / 2}" y="${H - ah}" width="${aw}" height="${ah}"><rect x="${cx - aw / 2}" y="${H - ah}" width="${aw}" height="${ah}" fill="url(#${id}f)"/></mask>`,
+    svg: `<image href="alle:allpfit-mono" x="${cx - 130}" y="150" width="260" height="56"/><image href="alle:logo-branco" x="${cx - 120}" y="230" width="240" height="70"/>
+  ${T(cx, 400, 40, 300, "#fff", f.headline1, "middle")}${T(cx, 450, 40, 900, "#fff", f.headline2, "middle")}${T(cx, 520, 60, 900, "#3A0057", f.headline3, "middle")}
+  ${q.svg}${T(cx, H * 0.4 + 300, 40, 900, "#fff", f.cta, "middle")}
+  <image href="alle:ane" x="${cx - aw / 2}" y="${H - ah}" width="${aw}" height="${ah}" mask="url(#${id}m)"/>` };
+});
+// Windbanner 3 · claro com os 3 passos numerados e o QR.
+const wbSteps = (f: KitFields) => flagOf("#FFF8F2", (x0, cx, H) => {
+  const q = qrSq(cx, H - 330, 220, 'stroke="#ff6a00" stroke-width="6"');
+  const steps = [f.step1, f.step2, f.step3].map((s, i) => `<circle cx="${x0 + 80}" cy="${620 + i * 110}" r="32" fill="url(#nOr)"/>${T(x0 + 80, 632 + i * 110, 32, 900, "#fff", String(i + 1), "middle")}${wrap(s, 14).map((l, j) => T(x0 + 130, 612 + i * 110 + j * 34, 30, 800, "#3A0057", l)).join("")}`).join("");
+  return { slot: q.slot, svg: `<image href="alle:raio" x="${x0 + 250}" y="80" width="260" height="415" opacity="0.18"/>
+  <image href="alle:allpfit-roxo" x="${cx - 130}" y="150" width="260" height="56"/><image href="alle:logo" x="${cx - 120}" y="230" width="240" height="70"/>
+  ${T(cx, 380, 34, 300, "#3A0057", f.headline1, "middle")}${T(cx, 425, 34, 800, "#3A0057", f.headline2, "middle")}${T(cx, 490, 58, 900, "#ff6a00", f.headline3, "middle")}${T(cx, 545, 36, 900, "#3A0057", f.cta, "middle")}
+  ${steps}${q.svg}` };
+});
+const flagDraw = (mk: (f: KitFields) => Draw): Draw => (H, f) => mk(f)(H, f);
