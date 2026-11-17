@@ -298,6 +298,12 @@ export const ANE_PHOTOS: Record<string, { label: string; w: number; h: number }>
   "ane": { label: "De frente, braços cruzados", w: 848, h: 997 },
   "ane-caneca": { label: "Com a caneca", w: 1016, h: 1020 },
   "ane-tablet": { label: "Mostrando a conta no tablet", w: 900, h: 1297 },
+  "ane-sorrindo": { label: "Sorrindo, cabelo solto (nova)", w: 874, h: 1006 },
+  "ane-coque": { label: "Braços cruzados, coque (nova)", w: 899, h: 1012 },
+  "ane-queixo": { label: "Mão no queixo (nova)", w: 883, h: 1000 },
+  "ane-oculos": { label: "Ajustando os óculos (nova)", w: 1016, h: 1020 },
+  "ane-escritorio": { label: "No escritório (nova)", w: 986, h: 1020 },
+  "ane-costas": { label: "Olhando para trás (nova)", w: 773, h: 1020 },
 };
 
 /** Banner (90×120, parede): frase gigante, QR enorme com "ATIVE AGORA" e a Ane grande com balão. */
@@ -995,12 +1001,12 @@ const headline = (f: KitFields, t: (typeof TONE)[Tone], y0: number, size = 78) =
 type Draw = (H: number, f: KitFields) => { svg: string; slots: Slot[] };
 const open = (H: number, defs = "") => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs><linearGradient id="nOr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffa040"/><stop offset="1" stop-color="#ff5a00"/></linearGradient><linearGradient id="nPu" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#7A22C8"/><stop offset="1" stop-color="#3A0057"/></linearGradient>${defs}</defs>`;
 /** Ane de braços cruzados com a lateral esquerda (ou direita) suavizada. */
-const aneAt = (id: string, x: number, y: number, h: number, side: "left" | "right" = "left") => {
-  const w = h * ANE_RATIO;
+const aneAt = (id: string, x: number, y: number, h: number, side: "left" | "right" = "left", photo = "ane") => {
+  const w = h * (ANE_PHOTOS[photo] ? ANE_PHOTOS[photo].w / ANE_PHOTOS[photo].h : ANE_RATIO);
   const stops = side === "left" ? `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".18" stop-color="#fff"/>` : `<stop offset=".82" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>`;
   return {
     defs: `<linearGradient id="${id}g" x1="0" x2="1">${stops}</linearGradient><mask id="${id}" maskUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}"><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id}g)"/></mask>`,
-    img: `<image href="alle:ane" x="${x}" y="${y}" width="${w}" height="${h}" mask="url(#${id})"/>`, w,
+    img: `<image href="alle:${photo}" x="${x}" y="${y}" width="${w}" height="${h}" mask="url(#${id})"/>`, w,
   };
 };
 const logos = (tone: Tone, x = 64, y = 64) => logosRow(TONE[tone], x, y);
@@ -1052,7 +1058,7 @@ const dispPhone: Draw = (H, f) => {
 
 // Display 4 · fundo roxo enviado pela equipe: mensagem em cima, QR num card branco e a Ane encostada na borda.
 const dispFundo: Draw = (H, f) => {
-  const ah = 680, a = aneAt("aneF", W - ah * ANE_RATIO + 40, H - ah, ah);
+  const ah = 680, a = aneAt("aneF", W - ah * (899 / 1012) + 40, H - ah, ah, "left", "ane-coque");
   const card = qrCard(64, H - 560, 320, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
   return { slots: [card.slot], svg: `${open(H, a.defs)}<image href="alle:fundo-display" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
   ${logos("roxo")}${T(64, 260, 32, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(60, 355, 86, 300, "#fff", f.headline1)}${T(60, 450, 86, 900, "#fff", f.headline2)}${T(60, 545, 86, 900, "#ffa040", f.headline3)}
@@ -1195,7 +1201,7 @@ const dispTotem: Draw = (H, f) => {
 
 // Display · laranja: fundo laranja, só texto branco, QR num card roxo e a Ane na borda esquerda.
 const dispOrange: Draw = (H, f) => {
-  const a = aneAt("aneO", -30, H - 700, 700, "right");
+  const a = aneAt("aneO", -30, H - 700, 700, "right", "ane-sorrindo");
   const card = qrCard(W - 64 - 400, H - 600, 320, "#3A0057", f.qrLabel, f.qrSub, "#fff");
   return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="url(#nOr)"/><path d="M${W} 0 L${W - 320} 0 L${W} 320 Z" fill="#5A16A8"/>
   ${logos("laranja")}${T(64, 250, 32, 800, "#fff", f.kicker, "start", 'letter-spacing="2"')}${T(60, 345, 80, 300, "#fff", f.headline1)}${T(60, 435, 80, 900, "#fff", f.headline2)}${T(56, 560, 120, 900, "#fff", f.headline3.toUpperCase())}
@@ -1206,7 +1212,7 @@ const dispOrange: Draw = (H, f) => {
 const banGiant: Draw = (H, f) => {
   const [l1, l2] = splitLast(f.headline3);
   const card = qrCard(64, H - 546, 330, "#ffffff", f.qrLabel, "", "#3A0057");
-  const a = aneAt("aneG", W - 640 * ANE_RATIO + 40, H - 640, 640);
+  const a = aneAt("aneG", W - 640 * (773 / 1020) + 40, H - 640, 640, "left", "ane-costas");
   return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
   ${logos("roxo")}${T(52, 370, 230, 900, "#fff", l1, "start", 'letter-spacing="-6"')}${T(48, 590, 240, 900, "#ffa040", l2, "start", 'letter-spacing="-6"')}
   ${T(64, 665, 44, 600, "#fff", `${f.headline1} ${f.headline2}`)}${T(64, 740, 56, 900, "#fff", f.cta)}
@@ -1229,7 +1235,7 @@ const banSeal: Draw = (H, f) => {
   const [l1, l2] = splitLast(f.headline3);
   const cy = 445;
   const card = qrCard(64, H - 425, 270, "#ffffff", f.qrLabel, "", "#3A0057");
-  const a = aneAt("aneS", W - 470 * ANE_RATIO + 40, H - 470, 470);
+  const a = aneAt("aneS", W - 470 * (986 / 1020) + 40, H - 470, 470, "left", "ane-escritorio");
   return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
   ${logos("roxo", (W - LOGOS_W) / 2, 50)}
   <circle cx="${W / 2}" cy="${cy}" r="280" fill="url(#nOr)"/><circle cx="${W / 2}" cy="${cy}" r="250" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="8 12"/>
@@ -1259,7 +1265,7 @@ const panPerks: Draw = (H, f) => {
     const x = 64 + i * (cw + 24);
     return `<rect x="${x}" y="620" width="${cw}" height="150" rx="28" fill="#3A0057"/>${check(x + cw / 2, 668, 24, "#ffa040")}${T(x + cw / 2, 740, fit(p, 36, cw - 30), 900, "#fff", p, "middle")}`;
   }).join("");
-  const a = aneAt("aneK", W - 640 * ANE_RATIO + 40, H - 640, 640);
+  const a = aneAt("aneK", W - 640 * (883 / 1000) + 40, H - 640, 640, "left", "ane-queixo");
   const card = qrCard(64, H - 540, 300, "#3A0057", f.qrLabel, f.qrSub, "#fff");
   return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="url(#nOr)"/><path d="M0 0 L300 0 L0 300 Z" fill="#5A16A8"/>
   ${logos("laranja", 230, 60)}${T(64, 260, 32, 800, "#fff", f.kicker, "start", 'letter-spacing="2"')}${T(60, 345, 76, 300, "#fff", f.headline1)}${T(60, 430, 76, 900, "#fff", f.headline2)}${T(60, 540, 110, 900, "#fff", f.headline3.toUpperCase())}
@@ -1269,7 +1275,7 @@ const panPerks: Draw = (H, f) => {
 // Panfleto · a Ane apresenta: a Ane na borda esquerda, a mensagem e os passos na coluna da direita.
 const panAne: Draw = (H, f) => {
   const x0 = 440;
-  const a = aneAt("aneN", -30, H - 640, 640, "right");
+  const a = aneAt("aneN", -30, H - 640, 640, "right", "ane-oculos");
   const card = qrCard(x0 + 40, H - 560, 320, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
   const steps = [f.step1, f.step2, f.step3].map((s, i) => `<circle cx="${x0 + 26}" cy="${640 + i * 72}" r="26" fill="url(#nOr)"/>${T(x0 + 26, 651 + i * 72, 30, 900, "#fff", String(i + 1), "middle")}${T(x0 + 70, 651 + i * 72, 30, 700, "#fff", s)}`).join("");
   return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
