@@ -1022,11 +1022,10 @@ const dispPhone: Draw = (H, f) => {
 const dispFundo: Draw = (H, f) => {
   const ah = 680, a = aneAt("aneF", W - ah * ANE_RATIO + 40, H - ah, ah);
   const card = qrCard(64, H - 560, 320, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
-  const ctaW = textW(f.cta, 48, 900) + 80;
   return { slots: [card.slot], svg: `${open(H, a.defs)}<image href="alle:fundo-display" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
   ${logos("roxo")}${T(64, 260, 32, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(60, 355, 86, 300, "#fff", f.headline1)}${T(60, 450, 86, 900, "#fff", f.headline2)}${T(60, 545, 86, 900, "#ffa040", f.headline3)}
-  <rect x="64" y="595" width="${ctaW}" height="96" rx="48" fill="url(#nOr)"/>${T(64 + ctaW / 2, 660, 48, 900, "#fff", f.cta, "middle")}
-  ${T(64, 760, 26, 600, "#fff", f.benefits)}
+  ${T(62, 650, 58, 900, "#fff", f.cta)}
+  ${T(64, 730, 26, 600, "#fff", f.benefits)}
   ${card.svg}${a.img}</svg>` };
 };
 
