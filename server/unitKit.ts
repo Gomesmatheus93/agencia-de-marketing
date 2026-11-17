@@ -127,6 +127,7 @@ export function variantsOf(format: KitFormat): Variant[] {
   const V = (id: string, label: string, note: string, draw: Draw): Variant => ({ id, label, note, defaults: ATIVAR_DEFAULTS, draw });
   const novas: Variant[] = {
     display: [
+      V("disp-fundo", "Fundo roxo (novo)", "Fundo roxo com faixas diagonais, mensagem em cima, QR num card branco e a Ane.", dispFundo),
       V("disp-dividido", "Dividido", "Roxo em cima com a mensagem e branco embaixo com o QR e os 3 passos.", dispSplit),
       V("disp-selo", "Selo", "Laranja com um selo grande “JÁ É SEU!” e o QR num card roxo.", dispStamp),
       V("disp-celular", "Celular", "Celular desenhado com o QR na tela e a Ane ao lado.", dispPhone),
@@ -1015,6 +1016,18 @@ const dispPhone: Draw = (H, f) => {
   <rect x="${ph.x}" y="${ph.y}" width="${ph.w}" height="${ph.h}" rx="56" fill="#fff" stroke="#ff6a00" stroke-width="10"/><rect x="${ph.x + 150}" y="${ph.y + 24}" width="100" height="16" rx="8" fill="#3A0057" opacity=".25"/>
   ${T(ph.x + ph.w / 2, ph.y + 120, 34, 900, "#3A0057", "Aponte a câmera", "middle")}${T(ph.x + ph.w / 2, ph.y + 166, 22, 600, "#5A16A8", f.qrSub, "middle")}
   ${T(ph.x + ph.w / 2, ph.y + ph.h - 110, 28, 900, "#ff6a00", f.qrLabel, "middle")}${a.img}</svg>` };
+};
+
+// Display 4 · fundo roxo enviado pela equipe: mensagem em cima, QR num card branco e a Ane encostada na borda.
+const dispFundo: Draw = (H, f) => {
+  const ah = 680, a = aneAt("aneF", W - ah * ANE_RATIO + 40, H - ah, ah);
+  const card = qrCard(64, H - 560, 320, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
+  const ctaW = textW(f.cta, 48, 900) + 80;
+  return { slots: [card.slot], svg: `${open(H, a.defs)}<image href="alle:fundo-display" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
+  ${logos("roxo")}${T(64, 260, 32, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(60, 355, 86, 300, "#fff", f.headline1)}${T(60, 450, 86, 900, "#fff", f.headline2)}${T(60, 545, 86, 900, "#ffa040", f.headline3)}
+  <rect x="64" y="595" width="${ctaW}" height="96" rx="48" fill="url(#nOr)"/>${T(64 + ctaW / 2, 660, 48, 900, "#fff", f.cta, "middle")}
+  ${T(64, 760, 26, 600, "#fff", f.benefits)}
+  ${card.svg}${a.img}</svg>` };
 };
 
 // Banner 1 · tipográfico: "JÁ É SEU." gigante para ler de longe, QR grande e a Ane.
