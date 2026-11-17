@@ -16,11 +16,32 @@ import { conn } from "./unitPortal";
 // A arte é um SVG (largura 1000 e altura na proporção exata do material); o QR entra como vetor.
 // Saída por academia: PDF no tamanho real (cm) para a gráfica + uma prévia em JPG para o portal.
 
+/**
+ * Instruções de cada material: o que ele é (definição da equipe) e como a arte deve ser por causa disso.
+ * Valem para todo design novo do mídia kit. Regras gerais: parceria Alle + Allp Fit, contraste alto
+ * (branco sobre roxo ou laranja), pouca informação, sem % e sem ressalva na arte, a Ane de braços inteiros.
+ */
 export const KIT_FORMATS = {
-  display: { label: "Display", wCm: 21, hCm: 29.7, dpi: 300, layout: "chat" },
-  banner: { label: "Banner", wCm: 90.02, hCm: 120.24, dpi: 120, layout: "impact" },
-  panfleto: { label: "Panfleto", wCm: 37.31, hCm: 52.92, dpi: 150, layout: "voucher" },
-  windbanner: { label: "Windbanner", wCm: 111.57, hCm: 156.9, dpi: 100, layout: "flag" },
+  display: {
+    label: "Display", wCm: 21, hCm: 29.7, dpi: 300, layout: "chat",
+    purpose: "Arte de display (ou arte para display) é o arquivo gráfico ou design visual feito para ser aplicado em um display: suporte, expositor de mesa/chão, peça de comunicação visual, totem ou estrutura usada em pontos de venda (PDV), eventos ou festas.",
+    guide: "Fica no balcão ou na recepção e é lido de perto, com a pessoa parada na frente. O QR é a ação principal e precisa estar grande e fácil de escanear. Mensagem curta em cima e, no máximo, os 3 passos.",
+  },
+  banner: {
+    label: "Banner", wCm: 90.02, hCm: 120.24, dpi: 120, layout: "impact",
+    purpose: "Um banner é uma peça visual, impressa ou digital, criada para transmitir uma mensagem de forma rápida, clara e chamativa, com objetivos publicitários, institucionais ou acadêmicos.",
+    guide: "É lido de longe e de passagem, em poucos segundos. Uma frase gigante, uma linha de apoio e o QR grande. Nada de passos, listas ou texto pequeno.",
+  },
+  panfleto: {
+    label: "Panfleto", wCm: 37.31, hCm: 52.92, dpi: 150, layout: "voucher",
+    purpose: "Um panfleto (ou folheto) é um impresso ou documento de divulgação rápida e de baixo custo, usado para propagar ideias, produtos, marcas ou serviços.",
+    guide: "É divulgação rápida: a pessoa olha por alguns segundos. Pode explicar um pouco mais que os outros materiais (os 3 passos e os benefícios), mas com hierarquia clara: título, como ativar e o QR.",
+  },
+  windbanner: {
+    label: "Windbanner", wCm: 111.57, hCm: 156.9, dpi: 100, layout: "flag",
+    purpose: "O Wind Banner (também chamado de fly banner, wind flag ou beach-flag) é uma bandeira promocional vertical que se movimenta com o vento, ideal para atrair atenção em fachadas de lojas, calçadas, eventos, feiras e praias.",
+    guide: "Fica do lado de fora, balançando e visto de longe: chama a atenção, não explica. Logos grandes, poucas palavras bem grandes e empilhadas na vertical, cores fortes. O QR fica só embaixo, na altura das mãos.",
+  },
 } as const;
 export type KitFormat = keyof typeof KIT_FORMATS;
 const formatSchema = z.enum(Object.keys(KIT_FORMATS) as [KitFormat, ...KitFormat[]]);
@@ -128,24 +149,35 @@ export function variantsOf(format: KitFormat): Variant[] {
   const novas: Variant[] = {
     display: [
       V("disp-fundo", "Fundo roxo (novo)", "Fundo roxo com faixas diagonais, mensagem em cima, QR num card branco e a Ane.", dispFundo),
-      V("disp-dividido", "Dividido", "Roxo em cima com a mensagem e branco embaixo com o QR e os 3 passos.", dispSplit),
-      V("disp-selo", "Selo", "Laranja com um selo grande “JÁ É SEU!” e o QR num card roxo.", dispStamp),
-      V("disp-celular", "Celular", "Celular desenhado com o QR na tela e a Ane ao lado.", dispPhone),
+      V("disp-totem", "Totem de recepção", "Lido de perto no balcão: QR grande no centro e os 3 passos embaixo.", dispTotem),
+      V("disp-laranja", "Laranja com a Ane", "Fundo laranja só com texto branco, QR num card roxo e a Ane na borda.", dispOrange),
+      V("disp-dividido", "Dividido (anterior)", "Roxo em cima com a mensagem e branco embaixo com o QR e os 3 passos.", dispSplit),
+      V("disp-selo", "Selo (anterior)", "Laranja com um selo grande “JÁ É SEU!” e o QR num card roxo.", dispStamp),
+      V("disp-celular", "Celular (anterior)", "Celular desenhado com o QR na tela e a Ane ao lado.", dispPhone),
     ],
     banner: [
-      V("ban-tipografico", "Tipográfico", "“JÁ É SEU.” gigante para ler de longe, QR grande e a Ane.", banType),
-      V("ban-diagonal", "Diagonal", "Laranja e roxo na diagonal, QR num círculo branco e a Ane.", banDiag),
-      V("ban-arco", "Arco", "Fundo claro com a Ane dentro de um arco roxo e o QR num card laranja.", banArch),
+      V("ban-frase", "Frase gigante", "Lido de longe: “JÁ É SEU.” enorme, uma linha de apoio, o QR e a Ane.", banGiant),
+      V("ban-faixa", "Faixa laranja", "“SÓ FALTA ATIVAR!” numa faixa atravessada e o QR grande no centro.", banStripe),
+      V("ban-selo", "Selo", "Círculo laranja enorme com “JÁ É SEU.”, o QR à esquerda e a Ane à direita.", banSeal),
+      V("ban-tipografico", "Tipográfico (anterior)", "“JÁ É SEU.” gigante para ler de longe, QR grande e a Ane.", banType),
+      V("ban-diagonal", "Diagonal (anterior)", "Laranja e roxo na diagonal, QR num círculo branco e a Ane.", banDiag),
+      V("ban-arco", "Arco (anterior)", "Fundo claro com a Ane dentro de um arco roxo e o QR num card laranja.", banArch),
     ],
     panfleto: [
-      V("pan-checklist", "Checklist", "Lista grande com os benefícios marcados e o QR ao lado.", panCheck),
-      V("pan-balao", "Balão", "A Ane com um balão de fala grande e o QR no canto.", panBubble),
-      V("pan-etiqueta", "Etiqueta", "Uma etiqueta de presente “JÁ É SEU.” e o QR embaixo.", panTag),
+      V("pan-passos", "Passo a passo", "Título, os 3 passos em faixas laranja, o QR ao lado e os benefícios no rodapé.", panSteps),
+      V("pan-beneficios", "Benefícios", "Laranja com os 3 benefícios em cards roxos, o QR e a Ane.", panPerks),
+      V("pan-ane", "A Ane apresenta", "A Ane na borda esquerda, a mensagem e os passos na coluna da direita.", panAne),
+      V("pan-checklist", "Checklist (anterior)", "Lista grande com os benefícios marcados e o QR ao lado.", panCheck),
+      V("pan-balao", "Balão (anterior)", "A Ane com um balão de fala grande e o QR no canto.", panBubble),
+      V("pan-etiqueta", "Etiqueta (anterior)", "Uma etiqueta de presente “JÁ É SEU.” e o QR embaixo.", panTag),
     ],
     windbanner: [
-      V("wb-vertical", "Vertical roxo", "“JÁ É SEU.” na vertical e o QR embaixo.", flagDraw(wbVertical)),
-      V("wb-ane", "Laranja com a Ane", "O QR no meio, na altura de leitura, e a Ane embaixo.", flagDraw(wbAne)),
-      V("wb-passos", "Claro com passos", "Os 3 passos numerados e o QR.", flagDraw(wbSteps)),
+      V("wb-logos", "Logos gigantes", "Vista de longe: logos grandes, “JÁ / É / SEU.” empilhado e o QR embaixo.", flagDraw(wbLogos)),
+      V("wb-laranja", "Laranja vertical", "A frase gigante na vertical ao longo da bandeira e o QR num bloco roxo.", flagDraw(wbOrange)),
+      V("wb-faixas", "Faixas", "Roxo com faixas laranja, “ATIVE SEU BENEFÍCIO” empilhado e o QR.", flagDraw(wbStripes)),
+      V("wb-vertical", "Vertical roxo (anterior)", "“JÁ É SEU.” na vertical e o QR embaixo.", flagDraw(wbVertical)),
+      V("wb-ane", "Laranja com a Ane (anterior)", "O QR no meio, na altura de leitura, e a Ane embaixo.", flagDraw(wbAne)),
+      V("wb-passos", "Claro com passos (anterior)", "Os 3 passos numerados e o QR.", flagDraw(wbSteps)),
     ],
   }[format];
   switch (format) {
@@ -1140,3 +1172,141 @@ const wbSteps = (f: KitFields) => flagOf("#FFF8F2", (x0, cx, H) => {
   ${steps}${q.svg}` };
 });
 const flagDraw = (mk: (f: KitFields) => Draw): Draw => (H, f) => mk(f)(H, f);
+
+// ── Designs feitos a partir da definição de cada material (KIT_FORMATS.purpose/guide) ──
+const fundo = (x: number, y: number, w: number, h: number) => `<image href="alle:fundo-display" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/>`;
+const LOGOS_W = 538;
+/** "já é seu." → ["JÁ É", "SEU."]: a última palavra vai sozinha na segunda linha. */
+const splitLast = (t: string) => { const w = t.toUpperCase().trim().split(/\s+/); return w.length > 1 ? [w.slice(0, -1).join(" "), w[w.length - 1]] : [w[0] ?? "", ""]; };
+const fit = (t: string, max: number, maxW: number, weight = 900) => Math.min(max, Math.floor(maxW / Math.max(1, t.length * (weight >= 800 ? 0.68 : 0.58))));
+
+// Display · totem de recepção: lido de perto, o QR grande no centro é a ação principal.
+const dispTotem: Draw = (H, f) => {
+  const q = qrSq(W / 2, 560, 400);
+  const steps = [f.step1, f.step2, f.step3].map((s, i) => {
+    const cx = 180 + i * 320;
+    return `<circle cx="${cx}" cy="${1120}" r="34" fill="url(#nOr)"/>${T(cx, 1133, 36, 900, "#fff", String(i + 1), "middle")}${wrap(s, 14).map((l, j) => T(cx, 1205 + j * 36, 30, 800, "#fff", l, "middle")).join("")}`;
+  }).join("");
+  return { slots: [q.slot], svg: `${open(H)}${fundo(0, 0, W, H)}
+  ${logos("roxo", (W - LOGOS_W) / 2, 56)}${T(W / 2, 250, 30, 800, "#ffa040", f.kicker, "middle", 'letter-spacing="2"')}
+  ${T(W / 2, 320, 50, 300, "#fff", `${f.headline1} ${f.headline2}`, "middle")}${T(W / 2, 430, 100, 900, "#ffa040", f.headline3.toUpperCase(), "middle")}
+  ${q.svg}${T(W / 2, 1035, 40, 900, "#fff", f.qrLabel, "middle", 'letter-spacing="1"')}${steps}</svg>` };
+};
+
+// Display · laranja: fundo laranja, só texto branco, QR num card roxo e a Ane na borda esquerda.
+const dispOrange: Draw = (H, f) => {
+  const a = aneAt("aneO", -30, H - 700, 700, "right");
+  const card = qrCard(W - 64 - 400, H - 600, 320, "#3A0057", f.qrLabel, f.qrSub, "#fff");
+  return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="url(#nOr)"/><path d="M${W} 0 L${W - 320} 0 L${W} 320 Z" fill="#5A16A8"/>
+  ${logos("laranja")}${T(64, 250, 32, 800, "#fff", f.kicker, "start", 'letter-spacing="2"')}${T(60, 345, 80, 300, "#fff", f.headline1)}${T(60, 435, 80, 900, "#fff", f.headline2)}${T(56, 560, 120, 900, "#fff", f.headline3.toUpperCase())}
+  ${T(64, 640, 50, 800, "#fff", f.cta)}${a.img}${card.svg}</svg>` };
+};
+
+// Banner · frase gigante: lido de longe e de passagem; uma frase enorme, uma linha de apoio e o QR.
+const banGiant: Draw = (H, f) => {
+  const [l1, l2] = splitLast(f.headline3);
+  const card = qrCard(64, H - 546, 330, "#ffffff", f.qrLabel, "", "#3A0057");
+  const a = aneAt("aneG", W - 640 * ANE_RATIO + 40, H - 640, 640);
+  return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
+  ${logos("roxo")}${T(52, 370, 230, 900, "#fff", l1, "start", 'letter-spacing="-6"')}${T(48, 590, 240, 900, "#ffa040", l2, "start", 'letter-spacing="-6"')}
+  ${T(64, 665, 44, 600, "#fff", `${f.headline1} ${f.headline2}`)}${T(64, 740, 56, 900, "#fff", f.cta)}
+  ${a.img}${card.svg}</svg>` };
+};
+
+// Banner · faixa laranja: "Só falta ativar!" numa faixa atravessada e o QR grande no centro, sem foto.
+const banStripe: Draw = (H, f) => {
+  const q = qrSq(W / 2, 790, 390);
+  const cta = f.cta.toUpperCase();
+  return { slots: [q.slot], svg: `${open(H)}<rect width="${W}" height="${H}" fill="url(#nPu)"/>
+  ${logos("roxo", (W - LOGOS_W) / 2, 56)}${T(W / 2, 250, 32, 800, "#ffa040", f.kicker, "middle", 'letter-spacing="2"')}
+  ${T(W / 2, 330, 54, 600, "#fff", `${f.headline1} ${f.headline2}`, "middle")}${T(W / 2, 470, 140, 900, "#fff", f.headline3.toUpperCase(), "middle")}
+  <g transform="translate(${W / 2} 610) rotate(-4)"><rect x="-${W / 2 + 60}" y="-70" width="${W + 120}" height="140" fill="url(#nOr)"/>${T(0, 28, fit(cta, 84, 900), 900, "#fff", cta, "middle")}</g>
+  ${q.svg}${T(W / 2, H - 70, 42, 900, "#ffa040", f.qrLabel, "middle", 'letter-spacing="1"')}</svg>` };
+};
+
+// Banner · selo: um círculo laranja enorme com "JÁ É SEU." no centro, QR à esquerda e a Ane à direita.
+const banSeal: Draw = (H, f) => {
+  const [l1, l2] = splitLast(f.headline3);
+  const cy = 445;
+  const card = qrCard(64, H - 425, 270, "#ffffff", f.qrLabel, "", "#3A0057");
+  const a = aneAt("aneS", W - 470 * ANE_RATIO + 40, H - 470, 470);
+  return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
+  ${logos("roxo", (W - LOGOS_W) / 2, 50)}
+  <circle cx="${W / 2}" cy="${cy}" r="280" fill="url(#nOr)"/><circle cx="${W / 2}" cy="${cy}" r="250" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="8 12"/>
+  ${T(W / 2, cy - 110, 30, 800, "#fff", f.kicker, "middle", 'letter-spacing="2"')}${T(W / 2, cy + 20, 130, 900, "#fff", l1, "middle")}${T(W / 2, cy + 160, 140, 900, "#fff", l2, "middle")}
+  ${T(W / 2, 790, 44, 700, "#fff", `${f.headline1} ${f.headline2}`, "middle")}${T(W / 2, 850, 50, 900, "#ffa040", f.cta, "middle")}
+  ${a.img}${card.svg}</svg>` };
+};
+
+// Panfleto · passo a passo: título, os 3 passos em faixas laranja e o QR ao lado.
+const panSteps: Draw = (H, f) => {
+  const card = qrCard(W - 64 - 390, 760, 330, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
+  const rows = [f.step1, f.step2, f.step3].map((s, i) => {
+    const y = 760 + i * 170;
+    return `<rect x="64" y="${y}" width="460" height="120" rx="60" fill="url(#nOr)"/><circle cx="124" cy="${y + 60}" r="40" fill="#fff"/>${T(124, y + 75, 42, 900, "#ff6a00", String(i + 1), "middle")}${wrap(s, 16).map((l, j, all) => T(186, y + 72 - (all.length - 1) * 18 + j * 36, 32, 800, "#fff", l)).join("")}`;
+  }).join("");
+  return { slots: [card.slot], svg: `${open(H)}${fundo(0, 0, W, H)}
+  ${logos("roxo")}${T(64, 260, 32, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(60, 345, 76, 300, "#fff", f.headline1)}${T(60, 430, 76, 900, "#fff", f.headline2)}${T(60, 515, 76, 900, "#ffa040", f.headline3)}
+  ${T(64, 610, 48, 900, "#fff", f.cta)}${rows}${card.svg}
+  <rect x="0" y="${H - 130}" width="${W}" height="130" fill="url(#nOr)"/>${T(W / 2, H - 52, 36, 900, "#fff", f.benefits, "middle")}</svg>` };
+};
+
+// Panfleto · benefícios: laranja, os 3 benefícios em cards roxos, QR num card roxo e a Ane.
+const panPerks: Draw = (H, f) => {
+  const perks = f.benefits.split("·").map((s) => s.trim()).filter(Boolean).slice(0, 3);
+  const cw = (W - 128 - 2 * 24) / Math.max(1, perks.length);
+  const cards = perks.map((p, i) => {
+    const x = 64 + i * (cw + 24);
+    return `<rect x="${x}" y="620" width="${cw}" height="150" rx="28" fill="#3A0057"/>${check(x + cw / 2, 668, 24, "#ffa040")}${T(x + cw / 2, 740, fit(p, 36, cw - 30), 900, "#fff", p, "middle")}`;
+  }).join("");
+  const a = aneAt("aneK", W - 640 * ANE_RATIO + 40, H - 640, 640);
+  const card = qrCard(64, H - 540, 300, "#3A0057", f.qrLabel, f.qrSub, "#fff");
+  return { slots: [card.slot], svg: `${open(H, a.defs)}<rect width="${W}" height="${H}" fill="url(#nOr)"/><path d="M0 0 L300 0 L0 300 Z" fill="#5A16A8"/>
+  ${logos("laranja", 230, 60)}${T(64, 260, 32, 800, "#fff", f.kicker, "start", 'letter-spacing="2"')}${T(60, 345, 76, 300, "#fff", f.headline1)}${T(60, 430, 76, 900, "#fff", f.headline2)}${T(60, 540, 110, 900, "#fff", f.headline3.toUpperCase())}
+  ${cards}${T(64, 840, 52, 900, "#fff", f.cta)}${a.img}${card.svg}</svg>` };
+};
+
+// Panfleto · a Ane apresenta: a Ane na borda esquerda, a mensagem e os passos na coluna da direita.
+const panAne: Draw = (H, f) => {
+  const x0 = 440;
+  const a = aneAt("aneN", -30, H - 640, 640, "right");
+  const card = qrCard(x0 + 40, H - 560, 320, "#ffffff", f.qrLabel, f.qrSub, "#3A0057");
+  const steps = [f.step1, f.step2, f.step3].map((s, i) => `<circle cx="${x0 + 26}" cy="${640 + i * 72}" r="26" fill="url(#nOr)"/>${T(x0 + 26, 651 + i * 72, 30, 900, "#fff", String(i + 1), "middle")}${T(x0 + 70, 651 + i * 72, 30, 700, "#fff", s)}`).join("");
+  return { slots: [card.slot], svg: `${open(H, a.defs)}${fundo(0, 0, W, H)}
+  ${logos("roxo")}${T(x0, 260, 30, 800, "#ffa040", f.kicker, "start", 'letter-spacing="2"')}${T(x0 - 2, 330, 48, 300, "#fff", f.headline1)}${T(x0 - 2, 390, 48, 900, "#fff", f.headline2)}${T(x0 - 4, 475, 72, 900, "#ffa040", f.headline3)}
+  ${T(x0, 550, 44, 900, "#fff", f.cta)}${steps}${a.img}${card.svg}</svg>` };
+};
+
+// Windbanner · logos gigantes: chama a atenção de longe; logos grandes e "JÁ / É / SEU." empilhado.
+const wbLogos = (f: KitFields) => flagOf("#4b1d80", (x0, cx, H) => {
+  const q = qrSq(cx, H - 300, 230);
+  const words = f.headline3.toUpperCase().trim().split(/\s+/);
+  const big = words.map((w, i) => T(cx, 560 + i * 150, fit(w, 160, 420), 900, i === words.length - 1 ? "#ffa040" : "#fff", w, "middle")).join("");
+  return { slot: q.slot, svg: `${fundo(x0, 0, 470, H)}
+  <image href="alle:allpfit-branco" x="${cx - 180}" y="150" width="360" height="78"/><image href="alle:logo-branco" x="${cx - 170}" y="255" width="340" height="100"/>
+  ${big}${T(cx, 580 + words.length * 150 - 60, fit(f.cta, 46, 420), 900, "#fff", f.cta, "middle")}
+  ${T(cx, H - 330, 30, 900, "#ffa040", f.qrLabel, "middle", 'letter-spacing="1"')}${q.svg}` };
+});
+// Windbanner · laranja vertical: a frase gigante na vertical, ao longo da bandeira, e o QR num bloco roxo embaixo.
+const wbOrange = (f: KitFields) => flagOf("#F47B20", (x0, cx, H) => {
+  const q = qrSq(cx, H - 280, 200);
+  const h3 = f.headline3.toUpperCase();
+  return { slot: q.slot, svg: `<rect x="${x0}" y="0" width="470" height="${H}" fill="url(#nOr)"/>
+  <image href="alle:allpfit-mono" x="${cx - 150}" y="140" width="300" height="65"/><image href="alle:logo-branco" x="${cx - 140}" y="225" width="280" height="82"/>
+  <g transform="translate(${cx + 55} ${H * 0.47}) rotate(-90)">${T(0, 0, fit(h3, 150, 640), 900, "#fff", h3, "middle")}</g>
+  <g transform="translate(${cx - 105} ${H * 0.47}) rotate(-90)">${T(0, 0, 40, 700, "#fff", `${f.headline1} ${f.headline2}`, "middle")}</g>
+  <rect x="${x0}" y="${H - 380}" width="470" height="380" fill="#3A0057"/>${T(cx, H - 315, 30, 900, "#fff", f.qrLabel, "middle", 'letter-spacing="1"')}${q.svg}` };
+});
+// Windbanner · faixas: fundo roxo com faixas laranja e "ATIVE / SEU / BENEFÍCIO" empilhado.
+const wbStripes = (f: KitFields) => flagOf("#4b1d80", (x0, cx, H) => {
+  const q = qrSq(cx, H - 290, 220);
+  const words = f.step3.toUpperCase().trim().split(/\s+/);
+  const big = words.map((w, i) => T(cx, 520 + i * 115, fit(w, 120, 410), 900, "#fff", w, "middle")).join("");
+  const yEnd = 520 + (words.length - 1) * 115;
+  return { slot: q.slot, svg: `${fundo(x0, 0, 470, H)}
+  <path d="M${x0} ${yEnd + 90} L${x0 + 470} ${yEnd + 20} L${x0 + 470} ${yEnd + 90} L${x0} ${yEnd + 160} Z" fill="url(#nOr)"/>
+  <path d="M${x0} 390 L${x0 + 470} 330 L${x0 + 470} 355 L${x0} 415 Z" fill="url(#nOr)"/>
+  <image href="alle:allpfit-branco" x="${cx - 150}" y="150" width="300" height="65"/><image href="alle:logo-branco" x="${cx - 140}" y="235" width="280" height="82"/>
+  ${big}${T(cx, yEnd + 250, fit(f.headline3, 70, 420), 900, "#ffa040", f.headline3, "middle")}
+  ${T(cx, H - 320, 30, 900, "#fff", f.qrLabel, "middle", 'letter-spacing="1"')}${q.svg}` };
+});

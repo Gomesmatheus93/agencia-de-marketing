@@ -249,6 +249,13 @@ function KitDesigner() {
         })}
       </div>
 
+      {fmt && (
+        <div className="rounded-2xl border bg-card p-3 text-sm">
+          <p><span className="font-semibold">O que é o {fmt.label.toLowerCase()}:</span> <span className="text-muted-foreground">{fmt.purpose}</span></p>
+          <p className="mt-1"><span className="font-semibold">Como a arte deve ser:</span> <span className="text-muted-foreground">{fmt.guide}</span></p>
+        </div>
+      )}
+
       {/* Designs do material: a equipe compara e escolhe qual vai para as academias */}
       {tpl && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-3">
