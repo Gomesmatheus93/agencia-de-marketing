@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { TaskError, TaskProgress, useAgentTask } from "@/components/agents/AgentTask";
+import { ArtViewer } from "@/components/agents/ArtViewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -97,8 +98,9 @@ export default function Planning() {
 
   const plan = t.result;
   const outputs = trpc.agents.planOutputs.useQuery({ threadId: t.threadId ?? 0 }, { enabled: Boolean(t.threadId && plan) });
-  const openOutput = (agentSlug: string, threadId: number, image?: string) => {
-    if (isLimited) { if (image) window.open(image, "_blank", "noopener"); return; }
+  const [viewing, setViewing] = useState<number | null>(null);
+  const openOutput = (agentSlug: string, threadId: number) => {
+    if (isLimited) { setViewing(threadId); return; }
     const screen = OUTPUT_SCREEN[agentSlug];
     if (!screen) return;
     sessionStorage.setItem(`task_open_${agentSlug}`, String(threadId));
@@ -242,7 +244,7 @@ export default function Planning() {
                               key={o.threadId}
                               type="button"
                               draggable={false}
-                              onClick={() => openOutput(o.agentSlug, o.threadId, o.images[0])}
+                              onClick={() => openOutput(o.agentSlug, o.threadId)}
                               className="group mt-2 block w-full overflow-hidden rounded-lg border bg-muted/40 text-left"
                               title={`Abrir: ${o.title}`}
                             >
@@ -314,6 +316,7 @@ export default function Planning() {
           )}
         </DialogContent>
       </Dialog>
+      {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} />}
       {editing && (
         <PlanItemEditor
           item={editing.item}

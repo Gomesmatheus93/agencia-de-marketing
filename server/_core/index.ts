@@ -249,8 +249,10 @@ async function startServer() {
     async (req, res) => {
       try {
         const user = await sdk.authenticateRequest(req);
-        if (user.accountType === "unit" || user.accountType === "limited") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
+        if (user.accountType === "unit") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
         const contentType = (req.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
+        // Conta restrita só envia imagem (trocar foto ao editar uma arte).
+        if (user.accountType === "limited" && !contentType.startsWith("image/")) { res.status(403).json({ error: "Este acesso só envia imagens." }); return; }
         const ext = MIME_TO_EXT[contentType] ?? "bin";
         const key = `uploads/${user.id}/${randomUUID()}.${ext}`;
         const { url } = await storagePut(key, req.body as Buffer, contentType);

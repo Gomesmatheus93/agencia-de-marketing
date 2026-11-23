@@ -7,6 +7,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { initialsOf } from "@/pages/Profile";
 import { usePlan } from "@/_core/hooks/usePlan";
 import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
+import { ArtViewer } from "@/components/agents/ArtViewer";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -160,10 +161,11 @@ export default function OperationalDashboard() {
     const target = strip?.querySelector<HTMLElement>("[data-upcoming='true']");
     if (strip && target) strip.scrollLeft = target.offsetLeft - strip.offsetLeft - 8;
   }, [items.length, view]);
-  // Conta restrita: só olha (a arte abre como imagem, sem atalhos para criar ou outras telas).
+  // Conta restrita: vê e edita as artes no visualizador, sem atalhos para criar ou outras telas.
   const isLimited = useLimitedAccess();
-  const openOutput = (agentSlug: string, threadId: number, image?: string) => {
-    if (isLimited) { if (image) window.open(image, "_blank", "noopener"); return; }
+  const [viewing, setViewing] = useState<number | null>(null);
+  const openOutput = (agentSlug: string, threadId: number) => {
+    if (isLimited) { setViewing(threadId); return; }
     const screen = OUTPUT_SCREEN[agentSlug];
     if (!screen) return navigate("/dashboard/planejamento");
     sessionStorage.setItem(`task_open_${agentSlug}`, String(threadId));
@@ -242,7 +244,7 @@ export default function OperationalDashboard() {
                           <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
                           <p className="text-[11px] text-primary">{it.type}{it.collab ? <span className="text-alle-orange"> · {it.collab}</span> : null}</p>
                           {it.output ? (
-                            <button type="button" onClick={() => openOutput(it.output!.agentSlug, it.output!.threadId, it.output!.images[0])} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
+                            <button type="button" onClick={() => openOutput(it.output!.agentSlug, it.output!.threadId)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
                               {it.output.images[0] ? <img src={it.output.images[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />
                                 : it.output.videoUrl ? <video src={it.output.videoUrl} muted preload="metadata" className="h-full w-full object-cover" /> : null}
                               {it.output.total > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.output.total} artes</span>}
@@ -372,6 +374,7 @@ export default function OperationalDashboard() {
           </section>
         </div>
       </main>
+      {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} />}
     </AppLayout>
   );
 }

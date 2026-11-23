@@ -88,6 +88,8 @@ const LIMITED_ALLOWED_PATHS = new Set([
   "analytics.getInsights", "analytics.getInstagramConnectionStatus", "analytics.getMedia", "analytics.getProfile",
   // Planejamento: ver o plano e as artes, editar pauta (inclui mover de dia).
   "agents.tasks", "agents.task", "agents.planOutputs", "agents.updatePlanItem",
+  // Ver todas as artes de um conteúdo (carrossel completo) e editar arte e legenda.
+  "agents.artSource", "agents.saveArt", "agents.undoArtEdit", "agents.editCaption",
   // Calendário: ver posts e pautas, editar pauta (status e dia).
   "posts.getAll", "editorialPlan.getByMonth", "editorialPlan.updateItem",
 ]);
