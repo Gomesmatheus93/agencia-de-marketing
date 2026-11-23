@@ -21,12 +21,12 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 
 | objetivo | modelos |
 | --- | --- |
-| explicar como funciona (passo a passo) | M07, M08, M09, M21, M22 |
-| derrubar objeção ou mito | M03, M04, M05, M18, M19 |
+| explicar como funciona (passo a passo) | M07, M08, M09, M21 |
+| derrubar objeção ou mito | M03, M18, M19 |
 | mostrar dado, número ou economia | M01, M10, M11, M12, M23, M33 |
-| emocionar, institucional, data comemorativa | M14, M15, M16, M17, M29, M30, M32 |
-| dica rápida e salvável | M02, M06, M13, M20 |
-| engajar (comentário, enquete, compartilhar) | M18, M24, M25, M26 |
+| emocionar, institucional, data comemorativa | M15, M17, M32 |
+| dica rápida e salvável | M02, M13, M20 |
+| engajar (comentário, enquete, compartilhar) | M18, M26 |
 | notícia do setor (bandeira, tarifa, lei) | M27, M28, M31 |
 | parceria Allp Fit | layout próprio no SKILL.md (+ M10, M12 no miolo) |
 
@@ -104,13 +104,6 @@ use os passos reais da base de conhecimento: valor da conta → envio da fatura 
 pela Clicksign → desconto em até 90 dias.
 *Referência: Solar Finance "ETAPA 1/2/3", CCEE "migração ao mercado livre, um passo de cada vez".*
 
-**M22 · Quadrinhos / tirinha.** Um carrossel de 5 a 8 quadros em que um cliente desconfiado
-conversa com a Ane (ou um consultor), com balões de fala: "Mas preciso instalar alguma coisa?" →
-"Não! A energia vem da usina e o desconto chega na sua conta." Desenhe em SVG plano: personagens
-simples (círculo de rosto, corpo em forma), balões brancos com rabicho e fundo laranja ou
-off-white. Use quando o tema for objeção.
-*Referência: Prime Energy (tirinha "Onde eu assino?"), Energês "Integrador × Consultor".*
-
 ## Objeções e mitos
 
 **M03 · Mito ou verdade com selos.** Uma frase de mito em cada slide, numa pílula grande, com um
@@ -118,18 +111,6 @@ selo ✗ vermelho (`#E5484D`) ou ✓ verde (`#2EB872`) na ponta. A capa traz o n
 e 1 verdade sobre a sua conta de luz"). A explicação vem abaixo, em 400. Verde e vermelho aparecem
 só nos selos; o resto fica roxo/laranja.
 *Referência: Simple "3 mitos e uma verdade", Abradee "Pode?".*
-
-**M04 · Na teoria × Na prática / Antes × Depois.** A arte é dividida ao meio na vertical. Cada
-metade tem um rótulo em caixa alta no topo e uma legenda curta embaixo. O lado "antes" fica
-dessaturado (cinza, `filter` ou camada escura) e o "depois" fica colorido com a Alle. Exemplos:
-"conta de luz antes" × "conta com a Alle", "o que você acha que precisa (obra, placa, contrato)" ×
-"o que realmente precisa (enviar a fatura)".
-*Referência: Energês "Na teoria / Na prática" e "Integrador amador × Consultor".*
-
-**M05 · Pergunta da dúvida em balões.** Dois ou três balões de chat brancos ("E qual a vantagem?",
-"Tem fidelidade?", "Por que é de graça?") flutuam no topo, e a resposta vem embaixo em 700. Bom para
-o FAQ. Se o balão imitar o WhatsApp, use um layout genérico (sem logo nem interface do app).
-*Referência: Detronic "E qual a vantagem? / Por que aderir?".*
 
 **M18 · Prós × Contras com interruptor.** Uma interface fictícia com um toggle desenhado (pílula com
 bolinha): "PRÓS" ligado (laranja, bolinha à direita) e "CONTRAS" desligado (cinza). Em cada slide,
@@ -151,12 +132,6 @@ título da dica em 700 e uma frase de "por quê" em laranja 600. Um slide por ap
 slide.
 *Referência: Abradee (série "Verão inteligente"), Evolua, Detronic.*
 
-**M06 · Textura + título.** Uma foto de textura ocupa o fundo inteiro (água, grama, plástico, papel
-amassado, superfície de painel solar) com uma camada roxa a 60–75%. Título curto de 2 linhas no topo
-à esquerda (800, branco) e uma seta → laranja no canto inferior esquerdo. É ideal para listas de
-dicas em carrossel, uma por slide.
-*Referência: Detronic "Reduza o uso de água e energia", "Use apenas lâmpadas de LED".*
-
 **M13 · Bloco de notas.** Imitação de um app de notas genérico: fundo branco, "‹ Notas" no topo,
 itens com raio laranja como marcador e "1/2" no rodapé. Parece um print salvo, e as pessoas salvam.
 Use para checklists ("antes de aderir, tenha em mãos: ...").
@@ -169,40 +144,16 @@ escuro. Título em cima: "5 aparelhos que mais pesam na conta".
 
 ## Emoção, marca e datas
 
-**M14 · Série emocional com foto lifestyle.** Uma foto real ocupando a arte inteira (família em
-casa, pessoa treinando, café da manhã, banho quente) e uma frase de 3 linhas no topo à esquerda em
-500, branca, sem caixa: "Energia que te acorda pro treino.", "Energia que esquenta o banho.",
-"Energia que cabe no seu bolso." O logo fica pequeno embaixo. Faça como série: cada post repete o
-começo "Energia que…". Coloque um degradê escuro só na faixa do texto.
-*Referência: Galp "Energia que te uniu a milhões / que te aqueceu o coração".*
-
 **M15 · Foto com recorte curvo e moldura de linha.** Uma foto de pessoa sorrindo ocupa 60% da arte,
 com uma borda curva (arco grande branco ou laranja entrando pelo canto). Uma linha fina laranja
 forma um "L" ou uma moldura parcial ao redor do título, que fica no canto. Título em 800 com uma
 palavra em laranja e um chip de destaque abaixo ("100% digital").
 *Referência: Evolua (fotos com moldura amarela), Abradee (anel curvo), Maya (foto em arco).*
 
-**M16 · Palavra repetida com objeto no meio.** "ENERGIA" escrito 3 vezes empilhado (900, 200 px,
-uma linha laranja e duas roxas ou contorno), com um objeto recortado na frente cobrindo parte das
-letras: lâmpada, raio da Alle, celular. Embaixo, a data ou a mensagem. Bom para datas (Dia Mundial
-da Energia, 29/5) e capas de impacto.
-*Referência: Detronic e Maya "ENERGIA ENERGIA ENERGIA".*
-
 **M17 · Card de data em cor chapada.** Fundo laranja-pêssego (`#FFD9BF`) ou roxo chapado e uma frase
 grande em 600 com a palavra-chave em 800: "Se outubro fosse uma cor, seria verde." (bandeira
 verde). O logo fica no rodapé. É minimalista: nada de fotos ou ícones.
 *Referência: FNCE "Se 2024 fosse uma palavra, seria Energia", Galp "Feliz 2025!".*
-
-**M29 · Foto conceitual criativa.** Um objeto do dia a dia transformado no tema da data: lâmpada com
-óculos e bigode (Carnaval), lâmpada saindo de um ovo (Páscoa), lâmpada feita de serpentina. Fundo de
-cor chapada roxo ou laranja, o objeto no centro, uma frase curta em cima e uma faixa com o logo
-embaixo. Use foto de banco que tenha o objeto e componha no SVG.
-*Referência: Luzigás (datas comemorativas).*
-
-**M30 · Split visual (meio a meio).** Duas fotos cortadas exatamente ao meio na vertical, que se
-completam como metáfora: painel solar | girassol, poste | árvore, conta de luz cara | sorriso. Sem
-texto ou com uma linha curta. O logo vai pequeno.
-*Referência: EDP (painel | girassol, turbina | dente-de-leão, poste | árvore).*
 
 **M32 · Foto escura com moldura de linha (carrossel institucional).** Cada slide é uma foto que
 ocupa a arte inteira (mãos juntas, painéis solares ao pôr do sol, aperto de mão, prédio), com uma
@@ -217,17 +168,6 @@ aniversário, marco e valores da marca.
 prêmio ou marco real.*
 
 ## Engajamento
-
-**M24 · Pergunta para os comentários.** Uma pergunta grande (800, 90 px): "Você já sabia disso?",
-"Quanto veio a sua conta este mês?", e embaixo "Conta pra gente nos comentários 👇". Os ícones de
-curtir, comentar, enviar e salvar ficam no rodapé. Use como último slide de carrosséis educativos.
-*Referência: Simple "Você já tinha conhecimento disso?", Backoffice "CURTE · COMPARTILHA · SALVA".*
-
-**M25 · Comente e receba.** Último slide: "Comente ECONOMIA e receba no direct como ter até 35% de
-desconto". A palavra-chave fica em destaque laranja numa pílula. Combina com a automação de
-comentários da plataforma, então use uma palavra-chave que exista numa automação ativa e confirme
-com a equipe.
-*Referência: Energês "Comente BIFACIAL e receba a planilha no seu direct".*
 
 **M26 · Jogo / escolha.** "Escolha 1 letra e 1 número" sobre uma grade de ícones (A–D × 1–4) que
 revelam benefícios: "sem fidelidade", "100% digital", "sem obra". Também funciona como enquete

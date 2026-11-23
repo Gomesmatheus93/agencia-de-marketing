@@ -103,6 +103,18 @@ altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509
   marca d'água e de formas decorativas, nunca por cima de texto, número, ícone ou botão: reserve
   o lado dela e quebre o texto em linhas mais curtas do outro lado. O @ e a ressalva do 35%
   ficam do lado oposto ou acima dela.
+- **Alterne o LUGAR da Ane (pedido da equipe, 23/11/2026):** não deixe a Ane sempre no canto
+  inferior direito. Varie de uma peça para a outra (e entre as artes da mesma semana) entre:
+  1. canto inferior **direito**, com o texto à esquerda;
+  2. canto inferior **esquerdo**, com o texto à direita (alinhe o texto à direita ou numa coluna
+     que começa depois dela);
+  3. **centro**, embaixo, grande, com o título em cima ocupando a largura;
+  4. **meio corpo grande** ocupando metade da arte (de 900 a 1100 px de altura), com o título
+     ao lado, em coluna estreita.
+  Nas posições 2, 3 e 4, use só as fotos sem corte nas laterais: `alle:ane`, `alle:ane-queixo`,
+  `alle:ane-costas`. A `alle:ane-sorrindo` tem o lado direito cortado: só na posição 1, com a
+  foto passando da borda direita. Nunca espelhe a foto para trocar de lado (o logo da camiseta
+  fica invertido).
 - **Combina com:** fundo roxo `#7B2FBE`, laranja ou claro. Um balão curto ao lado do rosto
   ("Fala comigo!", "Manda sua conta pra mim") reforça o CTA.
 - **Quando não usar:** arte com foto de outra pessoa (cliente, aluno, equipe), tabelas e
@@ -180,6 +192,19 @@ Não é encher de efeito: cada camada tem um papel.
 8. **Título com peso.** Contraste de pesos (300 em cima, 900 embaixo), a palavra-chave em laranja e
    uma sombra suave no título sobre foto.
 
+9. **Alterne layout e elementos.** Não repita a mesma composição em peças seguidas nem na mesma
+   semana. Varie:
+   - **o eixo:** texto à esquerda, texto à direita, tudo centralizado, ou a arte dividida em cima e
+     embaixo;
+   - **onde fica o título:** no topo, no meio sobre a cena, ou embaixo sobre o degradê;
+   - **o elemento do meio:** palavra gigante em contorno, raio da marca, objeto do tema (lâmpada,
+     conta de luz, celular, halter), número ou nenhum;
+   - **o tipo de card:** vidro, pílula laranja, faixa atravessada, selo circular ou só texto;
+   - **o enquadramento da foto:** cena aberta, detalhe em close, ou pessoa em primeiro plano.
+
+   Antes de desenhar, olhe as últimas peças entregues (no calendário ou na conversa) e escolha uma
+   combinação diferente. Diga na entrega qual combinação usou.
+
 Ordem das camadas no SVG: foto (blur) → cor (mix-blend) → degradê → brilho → vinheta → granulação →
 elemento do meio → pessoa com sombra → logos → título → card de vidro → botão.
 
@@ -214,9 +239,9 @@ equipe). Se a ordem importar (passo a passo, lista), use um selo pequeno
 ## Modelos de referência (leia antes de desenhar)
 
 Antes de desenhar qualquer post, carrossel ou capa, leia a biblioteca de modelos com
-`read_file("skills/alle-design/referencias.md")`. São 33 modelos (M01–M33) estudados das
+`read_file("skills/alle-design/referencias.md")`. São 23 modelos (numerados de M01 a M33; alguns números foram excluídos) estudados das
 referências do setor e já adaptados à identidade Alle: número gigante, linha contínua entre slides,
-documento anotado, mito ou verdade, prós e contras, simulação de economia, série emocional etc.
+documento anotado, mito ou verdade, prós e contras, simulação de economia, notícia no notebook etc.
 Escolha um modelo que combine com o objetivo do card, varie em relação à última peça e diga na
 entrega qual modelo usou. Se o usuário pedir "outro modelo" ou "outra opção", escolha um modelo
 diferente da tabela, não só outra cor.

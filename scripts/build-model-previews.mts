@@ -97,30 +97,8 @@ ${[["Preciso instalar placa no telhado", false], ["Tenho fidelidade de 12 meses"
   }).join("")}
 ${handle("#FFF")}`,
 
-  M04: () => `<rect width="540" height="${H}" fill="#3B3340"/><rect x="540" width="540" height="${H}" fill="${ROXO}"/>
-<image href="alle:raio-mono" x="760" y="420" width="400" height="638" opacity="0.1"/>
-${t(["ANTES"], 80, 200, 40, 0, 900, "#FFF", 'letter-spacing="6" opacity="0.6"')}${t(["COM A ALLE"], 620, 200, 40, 0, 900, LAR_TXT, 'letter-spacing="6"')}
-${icon("conta", 270, 520, "#9C93A3", 1.8, 6)}${icon("conta", 810, 520, "#FFF", 1.8, 6)}
-<text x="270" y="560" text-anchor="middle" ${F} font-weight="900" font-size="54" fill="#9C93A3">R$</text>
-<text x="810" y="560" text-anchor="middle" ${F} font-weight="900" font-size="54" fill="${LAR_TXT}">%</text>
-${t(["Tarifa cheia", "todo mês."], 80, 840, 56, 66, 800, "#FFF", 'opacity="0.65"')}
-${t(["Até 15%* de", "desconto todo", "mês."], 620, 840, 56, 66, 900, "#FFF")}
-${t(["Mesma distribuidora,", "sem obra."], 620, 1060, 30, 40, 600, LAR_TXT)}
-${foot("#FFF", 1190)}`,
 
-  M05: () => `${bgLaranja}${raio("raio-mono")}
-${[["Tem fidelidade?", 80, 230, 460], ["Preciso fazer obra?", 380, 380, 540], ["Quanto custa aderir?", 120, 530, 560]].map(([s, x, y, w]) =>
-    `<rect x="${x}" y="${y}" width="${w}" height="104" rx="34" fill="#FFF"/><path d="M${Number(x) + 50},${Number(y) + 100} l-10,34 l40,-34 z" fill="#FFF"/>
-<text x="${Number(x) + 40}" y="${Number(y) + 66}" ${F} font-weight="700" font-size="38" fill="${ESCURO}">${s}</text>`).join("")}
-${t(["Não, não e nada."], 80, 830, 92, 0, 900, "#FFF")}
-${t(["Sem fidelidade, sem obra e sem custo", "para aderir. É só mandar a fatura."], 80, 930, 40, 56, 600, ESCURO)}
-${handle("#FFF")}`,
 
-  M06: async () => `${photo(await photoUrl("ocean water surface waves", "portrait", 1), 0, 0, W, H)}
-<rect width="${W}" height="${H}" fill="${ROXO_ESC}" opacity="0.55"/>
-${t(["Reduza o tempo"], 80, 260, 88, 0, 800, "#FFF")}${t(["do banho quente."], 80, 360, 88, 0, 800, "#FFF")}
-${t(["O chuveiro elétrico é um dos", "aparelhos que mais pesam na conta."], 80, 470, 40, 56, 500, "#FFF", 'opacity="0.9"')}
-<path d="M80,1160 H200 M168,1128 L200,1160 L168,1192" ${stroke(LAR_TXT, 9)}/>${handle("#FFF")}`,
 
   M08: () => `${bgClaro}${raio("raio")}
 ${t(["Entenda a sua"], 80, 250, 64, 0, 300, ESCURO)}${t(["conta de luz."], 80, 330, 72, 0, 900, ROXO_TXT)}
@@ -192,11 +170,6 @@ ${["A última conta de luz", "em PDF ou foto", "O nome do titular da conta", "Um
 <text x="80" y="1260" ${F} font-weight="500" font-size="28" fill="#999">1/2</text>
 <path d="M985,1235 l14,14 l-14,14" ${stroke(LAR_TXT, 5)}/>`,
 
-  M14: async () => `${photo(await photoUrl("happy family breakfast at home", "portrait", 1), 0, 0, W, H)}
-<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A0026" stop-opacity="0.75"/><stop offset="0.45" stop-color="#1A0026" stop-opacity="0"/></linearGradient></defs>
-<rect width="${W}" height="${H}" fill="url(#g)"/>
-${t(["Energia que", "deixa a casa", "do seu jeito."], 80, 210, 76, 88, 500, "#FFF")}
-${logo("logo-branco", 80, 1170, 260)}`,
 
   M15: async () => `${bgClaro}
 <defs><clipPath id="c"><circle cx="1010" cy="780" r="470"/></clipPath></defs>
@@ -208,12 +181,6 @@ ${t(["Conta mais", "leve, sem", "sair de casa."], 100, 420, 56, 68, 800, ROXO_TX
 ${chip("100% DIGITAL", 100, 760, 290, LAR_TXT, "#FFF")}
 ${handle(ESCURO)}`,
 
-  M16: () => `${bgRoxo}
-${[0, 1, 2].map((i) => `<text x="540" y="${560 + i * 210}" text-anchor="middle" ${F} font-weight="900" font-size="200" letter-spacing="-4" ${i === 1 ? `fill="${LAR_TXT}"` : 'fill="none" stroke="#FFF" stroke-width="4"'}>ENERGIA</text>`).join("")}
-<image href="alle:raio-branco" x="410" y="300" width="260" height="415" />
-${t(["29 de maio · Dia Mundial da Energia"], 80, 1090, 38, 0, 700, "#FFF")}
-${t(["A que move a sua casa pode custar menos."], 80, 1145, 32, 0, 400, "#FFF", 'opacity="0.85"')}
-${logo("logo-branco", 80, 90, 280)}`,
 
   M17: () => `<rect width="${W}" height="${H}" fill="#FFD9BF"/>
 ${t(["Se outubro"], 80, 480, 84, 0, 500, ESCURO)}${t(["fosse uma cor,"], 80, 580, 84, 0, 500, ESCURO)}
@@ -262,21 +229,6 @@ ${t(["Envie a"], 80, 470, 80, 0, 300, "#FFF")}${t(["sua fatura."], 80, 565, 84, 
 ${t(["Em PDF ou foto,", "pelo WhatsApp mesmo."], 80, 680, 38, 54, 500, "#FFF")}
 ${handle("#FFF")}`,
 
-  M22: () => {
-    const person = (x: number, y: number, skin: string, shirt: string, hair: string) =>
-      `<path d="M${x - 110},${y + 330} Q${x - 110},${y + 120} ${x},${y + 120} Q${x + 110},${y + 120} ${x + 110},${y + 330} Z" fill="${shirt}"/>
-<circle cx="${x}" cy="${y}" r="78" fill="${skin}"/><path d="M${x - 80},${y - 10} Q${x - 70},${y - 100} ${x},${y - 92} Q${x + 80},${y - 100} ${x + 82},${y - 6} Q${x + 40},${y - 50} ${x - 80},${y - 10} Z" fill="${hair}"/>
-<circle cx="${x - 26}" cy="${y + 6}" r="7" fill="${ESCURO}"/><circle cx="${x + 26}" cy="${y + 6}" r="7" fill="${ESCURO}"/><path d="M${x - 22},${y + 36} Q${x},${y + 52} ${x + 22},${y + 36}" ${stroke(ESCURO, 5)}/>`;
-    return `<rect width="${W}" height="${H}" fill="#FFF"/>
-<rect x="40" y="40" width="1000" height="1270" rx="20" fill="${LAR}" stroke="${ESCURO}" stroke-width="8"/>
-<image href="alle:raio-mono" x="560" y="300" width="500" height="798" opacity="0.14"/>
-<rect x="80" y="100" width="560" height="200" rx="40" fill="#FFF" stroke="${ESCURO}" stroke-width="5"/><path d="M220,296 l10,60 l50,-62" fill="#FFF" stroke="${ESCURO}" stroke-width="5" stroke-linejoin="round"/><rect x="215" y="290" width="70" height="12" fill="#FFF"/>
-${t(["Mas preciso instalar", "alguma coisa?"], 120, 180, 40, 52, 700, ESCURO)}
-<rect x="420" y="420" width="580" height="240" rx="40" fill="#FFF" stroke="${ESCURO}" stroke-width="5"/><path d="M820,656 l20,70 l40,-72" fill="#FFF" stroke="${ESCURO}" stroke-width="5" stroke-linejoin="round"/><rect x="815" y="650" width="70" height="12" fill="#FFF"/>
-${t(["Nada! O desconto", "chega direto na", "sua conta de luz."], 460, 495, 40, 52, 800, ROXO_TXT)}
-${person(280, 760, "#F2C6A0", "#FFFFFF", "#3A2A1E")}${person(820, 860, "#8D5B3E", ROXO_TXT, "#1A1210")}
-<text x="820" y="1270" text-anchor="middle" ${F} font-weight="800" font-size="30" fill="#FFF">Ane, da Alle</text>`;
-  },
 
   M23: () => `${bgRoxo}${raio()}
 ${t(["Quanto a bandeira"], 80, 250, 62, 0, 300, "#FFF")}${t(["soma na conta"], 80, 330, 72, 0, 900, LAR_TXT)}
@@ -289,23 +241,7 @@ ${[["Verde", "R$ 0", 40, "#22B35E"], ["Amarela", "+R$ 1,885", 230, "#F2C200"], [
   }).join("")}
 ${t(["Fonte: ANEEL"], 80, 1270, 24, 0, 400, "#FFF", 'opacity="0.8"')}`,
 
-  M24: () => `${bgLaranja}${raio("raio-mono")}
-${t(["Quanto veio a", "sua conta de luz", "este mês?"], 80, 420, 96, 110, 900, "#FFF")}
-${t(["Conta pra gente nos comentários"], 80, 830, 44, 0, 700, ESCURO)}
-<path d="M80,900 H260 M228,868 L260,900 L228,932" ${stroke(ESCURO, 8)}/>
-<g transform="translate(80 1150)" ${stroke("#FFF", 7)}>
-  <path d="M30,60 C-20,20 0,-10 30,12 C60,-10 80,20 30,60 Z"/>
-  <path d="M140,10 a36,30 0 1 1 10,52 l-24,10 l8,-20 a36,30 0 0 1 6,-42 Z"/>
-  <path d="M250,-4 L320,24 L250,52 L262,24 Z"/>
-  <path d="M380,-6 H430 V60 L405,40 L380,60 Z"/>
-</g>`,
 
-  M25: () => `${bgRoxo}${logo()}
-${t(["Comente"], 80, 520, 96, 0, 300, "#FFF")}
-<rect x="80" y="580" width="700" height="170" rx="85" fill="${LAR_TXT}"/>
-<text x="430" y="700" text-anchor="middle" ${F} font-weight="900" font-size="104" fill="${ESCURO}">ECONOMIA</text>
-${t(["e receba no direct quanto", "a sua conta pode baixar."], 80, 860, 50, 64, 700, "#FFF")}
-${foot("#FFF", 1150)}${handle("#FFF")}`,
 
   M26: () => `${bgClaro}${raio("raio")}
 ${t(["Escolha 1 letra"], 80, 260, 70, 0, 300, ESCURO)}${t(["e 1 número."], 80, 345, 78, 0, 900, ROXO_TXT)}
@@ -330,20 +266,7 @@ ${t([String(a), String(b)], Number(x) + 30, Number(y) + 92, 40, 50, 800, "#222")
 <rect x="60" y="1040" width="960" height="190" rx="30" fill="${LAR_TXT}"/>
 ${t(["Todo mundo reclama da conta."], 100, 1118, 46, 0, 800, ESCURO)}${t(["A gente resolve."], 100, 1185, 54, 0, 900, "#FFF")}`,
 
-  M29: async () => `${bgLaranja}
-<defs><clipPath id="o"><circle cx="540" cy="620" r="330"/></clipPath></defs>
-<circle cx="540" cy="620" r="350" fill="#FFF" opacity="0.25"/>
-${photo(await photoUrl("glowing light bulb dark", "square"), 210, 290, 660, 660, "o")}
-${t(["Ideia brilhante:"], 540, 1050, 56, 0, 300, "#FFF", 'text-anchor="middle"')}
-${t(["pagar menos de luz."], 540, 1130, 70, 0, 900, ESCURO, 'text-anchor="middle"')}
-<rect y="1210" width="${W}" height="140" fill="${ROXO}"/>${logo("logo-branco", 390, 1240, 300)}`,
 
-  M30: async () => `${photo(await photoUrl("solar panels close up"), 0, 0, 540, H)}${photo(await photoUrl("sunflower field"), 540, 0, 540, H)}
-<rect x="537" width="6" height="${H}" fill="#FFF"/>
-<defs><linearGradient id="d" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1A0026" stop-opacity="0.8"/><stop offset="0.35" stop-color="#1A0026" stop-opacity="0"/></linearGradient></defs>
-<rect width="${W}" height="${H}" fill="url(#d)"/>
-${t(["Energia que vem do sol."], 80, 1190, 60, 0, 800, "#FFF")}
-<image href="alle:raio-branco" x="960" y="1140" width="50" height="80"/>`,
 
   M31: async () => `${bgClaro}${raio("raio")}
 ${t(["A conta de luz pode"], 540, 260, 58, 0, 600, ROXO_TXT, 'text-anchor="middle"')}${t(["ficar mais cara."], 540, 332, 58, 0, 600, ROXO_TXT, 'text-anchor="middle"')}
