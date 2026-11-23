@@ -55,6 +55,10 @@ import UpgradeModal from "@/components/UpgradeModal";
 
 // Menu na ordem em que o trabalho da agência acontece: agentes → planejar →
 // criar → publicar → medir.
+// Conta restrita (accountType "limited"): módulos e telas liberados.
+const LIMITED_MODULES = new Set(["dashboard", "planning", "calendar"]);
+const LIMITED_PATHS = new Set(["/dashboard", "/dashboard/planejamento", "/dashboard/calendar", "/dashboard/perfil", "/dashboard/security"]);
+
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
   { id: "planning", icon: CalendarRange, path: "/dashboard/planejamento", color: "from-alle-purple to-alle-purple-light", labelKey: "planning" as const, descKey: "planningDesc" as const, group: "plan" as const },
@@ -116,7 +120,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const { t, language, setLanguage } = useLanguage();
   // Sem o seletor de idioma, quem tinha escolhido inglês volta para o português.
   useEffect(() => { if (language !== "pt") setLanguage("pt"); }, [language, setLanguage]);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Barra lateral recolhida (só ícones) no computador; a escolha fica no navegador.
   const [collapsed, setCollapsed] = useState(() => {
@@ -132,7 +136,9 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const themeToggleLabel = isDarkTheme ? t("lightTheme") : t("darkTheme");
   const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
 
-  const navItems = NAV_ITEMS_CONFIG.map((item) => ({
+  // Conta restrita: só Dashboard, Planejamento e Calendário (a trava de verdade fica no servidor).
+  const isLimitedAccount = (user as { accountType?: string } | null)?.accountType === "limited";
+  const navItems = NAV_ITEMS_CONFIG.filter((item) => !isLimitedAccount || LIMITED_MODULES.has(item.id)).map((item) => ({
     ...item,
     label: t(item.labelKey),
     description: t(item.descKey),
@@ -165,6 +171,10 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
     if (isUnitAccount) navigate("/unidade");
   }, [isUnitAccount, navigate]);
 
+  useEffect(() => {
+    if (isLimitedAccount && !LIMITED_PATHS.has(location)) navigate("/dashboard");
+  }, [isLimitedAccount, location, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen gradient-bg flex items-center justify-center">
@@ -182,6 +192,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   }
 
   if (!isAuthenticated || isUnitAccount) return null;
+  if (isLimitedAccount && !LIMITED_PATHS.has(location)) return null;
 
   const userInitials = user?.name
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -347,7 +358,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
           </>
         )}
 
-        {hasCompanyAccess && (
+        {hasCompanyAccess && !isLimitedAccount && (
           <>
             <div className={cn("text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-4 py-2 mt-3", mini && "hidden")}>
               {t("company")}

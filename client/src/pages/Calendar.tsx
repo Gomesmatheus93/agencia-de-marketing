@@ -48,6 +48,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { usePlan } from "@/_core/hooks/usePlan";
+import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
 import {
   Select,
   SelectContent,
@@ -411,6 +412,7 @@ function DetailPanel({
   onClose: () => void;
   onCreatePost: (holiday?: Holiday) => void;
 }) {
+  const isLimited = useLimitedAccess();
   const dayNum = date.getDate();
   const weekDay = date.toLocaleDateString("pt-BR", { weekday: "long" });
   const monthYear = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -467,14 +469,14 @@ function DetailPanel({
                     </p>
                   </div>
 
-                  <Button
+                  {!isLimited && <Button
                     size="sm"
                     className="w-full h-8 text-xs gap-1.5 font-medium"
                     onClick={() => onCreatePost(h)}
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Criar post sobre esta data
-                  </Button>
+                  </Button>}
                 </div>
               </div>
             ))}
@@ -535,16 +537,16 @@ function DetailPanel({
           <div className="flex flex-col items-center justify-center py-12 text-center px-5">
             <CalendarDays className="w-9 h-9 text-muted-foreground/30 mb-2" />
             <p className="text-sm text-muted-foreground">Nenhum evento neste dia.</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
+            {!isLimited && <p className="text-xs text-muted-foreground/60 mt-1">
               Use o botão abaixo para criar uma postagem.
-            </p>
+            </p>}
           </div>
         )}
       </div>
 
 
       {/* Footer */}
-      <div className="px-5 py-3.5 border-t border-border/50">
+      {!isLimited && <div className="px-5 py-3.5 border-t border-border/50">
         <Button
           variant="outline"
           size="sm"
@@ -554,7 +556,7 @@ function DetailPanel({
           <Plus className="w-3.5 h-3.5" />
           Criar post para este dia
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1937,6 +1939,8 @@ function PlanItemSection({ planItems, onGenerate, onRefresh }: {
   const [expandedItem, setExpandedItem] = React.useState<number | null>(null);
   const [confirmDeleteDay, setConfirmDeleteDay] = React.useState(false);
   const [deletingItemId, setDeletingItemId] = React.useState<number | null>(null);
+  // Conta restrita: só vê (sem excluir nem gerar conteúdo).
+  const isLimited = useLimitedAccess();
 
   const deleteItemMutation = trpc.editorialPlan.deleteItem.useMutation({
     onSuccess: () => { onRefresh(); },
@@ -1965,7 +1969,7 @@ function PlanItemSection({ planItems, onGenerate, onRefresh }: {
         </p>
 
         {/* Delete all for day */}
-        {!confirmDeleteDay ? (
+        {isLimited ? null : !confirmDeleteDay ? (
           <button
             onClick={() => setConfirmDeleteDay(true)}
             title="Excluir todas as pautas deste dia"
@@ -2008,7 +2012,7 @@ function PlanItemSection({ planItems, onGenerate, onRefresh }: {
                 <p className="text-xs font-medium text-foreground leading-snug">{item.suggestedTitle}</p>
                 <div className="flex items-center gap-0.5 shrink-0">
                   {/* Delete individual item */}
-                  {deletingItemId === item.id ? (
+                  {isLimited ? null : deletingItemId === item.id ? (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => { deleteItemMutation.mutate({ id: item.id }); setDeletingItemId(null); }}
@@ -2054,7 +2058,7 @@ function PlanItemSection({ planItems, onGenerate, onRefresh }: {
               )}
             </div>
           </div>
-          {item.status === "approved" && !item.socialPostId && (
+          {item.status === "approved" && !item.socialPostId && !isLimited && (
             <div className="border-t border-border/30 px-2.5 py-1.5 bg-muted/20 flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
                 <Zap className="h-3 w-3" />Gerar:
@@ -2105,6 +2109,7 @@ export default function Calendar() {
   const [quoteCardPresetImage, setQuoteCardPresetImage] = useState('');
   const [showPlanWizard, setShowPlanWizard] = useState(false);
   const [, navigate] = useLocation();
+  const isLimited = useLimitedAccess();
 
   const { data: allPosts = [] } = trpc.posts.getAll.useQuery({});
 
@@ -2216,14 +2221,14 @@ export default function Calendar() {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            <Button
+            {!isLimited && <Button
               size="sm"
               className="gap-2 font-medium"
               onClick={() => openCreatePost(undefined, today)}
             >
               <Plus className="w-4 h-4" />
               Novo post
-            </Button>
+            </Button>}
           </div>
         </div>
 

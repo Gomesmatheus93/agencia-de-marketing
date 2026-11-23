@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { initialsOf } from "@/pages/Profile";
 import { usePlan } from "@/_core/hooks/usePlan";
+import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -159,7 +160,10 @@ export default function OperationalDashboard() {
     const target = strip?.querySelector<HTMLElement>("[data-upcoming='true']");
     if (strip && target) strip.scrollLeft = target.offsetLeft - strip.offsetLeft - 8;
   }, [items.length, view]);
-  const openOutput = (agentSlug: string, threadId: number) => {
+  // Conta restrita: só olha (a arte abre como imagem, sem atalhos para criar ou outras telas).
+  const isLimited = useLimitedAccess();
+  const openOutput = (agentSlug: string, threadId: number, image?: string) => {
+    if (isLimited) { if (image) window.open(image, "_blank", "noopener"); return; }
     const screen = OUTPUT_SCREEN[agentSlug];
     if (!screen) return navigate("/dashboard/planejamento");
     sessionStorage.setItem(`task_open_${agentSlug}`, String(threadId));
@@ -194,8 +198,8 @@ export default function OperationalDashboard() {
                   </button>
                 ))}
               </div>
-              <Button variant="outline" asChild><Link href={`/dashboard/relatorio?mes=${today.slice(0, 7)}`}><FileDown className="mr-2 h-4 w-4" />Exportar relatório</Link></Button>
-              <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />{view === "mes" ? "Planejar o mês" : "Planejar a semana"}</Link></Button>
+              {!isLimited && <><Button variant="outline" asChild><Link href={`/dashboard/relatorio?mes=${today.slice(0, 7)}`}><FileDown className="mr-2 h-4 w-4" />Exportar relatório</Link></Button>
+              <Button asChild><Link href="/dashboard/planejamento"><CalendarRange className="mr-2 h-4 w-4" />{view === "mes" ? "Planejar o mês" : "Planejar a semana"}</Link></Button></>}
             </div>
           </header>
 
@@ -221,7 +225,7 @@ export default function OperationalDashboard() {
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <CalendarRange className="h-8 w-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">Ainda não tem plano {view === "mes" ? `para ${monthName}` : "para esta semana"}.</p>
-                    <Button size="sm" asChild><Link href="/dashboard/planejamento"><Plus className="mr-1.5 h-4 w-4" />{view === "mes" ? "Gerar o plano do mês" : "Gerar o plano da semana"}</Link></Button>
+                    {!isLimited && <Button size="sm" asChild><Link href="/dashboard/planejamento"><Plus className="mr-1.5 h-4 w-4" />{view === "mes" ? "Gerar o plano do mês" : "Gerar o plano da semana"}</Link></Button>}
                   </div>
                 ) : (
                   <div ref={stripRef} className="flex snap-x gap-3 overflow-x-auto pb-2">
@@ -238,11 +242,13 @@ export default function OperationalDashboard() {
                           <p title={it.title} className="mt-1.5 line-clamp-4 min-h-[3.75rem] text-xs font-semibold leading-tight">{it.title}</p>
                           <p className="text-[11px] text-primary">{it.type}{it.collab ? <span className="text-alle-orange"> · {it.collab}</span> : null}</p>
                           {it.output ? (
-                            <button type="button" onClick={() => openOutput(it.output!.agentSlug, it.output!.threadId)} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
+                            <button type="button" onClick={() => openOutput(it.output!.agentSlug, it.output!.threadId, it.output!.images[0])} className="group relative mt-2 block aspect-[4/5] overflow-hidden rounded-xl border bg-muted" title="Abrir">
                               {it.output.images[0] ? <img src={it.output.images[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" />
                                 : it.output.videoUrl ? <video src={it.output.videoUrl} muted preload="metadata" className="h-full w-full object-cover" /> : null}
                               {it.output.total > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.output.total} artes</span>}
                             </button>
+                          ) : isLimited ? (
+                            <span className="mt-2 flex aspect-[4/5] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">sem arte</span>
                           ) : (
                             <Link href="/dashboard/planejamento" className="mt-2 flex aspect-[4/5] flex-col items-center justify-center gap-1 rounded-xl border border-dashed text-xs text-muted-foreground hover:border-primary hover:text-primary">
                               <Plus className="h-5 w-5" />criar
@@ -260,13 +266,13 @@ export default function OperationalDashboard() {
 
           {/* ── Analytics do mês ── */}
           <section>
-            <SectionTitle action={<Link href="/dashboard/analytics" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Ver analytics completo<ArrowRight className="h-3 w-3" /></Link>}>
+            <SectionTitle action={isLimited ? undefined : <Link href="/dashboard/analytics" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Ver analytics completo<ArrowRight className="h-3 w-3" /></Link>}>
               Analytics {periodName}
             </SectionTitle>
             {!connection.isLoading && !connected ? (
               <Card className="border-border/60"><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
                 <p className="text-sm text-muted-foreground">Conecte o Instagram para ver os números do período aqui.</p>
-                <Button size="sm" asChild><Link href="/dashboard/analytics">Conectar Instagram</Link></Button>
+                {!isLimited && <Button size="sm" asChild><Link href="/dashboard/analytics">Conectar Instagram</Link></Button>}
               </CardContent></Card>
             ) : (
               <div className="grid gap-4 lg:grid-cols-12">
@@ -276,7 +282,7 @@ export default function OperationalDashboard() {
                     hint={monthInsights.newFollowers > 0 ? <span className="text-emerald-600 dark:text-emerald-400">+{monthInsights.newFollowers} {periodShort}</span> : periodShort} />
                   <Stat label={view === "mes" ? "Alcance no mês" : "Alcance na semana"} icon={Eye} loading={insights.isLoading} value={fmt(monthInsights.reach)} hint={`soma de ${ddmm(range.start)} até hoje`} />
                   <Stat label={view === "mes" ? "Interações no mês" : "Interações na semana"} icon={Heart} loading={insights.isLoading} value={fmt(monthInsights.interactions)} hint="curtidas, comentários, salvos e compart." />
-                  <Link href="/dashboard/direct" className="block">
+                  <Link href={isLimited ? "/dashboard" : "/dashboard/direct"} className="block">
                     <Stat label="Mensagens no Direct" icon={MessageCircle} loading={inbox.isLoading} value={String(dm.total)}
                       hint={dm.waiting > 0 ? <span className="font-medium text-alle-orange">{dm.waiting} aguardando resposta</span> : `conversas ${periodShort} · todas respondidas`} />
                   </Link>
@@ -359,7 +365,7 @@ export default function OperationalDashboard() {
                     {lastAudit && <span className="text-xs text-muted-foreground">{new Date(lastAudit.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>}
                   </div>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{lastAudit?.summary ?? "Nenhuma auditoria ainda. Ela analisa os posts e ensina a voz da Alle aos agentes."}</p>
-                  <Button variant="outline" size="sm" asChild className="mt-4 self-start"><Link href="/dashboard/auditoria">{lastAudit ? "Atualizar auditoria" : "Fazer auditoria"}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>
+                  {!isLimited && <Button variant="outline" size="sm" asChild className="mt-4 self-start"><Link href="/dashboard/auditoria">{lastAudit ? "Atualizar auditoria" : "Fazer auditoria"}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button>}
                 </CardContent>
               </Card>
             </div>

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Bot, CalendarCheck, CalendarRange, Check, GripVertical, Handshake, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles } from "lucide-react";
@@ -65,6 +66,8 @@ export default function Planning() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const t = useAgentTask<Plan>("planejamento");
+  // Conta restrita: só vê e edita a pauta (sem gerar, refazer, criar arte ou enviar ao calendário).
+  const isLimited = useLimitedAccess();
   const [startDate, setStartDate] = useState(nextMonday);
   const [period, setPeriod] = useState<"semana" | "mes">("semana");
   const [postsPerWeek, setPostsPerWeek] = useState(5);
@@ -94,7 +97,8 @@ export default function Planning() {
 
   const plan = t.result;
   const outputs = trpc.agents.planOutputs.useQuery({ threadId: t.threadId ?? 0 }, { enabled: Boolean(t.threadId && plan) });
-  const openOutput = (agentSlug: string, threadId: number) => {
+  const openOutput = (agentSlug: string, threadId: number, image?: string) => {
+    if (isLimited) { if (image) window.open(image, "_blank", "noopener"); return; }
     const screen = OUTPUT_SCREEN[agentSlug];
     if (!screen) return;
     sessionStorage.setItem(`task_open_${agentSlug}`, String(threadId));
@@ -144,7 +148,7 @@ export default function Planning() {
             </div>
           </header>
 
-          <Card>
+          {!isLimited && <Card>
             <CardContent className="grid gap-4 p-5 md:grid-cols-[repeat(4,minmax(0,170px))_1fr_auto] md:items-end">
               <label className="space-y-1.5 text-sm"><span className="font-medium">Começa em</span><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Período</span>
@@ -165,13 +169,13 @@ export default function Planning() {
                 {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Gerar planejamento
               </Button>
             </CardContent>
-          </Card>
+          </Card>}
 
           {t.running && <TaskProgress agentName="Agente de Planejamento" activity={t.activity} startedAt={t.thread?.createdAt} />}
           {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}
           {!t.thread && !t.running && (
             <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-              <CalendarRange className="mx-auto mb-3 h-8 w-8 text-primary/60" />Nenhum planejamento ainda. Preencha acima e clique em Gerar planejamento.
+              <CalendarRange className="mx-auto mb-3 h-8 w-8 text-primary/60" />{isLimited ? "Nenhum planejamento ainda." : "Nenhum planejamento ainda. Preencha acima e clique em Gerar planejamento."}
             </div>
           )}
 
@@ -195,14 +199,14 @@ export default function Planning() {
 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">{plan.items.length} pautas · {sent.size} no calendário · arraste os cards para trocar o dia ou use "editar"</p>
-                <div className="flex gap-2">
+                {!isLimited && <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="gap-2" disabled={!selected.size || toCalendar.isPending} onClick={() => toCalendar.mutate({ threadId: t.threadId!, indexes: [...selected] })}>
                     <CalendarCheck className="h-4 w-4" />Enviar selecionadas ({selected.size})
                   </Button>
                   <Button size="sm" className="gap-2" disabled={sent.size === plan.items.length || toCalendar.isPending} onClick={() => toCalendar.mutate({ threadId: t.threadId!, indexes: plan.items.map((_, i) => i) })}>
                     <CalendarCheck className="h-4 w-4" />Enviar todas ao calendário
                   </Button>
-                </div>
+                </div>}
               </div>
 
               <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -226,7 +230,7 @@ export default function Planning() {
                         >
                           <div className="mb-1.5 flex items-center gap-1.5">
                             <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
-                            <input type="checkbox" checked={selected.has(index)} disabled={sent.has(index)} onChange={() => toggle(index)} aria-label="Selecionar pauta" />
+                            {!isLimited && <input type="checkbox" checked={selected.has(index)} disabled={sent.has(index)} onChange={() => toggle(index)} aria-label="Selecionar pauta" />}
                             <span className="font-mono">{item.time}</span>
                             <span className={cn("rounded-full px-1.5 py-0.5 font-medium", FORMAT_STYLE[item.format].className)}>{FORMAT_STYLE[item.format].label}</span>
                           </div>
@@ -238,7 +242,7 @@ export default function Planning() {
                               key={o.threadId}
                               type="button"
                               draggable={false}
-                              onClick={() => openOutput(o.agentSlug, o.threadId)}
+                              onClick={() => openOutput(o.agentSlug, o.threadId, o.images[0])}
                               className="group mt-2 block w-full overflow-hidden rounded-lg border bg-muted/40 text-left"
                               title={`Abrir: ${o.title}`}
                             >
@@ -273,10 +277,10 @@ export default function Planning() {
                             {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : (
                               <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setEditing({ index, item: { ...item } })}><Pencil className="h-3 w-3" />editar</button>
                             )}
-                            {!sent.has(index) && (
+                            {!sent.has(index) && !isLimited && (
                               <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setRedoing({ index, item })}><RefreshCw className="h-3 w-3" />refazer</button>
                             )}
-                            <button className="ml-auto inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item, index)}><MessageSquareText className="h-3 w-3" />{outputs.data?.[index]?.length ? "criar outra versão" : "criar com agente"}</button>
+                            {!isLimited && <button className="ml-auto inline-flex items-center gap-1 text-primary hover:underline" onClick={() => createWithAgent(item, index)}><MessageSquareText className="h-3 w-3" />{outputs.data?.[index]?.length ? "criar outra versão" : "criar com agente"}</button>}
                           </div>
                         </div>
                       ))}

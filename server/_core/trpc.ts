@@ -75,6 +75,26 @@ export function isUnitPathAllowed(path: string) {
   return UNIT_ALLOWED_PATHS.some((re) => re.test(path));
 }
 
+// Conta "restrita" (funcionário de uma conta principal, pedido de 23/11/2026):
+// só Dashboard, Planejamento e Calendário, e só ver e editar. Nada de criar,
+// gerar com IA, excluir, publicar ou enviar. Lista fechada: rota nova fica
+// bloqueada até alguém liberar aqui de propósito.
+const LIMITED_ALLOWED_PATHS = new Set([
+  // Própria conta e sessão.
+  "auth.me", "auth.logout", "auth.logoutAllDevices", "auth.trialStatus",
+  "artStudio.myAccess",
+  // Dashboard (OperationalDashboard): resumo do período, números do Instagram e do Direct, só leitura.
+  "dashboard.period", "agents.recent", "inbox.conversations",
+  "analytics.getInsights", "analytics.getInstagramConnectionStatus", "analytics.getMedia", "analytics.getProfile",
+  // Planejamento: ver o plano e as artes, editar pauta (inclui mover de dia).
+  "agents.tasks", "agents.task", "agents.planOutputs", "agents.updatePlanItem",
+  // Calendário: ver posts e pautas, editar pauta (status e dia).
+  "posts.getAll", "editorialPlan.getByMonth", "editorialPlan.updateItem",
+]);
+export function isLimitedPathAllowed(path: string) {
+  return LIMITED_ALLOWED_PATHS.has(path) || path.startsWith("profile.") || path.startsWith("auth.twoFactor.");
+}
+
 const requireUser = t.middleware(async opts => {
   const { ctx, next, path } = opts;
 
@@ -83,6 +103,9 @@ const requireUser = t.middleware(async opts => {
   }
   if (ctx.actualUser.accountType === "unit" && !isUnitPathAllowed(path)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Esta conta de unidade só tem acesso ao portal da unidade." });
+  }
+  if (ctx.actualUser.accountType === "limited" && !isLimitedPathAllowed(path)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Este acesso permite só ver e editar o Dashboard, o Planejamento e o Calendário." });
   }
 
   return next({
