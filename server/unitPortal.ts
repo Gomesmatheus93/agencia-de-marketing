@@ -212,7 +212,8 @@ const UNIT_PLAN_NOTES = `PLANO PARA AS ACADEMIAS ALLP FIT (não é o Instagram d
 - Não cite uma unidade específica: o plano vale para todas. Sem collab (collab = null).
 - Os alunos são pessoa física: até 15% de desconto, sempre com a ressalva. Nunca prometa valor exato.
 - Formatos: só carrossel, imagem e stories (sem reel: as unidades não recebem vídeo). Misture feed e stories: de 2 a 3 pautas da semana em stories (uma arte só, 9:16) e o resto no feed (carrossel e imagem), sem repetir o mesmo formato dois dias seguidos.
-- NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.`;
+- NÃO altere plan.md nem outros arquivos da memória: eles guardam o plano da Alle.
+- ABORDAGEM E CTA DA PARCERIA (equipe, 23/11/2026): siga a seção "Comunicação da parceria Alle Energia + Allp Fit" do estrategia.md. O aluno deve sentir que existe uma vantagem exclusiva esperando por ele, não que está recebendo uma oferta nova. NÃO afirme literalmente que ele já tem o desconto (nada de "seu desconto já é seu"). Frases curtas e criativas de exclusividade, pertencimento, praticidade e economia; nada de tom promocional. Varie o CTA entre as peças usando o banco de CTAs do estrategia.md.`;
 
 const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: alunos da academia).
 - É SEMPRE uma arte da PARCERIA Alle Energia + Allp Fit: siga o "Layout da parceria com a Allp Fit" da skill alle-design em todas as telas (co-branding no topo à esquerda: alle:allpfit-branco + "+" + alle:logo-branco, mesmo tamanho visual; pessoa recortada encostada na borda de baixo quando couber; cards arredondados para os destaques).
@@ -225,7 +226,8 @@ const UNIT_ART_NOTES = `Arte para o Instagram das academias Allp Fit (público: 
 - Não escreva "assistente virtual" nem diga se a Ane é pessoa ou IA: só "a Ane".
 - CTA: QR code na recepção da unidade e falar com a Ane no WhatsApp. NÃO use "Comenta ENERGIA" nem "link na bio".
 - Alunos são pessoa física: até 15% de desconto (a ressalva fica na legenda).
-- Não cite uma unidade específica. Na legenda, marque @alleenergia e @allpfit.`;
+- Não cite uma unidade específica. Na legenda, marque @alleenergia e @allpfit.
+- ABORDAGEM E CTA DA PARCERIA (equipe, 23/11/2026): siga a seção "Comunicação da parceria Alle Energia + Allp Fit" do estrategia.md. O aluno deve sentir que existe uma vantagem exclusiva esperando por ele, não que está recebendo uma oferta nova. NÃO afirme literalmente que ele já tem o desconto (nada de "seu desconto já é seu"). Frases curtas e criativas de exclusividade, pertencimento, praticidade e economia; nada de tom promocional. Varie o CTA entre as peças usando o banco de CTAs do estrategia.md.`;
 
 /** Inicia uma tarefa de agente (igual à tela dos agentes), marcada como das academias. */
 async function startUnitTask(userId: number, agentSlug: string, input: Record<string, unknown>, planLink?: { threadId: number; index: number }) {

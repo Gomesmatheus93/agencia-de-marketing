@@ -275,6 +275,7 @@ post real em collab com a @allpfit:
   800 e uma seta branca para a direita (em carrossel, ela indica deslizar).
 - Ressalva do 35% sempre que o percentual aparecer, pequena, no rodapé.
 - Texto nunca em cima do rosto da pessoa: mova a pessoa para a direita.
+- **Texto e CTA:** siga a seção "Comunicação da parceria Alle Energia + Allp Fit" do estrategia.md: vantagem exclusiva esperando pelo aluno, sem afirmar que ele já tem o desconto e sem tom promocional; varie o CTA usando o banco de CTAs de lá.
 
 ## Padrões pedidos pela equipe (valem para todas as artes)
 
