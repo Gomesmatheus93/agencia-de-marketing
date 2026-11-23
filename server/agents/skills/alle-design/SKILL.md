@@ -160,68 +160,19 @@ uma camada escura ou um degradê (roxo `#44015e` a 70–85% de opacidade) entre 
 foto e o texto. Texto direto sobre foto sem camada é proibido.
 Nunca use foto com marca, logo ou texto de terceiros em destaque.
 
-## Direção de arte: qualidade de campanha (pedido da equipe, 23/11/2026)
+## Alterne layout e elementos (pedido da equipe, 23/11/2026)
 
-A arte precisa parecer **campanha publicitária feita por designer**, não peça genérica: fundo chapado
-com elementos soltos e muito espaço vazio é o que a equipe NÃO quer. Pense como uma campanha de marca
-de fitness ou lifestyle (Nike, Adidas, Smart Fit, Natura): uma CENA com ambiente, luz e camadas.
-Não é encher de efeito: cada camada tem um papel.
+Não repita a mesma composição em peças seguidas nem na mesma semana. Varie:
+- **o eixo:** texto à esquerda, texto à direita, tudo centralizado, ou a arte dividida em cima e
+  embaixo;
+- **onde fica o título:** no topo, no meio ou embaixo;
+- **o elemento do meio:** palavra gigante em contorno, raio da marca, objeto do tema (lâmpada,
+  conta de luz, celular, halter), número ou nenhum;
+- **o tipo de card:** card arredondado, pílula laranja, faixa atravessada, selo circular ou só texto;
+- **o enquadramento da foto:** cena aberta, detalhe em close, ou pessoa em primeiro plano.
 
-1. **Ambiente real.** Comece por uma foto de `search_photos` que dê o contexto da mensagem:
-   academia (pesos, esteira, gente treinando), casa, comércio, cidade, situações do dia a dia.
-   Busque em inglês e com clima ("gym interior moody", "woman training dumbbells", "family living
-   room evening light"). Escolha foto natural (luz real, pessoas comuns), nunca com cara de IA,
-   nem com marca ou texto de terceiros.
-2. **Tratamento de cor (para a foto virar Alle).** Foto inteira desfocada de leve quando ela é
-   cenário (`feGaussianBlur` 4–8) → camada roxa com `style="mix-blend-mode:color"` (`#5A16A8`,
-   opacidade 0,5–0,6) → degradê roxo-escuro de cima para baixo (`#2a0050` 55% → `#12001f` 90% no
-   rodapé, onde vai o texto).
-3. **Luz.** Um brilho laranja suave (`radialGradient` `#ff7a1a` 75% → 0) atrás da pessoa ou do
-   objeto principal: dá volume e separa a pessoa do fundo.
-4. **Acabamento do fundo.** Vinheta (`radialGradient` escurecendo as bordas a ~85%) e granulação
-   (`feTurbulence` fractalNoise 0,85, alfa ~0,07). **Vinheta e granulação ficam ABAIXO da pessoa e
-   do texto**; por cima de tudo deixam o texto e o logo opacos.
-5. **Pessoa em primeiro plano.** O recorte (a Ane ou alguém da foto) com sombra
-   (`feDropShadow` dy 18, desfoque 22, `#12001f` 65%), encostado na borda (ver "A Ane nas artes").
-6. **Profundidade com camadas.** Use pelo menos 3 planos: fundo desfocado → elemento do meio
-   (palavra gigante em contorno laranja, raio da marca, objeto) → pessoa nítida → texto e botões.
-   A palavra gigante pode passar por trás da pessoa (desenhe-a antes do recorte).
-7. **Cards integrados.** Card de "vidro": recorte do próprio fundo com `feGaussianBlur` 28 dentro de
-   um `clipPath` arredondado, coberto por `#12001f` a ~45% e borda branca de 2 px a 35%. Botões
-   laranja em degradê (`#ffa040` → `#ff5a00`) com sombra. Assim o card parece parte da cena.
-8. **Título com peso.** Contraste de pesos (300 em cima, 900 embaixo), a palavra-chave em laranja e
-   uma sombra suave no título sobre foto.
-
-9. **Alterne layout e elementos.** Não repita a mesma composição em peças seguidas nem na mesma
-   semana. Varie:
-   - **o eixo:** texto à esquerda, texto à direita, tudo centralizado, ou a arte dividida em cima e
-     embaixo;
-   - **onde fica o título:** no topo, no meio sobre a cena, ou embaixo sobre o degradê;
-   - **o elemento do meio:** palavra gigante em contorno, raio da marca, objeto do tema (lâmpada,
-     conta de luz, celular, halter), número ou nenhum;
-   - **o tipo de card:** vidro, pílula laranja, faixa atravessada, selo circular ou só texto;
-   - **o enquadramento da foto:** cena aberta, detalhe em close, ou pessoa em primeiro plano.
-
-   Antes de desenhar, olhe as últimas peças entregues (no calendário ou na conversa) e escolha uma
-   combinação diferente. Diga na entrega qual combinação usou.
-
-Ordem das camadas no SVG: foto (blur) → cor (mix-blend) → degradê → brilho → vinheta → granulação →
-elemento do meio → pessoa com sombra → logos → título → card de vidro → botão.
-
-Filtros prontos (cole no `<defs>`):
-
-```svg
-<filter id="blur"><feGaussianBlur stdDeviation="6"/></filter>
-<filter id="vidro"><feGaussianBlur stdDeviation="28"/></filter>
-<filter id="sombra" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#12001f" flood-opacity="0.65"/></filter>
-<filter id="grao" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="3"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.07 0"/></filter>
-<radialGradient id="vinheta" cx="0.5" cy="0.45" r="0.75"><stop offset="0.55" stop-color="#12001f" stop-opacity="0"/><stop offset="1" stop-color="#12001f" stop-opacity="0.85"/></radialGradient>
-<radialGradient id="brilho" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ff7a1a" stop-opacity="0.75"/><stop offset="1" stop-color="#ff7a1a" stop-opacity="0"/></radialGradient>
-```
-
-Na revisão, pergunte: "isto parece um anúncio de uma marca grande ou um slide?". Se parecer slide
-(fundo liso, itens soltos, vazio sem função), refaça com ambiente e camadas. As regras de contraste,
-de pouca informação e de zona segura continuam valendo: realismo não é poluição.
+Antes de desenhar, olhe as últimas peças entregues (no calendário ou na conversa) e escolha uma
+combinação diferente. Diga na entrega qual combinação usou.
 
 ## Layouts do carrossel
 
@@ -251,8 +202,7 @@ diferente da tabela, não só outra cor.
 Todo post, capa ou arte que fala da parceria Alle + Allp Fit segue o estilo do
 post real em collab com a @allpfit:
 
-- **Fundo:** de preferência uma cena real de academia tratada em roxo (veja "Direção de arte"); sem foto,
-  **fundo roxo profundo** (`#5A16A8`, com uma camada `#3d0b80` a ~35%) e
+- **Fundo roxo profundo** (`#5A16A8`, com uma camada `#3d0b80` a ~35%) e
   **faixas diagonais em degradê laranja** (`#ff6a00` → `#ff8a1f`, de
   transparente a ~90%): uma no canto superior direito, outra entrando pela
   esquerda na altura do terço de baixo.
