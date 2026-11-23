@@ -23,11 +23,11 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | --- | --- |
 | explicar como funciona (passo a passo) | M07, M08, M09, M21, M22 |
 | derrubar objeção ou mito | M03, M04, M05, M18, M19 |
-| mostrar dado, número ou economia | M01, M10, M11, M12, M23 |
-| emocionar, institucional, data comemorativa | M14, M15, M16, M17, M29, M30 |
+| mostrar dado, número ou economia | M01, M10, M11, M12, M23, M33 |
+| emocionar, institucional, data comemorativa | M14, M15, M16, M17, M29, M30, M32 |
 | dica rápida e salvável | M02, M06, M13, M20 |
 | engajar (comentário, enquete, compartilhar) | M18, M24, M25, M26 |
-| notícia do setor (bandeira, tarifa, lei) | M27, M28 |
+| notícia do setor (bandeira, tarifa, lei) | M27, M28, M31 |
 | parceria Allp Fit | layout próprio no SKILL.md (+ M10, M12 no miolo) |
 
 ---
@@ -66,6 +66,14 @@ de cada uma. Destaque a barra que importa em laranja e deixe as outras em roxo-c
 escada das bandeiras (verde → amarela → vermelha 1 → vermelha 2, com o acréscimo por 100 kWh) ou
 para comparações. Os valores precisam ser os oficiais da ANEEL do período, com a fonte no rodapé.
 *Referência: Abradee/FNCE setas das bandeiras, (re)energisa escadinha, Solar Finance barras.*
+
+**M33 · Número com mapa e pessoa.** Topo claro com o mapa do Brasil (como no M11) e os estados
+atendidos em roxo e laranja. Sobre o mapa, um card roxo arredondado com um número grande em 900
+branco ("+X", "X mil") e a legenda em 800 laranja logo abaixo. Embaixo, uma faixa roxa com uma frase
+curta em 2 linhas ("Milhares de clientes. Uma economia real.") e o logo, e uma pessoa recortada
+sorrindo com o celular encostada na borda de baixo à direita (a Ane ou uma foto de banco). Só número
+real e com fonte: nunca invente a quantidade.
+*Referência: FIT Energia "+26 distribuidoras atendidas" (23/11/2026).*
 
 ## Explicar e ensinar
 
@@ -196,6 +204,18 @@ completam como metáfora: painel solar | girassol, poste | árvore, conta de luz
 texto ou com uma linha curta. O logo vai pequeno.
 *Referência: EDP (painel | girassol, turbina | dente-de-leão, poste | árvore).*
 
+**M32 · Foto escura com moldura de linha (carrossel institucional).** Cada slide é uma foto que
+ocupa a arte inteira (mãos juntas, painéis solares ao pôr do sol, aperto de mão, prédio), com uma
+camada roxo-escura de 60–70%. Uma linha branca fina (4 px, cantos arredondados) forma uma moldura
+aberta que sai pela borda lateral e continua no slide seguinte, como no M07. O título fica em
+caixa alta, com a primeira parte em 300 branco e a palavra-chave em 900 laranja ("NÃO SÓ UM
+DESCONTO, MAS / UM COMPROMISSO COM VOCÊ"). Um texto curto de 2–3 linhas em 400 branco fica dentro
+da moldura, com 2 ou 3 palavras em laranja. No último slide, um quadro de linha com o
+agradecimento ("Obrigado a cada cliente que confia na Alle") e o logo branco. Bom para prêmio,
+aniversário, marco e valores da marca.
+*Referência: FIT Energia, carrossel "Prêmio Reclame Aqui 2026" (23/11/2026). Na Alle, só cite
+prêmio ou marco real.*
+
 ## Engajamento
 
 **M24 · Pergunta para os comentários.** Uma pergunta grande (800, 90 px): "Você já sabia disso?",
@@ -228,6 +248,15 @@ brancos com sombra, título serifado preto) sobre fundo roxo texturizado, com um
 cima: "Todo mundo fala da conta de luz cara. A gente resolve." O texto dos recortes deve ser
 genérico ou citar estudos reais com fonte, sem marca de jornal.
 *Referência: Energês (colagem de manchetes), Abraceel "#NaMídia".*
+
+**M31 · Notícia no notebook.** Fundo claro. No topo, o título em duas partes: o problema em 600
+roxo ("A conta de luz pode ficar mais cara.") e a virada em 900 roxo com "Alle" em laranja ("Mas a
+sua economia pode contar com a Alle!"). Logo abaixo, um botão laranja em pílula ("ATIVE AGORA",
+"FALE COM A ANE"). Na metade de baixo, um notebook desenhado em perspectiva frontal com a tela
+mostrando um portal de notícias GENÉRICO (barra com "NOTÍCIAS · ECONOMIA", a manchete em 800 e
+uma foto) e o logo da Alle no rodapé. A manchete precisa ser real e com a fonte na legenda
+(ANEEL, CCEE); nunca reproduza o logo ou o layout de um veículo de verdade.
+*Referência: FIT Energia "A conta de luz pode ficar mais cara" (23/11/2026).*
 
 ---
 

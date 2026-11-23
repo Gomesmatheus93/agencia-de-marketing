@@ -34,7 +34,7 @@ export function ModelPicker({ value, onChange }: { value: string; onChange: (id:
           <DialogHeader>
             <DialogTitle>Modelos de arte</DialogTitle>
             <DialogDescription>
-              30 modelos estudados das referências do setor, já no visual da Alle. Escolha um para o agente seguir ou deixe no automático.
+              {DESIGN_MODELS.length} modelos estudados das referências do setor, já no visual da Alle. Escolha um para o agente seguir ou deixe no automático.
             </DialogDescription>
           </DialogHeader>
 

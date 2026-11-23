@@ -344,6 +344,34 @@ ${t(["pagar menos de luz."], 540, 1130, 70, 0, 900, ESCURO, 'text-anchor="middle
 <rect width="${W}" height="${H}" fill="url(#d)"/>
 ${t(["Energia que vem do sol."], 80, 1190, 60, 0, 800, "#FFF")}
 <image href="alle:raio-branco" x="960" y="1140" width="50" height="80"/>`,
+
+  M31: async () => `${bgClaro}${raio("raio")}
+${t(["A conta de luz pode"], 540, 260, 58, 0, 600, ROXO_TXT, 'text-anchor="middle"')}${t(["ficar mais cara."], 540, 332, 58, 0, 600, ROXO_TXT, 'text-anchor="middle"')}
+${t(["Mas a sua economia"], 540, 425, 66, 0, 900, ROXO_TXT, 'text-anchor="middle"')}<text x="540" y="505" text-anchor="middle" ${F} font-size="66" font-weight="900" fill="${ROXO_TXT}">pode contar com a <tspan fill="${LAR_TXT}">Alle!</tspan></text>
+${chip("ATIVE AGORA", 380, 550, 320, LAR_TXT, "#FFF")}
+<rect x="190" y="680" width="700" height="440" rx="24" fill="#2B2233"/><rect x="215" y="705" width="650" height="390" rx="8" fill="#FFF"/>
+<rect x="215" y="705" width="650" height="44" fill="${LIL}"/>${t(["NOTÍCIAS · ECONOMIA"], 240, 735, 20, 0, 800, ROXO_TXT, 'letter-spacing="2"')}
+${t(["Conta de luz deve ficar mais", "cara em dezembro; veja", "o que muda na sua fatura"], 240, 800, 32, 42, 800, ESCURO)}
+${photo(await photoUrl("electricity bill paper calculator", "landscape"), 240, 940, 600, 140)}
+<path d="M120,1120 H960 L1000,1160 H80 Z" fill="#CFC6D6"/>
+${logo("logo", 400, 1200, 280)}`,
+
+  M32: async () => `${photo(await photoUrl("solar panels sunset", "portrait"), 0, 0, W, H)}<rect width="${W}" height="${H}" fill="#1A0026" opacity="0.62"/>
+<path d="M1080,160 H130 Q100,160 100,190 V960" fill="none" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+<path d="M0,1040 H880 Q910,1040 910,1070 V1260" fill="none" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+${t(["NÃO SÓ UM DESCONTO, MAS"], 160, 320, 50, 0, 300, "#FFF")}${t(["UM COMPROMISSO", "COM VOCÊ."], 160, 400, 70, 80, 900, LAR_TXT)}
+<text ${F} font-size="32" font-weight="400" fill="#FFF"><tspan x="160" y="1110">Atendimento com <tspan fill="${LAR_TXT}" font-weight="700">clareza</tspan>, sem obra</tspan><tspan x="160" dy="44">e sem fidelidade, do primeiro</tspan><tspan x="160" dy="44">ao último contato.</tspan></text>
+${logo("logo-branco", 100, 50, 260)}`,
+
+  M33: async () => `${bgClaro}
+<g transform="translate(483 71) scale(0.62)"><path d="M440,418 L602,436 L620,508 L728,544 L836,571 L890,598 L890,670 L818,742 L818,832 L782,904 L710,931 L656,976 L647,1021 L620,1048 L566,1115 L494,1048 L548,994 L548,958 L476,904 L476,814 L440,796 L440,751 L350,724 L332,688 L260,706 L206,670 L188,634 L260,580 L260,544 L278,490 L314,472 L368,436 Z" fill="${LIL}" stroke="${ROXO_TXT}" stroke-opacity="0.25" stroke-width="4" stroke-linejoin="round"/>
+<path d="M566,913 L620,868 L665,868 L683,904 L719,922 L683,944 L656,962 L620,940 L584,926 Z" fill="${LAR_TXT}"/></g>
+<rect x="70" y="300" width="560" height="440" rx="40" fill="${ROXO}"/>
+${t(["+X"], 110, 520, 220, 0, 900, "#FFF")}${t(["mil clientes", "atendidos"], 110, 610, 56, 62, 800, LAR_TXT)}
+<rect y="820" width="${W}" height="530" fill="${ROXO_ESC}"/>
+${t(["Milhares de clientes."], 80, 930, 44, 0, 500, "#FFF")}${t(["Uma economia real."], 80, 990, 48, 0, 900, "#FFF")}
+${logo("logo-branco", 80, 1160, 300)}
+<image href="alle:ane-sorrindo" x="${1080 - 560}" y="${1350 - 640}" width="560" height="644"/>`,
 };
 
 // M07 (linha contínua) mostra dois slides lado a lado para a linha aparecer passando.

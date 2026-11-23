@@ -27,6 +27,7 @@ export const DESIGN_MODELS: DesignModel[] = [
   { id: "M10", name: "Simulação de economia", group: "dados", summary: "Card com a conta de exemplo e a economia em 1 mês, 1 ano e 5 anos." },
   { id: "M11", name: "Mapa com destaque", group: "dados", summary: "Mapa do Brasil com a região que importa em laranja." },
   { id: "M12", name: "Sem a Alle × Com a Alle", group: "dados", summary: "Duas colunas: o jeito antigo apagado e a Alle em destaque." },
+  { id: "M33", name: "Número com mapa e pessoa", group: "dados", summary: "Número grande num card sobre o mapa e uma pessoa sorrindo com o celular." },
   { id: "M23", name: "Barras ou degraus", group: "dados", summary: "Gráfico simples, como a escada das bandeiras tarifárias." },
   { id: "M07", name: "Linha contínua", group: "explicar", summary: "Uma linha laranja atravessa o carrossel e liga um slide ao outro." },
   { id: "M08", name: "Documento anotado", group: "explicar", summary: "A conta de luz no centro com caixas explicando cada parte." },
@@ -48,11 +49,13 @@ export const DESIGN_MODELS: DesignModel[] = [
   { id: "M17", name: "Card de data", group: "emocao", summary: "Cor chapada e uma frase grande, minimalista." },
   { id: "M29", name: "Foto conceitual", group: "emocao", summary: "Um objeto do dia a dia como metáfora, em cor chapada." },
   { id: "M30", name: "Foto dividida ao meio", group: "emocao", summary: "Duas fotos que se completam lado a lado." },
+  { id: "M32", name: "Foto escura com moldura de linha", group: "emocao", summary: "Carrossel em fotos escuras com uma linha branca que passa de um slide para o outro." },
   { id: "M24", name: "Pergunta para comentários", group: "engajamento", summary: "Uma pergunta grande que pede resposta nos comentários." },
   { id: "M25", name: "Comente e receba", group: "engajamento", summary: "Palavra-chave em destaque para comentar e receber no direct." },
   { id: "M26", name: "Jogo / escolha", group: "engajamento", summary: "\"Escolha 1 letra e 1 número\" sobre uma grade de cards." },
   { id: "M27", name: "Notícia em formato portal", group: "noticias", summary: "Foto, chip de categoria e manchete em faixa branca." },
   { id: "M28", name: "Recorte de manchetes", group: "noticias", summary: "Recortes de papel inclinados com o título da Alle por cima." },
+  { id: "M31", name: "Notícia no notebook", group: "noticias", summary: "Problema e virada no título, botão e um notebook mostrando a manchete." },
 ];
 
 export const DESIGN_MODEL_IDS = DESIGN_MODELS.map((m) => m.id);
