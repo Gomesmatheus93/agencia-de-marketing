@@ -27,6 +27,7 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | emocionar, institucional, data comemorativa | M15, M17, M32 |
 | dica rápida e salvável | M02, M13, M20 |
 | engajar (comentário, enquete, compartilhar) | M18, M26 |
+| Black Friday (campanha) | M34, M35, M36, M37 |
 | notícia do setor (bandeira, tarifa, lei) | M27, M28, M31 |
 | parceria Allp Fit | layout próprio no SKILL.md (+ M10, M12 no miolo) |
 
@@ -173,6 +174,44 @@ prêmio ou marco real.*
 revelam benefícios: "sem fidelidade", "100% digital", "sem obra". Também funciona como enquete
 visual ("Você é time ventilador ou ar-condicionado?").
 *Referência: Detronic "Escolha 1 letra e 1 número", Evolua "Ventilador × Ar-condicionado".*
+
+## Black Friday (campanha sazonal)
+
+Estudo de peças de Black Friday enviadas pela equipe em 23/11/2026 (FIT Energia e modelos de banco).
+Nesta campanha o fundo pode ser **preto** (`#0B0710`) com brilho roxo (`#7B2FBE`) e os destaques em
+laranja (`#ff7300`) ou em degradê neon laranja→amarelo-claro (`#ff7300` → `#FFD27A`): é a "edição
+Black" da Alle. Nunca invente promoção, parcelamento, "o dobro", "até 60%" ou prazo de Black Friday:
+a Alle não tem condição especial; o que muda é a moldura. PJ até 35% e PF até 15%, com a ressalva.
+
+**M34 · Fitas e etiqueta.** Fundo preto com 2 ou 3 fitas (faixas laranja ou roxas de ~70 px)
+atravessadas na diagonal, com "BLACK FRIDAY DA ALLE ·" repetido em 800 branco. No centro, uma etiqueta
+de preço inclinada (retângulo com a ponta cortada e um furo com cordão) em laranja com "Black" em 900
+branco e, embaixo, uma faixa com "FRIDAY" em contorno. Abaixo, a frase da pauta e um bloco com 2
+destaques reais (ex.: "TODO MÊS", "SEM FIDELIDADE") em cards laranja.
+*Referência: "Black Friday · Aguardem" (fitas e etiqueta vermelha).*
+
+**M35 · Cupom destacável.** Fundo preto com textura de pontos e um raio da Alle grande e sutil. No
+centro, um cupom branco inclinado (~-8°) com dois recortes semicirculares nas laterais, uma linha
+picotada separando o canhoto laranja (escrito "CUPOM" na vertical) e o corpo: "BLACK FRIDAY DA ALLE" e a
+vantagem real em 900 ("DESCONTO TODO MÊS"). Em cima, o título em 2 pesos; embaixo, um botão de
+contorno branco com o CTA.
+*Referência: "Black Friday Sale · Up to 50% coupon" (cupom vermelho e preto).*
+
+**M36 · Título neon com objetos.** Fundo preto com brilho no centro. No topo, uma linha de apoio em
+caixa alta e "BLACK / FRIDAY" gigante em 900: a primeira palavra branca e a segunda em degradê neon,
+com um brilho (`feGaussianBlur` de uma cópia do texto atrás). No meio, objetos do tema empilhados com
+sombra (conta de luz, celular com a conversa da Ane, e, para a Allp Fit, tênis e halter): use fotos
+de banco sem fundo ou ícones grandes desenhados. Embaixo, a frase de virada em 2 pesos ("A economia da
+sua conta de luz / vale o mês inteiro") e o CTA em laranja. Selo circular laranja no canto só com
+fato real ("TODO MÊS", "SEM FIDELIDADE").
+*Referência: FIT Energia "A economia que paga a sua Black Friday".*
+
+**M37 · Teaser "prepare-se".** Só tipografia centralizada no preto, com brilho: "PREPARE-SE PARA"
+(800, branco) / "ECONOMIZAR" (900, degradê neon) / "AINDA MAIS NA SUA" / "BLACK FRIDAY" (900 gigante,
+"BLACK" branco e "FRIDAY" neon). Embaixo, a pergunta que gera curiosidade e a data da revelação
+("E o que a Alle tem a ver com a Black? Dia 27/11 você descobre."). Logo branco no rodapé. Bom para a
+abertura da semana e para stories.
+*Referência: FIT Energia "Prepare-se para economizar ainda mais na sua Black Friday".*
 
 ## Notícias e setor
 

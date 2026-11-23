@@ -295,6 +295,50 @@ ${t(["+X"], 110, 520, 220, 0, 900, "#FFF")}${t(["mil clientes", "atendidos"], 11
 ${t(["Milhares de clientes."], 80, 930, 44, 0, 500, "#FFF")}${t(["Uma economia real."], 80, 990, 48, 0, 900, "#FFF")}
 ${logo("logo-branco", 80, 1160, 300)}
 <image href="alle:ane-sorrindo" x="${1080 - 560}" y="${1350 - 640}" width="560" height="644"/>`,
+  M34: () => {
+    const tape = (y: number, rot: number, fill: string) => `<g transform="translate(540 ${y}) rotate(${rot})"><rect x="-900" y="-36" width="1800" height="72" fill="${fill}"/>${t([Array(8).fill("BLACK FRIDAY DA ALLE ·").join(" ")], -880, 14, 30, 0, 800, "#FFF", 'letter-spacing="2"')}</g>`;
+    return `<rect width="${W}" height="${H}" fill="#0B0710"/><radialGradient id="g34" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="${ROXO}" stop-opacity="0.45"/><stop offset="1" stop-color="${ROXO}" stop-opacity="0"/></radialGradient><rect width="${W}" height="${H}" fill="url(#g34)"/>
+${tape(150, -12, LAR_TXT)}${tape(230, 8, ROXO)}${tape(1250, -6, LAR_TXT)}
+<g transform="translate(560 520) rotate(-8)"><path d="M-330,-130 H260 L330,-60 V60 L260,130 H-330 Z" fill="${LAR_TXT}"/><circle cx="262" cy="0" r="20" fill="#0B0710"/>${t(["Black"], -290, 60, 170, 0, 900, "#FFF")}</g>
+<g transform="translate(540 700) rotate(-2)"><rect x="-320" y="-70" width="640" height="130" rx="14" fill="none" stroke="#FFF" stroke-width="5"/>${t(["FRIDAY"], 0, 40, 110, 0, 900, "#FFF", 'text-anchor="middle" letter-spacing="6"')}</g>
+${t(["O desconto que volta todo mês."], 540, 860, 44, 0, 600, "#FFF", 'text-anchor="middle"')}
+<rect x="170" y="920" width="350" height="140" rx="20" fill="${LAR_TXT}"/>${t(["TODO", "MÊS"], 345, 980, 44, 48, 900, "#FFF", 'text-anchor="middle"')}
+<rect x="560" y="920" width="350" height="140" rx="20" fill="${LAR_TXT}"/>${t(["SEM", "FIDELIDADE"], 735, 980, 44, 48, 900, "#FFF", 'text-anchor="middle"')}
+${logo("logo-branco", 400, 1100, 280)}`;
+  },
+
+  M35: () => `<rect width="${W}" height="${H}" fill="#0B0710"/><image href="alle:raio-mono" x="560" y="200" width="600" height="957" opacity="0.07"/>
+${t(["Black Friday da Alle:"], 80, 230, 56, 0, 300, "#FFF")}${t(["o cupom que não vence."], 80, 310, 64, 0, 900, LAR_TXT)}
+<g transform="translate(540 680) rotate(-8)">
+<path d="M-420,-200 H420 V-40 A40,40 0 0 0 420,40 V200 H-420 V40 A40,40 0 0 0 -420,-40 Z" fill="#FFF"/>
+<rect x="-420" y="-200" width="190" height="400" fill="${LAR_TXT}"/><path d="M-230,-200 V200" stroke="#0B0710" stroke-width="5" stroke-dasharray="14 12"/>
+<g transform="translate(-325 0) rotate(-90)">${t(["CUPOM"], 0, 22, 64, 0, 900, "#FFF", 'text-anchor="middle" letter-spacing="8"')}</g>
+${t(["BLACK FRIDAY DA ALLE"], -180, -90, 34, 0, 800, ROXO_TXT, 'letter-spacing="2"')}${t(["DESCONTO", "TODO MÊS"], -180, 10, 84, 86, 900, "#0B0710")}</g>
+<rect x="330" y="1030" width="420" height="96" rx="12" fill="none" stroke="#FFF" stroke-width="4"/>${t(["CHAME A ANE"], 540, 1092, 40, 0, 900, "#FFF", 'text-anchor="middle" letter-spacing="3"')}
+${logo("logo-branco", 400, 1180, 280)}`,
+
+  M36: () => `<rect width="${W}" height="${H}" fill="#0B0710"/><radialGradient id="g36" cx="0.5" cy="0.45" r="0.55"><stop offset="0" stop-color="${ROXO}" stop-opacity="0.6"/><stop offset="1" stop-color="${ROXO}" stop-opacity="0"/></radialGradient><rect width="${W}" height="${H}" fill="url(#g36)"/>
+<linearGradient id="neon" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${LAR_TXT}"/><stop offset="1" stop-color="#FFD27A"/></linearGradient><filter id="glow36"><feGaussianBlur stdDeviation="14"/></filter>
+${t(["A ECONOMIA QUE VALE O MÊS INTEIRO"], 540, 150, 34, 0, 800, "#FFF", 'text-anchor="middle" letter-spacing="2"')}
+${t(["BLACK"], 540, 300, 170, 0, 900, "#FFF", 'text-anchor="middle"')}
+<g filter="url(#glow36)" opacity="0.8">${t(["FRIDAY"], 540, 460, 170, 0, 900, LAR_TXT, 'text-anchor="middle"')}</g>${t(["FRIDAY"], 540, 460, 170, 0, 900, "url(#neon)", 'text-anchor="middle"')}
+<g filter="url(#glow36)" opacity="0.5"><ellipse cx="540" cy="900" rx="330" ry="40" fill="#000"/></g>
+<g transform="translate(330 560) rotate(-6)"><rect width="300" height="380" rx="16" fill="#FFF"/>${t(["CONTA DE LUZ"], 30, 60, 28, 0, 800, ROXO_TXT)}<path d="M30,100 H260 M30,140 H220 M30,180 H250 M30,220 H200" stroke="#D9CCE6" stroke-width="10"/><rect x="30" y="270" width="240" height="70" rx="10" fill="${LAR_TXT}"/>${t(["ATÉ 15% PF"], 150, 316, 28, 0, 900, "#FFF", 'text-anchor="middle"')}</g>
+<g transform="translate(600 600) rotate(8)"><rect width="200" height="330" rx="30" fill="#1D1424" stroke="#FFF" stroke-width="6"/><rect x="20" y="40" width="160" height="60" rx="14" fill="${ROXO}"/>${t(["Ane"], 40, 80, 26, 0, 800, "#FFF")}<rect x="40" y="120" width="140" height="50" rx="14" fill="#FFF"/><rect x="20" y="190" width="130" height="50" rx="14" fill="${LAR_TXT}"/></g>
+<circle cx="880" cy="600" r="90" fill="${LAR_TXT}"/>${t(["TODO", "MÊS"], 880, 590, 34, 38, 900, "#FFF", 'text-anchor="middle"')}
+${t(["A economia da sua conta de luz"], 540, 1030, 42, 0, 400, "#FFF", 'text-anchor="middle"')}${t(["vale o mês inteiro."], 540, 1090, 48, 0, 900, "#FFF", 'text-anchor="middle"')}
+${t(["CHAME A ANE NO WHATSAPP"], 540, 1170, 34, 0, 900, LAR_TXT, 'text-anchor="middle" letter-spacing="2"')}
+${logo("logo-branco", 420, 1210, 240)}`,
+
+  M37: () => `<rect width="${W}" height="${H}" fill="#0B0710"/><radialGradient id="g37" cx="0.5" cy="0.45" r="0.6"><stop offset="0" stop-color="${ROXO}" stop-opacity="0.5"/><stop offset="1" stop-color="${ROXO}" stop-opacity="0"/></radialGradient><rect width="${W}" height="${H}" fill="url(#g37)"/>
+<linearGradient id="neon37" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${LAR_TXT}"/><stop offset="1" stop-color="#FFD27A"/></linearGradient><filter id="glow37"><feGaussianBlur stdDeviation="16"/></filter>
+${t(["PREPARE-SE PARA"], 540, 360, 64, 0, 800, "#FFF", 'text-anchor="middle" letter-spacing="3"')}
+<g filter="url(#glow37)" opacity="0.7">${t(["ECONOMIZAR"], 540, 480, 120, 0, 900, LAR_TXT, 'text-anchor="middle"')}</g>${t(["ECONOMIZAR"], 540, 480, 120, 0, 900, "url(#neon37)", 'text-anchor="middle"')}
+${t(["AINDA MAIS NA SUA"], 540, 570, 60, 0, 800, "#FFF", 'text-anchor="middle" letter-spacing="3"')}
+${t(["BLACK"], 540, 740, 170, 0, 900, "#FFF", 'text-anchor="middle"')}
+<g filter="url(#glow37)" opacity="0.7">${t(["FRIDAY"], 540, 900, 170, 0, 900, LAR_TXT, 'text-anchor="middle"')}</g>${t(["FRIDAY"], 540, 900, 170, 0, 900, "url(#neon37)", 'text-anchor="middle"')}
+${t(["E o que a Alle tem a ver com a Black?"], 540, 1010, 40, 0, 500, "#FFF", 'text-anchor="middle"')}${t(["Dia 27/11 você descobre."], 540, 1065, 44, 0, 900, "#FFF", 'text-anchor="middle"')}
+${logo("logo-branco", 400, 1170, 280)}`,
 };
 
 // M07 (linha contínua) mostra dois slides lado a lado para a linha aparecer passando.

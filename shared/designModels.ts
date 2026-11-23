@@ -3,7 +3,7 @@
  * (server/agents/skills/alle-design/referencias.md). As prévias ficam em
  * client/public/modelos/<id>.webp e são geradas por scripts/build-model-previews.mts.
  */
-export type DesignModelGroup = "dados" | "explicar" | "objecoes" | "dicas" | "emocao" | "engajamento" | "noticias";
+export type DesignModelGroup = "dados" | "explicar" | "objecoes" | "dicas" | "emocao" | "engajamento" | "noticias" | "blackfriday";
 
 export type DesignModel = {
   id: string;
@@ -20,6 +20,7 @@ export const DESIGN_MODEL_GROUPS: Record<DesignModelGroup, string> = {
   emocao: "Emoção, marca e datas",
   engajamento: "Engajamento",
   noticias: "Notícias do setor",
+  blackfriday: "Black Friday",
 };
 
 export const DESIGN_MODELS: DesignModel[] = [
@@ -46,6 +47,10 @@ export const DESIGN_MODELS: DesignModel[] = [
   { id: "M27", name: "Notícia em formato portal", group: "noticias", summary: "Foto, chip de categoria e manchete em faixa branca." },
   { id: "M28", name: "Recorte de manchetes", group: "noticias", summary: "Recortes de papel inclinados com o título da Alle por cima." },
   { id: "M31", name: "Notícia no notebook", group: "noticias", summary: "Problema e virada no título, botão e um notebook mostrando a manchete." },
+  { id: "M34", name: "Fitas e etiqueta", group: "blackfriday", summary: "Fundo preto com fitas \"BLACK FRIDAY\" atravessadas e uma etiqueta de preço com o título." },
+  { id: "M35", name: "Cupom destacável", group: "blackfriday", summary: "Um cupom com picote e recortes laterais, com a vantagem escrita nele." },
+  { id: "M36", name: "Título neon com objetos", group: "blackfriday", summary: "\"BLACK FRIDAY\" em degradê neon e objetos do tema empilhados com sombra." },
+  { id: "M37", name: "Teaser \"prepare-se\"", group: "blackfriday", summary: "Só tipografia neon no preto: \"Prepare-se para economizar\" e a data da revelação." },
 ];
 
 export const DESIGN_MODEL_IDS = DESIGN_MODELS.map((m) => m.id);
