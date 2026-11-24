@@ -50,6 +50,14 @@ async function prepareSvg(svg: string, format: DesignFormat): Promise<string> {
   if (!viewBox || Number(viewBox[1]) !== width || Number(viewBox[2]) !== height) {
     throw new DesignError(`O <svg> precisa de viewBox="0 0 ${width} ${height}" para o formato ${format}.`);
   }
+  return embedAssets(svg);
+}
+
+/**
+ * Troca alle:* pelos arquivos da marca e embute as imagens https (descarta
+ * qualquer outra referência). Também usado pelo motion, em fragmentos de SVG.
+ */
+export async function embedAssets(svg: string): Promise<string> {
   let out = svg.replace(/<script\b[\s\S]*?<\/script>/gi, "");
 
   const hrefRe = /(\s(?:xlink:)?href\s*=\s*)(["'])(.*?)\2/gi;

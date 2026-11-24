@@ -922,6 +922,7 @@ async function startServer() {
     console.log("[schedulers] desligados (DISABLE_SCHEDULERS=1)");
   } else {
     failStaleRuns().catch((e) => console.warn("[agents] falha ao limpar execuções interrompidas:", e));
+    import("../motion/service").then((m) => m.resumeMotionQueue()).catch((e) => console.warn("[motion] falha ao retomar a fila:", e));
     startInstagramPostScheduler();
     startNewsDigestScheduler();
     startCommentAlertScheduler();

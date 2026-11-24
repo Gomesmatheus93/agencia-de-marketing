@@ -64,6 +64,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "planning", icon: CalendarRange, path: "/dashboard/planejamento", color: "from-alle-purple to-alle-purple-light", labelKey: "planning" as const, descKey: "planningDesc" as const, group: "plan" as const },
   { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-alle-purple to-alle-purple-light", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "plan" as const },
   { id: "ctas", icon: Megaphone, path: "/dashboard/ctas", color: "from-alle-purple to-alle-orange", labelKey: "ctas" as const, descKey: "ctasDesc" as const, group: "create" as const },
+  { id: "motion", icon: Clapperboard, path: "/dashboard/motion", color: "from-alle-purple to-alle-orange", labelKey: "motion" as const, descKey: "motionDesc" as const, group: "create" as const },
   { id: "agentCarousel", icon: GalleryHorizontal, path: "/dashboard/criar/carrossel", color: "from-alle-purple to-alle-orange", labelKey: "createCarousel" as const, descKey: "createCarouselDesc" as const, group: "create" as const },
   { id: "agentPost", icon: Image, path: "/dashboard/criar/post", color: "from-alle-purple to-alle-orange", labelKey: "createPost" as const, descKey: "createPostDesc" as const, group: "create" as const },
   { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },

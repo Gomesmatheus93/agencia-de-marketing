@@ -1322,3 +1322,28 @@ export const ctas = pgTable("ctas", {
 ]);
 
 export type Cta = typeof ctas.$inferSelect;
+
+// ─── Motion (vídeos animados a partir de um roteiro, pedido de 24/11/2026) ────
+/** Vídeo motion: o roteiro (cenas + camadas SVG + animações) e o MP4 renderizado. */
+export const motionVideos = pgTable("motion_videos", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  // De onde veio: modelo pronto (cta/contador/passos) ou "claude" (roteiro escrito pelo Claude).
+  origin: varchar("origin", { length: 24 }).default("modelo").notNull(),
+  ctaId: integer("ctaId"),
+  spec: json("spec").$type<Record<string, unknown>>().notNull(),
+  // na_fila | renderizando | pronto | falhou
+  status: varchar("status", { length: 16 }).default("na_fila").notNull(),
+  progress: integer("progress").default(0).notNull(),
+  videoUrl: text("videoUrl"),
+  posterUrl: text("posterUrl"),
+  seconds: integer("seconds"),
+  error: text("error"),
+  caption: text("caption"),
+  createdBy: integer("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [index("idx_motion_user").on(t.userId)]);
+
+export type MotionVideo = typeof motionVideos.$inferSelect;

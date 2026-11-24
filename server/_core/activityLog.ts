@@ -54,6 +54,12 @@ const PATH_LABEL: Record<string, string> = {
   "ctas.remove": "Excluiu um CTA",
   "ctas.addSuggestions": "Salvou CTAs sugeridos pelo agente",
   "ctas.createArt": "Pediu uma arte a partir de um CTA",
+  "motion.fromTemplate": "Criou um vídeo motion a partir de um modelo",
+  "motion.create": "Criou um vídeo motion com roteiro",
+  "motion.update": "Editou um vídeo motion",
+  "motion.rerender": "Renderizou de novo um vídeo motion",
+  "motion.duplicate": "Duplicou um vídeo motion",
+  "motion.remove": "Excluiu um vídeo motion",
 };
 
 export function actionLabel(action: string, path?: string) {
