@@ -315,6 +315,7 @@ export const ANE_PHOTOS: Record<string, { label: string; w: number; h: number }>
   "ane-coque-2": { label: "Coque, braços cruzados (24/11)", w: 872, h: 1000 },
   "ane-oculos-2": { label: "Ajustando os óculos (24/11)", w: 997, h: 1000 },
   "ane-tras": { label: "Olhando para trás, cabelo solto (24/11)", w: 746, h: 1000 },
+  "ane-polo": { label: "Camisa polo com o logo da Alle (24/11)", w: 732, h: 1000 },
 };
 
 /** Banner (90×120, parede): frase gigante, QR enorme com "ATIVE AGORA" e a Ane grande com balão. */

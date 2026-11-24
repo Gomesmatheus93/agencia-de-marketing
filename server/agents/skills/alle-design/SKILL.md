@@ -42,13 +42,19 @@ O `<svg>` precisa ter exatamente esse `viewBox` (e `xmlns="http://www.w3.org/200
 Uma cor de destaque por peça. Laranja sobre roxo ou branco sobre laranja; nunca
 laranja sobre laranja nem roxo sobre roxo para texto.
 
-**Tipografia:** só `font-family="Montserrat"`. Pesos disponíveis: 300, 400,
-500, 600, 700, 800, 900. Título em dois pesos é a assinatura da Alle: a
-primeira parte fina (300) em branco, a parte que importa em extra-negrito (800)
-na cor de destaque.
+**Tipografia (padrão dos posts desde 24/11/2026, pedido da equipe):**
+- **Títulos, chamadas grandes, números e palavras de destaque:** `font-family="Bebas Neue"`
+  (um peso só; não use `font-weight` nela). Ela só tem maiúsculas: escreva o título em CAIXA ALTA.
+  A assinatura da Alle no título passa a ser o contraste de **cor**: a primeira parte em branco e
+  a parte que importa em laranja (ou branco sobre o card laranja), podendo ser um pouco maior.
+- **Texto de apoio, listas, botões, rodapé e tudo que for lido em tamanho pequeno:**
+  `font-family="Montserrat"` (pesos 300, 400, 500, 600, 700, 800, 900). Bebas Neue em texto
+  corrido ou abaixo de 60 px fica difícil de ler.
+- Nenhuma outra fonte.
 
 **Tamanhos mínimos** (a peça é vista no celular a um terço do tamanho real):
-título 72–110 px, texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaixo de 26 px.
+título em Bebas Neue 110–200 px (ela é estreita: precisa ser maior que a Montserrat para ter o
+mesmo peso visual), texto de apoio 34–44 px, rodapé/@ 26–30 px. Nada abaixo de 26 px.
 
 **Logo** (use como `<image href="alle:…">`, mantendo a proporção):
 
@@ -95,8 +101,9 @@ na cintura:
 | `alle:ane-coque-2` | 872×1000 | coque, braços cruzados, sorrindo (24/11) | confiança, oferta, capa |
 | `alle:ane-oculos-2` | 997×1000 | ajustando os óculos com a mão, sorrindo (24/11) | dica, "olha isso", "você sabia?", atenção a um detalhe |
 | `alle:ane-tras` | 746×1000 | de lado, olhando para trás, cabelo solto (24/11) | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
+| `alle:ane-polo` | 732×1000 | de frente, camisa polo roxa com o logo da Alle, rabo de cavalo e óculos (24/11) | institucional, atendimento, posts no fundo branco (M38) |
 
-**Alterne as fotos (são 14):** prefira as fotos mais novas (de 24/11: ane-rabo, ane-ombro-2, ane-solta, ane-coque-2, ane-oculos-2, ane-tras; e ane-sorrindo, ane-queixo, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
+**Alterne as fotos (são 15):** prefira as fotos mais novas (de 24/11: ane-rabo, ane-ombro-2, ane-solta, ane-coque-2, ane-oculos-2, ane-tras; e ane-sorrindo, ane-queixo, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
 carrossel com a Ane em 2 slides, use uma foto diferente em cada. A largura é sempre
 altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509 de largura).
 
@@ -119,7 +126,7 @@ altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509
      ao lado, em coluna estreita.
   Nas posições 2, 3 e 4, use só as fotos sem corte nas laterais: `alle:ane`, `alle:ane-queixo`,
   `alle:ane-costas`, `alle:ane-rabo`, `alle:ane-ombro-2`, `alle:ane-coque-2`, `alle:ane-oculos-2`,
-  `alle:ane-tras`. A `alle:ane-sorrindo` e a `alle:ane-solta` têm o lado direito cortado: só na
+  `alle:ane-tras`, `alle:ane-polo`. A `alle:ane-sorrindo` e a `alle:ane-solta` têm o lado direito cortado: só na
   posição 1, com a foto passando da borda direita. Nunca espelhe a foto para trocar de lado (o logo da camiseta
   fica invertido).
 - **Combina com:** fundo roxo `#7B2FBE`, laranja ou claro. Um balão curto ao lado do rosto
@@ -142,6 +149,13 @@ de marca d'água no fundo (pedido da equipe).
 - Laranja: fundo `#F47B20` com o mesmo raio grande, todo branco e sutil:
   `<image href="alle:raio-mono" x="560" y="140" width="640" height="1021" opacity="0.14"/>`
 - Claro: fundo `#FFF8F2`, texto `#1E0A01`, destaques em `#7c00ae` e `#ff7300`.
+- **Fundo branco pronto (`alle:fundo-branco`, 1080×1350, criado em 24/11/2026 a partir de uma referência de post da
+  equipe):** `<image href="alle:fundo-branco" x="0" y="0" width="1080" height="1350"/>` como primeira camada. Ele já
+  tem a faixa roxa do topo, o logo da Alle centralizado (y 80–177), traçados discretos do raio da Alle no fundo, o card roxo arredondado no meio (x 50–1030, y 860–1080) e a faixa roxa do rodapé
+  (y 1272–1350). Monte por cima: **título centralizado em y 220–380** (texto roxo-escuro `#3d0b80` e destaque em
+  `#7c00ae` ou laranja; aqui o fundo é branco, então texto escuro é o certo), **pessoa recortada no centro** saindo
+  do card, com a cabeça logo abaixo do título (de y≈400 até y≈1080: ~680 px de altura, nunca cobrindo o título), **texto de apoio centralizado em y 1110–1240** e nada
+  no rodapé. Não use nas artes da parceria com a Allp Fit (lá o padrão é o fundo roxo).
 
 Alterne roxo e laranja ao longo de um carrossel (ex.: capa roxa, miolo
 laranja/claro, CTA roxo) para dar ritmo sem perder a unidade.
@@ -149,6 +163,9 @@ laranja/claro, CTA roxo) para dar ritmo sem perder a unidade.
 ## Texto no SVG
 
 O SVG **não quebra linha sozinho**. Quebre você, com `<tspan x="…" dy="…">`.
+Na **Bebas Neue** (títulos), cada caractere ocupa cerca de 0,34 × o tamanho da fonte: com 920 px
+de largura útil cabem ~19 caracteres a 140 px, ~16 a 170 px e ~13 a 200 px. Entrelinha do título
+em Bebas Neue: 0,95 a 1,0× o tamanho (as letras não têm partes que descem).
 Para estimar quantos caracteres cabem numa linha de Montserrat:
 largura disponível ÷ (tamanho da fonte × 0,6) no peso 800, × 0,55 no 400,
 × 0,52 no 300. Com 920 px de largura útil: ~15 caracteres a 100 px/800,
@@ -183,10 +200,10 @@ combinação diferente. Diga na entrega qual combinação usou.
 
 ## Layouts do carrossel
 
-1. **Capa:** logo no topo, título em dois pesos ocupando o terço de baixo, uma
+1. **Capa:** logo no topo, título em Bebas Neue (branco + laranja) ocupando o terço de baixo, uma
    linha de promessa, "Desliza →" e "@alleenergia" no rodapé.
-2. **Conteúdo:** título de 3 a 7 palavras (700–800), até 25 palavras de apoio
-   (400–500). Uma ideia por slide.
+2. **Conteúdo:** título de 3 a 7 palavras em Bebas Neue, até 25 palavras de apoio em
+   Montserrat (400–500). Uma ideia por slide.
 3. **Resumo:** lista curta, feita para print e para mandar a alguém.
 4. **CTA:** uma ação só, em destaque; logo completo; @alleenergia.
 
@@ -197,7 +214,7 @@ equipe). Se a ordem importar (passo a passo, lista), use um selo pequeno
 ## Modelos de referência (leia antes de desenhar)
 
 Antes de desenhar qualquer post, carrossel ou capa, leia a biblioteca de modelos com
-`read_file("skills/alle-design/referencias.md")`. São 27 modelos (numerados de M01 a M37; alguns números foram excluídos) estudados das
+`read_file("skills/alle-design/referencias.md")`. São 28 modelos (numerados de M01 a M38; alguns números foram excluídos) estudados das
 referências do setor e já adaptados à identidade Alle: número gigante, linha contínua entre slides,
 documento anotado, mito ou verdade, prós e contras, simulação de economia, notícia no notebook etc.
 Escolha um modelo que combine com o objetivo do card, varie em relação à última peça e diga na
@@ -237,6 +254,9 @@ post real em collab com a @allpfit:
 ## Padrões pedidos pela equipe (valem para todas as artes)
 
 - **Sem @ no rodapé dos slides** ("@alleenergia", "@alleenergia + @allpfit"): a marcação vai só na legenda.
+  Exceção (24/11/2026, pedido da equipe): no fundo branco do modelo M38 a faixa roxa do rodapé traz o ícone
+  branco do Instagram com @alleenergia e o do WhatsApp com (12) 95369-7411 (já vêm no `alle:fundo-branco` e no
+  `skills/alle-design/fundo-branco.svg`); não tire esse rodapé.
 - **Último slide do carrossel sem a seta** de "arrasta": é o fechamento.
 - Sobre fundo roxo, use o `alle:logo-branco` (a frase "autonomia e liberdade energética" já vem legível) ou o `alle:logo-branco-limpo` quando o logo for pequeno.
 - Desconto: **até 35% para PJ e até 15% para PF**. Para alunos da Allp Fit (em geral PF), não prometa 35%.

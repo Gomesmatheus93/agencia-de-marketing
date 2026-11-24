@@ -1,0 +1,24 @@
+<!-- Fundo branco da Alle (modelo M38), editável: cole este conteúdo logo depois da tag <svg viewBox="0 0 1080 1350">,
+     no lugar de <image href="alle:fundo-branco">. Em collab, apague o bloco "logo" e ponha os dois logos lado a lado. -->
+<defs>
+  <linearGradient id="roxo" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5A16A8"/><stop offset="1" stop-color="#7c00ae"/></linearGradient>
+  <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c00ae"/><stop offset=".55" stop-color="#8f2fc4"/><stop offset="1" stop-color="#ffffff" stop-opacity=".0"/></linearGradient>
+  <linearGradient id="cardH" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5A16A8"/><stop offset=".5" stop-color="#7c00ae" stop-opacity=".85"/><stop offset="1" stop-color="#5A16A8"/></linearGradient>
+  <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>
+<filter id="contorno" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="2.6" result="grosso"/><feComposite in="grosso" in2="SourceAlpha" operator="out" result="linha"/><feFlood flood-color="#B98AE0" flood-opacity="0.22"/><feComposite in2="linha" operator="in"/></filter></defs>
+<rect width="1080" height="1350" fill="#FFFFFF"/>
+<!-- traçados: contorno do raio da Alle, grande e discreto (no lugar dos hexágonos da referência) -->
+<image href="alle:raio-mono" x="-260" y="230" width="820" height="1309" filter="url(#contorno)"/>
+<image href="alle:raio-mono" x="520" y="-300" width="700" height="1117" filter="url(#contorno)"/>
+<!-- faixa do topo -->
+<rect x="50" y="-60" width="980" height="100" rx="44" fill="url(#roxo)"/>
+<!-- logo -->
+<image href="alle:logo" x="375" y="80" width="330" height="97"/>
+<!-- card do meio, atrás da pessoa -->
+<rect x="50" y="860" width="980" height="220" rx="44" fill="url(#cardH)"/>
+<rect x="50" y="860" width="980" height="220" rx="44" fill="url(#fade)" opacity=".55"/>
+<!-- rodapé -->
+<rect x="0" y="1272" width="1080" height="78" fill="url(#roxo)"/>
+<rect x="0" y="1272" width="1080" height="5" fill="#ff7300"/>
+<!-- Instagram e WhatsApp (ícones brancos) -->
+<g><rect x="241" y="1296" width="34" height="34" rx="11" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><circle cx="258" cy="1313" r="8.5" fill="none" stroke="#FFFFFF" stroke-width="3.6"/><circle cx="267" cy="1304" r="2.6" fill="#FFFFFF"/><text x="289" y="1323" font-family="Montserrat" font-size="28" font-weight="600" fill="#FFFFFF">@alleenergia</text></g><g><path d="M554 1328 L551 1331 L552 1324 A17 17 0 1 1 558 1328 Z" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-linejoin="round"/><path d="M560 1305 q-3 0 -3 4 q1 8 13 14 q4 1 5 -2 l1 -3 l-5 -3 l-3 2 q-5 -2 -7 -7 l2 -3 l-3 -5 z" fill="#FFFFFF"/><text x="598" y="1323" font-family="Montserrat" font-size="28" font-weight="600" fill="#FFFFFF">(12) 95369-7411</text></g>

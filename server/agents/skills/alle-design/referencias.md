@@ -1,5 +1,7 @@
 # Biblioteca de referências: modelos de post e carrossel
 
+> **Tipografia (24/11/2026):** os títulos de todos os modelos agora são em **Bebas Neue** (caixa alta, um peso só). Onde um modelo abaixo fala em título "em 2 pesos", "900" ou "extra-negrito", use Bebas Neue com o contraste de cor (branco + laranja). Texto de apoio, listas e botões continuam em Montserrat.
+
 Estudo de cerca de 750 peças do setor de energia (Abraceel, Abradee, Bulbe, CCEE, Click, Detronic,
 EDP, Energês, Evolua, FNCE, Galp, Lightsource bp, Luzigás, Matrix, Maya, NEX, Pan Energy, Prime
 Energy, (re)energisa, Simple, Solar Finance e outras), feito pela equipe em 28/10/2026. A pasta
@@ -25,6 +27,7 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | derrubar objeção ou mito | M03, M18, M19 |
 | mostrar dado, número ou economia | M01, M10, M11, M12, M23, M33 |
 | emocionar, institucional, data comemorativa | M15, M17, M32 |
+| apresentar a Alle ou a oferta com a Ane (post limpo, fundo branco) | M38 |
 | dica rápida e salvável | M02, M13, M20 |
 | engajar (comentário, enquete, compartilhar) | M18, M26 |
 | Black Friday (campanha) | M34, M35, M36, M37 |
@@ -155,6 +158,23 @@ palavra em laranja e um chip de destaque abaixo ("100% digital").
 grande em 600 com a palavra-chave em 800: "Se outubro fosse uma cor, seria verde." (bandeira
 verde). O logo fica no rodapé. É minimalista: nada de fotos ou ícones.
 *Referência: FNCE "Se 2024 fosse uma palavra, seria Energia", Galp "Feliz 2025!".*
+
+**M38 · Vitrine com pessoa (fundo branco).** Usa o fundo pronto `alle:fundo-branco` como primeira
+camada (`<image href="alle:fundo-branco" x="0" y="0" width="1080" height="1350"/>`): ele já traz a faixa
+roxa do topo, o logo da Alle centralizado, traçados bem discretos do raio da Alle no fundo, o card roxo
+arredondado no meio e o rodapé roxo. **Para o fundo ficar editável no editor de artes** (faixa, traçados, card e
+rodapé como elementos separados), em vez da imagem leia `skills/alle-design/fundo-branco.svg` e cole o conteúdo
+logo depois da tag `<svg>`; prefira essa forma quando a equipe for ajustar a peça. Por cima: o título centralizado em duas linhas de Bebas Neue entre
+y 220 e 390 (primeira linha em roxo-escuro `#3d0b80`, segunda em laranja `#ff7300`, ~110–120 px, no máximo
+~26 caracteres por linha); a Ane (ou outra pessoa recortada) no centro, com a
+cabeça logo abaixo do título e o corte da cintura dentro do card (de y≈400 a y≈1080); e 2 linhas de apoio em
+Montserrat 500 roxo-escuro centralizadas entre y 1110 e 1240, com uma ou duas expressões em 800 (uma delas
+pode ser em `#7c00ae`). Nada no rodapé. **Collab (ex.: Allp Fit):** use `alle:fundo-branco-sem-logo` e ponha os dois
+logos lado a lado no topo, na mesma linha (`alle:allpfit` + "+" roxo + `alle:logo`, mesma altura visual, centralizados
+entre y 80 e 170). Aqui o texto escuro é o certo (fundo branco); não use nas artes da
+parceria com a Allp Fit, que usam o fundo roxo.
+*Referência: post enviado pela equipe em 24/11/2026 (estrutura de vitrine com pessoa e card), refeito com a
+identidade da Alle.*
 
 **M32 · Foto escura com moldura de linha (carrossel institucional).** Cada slide é uma foto que
 ocupa a arte inteira (mãos juntas, painéis solares ao pôr do sol, aperto de mão, prédio), com uma

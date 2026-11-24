@@ -330,6 +330,12 @@ ${t(["A economia da sua conta de luz"], 540, 1030, 42, 0, 400, "#FFF", 'text-anc
 ${t(["CHAME A ANE NO WHATSAPP"], 540, 1170, 34, 0, 900, LAR_TXT, 'text-anchor="middle" letter-spacing="2"')}
 ${logo("logo-branco", 420, 1210, 240)}`,
 
+  M38: () => `<image href="alle:fundo-branco" x="0" y="0" width="${W}" height="${H}"/>
+<text x="540" y="285" font-family="Bebas Neue" font-size="118" fill="#3d0b80" text-anchor="middle">SUA CONTA DE LUZ MAIS LEVE</text>
+<text x="540" y="385" font-family="Bebas Neue" font-size="118" fill="${LAR_TXT}" text-anchor="middle">SEM OBRA E SEM PLACA</text>
+<image href="alle:ane-rabo" x="${540 - 287}" y="400" width="574" height="680"/>
+<text x="540" y="1150" ${F} font-size="36" font-weight="500" fill="#3d0b80" text-anchor="middle"><tspan font-weight="800">Energia digital</tspan>, com desconto todo mês</text>
+<text x="540" y="1200" ${F} font-size="36" font-weight="500" fill="#3d0b80" text-anchor="middle">e atendimento da Ane. <tspan font-weight="800" fill="${ROXO_TXT}">Fale com a gente!</tspan></text>`,
   M37: () => `<rect width="${W}" height="${H}" fill="#0B0710"/><radialGradient id="g37" cx="0.5" cy="0.45" r="0.6"><stop offset="0" stop-color="${ROXO}" stop-opacity="0.5"/><stop offset="1" stop-color="${ROXO}" stop-opacity="0"/></radialGradient><rect width="${W}" height="${H}" fill="url(#g37)"/>
 <linearGradient id="neon37" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${LAR_TXT}"/><stop offset="1" stop-color="#FFD27A"/></linearGradient><filter id="glow37"><feGaussianBlur stdDeviation="16"/></filter>
 ${t(["PREPARE-SE PARA"], 540, 360, 64, 0, 800, "#FFF", 'text-anchor="middle" letter-spacing="3"')}

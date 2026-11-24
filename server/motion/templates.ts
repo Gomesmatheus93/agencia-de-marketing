@@ -1,4 +1,4 @@
-import { MONTSERRAT_WIDTHS } from "./montserratWidths";
+import { BEBAS_WIDTHS, MONTSERRAT_WIDTHS } from "./montserratWidths";
 import { MOTION_FORMATS, type MotionFormat, type MotionLayer, type MotionScene, type MotionSpec } from "./spec";
 
 // Modelos prontos de motion no padrão da parceria Alle + Allp Fit. Servem para
@@ -10,10 +10,15 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const T = (x: number, y: number, size: number, weight: number, fill: string, t: string, extra = "") =>
   `<text x="${x}" y="${y}" font-family="Montserrat" font-size="${size}" font-weight="${weight}" fill="${fill}" ${extra}>${esc(t)}</text>`;
 const OR = "#ff7300";
+// Títulos em Bebas Neue (padrão dos posts desde 24/11/2026): caixa alta, um peso só.
+export const measureBebas = (t: string, size: number) => [...t].reduce((a, ch) => a + (BEBAS_WIDTHS[ch === "\u00a0" ? " " : ch] ?? 380), 0) * size / 1000;
+const TB = (x: number, y: number, size: number, fill: string, t: string, extra = "") =>
+  `<text x="${x}" y="${y}" font-family="Bebas Neue" font-size="${size}" fill="${fill}" ${extra}>${esc(t.toUpperCase().replace("{{N}}", "{{n}}").replace("{{T}}", "{{t}}"))}</text>`;
 
 export const ANE_PHOTOS: Record<string, { w: number; h: number; rightOnly?: boolean }> = {
   "ane-rabo": { w: 842, h: 998 }, "ane-coque-2": { w: 872, h: 1000 }, "ane-oculos-2": { w: 997, h: 1000 },
   "ane-tras": { w: 746, h: 1000 }, "ane-ombro-2": { w: 718, h: 999 }, "ane-solta": { w: 866, h: 1000, rightOnly: true },
+  "ane-polo": { w: 732, h: 1000 },
 };
 
 // ─── Peças ────────────────────────────────────────────────────────────────────
@@ -43,16 +48,16 @@ function pill(cx: number, y: number, w: number, label: string, fill = "url(#or)"
 
 /** Quebra o título em linhas (parte fina 300 + destaque 800 laranja), centralizado. */
 function titleLines(text: string, width: number, sizes: number[], maxLines: number) {
-  const prepared = text.replace(/Allp Fit/g, "Allp Fit").replace(/Alle Energia/g, "Alle Energia");
+  const prepared = text.toUpperCase().replace(/ALLP FIT/g, "ALLP\u00a0FIT").replace(/ALLE ENERGIA/g, "ALLE\u00a0ENERGIA");
   const m = prepared.match(/^(.+?[.,?:!])\s+(.+)$/);
   const toWords = (s: string, hi: boolean) => s.split(/\s+/).filter(Boolean).map((t) => ({ t, hi }));
   let words = m && m[1].length >= 8 && m[2].length >= 6 ? [...toWords(m[1], false), ...toWords(m[2], true)] : toWords(prepared, false);
   if (!words.some((w) => w.hi)) words = words.map((w, i) => ({ ...w, hi: i >= words.length - (words.length > 5 ? 3 : 2) }));
   for (const size of sizes) {
-    const ww = (w: { t: string; hi: boolean }) => measure(w.t, size, w.hi ? 800 : 300);
+    const ww = (w: { t: string; hi: boolean }) => measureBebas(w.t, size);
     const lines: Array<typeof words> = [[]]; let cur = 0;
     for (const w of words) {
-      const add = (lines[lines.length - 1].length ? size * 0.26 : 0) + ww(w);
+      const add = (lines[lines.length - 1].length ? size * 0.16 : 0) + ww(w);
       if (cur + add > width && lines[lines.length - 1].length) { lines.push([w]); cur = ww(w); } else { lines[lines.length - 1].push(w); cur += add; }
     }
     const orphan = lines.length > 1 && lines.some((l) => l.length === 1 && l[0].t.length <= 4);
@@ -62,7 +67,7 @@ function titleLines(text: string, width: number, sizes: number[], maxLines: numb
   return { size: sizes[0], lines: [words] };
 }
 function lineSvg(line: Array<{ t: string; hi: boolean }>, cx: number, y: number, size: number) {
-  return `<text x="${cx}" y="${y}" font-family="Montserrat" font-size="${size}" text-anchor="middle">${line.map((w, j) => `<tspan font-weight="${w.hi ? 800 : 300}" fill="${w.hi ? OR : "#FFFFFF"}">${j ? " " : ""}${esc(w.t)}</tspan>`).join("")}</text>`;
+  return `<text x="${cx}" y="${y}" font-family="Bebas Neue" font-size="${size}" text-anchor="middle">${line.map((w, j) => `<tspan fill="${w.hi ? OR : "#FFFFFF"}">${j ? " " : ""}${esc(w.t)}</tspan>`).join("")}</text>`;
 }
 
 // ─── Modelos ──────────────────────────────────────────────────────────────────
@@ -100,8 +105,8 @@ function ctaSpec(i: TemplateInput): MotionSpec {
   const g = geometry(i.format);
   const { W, H, cx } = g;
   const photo = i.photo ?? "ane-rabo";
-  const title = titleLines(i.text ?? "Seu benefício está a um toque.", g.colW, g.pick([116, 108, 100, 92, 84, 76], [92, 84, 76, 70, 64], [84, 78, 72, 66, 60], [112, 104, 96, 88, 80, 72]), g.pick(5, 4, 3, 4));
-  const lh = Math.round(title.size * 1.12);
+  const title = titleLines(i.text ?? "Seu benefício está a um toque.", g.colW, g.pick([190, 176, 162, 150, 138, 126], [160, 148, 136, 124, 112], [140, 130, 120, 110, 100], [180, 166, 152, 140, 128, 116]), g.pick(5, 4, 3, 4));
+  const lh = Math.round(title.size * 0.98);
   const y0 = g.pick(560, 330, 300, Math.round(H / 2 - ((title.lines.length - 1) * lh) / 2 + title.size * 0.35));
   const lines: MotionLayer[] = title.lines.map((l, k) => ({ name: `título ${k + 1}`, svg: lineSvg(l, cx, y0 + k * lh, title.size), in: { preset: "slide-up", at: 0.35 + k * 0.14, dur: 0.6, ease: "out", distance: 70 } }));
   const ane = g.ane(photo, 940, 700, 520, 1000);
@@ -117,7 +122,7 @@ function ctaSpec(i: TemplateInput): MotionSpec {
       ] },
       { name: "ação", duration: 3.8, transition: "fade", layers: [
         { name: "logos", svg: g.logos() },
-        { name: "título", svg: T(cx, qrY - 70, g.pick(64, 54, 54, 64), 800, "#FFFFFF", "Ative seu benefício", 'text-anchor="middle"'), in: { preset: "slide-down", at: 0.1, dur: 0.5, ease: "out", distance: 40 } },
+        { name: "título", svg: TB(cx, qrY - 60, g.pick(110, 96, 96, 110), "#FFFFFF", "Ative seu benefício", 'text-anchor="middle"'), in: { preset: "slide-down", at: 0.1, dur: 0.5, ease: "out", distance: 40 } },
         ...(ane2 ? [{ name: "Ane", svg: ane2.svg, in: { preset: g.wide ? "slide-left" as const : "rise" as const, at: 0.2, dur: 0.8, ease: "out" as const, distance: 400 } }] : []),
         { name: "QR", svg: qrIcon(cx - 110, qrY, 220), origin: [cx, qrY + 110], in: { preset: "pop", at: 0.35, dur: 0.6, ease: "back" }, loop: { kind: "pulse", period: 1.4, amount: 0.05, from: 1 } },
         { name: "chamada", svg: pill(cx, qrY + 330, 680, "ESCANEIE NA RECEPÇÃO"), origin: [cx, qrY + 380], in: { preset: "pop", at: 0.8, dur: 0.5, ease: "back" } },
@@ -137,10 +142,10 @@ function counterSpec(i: TemplateInput): MotionSpec {
     scenes: [
       { name: "número", duration: 4.6, transition: "zoom", layers: [
         { name: "logos", svg: g.logos(), in: { preset: "fade", at: 0, dur: 0.5, ease: "out" } },
-        { name: "antes", svg: T(cx, cy - 250, 60, 300, "#FFFFFF", "Economize até", 'text-anchor="middle"'), in: { preset: "slide-down", at: 0.2, dur: 0.6, ease: "out", distance: 60 } },
+        { name: "antes", svg: TB(cx, cy - 250, 110, "#FFFFFF", "Economize até", 'text-anchor="middle"'), in: { preset: "slide-down", at: 0.2, dur: 0.6, ease: "out", distance: 60 } },
         { name: "círculo", svg: `<circle cx="${cx}" cy="${cy}" r="${g.short ? 200 : 230}" fill="url(#or)"/>`, origin: [cx, cy], in: { preset: "pop", at: 0.4, dur: 0.7, ease: "back" } },
-        { name: "contador", svg: T(cx, cy + 70, g.short ? 190 : 210, 900, "#FFFFFF", "{{n}}%", 'text-anchor="middle" letter-spacing="-6"'), origin: [cx, cy], in: { preset: "fade", at: 0.6, dur: 0.3, ease: "out" }, counter: { from: 0, to: pct, at: 0.6, dur: 1.6, decimals: 0, ease: "out" }, loop: { kind: "pulse", period: 1.2, amount: 0.04, from: 2.4 } },
-        { name: "depois", svg: T(cx, cy + (g.short ? 320 : 360), 58, 800, "#FFFFFF", "na sua conta de luz", 'text-anchor="middle"'), in: { preset: "slide-up", at: 1.9, dur: 0.6, ease: "out", distance: 60 } },
+        { name: "contador", svg: TB(cx, cy + 100, g.short ? 270 : 300, "#FFFFFF", "{{n}}%", 'text-anchor="middle"'), origin: [cx, cy], in: { preset: "fade", at: 0.6, dur: 0.3, ease: "out" }, counter: { from: 0, to: pct, at: 0.6, dur: 1.6, decimals: 0, ease: "out" }, loop: { kind: "pulse", period: 1.2, amount: 0.04, from: 2.4 } },
+        { name: "depois", svg: TB(cx, cy + (g.short ? 330 : 370), 104, "#FFFFFF", "na sua conta de luz", 'text-anchor="middle"'), in: { preset: "slide-up", at: 1.9, dur: 0.6, ease: "out", distance: 60 } },
         { name: "todo mês", svg: T(cx, cy + (g.short ? 390 : 440), 44, 500, "#F3E8FF", "todo mês, sem obra e sem fidelidade", 'text-anchor="middle"'), in: { preset: "fade", at: 2.4, dur: 0.6, ease: "out" } },
         ...(g.wide ? [{ name: "Ane", svg: g.ane(i.photo ?? "ane-tras", 0, 0, 0, 980).svg, in: { preset: "slide-left" as const, at: 1.2, dur: 0.8, ease: "out" as const, distance: 400 } }] : []),
       ] },
@@ -159,8 +164,8 @@ function stepsSpec(i: TemplateInput): MotionSpec {
   const { W, H, cx } = g;
   const cy = g.pick(900, 640, 560, 560);
   const bOff = g.short ? 300 : 330;
-  const badge = (n: number) => `<circle cx="${cx}" cy="${cy - bOff}" r="58" fill="url(#or)"/>${T(cx, cy - bOff + 22, 64, 900, "#FFFFFF", String(n), 'text-anchor="middle"')}`;
-  const caption = (a: string, b: string) => `${T(cx, cy + 290, 66, 300, "#FFFFFF", a, 'text-anchor="middle"')}${T(cx, cy + 370, 66, 800, OR, b, 'text-anchor="middle"')}`;
+  const badge = (n: number) => `<circle cx="${cx}" cy="${cy - bOff}" r="58" fill="url(#or)"/>${TB(cx, cy - bOff + 28, 84, "#FFFFFF", String(n), 'text-anchor="middle"')}`;
+  const caption = (a: string, b: string) => `${TB(cx, cy + 300, 110, "#FFFFFF", a, 'text-anchor="middle"')}${TB(cx, cy + 400, 110, OR, b, 'text-anchor="middle"')}`;
   const bill = `<g><rect x="${cx - 150}" y="${cy - 190}" width="300" height="380" rx="20" fill="#FFF8F2"/><rect x="${cx - 150}" y="${cy - 190}" width="300" height="22" rx="10" fill="#ff7300"/>${T(cx - 115, cy - 110, 40, 800, "#3d0b80", "CONTA")}${T(cx - 115, cy - 62, 40, 800, "#3d0b80", "DE LUZ")}<path d="M${cx - 115} ${cy - 10}H${cx + 115}M${cx - 115} ${cy + 30}H${cx + 60}M${cx - 115} ${cy + 70}H${cx + 95}" stroke="#D8C9E0" stroke-width="12" stroke-linecap="round"/></g>`;
   const chat = `<g><rect x="${cx - 260}" y="${cy - 170}" width="520" height="200" rx="44" fill="#FFFFFF"/><path d="M${cx - 150} ${cy + 28}L${cx - 190} ${cy + 90}L${cx - 90} ${cy + 28}Z" fill="#FFFFFF"/>${T(cx, cy - 58, 44, 700, "#3d0b80", "Oi! Sou a Ane.", 'text-anchor="middle"')}${T(cx, cy - 4, 38, 500, "#5A16A8", "Vamos ativar?", 'text-anchor="middle"')}</g>`;
   const check = `<g><circle cx="${cx}" cy="${cy}" r="170" fill="#22C55E"/><path d="M${cx - 80} ${cy}L${cx - 20} ${cy + 62}L${cx + 90} ${cy - 60}" fill="none" stroke="#FFFFFF" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></g>`;
@@ -181,8 +186,8 @@ function stepsSpec(i: TemplateInput): MotionSpec {
       { name: "abertura", duration: 2.4, transition: "fade", layers: [
         { name: "logos", svg: g.logos(), in: { preset: "fade", at: 0, dur: 0.4, ease: "out" } },
         ...sideAne("ane-rabo").map((l) => ({ ...l, in: { preset: "slide-left" as const, at: 0.3, dur: 0.8, ease: "out" as const, distance: 400 } })),
-        { name: "título 1", svg: T(cx, cy - 60, 84, 300, "#FFFFFF", "Ativar é simples:", 'text-anchor="middle"'), in: { preset: "slide-up", at: 0.2, dur: 0.6, ease: "out", distance: 70 } },
-        { name: "título 2", svg: T(cx, cy + 50, 96, 800, OR, "4 passos.", 'text-anchor="middle"'), in: { preset: "slide-up", at: 0.4, dur: 0.6, ease: "out", distance: 70 } },
+        { name: "título 1", svg: TB(cx, cy - 40, 140, "#FFFFFF", "Ativar é simples:", 'text-anchor="middle"'), in: { preset: "slide-up", at: 0.2, dur: 0.6, ease: "out", distance: 70 } },
+        { name: "título 2", svg: TB(cx, cy + 110, 170, OR, "4 passos.", 'text-anchor="middle"'), in: { preset: "slide-up", at: 0.4, dur: 0.6, ease: "out", distance: 70 } },
       ] },
       step(1, qrIcon(cx - 150, cy - 150, 300), "Escaneie o QR", "na recepção", "ane-oculos-2"),
       step(2, chat, "Fale com", "a Ane", "ane-tras"),

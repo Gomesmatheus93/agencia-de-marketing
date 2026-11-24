@@ -5,7 +5,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 export const ASSET_URL = "/api/design-assets/assets";
 export const FONT_FACES = [["Light", 300], ["Regular", 400], ["Medium", 500], ["SemiBold", 600], ["Bold", 700], ["ExtraBold", 800], ["Black", 900]]
   .map(([n, w]) => `@font-face{font-family:"Montserrat";font-weight:${w};src:url("/api/design-assets/fonts/Montserrat-${n}.otf") format("opentype");}`)
-  .join("");
+  .join("") + `@font-face{font-family:"Bebas Neue";src:url("/api/design-assets/fonts/BebasNeue-Regular.ttf") format("truetype");}`;
 
 /**
  * Prepara um fragmento para a prévia no navegador: limpa (o roteiro vem do
@@ -101,7 +101,7 @@ const T = (x: number, y: number, size: number, weight: number, fill: string, t: 
 export function libraryItem(kind: string, W: number, H: number, photo?: AnePhoto) {
   const cx = Math.round(W / 2), cy = Math.round(H / 2);
   switch (kind) {
-    case "titulo": return { name: "título", svg: `<text x="${cx}" y="${cy}" font-family="Montserrat" font-size="96" text-anchor="middle"><tspan font-weight="300" fill="#FFFFFF">Seu título</tspan><tspan font-weight="800" fill="#ff7300"> aqui.</tspan></text>`, origin: [cx, cy - 34] as [number, number] };
+    case "titulo": return { name: "título", svg: `<text x="${cx}" y="${cy}" font-family="Bebas Neue" font-size="160" text-anchor="middle"><tspan fill="#FFFFFF">SEU TÍTULO</tspan><tspan fill="#ff7300"> AQUI.</tspan></text>`, origin: [cx, cy - 56] as [number, number] };
     case "texto": return { name: "texto", svg: T(cx, cy, 48, 500, "#FFFFFF", "Texto de apoio", 'text-anchor="middle"'), origin: [cx, cy - 17] as [number, number] };
     case "botao": return { name: "botão", svg: `<rect x="${cx - 340}" y="${cy - 50}" width="680" height="100" rx="50" fill="#ff7300"/>${T(cx, cy + 13, 36, 900, "#FFFFFF", "ATIVE SEU BENEFÍCIO", 'text-anchor="middle" letter-spacing="1"')}`, origin: [cx, cy] as [number, number] };
     case "qr": {

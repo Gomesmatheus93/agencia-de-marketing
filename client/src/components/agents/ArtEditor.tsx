@@ -46,12 +46,17 @@ const BRAND_IMAGES = [
   { href: "alle:ane-coque-2", label: "Ane · coque, braços cruzados (24/11)", w: 872, h: 1000 },
   { href: "alle:ane-oculos-2", label: "Ane · ajustando os óculos (24/11)", w: 997, h: 1000 },
   { href: "alle:ane-tras", label: "Ane · olhando para trás, cabelo solto (24/11)", w: 746, h: 1000 },
+  { href: "alle:ane-polo", label: "Ane · camisa polo com o logo da Alle (24/11)", w: 732, h: 1000 },
+  { href: "alle:fundo-branco", label: "Fundo branco da Alle (4:5, faixa, logo, traçados e card roxo)", w: 1080, h: 1350 },
+  { href: "alle:fundo-branco-sem-logo", label: "Fundo branco da Alle sem o logo (para collab)", w: 1080, h: 1350 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;
 const FONT_FACES = [["Light", 300], ["Regular", 400], ["Medium", 500], ["SemiBold", 600], ["Bold", 700], ["ExtraBold", 800], ["Black", 900]]
   .map(([n, w]) => `@font-face{font-family:"Montserrat";font-weight:${w};src:url("/api/design-assets/fonts/Montserrat-${n}.otf") format("opentype");}`)
-  .join("");
+  .join("") + `@font-face{font-family:"Bebas Neue";src:url("/api/design-assets/fonts/BebasNeue-Regular.ttf") format("truetype");}`;
+/** Bebas Neue: padrão dos títulos dos posts (24/11/2026); Montserrat no texto de apoio. */
+const FONTS = [["Bebas Neue", "Bebas Neue (títulos)"], ["Montserrat", "Montserrat (texto)"]] as const;
 
 const SELECTABLE = new Set(["rect", "circle", "ellipse", "path", "polygon", "polyline", "line", "image", "text"]);
 const COLOR_ATTRS = ["fill", "stroke"] as const;
@@ -364,9 +369,8 @@ function ArtStudio({ threadId = 0, target = { kind: "post" }, onClose, onSaved, 
     let el: SVGGraphicsElement;
     if (kind === "text") {
       el = document.createElementNS(SVG_NS, "text") as SVGGraphicsElement;
-      el.setAttribute("font-family", "Montserrat");
-      el.setAttribute("font-size", "64");
-      el.setAttribute("font-weight", "800");
+      el.setAttribute("font-family", "Bebas Neue");
+      el.setAttribute("font-size", "120");
       el.setAttribute("fill", "#1E0A01");
       const t = document.createElementNS(SVG_NS, "tspan");
       t.setAttribute("x", "80");
@@ -713,6 +717,8 @@ function TextPanel({ el, setAttr, commit, bump, tag }: {
   const fontSize = num(el.getAttribute("font-size") ?? first.getAttribute("font-size"), 40);
   const weight = el.getAttribute("font-weight") ?? first.getAttribute("font-weight") ?? "400";
   const anchor = el.getAttribute("text-anchor") ?? "start";
+  const family = (el.getAttribute("font-family") ?? first.getAttribute("font-family") ?? "Montserrat").replace(/['"]/g, "");
+  const isBebas = family.startsWith("Bebas");
 
   // Tamanho e peso valem para o texto todo: tira o que estiver só em uma linha.
   const setForAll = (name: string, value: string) => {
@@ -768,12 +774,25 @@ function TextPanel({ el, setAttr, commit, bump, tag }: {
         <Button variant="outline" size="sm" className="w-full gap-1" onClick={addLine}><Plus className="h-3.5 w-3.5" />Adicionar linha</Button>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <NumberField label="Tamanho da fonte" value={fontSize} onChange={(v) => setForAll("font-size", String(v))} />
-        <label className="block space-y-1 text-xs font-medium text-muted-foreground">Peso
-          <select value={weight} onChange={(e) => setForAll("font-weight", e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground">
-            {WEIGHTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        <label className="col-span-2 block space-y-1 text-xs font-medium text-muted-foreground">Fonte
+          <select value={isBebas ? "Bebas Neue" : "Montserrat"} onChange={(e) => {
+            setForAll("font-family", e.target.value);
+            // Bebas Neue tem um peso só e é estreita: tira o peso e aumenta o tamanho (e o inverso).
+            if (e.target.value === "Bebas Neue") { runs.forEach((r) => r.removeAttribute("font-weight")); setAttr(el, "font-weight", null); setForAll("font-size", String(Math.round(fontSize * 1.6))); }
+            else { setForAll("font-weight", "800"); setForAll("font-size", String(Math.round(fontSize / 1.6))); }
+            commit();
+          }} className="h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground">
+            {FONTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
+        <NumberField label="Tamanho da fonte" value={fontSize} onChange={(v) => setForAll("font-size", String(v))} />
+        {!isBebas && (
+          <label className="block space-y-1 text-xs font-medium text-muted-foreground">Peso
+            <select value={weight} onChange={(e) => setForAll("font-weight", e.target.value)} className="h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground">
+              {WEIGHTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+        )}
       </div>
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Cor do texto todo</p>
