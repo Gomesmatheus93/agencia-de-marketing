@@ -21,6 +21,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      // No Docker (BUILD_MAX_PARALLEL_FILE_OPS) limita quantos arquivos o Rollup abre ao mesmo tempo,
+      // para o build não disputar a máquina com a plataforma no ar. Local: padrão do Rollup.
+      ...(process.env.BUILD_MAX_PARALLEL_FILE_OPS ? { maxParallelFileOps: Number(process.env.BUILD_MAX_PARALLEL_FILE_OPS) } : {}),
+    },
   },
   server: {
     host: true,

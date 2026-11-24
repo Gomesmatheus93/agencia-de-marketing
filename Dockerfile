@@ -6,10 +6,29 @@ ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
 RUN corepack enable
 
-FROM base AS deps
+# ─── Limites do build ──────────────────────────────────────────────────────────
+# O build roda no mesmo servidor do Easypanel que já serve a plataforma. Sem limite,
+# o pnpm, o Vite/Rollup (Node), o esbuild (Go) e o Tailwind/Lightning CSS (Rust)
+# abrem uma thread por núcleo e derrubam o app no ar durante o deploy.
+# Ajuste no Easypanel em Build Args: BUILD_CPUS (núcleos) e BUILD_MEMORY_MB (heap do Node).
+FROM base AS build-limits
+ARG BUILD_CPUS=2
+ARG BUILD_MEMORY_MB=2048
+# Node: heap máximo e pool de threads do libuv (leitura de arquivos, zlib, crypto).
+ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MEMORY_MB}
+ENV UV_THREADPOOL_SIZE=${BUILD_CPUS}
+# esbuild (Go) e Tailwind v4 / Lightning CSS (Rust, rayon).
+ENV GOMAXPROCS=${BUILD_CPUS}
+ENV RAYON_NUM_THREADS=${BUILD_CPUS}
+# Rollup (vite.config.ts): quantos arquivos abre ao mesmo tempo (padrão dele: 1000).
+ENV BUILD_MAX_PARALLEL_FILE_OPS=20
+# pnpm (flags do "pnpm install" abaixo): scripts de instalação em paralelo e downloads simultâneos.
+ENV BUILD_CPUS=${BUILD_CPUS}
+
+FROM build-limits AS deps
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --child-concurrency=${BUILD_CPUS} --network-concurrency=8
 
 FROM deps AS build
 ARG VITE_APP_ID
@@ -23,12 +42,13 @@ ENV VITE_ANALYTICS_WEBSITE_ID=$VITE_ANALYTICS_WEBSITE_ID
 COPY . .
 RUN pnpm build
 
-FROM base AS prod-deps
+FROM build-limits AS prod-deps
 ENV NODE_ENV=production
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --child-concurrency=${BUILD_CPUS} --network-concurrency=8
 
+# A imagem final parte de "base", sem os limites do build: o app usa a máquina inteira.
 FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
