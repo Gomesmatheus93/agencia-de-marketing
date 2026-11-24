@@ -559,9 +559,6 @@ function DetailPanel({
                     </span>
                   </div>
 
-                  {p.imageUrl && (
-                    <img src={resolveImgUrl(p.imageUrl)} alt={p.title ?? ""} loading="lazy" className="aspect-[4/5] w-full rounded-md border object-cover" />
-                  )}
                   {p.title && (
                     <p className="text-xs font-semibold truncate text-foreground">{p.title}</p>
                   )}
