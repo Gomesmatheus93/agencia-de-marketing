@@ -18,6 +18,7 @@ import Analytics from "./pages/Analytics";
 import CalendarPage from "./pages/Calendar";
 import CtaStudio from "./pages/CtaStudio";
 import MotionStudio from "./pages/MotionStudio";
+import MotionEditorPage from "./pages/MotionEditorPage";
 import Reels from "./pages/Reels";
 import CommentAutomations from "./pages/CommentAutomations";
 import AdminPanel from "./pages/AdminPanel";
@@ -77,6 +78,7 @@ function AppRoutes() {
       <Route path="/dashboard/posts" component={Posts} />
       <Route path="/dashboard/calendar" component={CalendarPage} />
       <Route path="/dashboard/ctas" component={CtaStudio} />
+      <Route path="/dashboard/motion/:id" component={MotionEditorPage} />
       <Route path="/dashboard/motion" component={MotionStudio} />
       <Route path="/dashboard/reels" component={Reels} />
       <Route path="/dashboard/settings" component={Settings} />

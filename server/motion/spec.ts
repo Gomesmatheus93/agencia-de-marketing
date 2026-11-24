@@ -38,6 +38,11 @@ export const layerSchema = z.object({
   svg: z.string().min(1).max(400_000),
   /** Ponto de referência para escala e rotação (padrão: centro da arte). */
   origin: z.tuple([z.number(), z.number()]).optional(),
+  /** Ajustes do editor: deslocamento (px), tamanho (1 = original), opacidade e camada escondida. */
+  offset: z.tuple([z.number(), z.number()]).optional(),
+  scale: z.number().min(0.05).max(10).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  hidden: z.boolean().optional(),
   in: anim.optional(),
   out: anim.optional(),
   loop: z.object({ kind: z.enum(MOTION_LOOPS), period: z.number().min(0.2).max(10).default(1.6), amount: z.number().min(0).max(1).default(0.06), from: z.number().min(0).default(0) }).optional(),

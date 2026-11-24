@@ -27,7 +27,7 @@ export const motionRouter = router({
     formats: Object.entries(MOTION_FORMATS).map(([id, f]) => ({ id, label: f.label, width: f.width, height: f.height })),
     photos: Object.entries(ANE_PHOTOS).map(([id, p]) => ({ id, w: p.w, h: p.h, rightOnly: Boolean(p.rightOnly) })),
     presets: MOTION_PRESETS, loops: MOTION_LOOPS, eases: MOTION_EASES,
-    music: MUSIC_LIBRARY.map((m) => ({ id: m.id, label: `${m.title} · ${m.mood}` })),
+    music: MUSIC_LIBRARY.map((m) => ({ id: m.id, label: `${m.title} · ${m.mood}`, url: m.url })),
   })),
 
   list: protectedProcedure.query(async ({ ctx }) => (await motion.listMotion(ctx.user.id)).map(({ spec, ...v }) => ({ ...v, format: String((spec as { format?: string })?.format ?? "story_9x16") }))),

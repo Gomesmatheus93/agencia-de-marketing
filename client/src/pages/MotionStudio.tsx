@@ -5,12 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { MotionEditor } from "@/components/motion/MotionEditor";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Bot, Clapperboard, Copy, Download, FileJson, Loader2, Pencil, RefreshCw, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 // Aba Motion: vídeos animados no padrão da Alle, a partir de modelos prontos ou
 // de roteiros escritos pelo Claude, renderizados no servidor.
@@ -26,6 +26,7 @@ const ASPECT: Record<string, string> = { story_9x16: "aspect-[9/16]", feed_4x5: 
 
 export default function MotionStudio() {
   const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
   const options = trpc.motion.options.useQuery();
   const bank = trpc.ctas.list.useQuery();
   const list = trpc.motion.list.useQuery(undefined, {
@@ -37,7 +38,6 @@ export default function MotionStudio() {
   const [photo, setPhoto] = useState("");
   const [percent, setPercent] = useState(15);
   const [music, setMusic] = useState("mixkit-801");
-  const [editing, setEditing] = useState<number | null>(null);
   const [pasting, setPasting] = useState(false);
 
   const refresh = () => void utils.motion.list.invalidate();
@@ -141,7 +141,7 @@ export default function MotionStudio() {
                           {v.origin === "claude" ? "Claude" : `modelo ${v.origin}`}{v.seconds ? ` · ${v.seconds}s` : ""}{v.ctaId && ctaText.get(v.ctaId) ? ` · CTA` : ""} · {new Date(v.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
-                          <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setEditing(v.id)}><Pencil className="h-3.5 w-3.5" />Editar</Button>
+                          <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => navigate(`/dashboard/motion/${v.id}`)}><Pencil className="h-3.5 w-3.5" />Editar</Button>
                           {v.videoUrl && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" asChild><a href={v.videoUrl} target="_blank" rel="noopener noreferrer" download><Download className="h-3.5 w-3.5" />MP4</a></Button>}
                           {v.status === "falhou" && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => rerender.mutate({ id: v.id })}><RefreshCw className="h-3.5 w-3.5" />Tentar de novo</Button>}
                           <Button size="sm" variant="ghost" className="h-7 px-2" title="Duplicar" onClick={() => duplicate.mutate({ id: v.id })}><Copy className="h-3.5 w-3.5" /></Button>
@@ -156,8 +156,7 @@ export default function MotionStudio() {
           </section>
         </div>
       </main>
-      {editing !== null && <MotionEditor id={editing} onClose={() => setEditing(null)} onSaved={refresh} />}
-      {pasting && <PasteSpec onClose={() => setPasting(false)} onSaved={refresh} />}
+            {pasting && <PasteSpec onClose={() => setPasting(false)} onSaved={refresh} />}
     </AppLayout>
   );
 }
