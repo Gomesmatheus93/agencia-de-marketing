@@ -551,13 +551,16 @@ export function generateNumericCode(digits = 6): string {
 }
 
 // Backfill legacy accounts (trialExpiresAt IS NULL, plan='free', not admin) with a 7-day trial from now.
+// Contas de equipe (funcionários de uma conta principal) e contas restritas/de unidade não
+// têm período de teste: o acesso delas segue a conta principal.
 export async function migrateNullTrialDates(): Promise<void> {
   const db = await getDb();
   if (!db) return;
   const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await execute(db, 
     sql`UPDATE users SET "trialExpiresAt" = ${sevenDaysFromNow}
-        WHERE "trialExpiresAt" IS NULL AND plan = 'free' AND role != 'admin'`
+        WHERE "trialExpiresAt" IS NULL AND plan = 'free' AND role != 'admin'
+          AND "companyOwnerId" IS NULL AND "accountType" = 'standard'`
   );
 }
 
