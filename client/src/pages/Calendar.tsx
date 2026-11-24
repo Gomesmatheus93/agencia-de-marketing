@@ -66,6 +66,7 @@ import {
 import type { SocialPost } from "@shared/types";
 import { toSchedulerDatetimeLocalValue } from "@/lib/scheduling";
 import { SafeImage } from "@/components/SafeImage";
+import { ArtViewer } from "@/components/agents/ArtViewer";
 
 function resolveImgUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
@@ -413,6 +414,12 @@ function DetailPanel({
   onCreatePost: (holiday?: Holiday) => void;
 }) {
   const isLimited = useLimitedAccess();
+  // Artes criadas para as pautas deste dia (planejamento) e o vídeo motion ligado a elas.
+  const dayKey = fmt(date);
+  const dayArts = trpc.dashboard.period.useQuery({ start: dayKey, end: dayKey }, { staleTime: 60_000 });
+  const arts = (dayArts.data?.items ?? []).filter((it) => it.output || it.motion);
+  const [viewing, setViewing] = React.useState<number | null>(null);
+  const [playing, setPlaying] = React.useState<{ title: string; videoUrl: string } | null>(null);
   const dayNum = date.getDate();
   const weekDay = date.toLocaleDateString("pt-BR", { weekday: "long" });
   const monthYear = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -483,6 +490,47 @@ function DetailPanel({
           </div>
         )}
 
+        {/* Arte do dia: o que foi criado para as pautas deste dia */}
+        {arts.length > 0 && (
+          <div className="px-5 py-4 space-y-3 border-b border-border/30">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Arte do dia</p>
+            {arts.map((it) => (
+              <div key={`${it.planThreadId}-${it.index}`} className="space-y-2">
+                <p className="text-xs font-semibold leading-snug text-foreground">{it.title}</p>
+                <div className="flex gap-2">
+                  {it.output && (
+                    <button type="button" onClick={() => setViewing(it.output!.threadId)} title="Ver e editar a arte"
+                      className="group relative flex-1 overflow-hidden rounded-lg border bg-muted">
+                      {it.output.images[0]
+                        ? <img src={it.output.images[0]} alt={it.title} loading="lazy" className="aspect-[4/5] w-full object-cover transition group-hover:scale-[1.02]" />
+                        : it.output.videoUrl ? <video src={it.output.videoUrl} muted preload="metadata" className="aspect-[4/5] w-full object-cover" /> : null}
+                      {it.output.total > 1 && <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">{it.output.total} artes</span>}
+                    </button>
+                  )}
+                  {it.motion && (
+                    <button type="button" onClick={() => setPlaying({ title: it.motion!.title, videoUrl: it.motion!.videoUrl })} title="Ver o story em vídeo"
+                      className="relative w-[38%] shrink-0 overflow-hidden rounded-lg border bg-black">
+                      {it.motion.posterUrl && <img src={it.motion.posterUrl} alt="" loading="lazy" className="aspect-[9/16] w-full object-cover opacity-90" />}
+                      <span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">▶ Story</span></span>
+                    </button>
+                  )}
+                </div>
+                {it.output && <button type="button" onClick={() => setViewing(it.output!.threadId)} className="text-[11px] font-medium text-primary hover:underline">Ver todas as artes e a legenda</button>}
+              </div>
+            ))}
+          </div>
+        )}
+        {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} onSaved={() => void dayArts.refetch()} />}
+        {playing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPlaying(null)}>
+            <div className="w-full max-w-xs space-y-2" onClick={(e) => e.stopPropagation()}>
+              <p className="text-sm font-semibold text-white">{playing.title}</p>
+              <video src={playing.videoUrl} controls autoPlay playsInline className="aspect-[9/16] w-full rounded-lg bg-black" />
+              <button type="button" onClick={() => setPlaying(null)} className="w-full rounded-lg bg-white/10 py-2 text-sm text-white">Fechar</button>
+            </div>
+          </div>
+        )}
+
         {/* Posts section */}
         {posts.length > 0 && (
           <div className="px-5 py-4 space-y-2.5">
@@ -511,6 +559,9 @@ function DetailPanel({
                     </span>
                   </div>
 
+                  {p.imageUrl && (
+                    <img src={resolveImgUrl(p.imageUrl)} alt={p.title ?? ""} loading="lazy" className="aspect-[4/5] w-full rounded-md border object-cover" />
+                  )}
                   {p.title && (
                     <p className="text-xs font-semibold truncate text-foreground">{p.title}</p>
                   )}
@@ -533,7 +584,7 @@ function DetailPanel({
         )}
 
         {/* Empty state */}
-        {holidays.length === 0 && posts.length === 0 && (
+        {holidays.length === 0 && posts.length === 0 && arts.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center px-5">
             <CalendarDays className="w-9 h-9 text-muted-foreground/30 mb-2" />
             <p className="text-sm text-muted-foreground">Nenhum evento neste dia.</p>
