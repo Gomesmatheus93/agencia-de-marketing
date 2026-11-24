@@ -49,6 +49,10 @@ export const dashboardRouter = router({
         dates.forEach((d) => covered.add(d));
       }
       items.sort((a, b) => `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`));
+      // Conta restrita: só as pautas cuja arte foi liberada para a pessoa, e sem a lista de postagens.
+      const limited = ctx.actualUser.accountType === "limited";
+      const allowed = new Set((ctx.actualUser as { allowedThreads?: number[] | null }).allowedThreads ?? []);
+      const visible = limited ? items.filter((it) => it.output && allowed.has(it.output.threadId)) : items;
 
       // Postagens do período (agendadas ou publicadas dentro dele).
       const start = brMidnight(input.start);
@@ -73,10 +77,10 @@ export const dashboardRouter = router({
       const [dm] = conn ? await conn.select({ clicks: dmAutoReplySettings.linkClicks, slug: dmAutoReplySettings.shortSlug }).from(dmAutoReplySettings).where(eq(dmAutoReplySettings.userId, ctx.user.id)) : [];
 
       return {
-        items,
+        items: visible,
         dmReplies,
         shortLink: dm?.slug ? { slug: dm.slug, clicks: dm.clicks } : null,
-        postList: posts
+        postList: (limited ? [] : posts)
           .map((p) => {
             let collaborators: string[] = [];
             try { collaborators = (JSON.parse(p.metadata ?? "{}") as { collaborators?: string[] }).collaborators ?? []; } catch { /* metadata antigo */ }

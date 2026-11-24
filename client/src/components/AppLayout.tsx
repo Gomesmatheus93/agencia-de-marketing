@@ -55,9 +55,9 @@ import UpgradeModal from "@/components/UpgradeModal";
 
 // Menu na ordem em que o trabalho da agência acontece: agentes → planejar →
 // criar → publicar → medir.
-// Conta restrita (accountType "limited"): módulos e telas liberados.
-const LIMITED_MODULES = new Set(["dashboard", "planning", "calendar"]);
-const LIMITED_PATHS = new Set(["/dashboard", "/dashboard/planejamento", "/dashboard/calendar", "/dashboard/perfil", "/dashboard/security"]);
+// Conta restrita (accountType "limited"): só o Dashboard (e o próprio perfil); as artes liberadas abrem nele.
+const LIMITED_MODULES = new Set(["dashboard"]);
+const LIMITED_PATHS = new Set(["/dashboard", "/dashboard/perfil", "/dashboard/security"]);
 
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },

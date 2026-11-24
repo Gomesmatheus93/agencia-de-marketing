@@ -89,7 +89,9 @@ export const agentsRouter = router({
   /** Última rodada de cada tarefa de tela, resumida para a tela inicial. */
   recent: protectedProcedure.query(async ({ ctx }) => {
     const out: Record<string, { threadId: number; title: string; status: string; createdAt: Date; summary: string | null; images: string[] } | null> = {};
-    await Promise.all(Object.keys(TASKS).map(async (slug) => {
+    // Conta restrita: só o resumo da auditoria (o Dashboard mostra o último diagnóstico), sem outras artes.
+    const slugs = ctx.actualUser.accountType === "limited" ? ["auditoria"] : Object.keys(TASKS);
+    await Promise.all(slugs.map(async (slug) => {
       const [thread] = await store.listThreads(ctx.user.id, slug, "task");
       if (!thread) { out[slug] = null; return; }
       const r = (thread.result ?? {}) as Record<string, any>;

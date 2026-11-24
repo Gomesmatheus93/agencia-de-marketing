@@ -87,13 +87,12 @@ const LIMITED_ALLOWED_PATHS = new Set([
   // Dashboard (OperationalDashboard): resumo do período, números do Instagram e do Direct, só leitura.
   "dashboard.period", "agents.recent", "inbox.conversations",
   "analytics.getInsights", "analytics.getInstagramConnectionStatus", "analytics.getMedia", "analytics.getProfile",
-  // Planejamento: ver o plano e as artes, editar pauta (inclui mover de dia).
-  "agents.tasks", "agents.task", "agents.planOutputs", "agents.updatePlanItem",
-  // Ver todas as artes de um conteúdo (carrossel completo) e editar arte e legenda.
-  "agents.artSource", "agents.saveArt", "agents.undoArtEdit", "agents.editCaption",
-  // Calendário: ver posts e pautas, editar pauta (status e dia).
-  "posts.getAll", "editorialPlan.getByMonth", "editorialPlan.updateItem",
+  // Ver e editar as artes liberadas para a pessoa (users.allowedThreads), com a legenda.
+  // Desde 24/11/2026 a conta restrita não usa mais Planejamento nem Calendário.
+  "agents.task", "agents.artSource", "agents.saveArt", "agents.undoArtEdit", "agents.editCaption",
 ]);
+/** Rotas que recebem threadId: na conta restrita, só os conteúdos liberados (users.allowedThreads). */
+const LIMITED_THREAD_PATHS = new Set(["agents.task", "agents.artSource", "agents.saveArt", "agents.undoArtEdit", "agents.editCaption"]);
 export function isLimitedPathAllowed(path: string) {
   return LIMITED_ALLOWED_PATHS.has(path) || path.startsWith("profile.") || path.startsWith("auth.twoFactor.");
 }
@@ -107,8 +106,17 @@ const requireUser = t.middleware(async opts => {
   if (ctx.actualUser.accountType === "unit" && !isUnitPathAllowed(path)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Esta conta de unidade só tem acesso ao portal da unidade." });
   }
-  if (ctx.actualUser.accountType === "limited" && !isLimitedPathAllowed(path)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Este acesso permite só ver e editar o Dashboard, o Planejamento e o Calendário." });
+  if (ctx.actualUser.accountType === "limited") {
+    if (!isLimitedPathAllowed(path)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Este acesso permite só o Dashboard e as artes liberadas para você." });
+    }
+    if (LIMITED_THREAD_PATHS.has(path)) {
+      const raw = (await opts.getRawInput().catch(() => null)) as { threadId?: unknown } | null;
+      const allowed = (ctx.actualUser as { allowedThreads?: number[] | null }).allowedThreads ?? [];
+      if (!allowed.includes(Number(raw?.threadId))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Esta arte não está liberada para o seu acesso." });
+      }
+    }
   }
 
   return next({

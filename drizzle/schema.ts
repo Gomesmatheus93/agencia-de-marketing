@@ -58,6 +58,8 @@ export const users = pgTable("users", {
   externalRole: varchar("externalRole", { length: 40 }),
   groupName: varchar("groupName", { length: 255 }),
   allUnits: boolean("allUnits").default(false).notNull(),
+  // Conta restrita (accountType "limited"): conteúdos (ids de agent_threads) que ela pode ver e editar.
+  allowedThreads: json("allowedThreads").$type<number[]>(),
 }, (t) => [
   uniqueIndex("uq_users_emailHash").on(t.emailHash),
   index("idx_users_emailDomain").on(t.emailDomain),
