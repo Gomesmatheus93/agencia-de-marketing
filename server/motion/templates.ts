@@ -1,11 +1,10 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { MONTSERRAT_WIDTHS } from "./montserratWidths";
 import { MOTION_FORMATS, type MotionFormat, type MotionLayer, type MotionScene, type MotionSpec } from "./spec";
 
 // Modelos prontos de motion no padrão da parceria Alle + Allp Fit. Servem para
 // testar sem IA e como ponto de partida: o roteiro gerado pode ser editado na tela.
 
-const WIDTHS: Record<string, Record<string, number>> = JSON.parse(readFileSync(path.resolve(process.cwd(), "server/motion/montserratWidths.json"), "utf8"));
+const WIDTHS = MONTSERRAT_WIDTHS;
 export const measure = (t: string, size: number, weight: number) => [...t].reduce((a, ch) => a + (WIDTHS[String(weight)]?.[ch === " " ? " " : ch] ?? 650), 0) * size / 1000;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const T = (x: number, y: number, size: number, weight: number, fill: string, t: string, extra = "") =>
