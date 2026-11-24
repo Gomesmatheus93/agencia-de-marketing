@@ -1343,6 +1343,8 @@ export const motionVideos = pgTable("motion_videos", {
   seconds: integer("seconds"),
   error: text("error"),
   caption: text("caption"),
+  // Pauta do planejamento a que o vídeo pertence (aparece no cartão da pauta no Dashboard).
+  planLink: json("planLink").$type<{ threadId: number; index: number }>(),
   createdBy: integer("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),

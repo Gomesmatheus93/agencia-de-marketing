@@ -12,8 +12,9 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight, CalendarCheck2, CalendarRange, Clock3, Crown, Eye, FileText, Heart, Lock, MessageCircle, Plus, Send, Users,
-  FileDown,
+  FileDown, Clapperboard, Play,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Link, useLocation } from "wouter";
@@ -164,6 +165,7 @@ export default function OperationalDashboard() {
   // Conta restrita: vê e edita as artes no visualizador, sem atalhos para criar ou outras telas.
   const isLimited = useLimitedAccess();
   const [viewing, setViewing] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<{ title: string; videoUrl: string; posterUrl: string | null } | null>(null);
   const openOutput = (agentSlug: string, threadId: number) => {
     if (isLimited) { setViewing(threadId); return; }
     const screen = OUTPUT_SCREEN[agentSlug];
@@ -255,6 +257,16 @@ export default function OperationalDashboard() {
                             <Link href="/dashboard/planejamento" className="mt-2 flex aspect-[4/5] flex-col items-center justify-center gap-1 rounded-xl border border-dashed text-xs text-muted-foreground hover:border-primary hover:text-primary">
                               <Plus className="h-5 w-5" />criar
                             </Link>
+                          )}
+                          {it.motion && (
+                            <button type="button" onClick={() => setPlaying(it.motion!)} title={`Ver o vídeo: ${it.motion.title}`}
+                              className="group mt-2 flex items-center gap-2 overflow-hidden rounded-xl border bg-[#2E0A63] p-1.5 text-left text-white hover:border-primary">
+                              <span className="relative h-14 w-8 shrink-0 overflow-hidden rounded-md bg-black">
+                                {it.motion.posterUrl && <img src={it.motion.posterUrl} alt="" loading="lazy" className="h-full w-full object-cover" />}
+                                <Play className="absolute inset-0 m-auto h-3.5 w-3.5 fill-white text-white" />
+                              </span>
+                              <span className="min-w-0 text-[11px] leading-tight"><Clapperboard className="mb-0.5 h-3 w-3 text-alle-orange" /><span className="block font-semibold">Story em vídeo</span><span className="text-white/60">tocar</span></span>
+                            </button>
                           )}
                           <p className={cn("mt-2 text-[11px]", it.output ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{it.output ? "✓ criado · abrir" : past ? "não foi criado" : "a criar"}</p>
                         </div>
@@ -375,6 +387,13 @@ export default function OperationalDashboard() {
         </div>
       </main>
       {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} />}
+      <Dialog open={playing !== null} onOpenChange={(o) => { if (!o) setPlaying(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-base">{playing?.title}</DialogTitle></DialogHeader>
+          {playing && <video src={playing.videoUrl} poster={playing.posterUrl ?? undefined} controls autoPlay playsInline className="aspect-[9/16] w-full rounded-lg bg-black" />}
+          {playing && <a href={playing.videoUrl} target="_blank" rel="noopener noreferrer" download className="text-center text-sm font-medium text-primary hover:underline">Baixar o vídeo (MP4)</a>}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "motion_videos" ADD COLUMN "planLink" json;

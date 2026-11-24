@@ -1,6 +1,6 @@
 import { and, eq, gte, lt, or } from "drizzle-orm";
 import { z } from "zod";
-import { dmAutoReplyLog, dmAutoReplySettings, socialPosts } from "../drizzle/schema";
+import { dmAutoReplyLog, dmAutoReplySettings, motionVideos, socialPosts } from "../drizzle/schema";
 import { protectedProcedure, router } from "./_core/trpc";
 import * as store from "./agents/store";
 import * as db from "./db";
@@ -54,6 +54,18 @@ export const dashboardRouter = router({
       const allowed = new Set((ctx.actualUser as { allowedThreads?: number[] | null }).allowedThreads ?? []);
       const visible = limited ? items.filter((it) => it.output && allowed.has(it.output.threadId)) : items;
 
+      // Vídeos motion ligados às pautas (o mais novo de cada pauta), prontos.
+      const mconn = await db.getDb();
+      const motions = mconn ? await mconn.select({ id: motionVideos.id, title: motionVideos.title, videoUrl: motionVideos.videoUrl, posterUrl: motionVideos.posterUrl, status: motionVideos.status, planLink: motionVideos.planLink, createdAt: motionVideos.createdAt })
+        .from(motionVideos).where(eq(motionVideos.userId, ctx.user.id)) : [];
+      const motionFor = (planThreadId: number, index: number) => motions
+        .filter((m) => m.status === "pronto" && m.videoUrl && m.planLink?.threadId === planThreadId && m.planLink?.index === index)
+        .sort((a, b) => +b.createdAt - +a.createdAt)[0] ?? null;
+      const withMotion = visible.map((it) => {
+        const m = motionFor(it.planThreadId, it.index);
+        return { ...it, motion: m ? { id: m.id, title: m.title, videoUrl: m.videoUrl!, posterUrl: m.posterUrl } : null };
+      });
+
       // Postagens do período (agendadas ou publicadas dentro dele).
       const start = brMidnight(input.start);
       const end = new Date(brMidnight(input.end).getTime() + 86_400_000);
@@ -77,7 +89,7 @@ export const dashboardRouter = router({
       const [dm] = conn ? await conn.select({ clicks: dmAutoReplySettings.linkClicks, slug: dmAutoReplySettings.shortSlug }).from(dmAutoReplySettings).where(eq(dmAutoReplySettings.userId, ctx.user.id)) : [];
 
       return {
-        items: visible,
+        items: withMotion,
         dmReplies,
         shortLink: dm?.slug ? { slug: dm.slug, clicks: dm.clicks } : null,
         postList: (limited ? [] : posts)
