@@ -92,6 +92,14 @@ export const AGENTS: AgentDefinition[] = [
     ],
   },
   {
+    slug: "ctas",
+    name: "Agente de CTAs",
+    role: "Chamadas para ação",
+    description: "Cria frases de CTA no tom da Alle e da parceria com a Allp Fit, sem repetir o banco de CTAs da equipe, prontas para virar arte.",
+    skill: "alle-cta",
+    starters: ["Crie 10 CTAs para os alunos da Allp Fit", "Me dê CTAs de economia com jogo de palavras sobre treino"],
+  },
+  {
     slug: "stories",
     name: "Agente de Stories",
     role: "Sequência diária",

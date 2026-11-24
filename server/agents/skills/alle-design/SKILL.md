@@ -89,8 +89,14 @@ na cintura:
 | `alle:ane-sorrindo` | 874×1006 | de frente, cabelo solto, sorriso aberto (fotos novas) | convite, CTA, "fala comigo". O lado direito da foto é cortado: use SEMPRE encostada na borda direita da arte |
 | `alle:ane-queixo` | 883×1000 | mão no queixo, pensativa e sorrindo | pergunta, dúvida, "você sabia?", quebra de objeção |
 | `alle:ane-costas` | 773×1020 | de costas, olhando para trás e sorrindo | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
+| `alle:ane-rabo` | 842×998 | rabo de cavalo, braços cruzados, sorrindo (fotos de 24/11) | confiança, oferta, capa, CTA |
+| `alle:ane-ombro-2` | 718×999 | de costas, olhando por cima do ombro, cabelo solto (24/11) | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
+| `alle:ane-solta` | 866×1000 | de frente, cabelo solto, sorrindo (24/11) | convite, CTA, "fala comigo". O ombro direito é cortado: use SEMPRE encostada na borda direita da arte |
+| `alle:ane-coque-2` | 872×1000 | coque, braços cruzados, sorrindo (24/11) | confiança, oferta, capa |
+| `alle:ane-oculos-2` | 997×1000 | ajustando os óculos com a mão, sorrindo (24/11) | dica, "olha isso", "você sabia?", atenção a um detalhe |
+| `alle:ane-tras` | 746×1000 | de lado, olhando para trás, cabelo solto (24/11) | "arrasta pro lado", curiosidade; use no canto direito, ela olha para o texto |
 
-**Alterne as fotos (são 8):** prefira as fotos novas (ane-sorrindo, ane-queixo, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
+**Alterne as fotos (são 14):** prefira as fotos mais novas (de 24/11: ane-rabo, ane-ombro-2, ane-solta, ane-coque-2, ane-oculos-2, ane-tras; e ane-sorrindo, ane-queixo, ane-costas), escolha a pose que combina com o tema do post e nunca use a mesma foto em todas as artes da semana; não repita a mesma foto em dois posts seguidos do calendário e, num
 carrossel com a Ane em 2 slides, use uma foto diferente em cada. A largura é sempre
 altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509 de largura).
 
@@ -112,8 +118,9 @@ altura × proporção da tabela (ex.: `alle:ane-ombro` com 700 de altura tem 509
   4. **meio corpo grande** ocupando metade da arte (de 900 a 1100 px de altura), com o título
      ao lado, em coluna estreita.
   Nas posições 2, 3 e 4, use só as fotos sem corte nas laterais: `alle:ane`, `alle:ane-queixo`,
-  `alle:ane-costas`. A `alle:ane-sorrindo` tem o lado direito cortado: só na posição 1, com a
-  foto passando da borda direita. Nunca espelhe a foto para trocar de lado (o logo da camiseta
+  `alle:ane-costas`, `alle:ane-rabo`, `alle:ane-ombro-2`, `alle:ane-coque-2`, `alle:ane-oculos-2`,
+  `alle:ane-tras`. A `alle:ane-sorrindo` e a `alle:ane-solta` têm o lado direito cortado: só na
+  posição 1, com a foto passando da borda direita. Nunca espelhe a foto para trocar de lado (o logo da camiseta
   fica invertido).
 - **Combina com:** fundo roxo `#7B2FBE`, laranja ou claro. Um balão curto ao lado do rosto
   ("Fala comigo!", "Manda sua conta pra mim") reforça o CTA.

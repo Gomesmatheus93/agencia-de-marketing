@@ -915,12 +915,19 @@ async function startServer() {
   // executa por vez, seguro pra múltiplas réplicas. SEM REDIS_URL, o lock
   // vira um no-op (sempre "ganha") e cada réplica roda por conta própria —
   // ou seja, ainda não escale horizontalmente sem o Redis configurado.
-  failStaleRuns().catch((e) => console.warn("[agents] falha ao limpar execuções interrompidas:", e));
-  startInstagramPostScheduler();
-  startNewsDigestScheduler();
-  startCommentAlertScheduler();
-  startMetricsScheduler();
-  startInstagramTokenRefreshScheduler();
+  // DISABLE_SCHEDULERS=1: servidor local para testar telas contra o banco
+  // compartilhado sem publicar posts, mandar alertas nem derrubar tarefas de
+  // agente que estão rodando na produção.
+  if (process.env.DISABLE_SCHEDULERS === "1") {
+    console.log("[schedulers] desligados (DISABLE_SCHEDULERS=1)");
+  } else {
+    failStaleRuns().catch((e) => console.warn("[agents] falha ao limpar execuções interrompidas:", e));
+    startInstagramPostScheduler();
+    startNewsDigestScheduler();
+    startCommentAlertScheduler();
+    startMetricsScheduler();
+    startInstagramTokenRefreshScheduler();
+  }
   db.migrateNullTrialDates().then(() => {
     console.log("[migrate] trialExpiresAt backfill concluido");
   }).catch((e) => console.warn("[migrate] trialExpiresAt backfill falhou:", e));

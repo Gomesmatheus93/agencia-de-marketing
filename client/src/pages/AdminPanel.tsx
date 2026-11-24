@@ -9,8 +9,9 @@ import {
   Image, FileText, GalleryHorizontal, Clapperboard, Share2,
   MessageSquare, Shield, LogOut, RefreshCw, Search, ChevronDown,
   LayoutDashboard, ToggleRight, Lock, Plus, Trash2, Loader2,
-  MailPlus, UserX, UserCheck, Zap,
+  MailPlus, UserX, UserCheck, Zap, History,
 } from "lucide-react";
+import { ActivityLog } from "@/components/admin/ActivityLog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ import {
 
 type Plan = "free" | "pro" | "agency";
 type Role = "user" | "admin";
-type Tab  = "overview" | "users" | "platform";
+type Tab  = "overview" | "users" | "logs" | "platform";
 
 type UserRow = {
   id: number;
@@ -246,6 +247,7 @@ export default function AdminPanel() {
   const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "overview",  label: "Visão Geral", icon: LayoutDashboard },
     { id: "users",     label: `Usuários (${allUsers.length})`, icon: Users },
+    { id: "logs",      label: "Registros",   icon: History },
     { id: "platform",  label: "Plataforma",  icon: ToggleRight },
   ];
 
@@ -444,6 +446,9 @@ export default function AdminPanel() {
             </div>
           </div>
         )}
+
+        {/* ── REGISTROS (acessos e alterações) ── */}
+        {tab === "logs" && <ActivityLog />}
 
         {/* ── PLATFORM ── */}
         {tab === "platform" && (

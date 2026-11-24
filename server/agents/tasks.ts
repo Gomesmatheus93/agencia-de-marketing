@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DESIGN_MODEL_IDS, designModelById } from "../../shared/designModels";
+import { listCtaTexts } from "../ctaBank";
 
 // Tarefas: o modo em que um agente roda a partir de uma tela da plataforma
 // (não do chat). A tela manda um `input`; o agente trabalha com as mesmas
@@ -238,6 +239,11 @@ const postInput = z.object({
   format: z.enum(["feed_4x5", "feed_1x1", "story_9x16"]).default("feed_4x5"),
   model: designModel,
   notes: z.string().trim().max(3000).optional(),
+  // Aba CTAs: a frase do banco que é a mensagem principal da arte.
+  ctaId: z.number().int().positive().optional(),
+  cta: z.string().trim().min(3).max(300).optional(),
+  // Variação de uma arte que já existe (mesma frase, composição diferente).
+  variationOf: z.number().int().positive().optional(),
 });
 
 const postResult = z.object({
@@ -266,7 +272,52 @@ ${modelLine(i.model)}
 - Escreva a legenda pela sua skill (decida Job A ou B), humanize (ig-human) e confira com run_script caption até chegar a READY ou a um REVIEW justificado.
 - Carregue a skill alle-design e desenhe a arte com render_design (o texto da arte é curto: o gancho, não a legenda). Revise o PNG.
 - Em imageUrl, use exatamente a ARTE_URL da versão final.
+${i.cta ? `\nCTA DA PEÇA (vem do banco de CTAs da equipe): "${i.cta}"
+- Esta frase é a MENSAGEM PRINCIPAL da arte: use-a como título, com as mesmas palavras (pode quebrar em linhas e destacar palavras com cor). Não reescreva, não acrescente outra chamada concorrente.
+- O resto da arte é apoio: no máximo uma linha curta e a ação (QR na recepção / falar com a Ane, conforme o público).
+- Se a frase for da parceria Allp Fit, use o layout de parceria da alle-design (logos Allp Fit + Alle) e as regras da parceria em estrategia.md.
+- A legenda desenvolve a frase e traz a ressalva quando houver percentual.` : ""}
+${i.variationOf ? `\nVARIAÇÃO: já existe uma arte com esta mesma frase. Faça uma composição claramente diferente (outro modelo de referencias.md, outra posição da Ane ou sem a Ane, outra cor de fundo dominante), mantendo a mesma mensagem.` : ""}
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
+};
+
+// ─── CTAs (sugestões para o banco de CTAs) ───────────────────────────────────
+
+const ctaInput = z.object({
+  goal: z.string().trim().min(3).max(2000).describe("Objetivo ou comando da equipe."),
+  audience: z.enum(["parceria", "alle", "ambos"]).default("parceria"),
+  count: z.number().int().min(3).max(20).default(10),
+  angle: z.string().trim().max(60).optional(),
+  category: z.string().trim().max(60).optional(),
+});
+
+const ctaResult = z.object({
+  suggestions: z.array(z.object({
+    text: z.string().min(3).max(300),
+    category: z.string().min(2).max(60),
+    angle: z.string().min(2).max(60),
+    why: z.string().max(300),
+  })).min(1).max(20),
+  assumptions: z.array(z.string()),
+});
+
+export const ctaTask: TaskDefinition<typeof ctaInput, typeof ctaResult> = {
+  agentSlug: "ctas",
+  input: ctaInput,
+  result: ctaResult,
+  title: (i) => `CTAs: ${i.goal.split("\n")[0].slice(0, 60)}`,
+  brief: (i) => `${TASK_RULES}
+
+TAREFA: sugerir ${i.count} CTAs novos para o banco de CTAs da equipe, seguindo a sua skill.
+- Objetivo: ${i.goal}
+- Público: ${i.audience === "parceria" ? "alunos da Allp Fit (parceria Alle Energia + Allp Fit)" : i.audience === "alle" ? "público geral da Alle Energia" : "metade para os alunos da Allp Fit (parceria), metade para o público geral da Alle Energia"}.
+${i.angle ? `- Ângulo pedido: ${i.angle} (pode variar a estrutura dentro dele).` : "- Varie os ângulos."}
+${i.category ? `- Categoria de todas as sugestões: "${i.category}".` : '- Categoria: use "Parceria Allp Fit" para a parceria e "Alle Energia" para o público geral, ou outra que já exista no banco se fizer mais sentido.'}
+- Leia estrategia.md antes de escrever. Não repita nem imite de perto nenhuma frase do BANCO ATUAL abaixo.`,
+  context: async (userId) => {
+    const list = await listCtaTexts(userId);
+    return list.length ? `BANCO ATUAL (${list.length} frases):\n${list.map((c) => `- [${c.category}${c.angle ? ` · ${c.angle}` : ""}] ${c.text}`).join("\n")}` : "BANCO ATUAL: vazio.";
+  },
 };
 
 // ─── Stories (sequência do dia, com artes) ────────────────────────────────────
@@ -431,6 +482,7 @@ export const TASKS: Record<string, TaskDefinition> = {
   [storiesTask.agentSlug]: storiesTask,
   [videoTask.agentSlug]: videoTask,
   [brandTask.agentSlug]: brandTask,
+  [ctaTask.agentSlug]: ctaTask,
 };
 
 export type AuditResult = z.infer<typeof auditResult>;
@@ -441,3 +493,4 @@ export type CarouselResult = z.infer<typeof carouselResult>;
 export type PostResult = z.infer<typeof postResult>;
 export type StoriesResult = z.infer<typeof storiesResult>;
 export type BrandResult = z.infer<typeof brandResult>;
+export type CtaResult = z.infer<typeof ctaResult>;

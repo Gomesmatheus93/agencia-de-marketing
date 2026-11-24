@@ -5,6 +5,7 @@ import * as db from "../db";
 import { hashPassword } from "./password";
 import { nanoid } from "nanoid";
 import { storagePut } from "../storage";
+import { listActivity } from "./activityLog";
 
 function extensionFromMimeType(mimeType: string): string {
   const map: Record<string, string> = {
@@ -64,6 +65,16 @@ export const adminRouter = router({
   auditLog: ownerProcedure
     .input(z.object({ limit: z.number().int().min(1).max(500).optional() }).optional())
     .query(async ({ input }) => db.getAuditLog(input?.limit ?? 200)),
+
+  /** Registros de acesso e de alterações (quem fez o quê), para o super admin. */
+  activityLog: ownerProcedure
+    .input(z.object({
+      kind: z.enum(["all", "access", "change"]).default("all"),
+      actorId: z.number().int().positive().optional(),
+      days: z.number().int().min(1).max(365).default(30),
+      limit: z.number().int().min(1).max(2000).default(500),
+    }))
+    .query(({ input }) => listActivity(input)),
 
   setUserRole: ownerProcedure
     .input(z.object({ id: z.number(), role: z.enum(["user", "admin"]) }))

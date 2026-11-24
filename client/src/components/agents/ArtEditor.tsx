@@ -40,6 +40,12 @@ const BRAND_IMAGES = [
   { href: "alle:ane-sorrindo", label: "Ane · sorrindo, cabelo solto (nova)", w: 874, h: 1006 },
   { href: "alle:ane-queixo", label: "Ane · mão no queixo (nova)", w: 883, h: 1000 },
   { href: "alle:ane-costas", label: "Ane · olhando para trás (nova)", w: 773, h: 1020 },
+  { href: "alle:ane-rabo", label: "Ane · rabo de cavalo, braços cruzados (24/11)", w: 842, h: 998 },
+  { href: "alle:ane-ombro-2", label: "Ane · de costas, por cima do ombro (24/11)", w: 718, h: 999 },
+  { href: "alle:ane-solta", label: "Ane · cabelo solto, de frente (24/11; só na borda direita)", w: 866, h: 1000 },
+  { href: "alle:ane-coque-2", label: "Ane · coque, braços cruzados (24/11)", w: 872, h: 1000 },
+  { href: "alle:ane-oculos-2", label: "Ane · ajustando os óculos (24/11)", w: 997, h: 1000 },
+  { href: "alle:ane-tras", label: "Ane · olhando para trás, cabelo solto (24/11)", w: 746, h: 1000 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;

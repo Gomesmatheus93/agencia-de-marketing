@@ -1297,3 +1297,28 @@ export const unitArtBackgrounds = pgTable("unit_art_backgrounds", {
   storyUrl: text("storyUrl").notNull(), // 1080x1920
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+// ─── Banco de CTAs (aba CTAs, pedido de 24/11/2026) ──────────────────────────
+/** Frases de chamada para ação da conta, com categoria e ângulo, para virar arte. */
+export const ctas = pgTable("ctas", {
+  id: serial("id").primaryKey(),
+  // Conta dona (a principal; funcionários gravam na conta da empresa).
+  userId: integer("userId").notNull(),
+  text: varchar("text", { length: 300 }).notNull(),
+  // Onde a frase é usada (ex.: "Parceria Allp Fit", "Alle Energia", "Black Friday").
+  category: varchar("category", { length: 60 }).notNull(),
+  // Gatilho da frase (ex.: pertencimento, exclusividade, praticidade, economia).
+  angle: varchar("angle", { length: 60 }),
+  notes: text("notes"),
+  // manual = cadastrada na tela; ia = sugerida pelo Agente de CTAs; equipe = enviada pela equipe.
+  source: varchar("source", { length: 16 }).default("manual").notNull(),
+  favorite: boolean("favorite").default(false).notNull(),
+  createdBy: integer("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index("idx_ctas_user").on(t.userId),
+  uniqueIndex("uq_ctas_user_text").on(t.userId, t.text),
+]);
+
+export type Cta = typeof ctas.$inferSelect;

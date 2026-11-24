@@ -36,7 +36,7 @@ import {
   ClipboardCheck,
   ShieldCheck,
   Building2,
-  Palette,
+  Palette, Megaphone
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -63,6 +63,7 @@ const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
   { id: "planning", icon: CalendarRange, path: "/dashboard/planejamento", color: "from-alle-purple to-alle-purple-light", labelKey: "planning" as const, descKey: "planningDesc" as const, group: "plan" as const },
   { id: "calendar", icon: CalendarDays, path: "/dashboard/calendar", color: "from-alle-purple to-alle-purple-light", labelKey: "calendar" as const, descKey: "calendarDesc" as const, group: "plan" as const },
+  { id: "ctas", icon: Megaphone, path: "/dashboard/ctas", color: "from-alle-purple to-alle-orange", labelKey: "ctas" as const, descKey: "ctasDesc" as const, group: "create" as const },
   { id: "agentCarousel", icon: GalleryHorizontal, path: "/dashboard/criar/carrossel", color: "from-alle-purple to-alle-orange", labelKey: "createCarousel" as const, descKey: "createCarouselDesc" as const, group: "create" as const },
   { id: "agentPost", icon: Image, path: "/dashboard/criar/post", color: "from-alle-purple to-alle-orange", labelKey: "createPost" as const, descKey: "createPostDesc" as const, group: "create" as const },
   { id: "agentStories", icon: Layers, path: "/dashboard/criar/stories", color: "from-alle-purple to-alle-orange", labelKey: "createStories" as const, descKey: "createStoriesDesc" as const, group: "create" as const },

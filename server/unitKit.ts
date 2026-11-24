@@ -309,6 +309,12 @@ export const ANE_PHOTOS: Record<string, { label: string; w: number; h: number }>
   "ane-sorrindo": { label: "Sorrindo, cabelo solto (nova)", w: 874, h: 1006 },
   "ane-queixo": { label: "Mão no queixo (nova)", w: 883, h: 1000 },
   "ane-costas": { label: "Olhando para trás (nova)", w: 773, h: 1020 },
+  "ane-rabo": { label: "Rabo de cavalo, braços cruzados (24/11)", w: 842, h: 998 },
+  "ane-ombro-2": { label: "De costas, por cima do ombro (24/11)", w: 718, h: 999 },
+  "ane-solta": { label: "Cabelo solto, de frente (24/11)", w: 866, h: 1000 },
+  "ane-coque-2": { label: "Coque, braços cruzados (24/11)", w: 872, h: 1000 },
+  "ane-oculos-2": { label: "Ajustando os óculos (24/11)", w: 997, h: 1000 },
+  "ane-tras": { label: "Olhando para trás, cabelo solto (24/11)", w: 746, h: 1000 },
 };
 
 /** Banner (90×120, parede): frase gigante, QR enorme com "ATIVE AGORA" e a Ane grande com balão. */

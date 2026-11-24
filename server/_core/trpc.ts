@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { redisIncrWithTtl } from "./redis";
+import { recordAudit } from "../db";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -119,6 +120,48 @@ const requireUser = t.middleware(async opts => {
   });
 });
 
+// ─── Registro de alterações (pedido de 23/11/2026) ───────────────────────────────
+// Toda mutation que dá certo vira uma linha em audit_log (action "change"): quem
+// fez (actorUserId = quem logou), em nome de qual conta (targetUserId), a rota e
+// um resumo do que foi enviado. Senhas, códigos, desenhos (svg) e arquivos em
+// base64 nunca entram. O login já é registrado à parte (login.*, sso.login).
+const AUDIT_SKIP = [/^auth\./, /^system\./];
+const SECRET_KEY = /password|senha|token|secret|base64|dataurl|^(code|otp|svg|file|audio|blob|imageData)$/i;
+function summarize(v: unknown, depth = 0): unknown {
+  if (v == null || typeof v === "number" || typeof v === "boolean") return v;
+  if (typeof v === "string") return v.length > 300 ? `${v.slice(0, 300)}…` : v;
+  if (v instanceof Date) return v.toISOString();
+  if (depth >= 4) return "…";
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => summarize(x, depth + 1));
+  if (typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) {
+      out[k] = SECRET_KEY.test(k) ? "(omitido)" : summarize(x, depth + 1);
+    }
+    return out;
+  }
+  return String(v);
+}
+const auditChanges = t.middleware(async ({ ctx, next, path, type, getRawInput }) => {
+  const result = await next();
+  if (type === "mutation" && result.ok && ctx.actualUser && !AUDIT_SKIP.some((re) => re.test(path))) {
+    const input = await getRawInput().catch(() => undefined);
+    const obj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+    const ref = obj.threadId ?? obj.id ?? obj.postId ?? obj.memberId ?? null;
+    void recordAudit({
+      action: "change",
+      actorUserId: ctx.actualUser.id,
+      targetUserId: ctx.user?.id ?? null,
+      targetType: path.split(".")[0].slice(0, 32),
+      targetId: ref == null ? null : String(ref).slice(0, 64),
+      ip: ctx.req.ip ?? null,
+      userAgent: String(ctx.req.headers?.["user-agent"] ?? "").slice(0, 255) || null,
+      metadata: { path, input: summarize(input) as Record<string, unknown> },
+    });
+  }
+  return result;
+});
+
 // Per-user rate limits — uses userId so users behind the same proxy/NAT
 // (Traefik, load balancers) each get their own independent bucket.
 // 200 requests per minute for standard authenticated routes
@@ -139,10 +182,10 @@ const aiRateLimit = t.middleware(async ({ ctx, next }) => {
 
 // Sem confirmação de e-mail: a plataforma é interna e as contas da equipe são
 // criadas pela conta principal (Equipe), então login com senha já basta.
-export const authedProcedure = t.procedure.use(requireUser).use(standardRateLimit);
+export const authedProcedure = t.procedure.use(requireUser).use(standardRateLimit).use(auditChanges);
 
 export const protectedProcedure = authedProcedure;
-export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit);
+export const aiProcedure = t.procedure.use(requireUser).use(aiRateLimit).use(auditChanges);
 // 10 requests per 15 minutes per IP — para login/registro/verificação/reset/2FA.
 // O brute-force de senha em si tem proteção dedicada (server/_core/loginGuard.ts:
 // 5 falhas por e-mail+IP), então este limite de IP pode ser um pouco mais folgado
@@ -173,7 +216,7 @@ export const adminProcedure = t.procedure.use(
       },
     });
   }),
-);
+).use(auditChanges);
 
 // ownerProcedure is now identical to adminProcedure — any user with role "admin" qualifies.
 export const ownerProcedure = adminProcedure;

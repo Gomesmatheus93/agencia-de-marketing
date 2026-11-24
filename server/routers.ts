@@ -7,6 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminRouter, featuresRouter, parseImageDataUrl } from "./_core/adminRouter";
 import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
 import { agentsRouter } from "./agents/router";
+import { ctaRouter } from "./ctaRouter";
 import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { assertPublicHttpUrl } from "./_core/ssrfGuard";
@@ -5736,6 +5737,7 @@ export const appRouter = router({
   features: featuresRouter,
   brandKit: brandKitRouter,
   agents: agentsRouter,
+  ctas: ctaRouter,
   team: teamRouter,
   contentApproval: contentApprovalRouter,
   reels: reelsRouter,

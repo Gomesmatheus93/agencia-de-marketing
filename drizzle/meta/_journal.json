@@ -141,6 +141,13 @@
       "when": 1794858011005,
       "tag": "0019_unit_art_backgrounds",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795519492021,
+      "tag": "0020_cta_bank",
+      "breakpoints": true
     }
   ]
 }
