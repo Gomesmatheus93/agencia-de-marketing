@@ -97,6 +97,26 @@ export default function Planning() {
   };
 
   const plan = t.result;
+
+  // Escolha do mês: os meses cobertos pelos planejamentos já feitos (um plano semanal que cruza
+  // dois meses aparece nos dois). Num mês com vários planos, o mais recente vem primeiro.
+  const monthName = (ym: string) => { const [y, m] = ym.split("-").map(Number); const t = new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const plansByMonth = useMemo(() => {
+    const map = new Map<string, Array<{ id: number; label: string }>>();
+    for (const task of t.tasks as Array<{ id: number; title: string; hasResult: boolean; period?: { start: string; end: string; label: string | null } | null }>) {
+      if (!task.period) continue;
+      const months = new Set([task.period.start.slice(0, 7), task.period.end.slice(0, 7)]);
+      for (const ym of months) map.set(ym, [...(map.get(ym) ?? []), { id: task.id, label: task.period.label ?? task.title }]);
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [t.tasks]);
+  const current = t.tasks.find((x) => x.id === t.threadId) as { period?: { start: string; end: string } | null } | undefined;
+  const [month, setMonth] = useState<string | null>(null);
+  // O mês escolhido vale enquanto o plano aberto cobrir esse mês (ex.: depois de gerar um plano novo, segue o novo).
+  const covers = (ym: string) => Boolean(current?.period && current.period.start.slice(0, 7) <= ym && current.period.end.slice(0, 7) >= ym);
+  const shownMonth = (month && covers(month) ? month : current?.period?.start.slice(0, 7)) ?? plansByMonth[0]?.[0] ?? "";
+  const monthPlans = plansByMonth.find(([ym]) => ym === shownMonth)?.[1] ?? [];
+  const pickMonth = (ym: string) => { setMonth(ym); const first = plansByMonth.find(([m]) => m === ym)?.[1][0]; if (first) t.setThreadId(first.id); };
   const outputs = trpc.agents.planOutputs.useQuery({ threadId: t.threadId ?? 0 }, { enabled: Boolean(t.threadId && plan) });
   const [viewing, setViewing] = useState<number | null>(null);
   const openOutput = (agentSlug: string, threadId: number) => {
@@ -172,6 +192,25 @@ export default function Planning() {
               </Button>
             </CardContent>
           </Card>}
+
+          {plansByMonth.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">Ver o planejamento de:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {plansByMonth.map(([ym]) => (
+                  <button key={ym} type="button" onClick={() => pickMonth(ym)}
+                    className={cn("rounded-full border px-3 py-1.5 text-sm transition", ym === shownMonth ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:border-primary/40")}>
+                    {monthName(ym)}
+                  </button>
+                ))}
+              </div>
+              {monthPlans.length > 1 && (
+                <select value={t.threadId ?? ""} onChange={(e) => t.setThreadId(Number(e.target.value))} className="h-9 rounded-md border bg-background px-2 text-sm">
+                  {monthPlans.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              )}
+            </div>
+          )}
 
           {t.running && <TaskProgress agentName="Agente de Planejamento" activity={t.activity} startedAt={t.thread?.createdAt} />}
           {t.thread?.status === "failed" && <TaskError message={t.thread.lastError} />}

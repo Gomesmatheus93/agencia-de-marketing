@@ -112,7 +112,12 @@ export const agentsRouter = router({
     .input(z.object({ agentSlug: z.string() }))
     .query(async ({ ctx, input }) => {
       const threads = await store.listThreads(ctx.user.id, input.agentSlug, "task");
-      return threads.map((t) => ({ id: t.id, title: t.title, status: t.status, hasResult: Boolean(t.result), createdAt: t.createdAt }));
+      return threads.map((t) => {
+        const r = (t.result ?? null) as { startDate?: string; endDate?: string; periodLabel?: string } | null;
+        // Planejamento: o período coberto, para escolher o mês na tela.
+        const period = r?.startDate && r?.endDate ? { start: r.startDate, end: r.endDate, label: r.periodLabel ?? null } : null;
+        return { id: t.id, title: t.title, status: t.status, hasResult: Boolean(t.result), createdAt: t.createdAt, period };
+      });
     }),
 
   task: protectedProcedure
