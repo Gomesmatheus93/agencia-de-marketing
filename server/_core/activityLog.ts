@@ -6,7 +6,9 @@ import * as db from "../db";
 // Acessos: login.*, sso.login e logout. Alterações: "change" (gravado por
 // auditChanges em trpc.ts) mais as ações de admin e das unidades.
 
-const ACCESS_ACTIONS = ["login.success", "login.2fa_success", "sso.login", "logout", "login.failed", "login.locked", "login.2fa_challenge", "login.2fa_locked"];
+const ACCESS_ACTIONS = ["login.success", "login.2fa_success", "sso.login", "logout", "login.failed", "login.locked", "login.2fa_challenge", "login.2fa_locked",
+  // Abrir e baixar materiais das unidades também é acesso (não muda nada).
+  "unit.plan.view", "unit.plan.download", "unit.material.view", "unit.material.download"];
 
 const ACTION_LABEL: Record<string, string> = {
   "login.success": "Entrou na plataforma",
@@ -22,6 +24,21 @@ const ACTION_LABEL: Record<string, string> = {
   "admin.reactivate": "Reativou uma conta",
   "admin.deactivate": "Desativou uma conta",
   "admin.delete_user": "Excluiu um usuário",
+  "admin.set_password": "Trocou a senha de um usuário",
+  "unit.plan.view": "Abriu o plano da semana da unidade",
+  "unit.plan.download": "Baixou uma arte do plano da unidade",
+  "unit.plan.posted": "Marcou um post da unidade como publicado",
+  "unit.plan.saved": "Salvou o plano da semana de uma unidade",
+  "unit.plan.published": "Liberou o plano da semana para a unidade",
+  "unit.plan.ai": "Pediu o plano da unidade à IA",
+  "unit.material.view": "Abriu um material da unidade",
+  "unit.material.download": "Baixou um material da unidade",
+  "unit.kit.generated": "Gerou o mídia kit de uma unidade",
+  "unit.kit.approved": "Aprovou o mídia kit de uma unidade",
+  "unit.kit.deleted": "Excluiu um mídia kit",
+  "unit.support.opened": "Abriu um chamado de suporte",
+  "unit.created": "Cadastrou uma unidade",
+  "unit.updated": "Editou uma unidade",
 };
 
 // Rotas mais comuns em português; as outras aparecem pelo nome técnico.
@@ -49,6 +66,8 @@ const PATH_LABEL: Record<string, string> = {
   "team.remove": "Removeu um acesso da equipe",
   "profile.update": "Atualizou o próprio perfil",
   "unitArt.applyModel": "Trocou o modelo de uma arte das unidades",
+  "unitPortal.selectUnit": "Trocou de unidade no portal",
+  "unitPortal.markPosted": "Marcou um post da unidade como publicado",
   "ctas.create": "Cadastrou um CTA",
   "ctas.update": "Editou um CTA",
   "ctas.remove": "Excluiu um CTA",

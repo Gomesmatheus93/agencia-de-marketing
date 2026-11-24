@@ -36,7 +36,7 @@ import {
   ClipboardCheck,
   ShieldCheck,
   Building2,
-  Palette, Megaphone
+  Palette, Megaphone, History
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -357,6 +357,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             <NavButton item={unitsItem} mini={mini} />
             <NavButton item={mediaKitItem} mini={mini} />
             <NavButton item={settingsItem} mini={mini} />
+            <NavButton item={{ id: "adminLogs", icon: History, path: "/admin?tab=logs", color: "from-slate-600 to-slate-800", label: "Registros e senhas", description: "Quem acessou, o que mudou e troca de senha" }} mini={mini} />
           </>
         )}
 

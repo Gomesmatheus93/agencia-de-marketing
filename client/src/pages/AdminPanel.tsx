@@ -9,9 +9,10 @@ import {
   Image, FileText, GalleryHorizontal, Clapperboard, Share2,
   MessageSquare, Shield, LogOut, RefreshCw, Search, ChevronDown,
   LayoutDashboard, ToggleRight, Lock, Plus, Trash2, Loader2,
-  MailPlus, UserX, UserCheck, Zap, History,
+  MailPlus, UserX, UserCheck, Zap, History, KeyRound, Copy, Eye, EyeOff,
 } from "lucide-react";
-import { ActivityLog } from "@/components/admin/ActivityLog";
+import { ActivityLog, RecentActivity } from "@/components/admin/ActivityLog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -96,8 +97,59 @@ function Bar({ value, max, icon: Icon, cls, barCls }: { value: number; max: numb
 }
 
 // ── User actions ──────────────────────────────────────────────────────────────
-function UserActions({ u, selfId, onDone }: { u: UserRow; selfId: number; onDone: () => void }) {
+/** Senha forte e legível (sem 0/O, 1/l/I). */
+function randomPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const buf = new Uint32Array(12);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => chars[n % chars.length]).join("");
+}
+
+function PasswordDialog({ u, onClose }: { u: UserRow; onClose: () => void }) {
+  const [pw, setPw] = useState(randomPassword);
+  const [show, setShow] = useState(true);
+  const [done, setDone] = useState(false);
+  const save = trpc.admin.setUserPassword.useMutation({ onSuccess: () => { setDone(true); toast.success("Senha trocada"); }, onError: (e) => toast.error(e.message) });
+  const copy = () => { void navigator.clipboard.writeText(pw); toast.success("Senha copiada"); };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md border-zinc-700 bg-zinc-900 text-zinc-100">
+        <DialogHeader><DialogTitle className="text-white">Trocar senha</DialogTitle></DialogHeader>
+        <p className="text-sm text-zinc-400"><span className="font-medium text-zinc-200">{u.name || u.email}</span>{u.name && u.email ? <> · {u.email}</> : null}</p>
+        {done ? (
+          <div className="space-y-3">
+            <p className="text-sm text-emerald-400">Senha trocada. As sessões abertas dessa pessoa foram encerradas: ela entra de novo com a senha nova.</p>
+            <div className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-white">{pw}<button onClick={copy} className="ml-auto text-zinc-400 hover:text-white" title="Copiar"><Copy className="h-4 w-4" /></button></div>
+            <div className="flex justify-end"><button onClick={onClose} className="rounded-lg bg-primary px-4 py-1.5 text-sm text-white">Fechar</button></div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="block space-y-1 text-xs text-zinc-400">Nova senha (mínimo 8 caracteres)
+              <div className="flex items-center gap-2">
+                <input value={pw} onChange={(e) => setPw(e.target.value)} type={show ? "text" : "password"} autoComplete="new-password"
+                  className="h-9 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 font-mono text-sm text-white" />
+                <button onClick={() => setShow((v) => !v)} className="h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-zinc-300" title={show ? "Esconder" : "Mostrar"}>{show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+                <button onClick={copy} className="h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-zinc-300" title="Copiar"><Copy className="h-4 w-4" /></button>
+              </div>
+            </label>
+            <button onClick={() => setPw(randomPassword())} className="flex items-center gap-1.5 text-xs text-primary hover:underline"><RefreshCw className="h-3.5 w-3.5" />Gerar outra senha</button>
+            <p className="text-[11px] text-zinc-500">Ao salvar, a pessoa sai de todos os aparelhos. Copie a senha antes de fechar: ela não fica visível depois. A troca vai para os Registros (sem a senha).</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+              <button disabled={pw.length < 8 || save.isPending} onClick={() => save.mutate({ id: u.id, password: pw })} className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+                {save.isPending ? "Salvando…" : "Salvar senha"}
+              </button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UserActions({ u, selfId, onDone, onShowLogs }: { u: UserRow; selfId: number; onDone: () => void; onShowLogs: (u: UserRow) => void }) {
   const isSelf = u.id === selfId;
+  const [pwOpen, setPwOpen] = useState(false);
   const setPlan   = trpc.admin.setUserPlan.useMutation({ onSuccess: () => { toast.success("Plano atualizado"); onDone(); }, onError: e => toast.error(e.message) });
   const setRole   = trpc.admin.setUserRole.useMutation({ onSuccess: () => { toast.success("Função atualizada"); onDone(); }, onError: e => toast.error(e.message) });
   const setActive = trpc.admin.setUserActive.useMutation({ onSuccess: () => { toast.success(u.isActive ? "Conta desativada" : "Conta reativada"); onDone(); }, onError: e => toast.error(e.message) });
@@ -105,6 +157,8 @@ function UserActions({ u, selfId, onDone }: { u: UserRow; selfId: number; onDone
   const busy = setPlan.isPending || setRole.isPending || setActive.isPending || del.isPending;
 
   return (
+    <>
+    {pwOpen && <PasswordDialog u={u} onClose={() => setPwOpen(false)} />}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs transition-colors">
@@ -115,6 +169,13 @@ function UserActions({ u, selfId, onDone }: { u: UserRow; selfId: number; onDone
         <div className="px-2 py-1.5">
           <p className="text-xs font-semibold truncate text-white">{u.name || u.email}</p>
         </div>
+        <DropdownMenuSeparator className="bg-zinc-700" />
+        <DropdownMenuItem className="text-xs gap-2 focus:bg-zinc-800 focus:text-white" onClick={() => setPwOpen(true)}>
+          <KeyRound className="w-3.5 h-3.5 text-primary" />Trocar senha
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-xs gap-2 focus:bg-zinc-800 focus:text-white" onClick={() => onShowLogs(u)}>
+          <History className="w-3.5 h-3.5 text-sky-400" />Ver registros deste usuário
+        </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-zinc-700" />
         <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Mudar plano</div>
         {(["free","pro","agency"] as Plan[]).map(p => (
@@ -139,6 +200,7 @@ function UserActions({ u, selfId, onDone }: { u: UserRow; selfId: number; onDone
         </>}
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   );
 }
 
@@ -175,7 +237,10 @@ function InviteForm({ onDone }: { onDone: () => void }) {
 export default function AdminPanel() {
   const { user, loading } = useAuth();
   const [, navigate] = useLocation();
-  const [tab, setTab]           = useState<Tab>("overview");
+  // ?tab=logs abre direto nos Registros (link do menu lateral).
+  const [tab, setTab]           = useState<Tab>(() => (new URLSearchParams(window.location.search).get("tab") as Tab) || "overview");
+  const [logUser, setLogUser]   = useState<{ id: number; label: string } | undefined>(undefined);
+  const showLogs = (u?: UserRow) => { setLogUser(u ? { id: u.id, label: u.name || u.email || `#${u.id}` } : undefined); setTab("logs"); window.scrollTo({ top: 0 }); };
   const [search, setSearch]     = useState("");
   const [planFilter, setPlanFilter] = useState<Plan | "all">("all");
 
@@ -267,7 +332,7 @@ export default function AdminPanel() {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                tab === id ? "bg-primary text-white" : "text-zinc-400 hover:text-zinc-200")}>
+                tab === id ? "bg-primary text-white" : id === "logs" ? "text-sky-300 hover:text-sky-200" : "text-zinc-400 hover:text-zinc-200")}>
               <Icon className="w-3.5 h-3.5" />{label}
             </button>
           ))}
@@ -286,6 +351,7 @@ export default function AdminPanel() {
         {/* ── OVERVIEW ── */}
         {tab === "overview" && (
           <div className="space-y-6">
+            <RecentActivity onSeeAll={() => showLogs()} />
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <Stat label="Total de contas"  value={allUsers.length}   sub={`${newThisWeek.length} esta semana`} icon={Users}         cls="text-blue-400" />
               <Stat label="Pagantes"         value={paidUsers.length}  sub="Pro + Agência"                       icon={CheckCircle2}  cls="text-emerald-400" />
@@ -428,7 +494,7 @@ export default function AdminPanel() {
                           <div className="text-[10px] text-zinc-600">criações</div>
                         </div>
 
-                        <UserActions u={u} selfId={user.id} onDone={() => detailQ.refetch()} />
+                        <UserActions u={u} selfId={user.id} onDone={() => detailQ.refetch()} onShowLogs={showLogs} />
                       </div>
 
                       {/* Usage bars */}
@@ -448,7 +514,19 @@ export default function AdminPanel() {
         )}
 
         {/* ── REGISTROS (acessos e alterações) ── */}
-        {tab === "logs" && <ActivityLog />}
+        {tab === "logs" && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4">
+              <History className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div className="text-sm">
+                <p className="font-semibold text-white">Registros de acesso e alterações</p>
+                <p className="text-zinc-400">Cada entrada e cada mudança feita na plataforma: quem fez, quando, de onde e o quê. Clique numa linha para ver os detalhes.</p>
+              </div>
+              {logUser && <button onClick={() => setLogUser(undefined)} className="ml-auto shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">Ver de todos</button>}
+            </div>
+            <ActivityLog initialActorId={logUser?.id} initialActorLabel={logUser?.label} />
+          </div>
+        )}
 
         {/* ── PLATFORM ── */}
         {tab === "platform" && (

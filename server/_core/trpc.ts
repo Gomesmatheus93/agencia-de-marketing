@@ -133,7 +133,8 @@ const requireUser = t.middleware(async opts => {
 // fez (actorUserId = quem logou), em nome de qual conta (targetUserId), a rota e
 // um resumo do que foi enviado. Senhas, códigos, desenhos (svg) e arquivos em
 // base64 nunca entram. O login já é registrado à parte (login.*, sso.login).
-const AUDIT_SKIP = [/^auth\./, /^system\./, /^motion\.previewFrame$/];
+// admin.setUser*/deleteUser já gravam o próprio registro (admin.set_role etc.).
+const AUDIT_SKIP = [/^auth\./, /^system\./, /^motion\.previewFrame$/, /^admin\.(setUser(Role|Plan|Active|Password)|deleteUser)$/];
 const SECRET_KEY = /password|senha|token|secret|base64|dataurl|^(code|otp|svg|file|audio|blob|imageData)$/i;
 function summarize(v: unknown, depth = 0): unknown {
   if (v == null || typeof v === "number" || typeof v === "boolean") return v;

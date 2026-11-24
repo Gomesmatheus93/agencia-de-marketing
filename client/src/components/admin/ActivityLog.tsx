@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2, LogIn, Pencil, RefreshCw } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 type Kind = "all" | "access" | "change";
 
@@ -34,9 +34,10 @@ function summary(details: unknown): string {
   return parts.join(" · ");
 }
 
-export function ActivityLog() {
+export function ActivityLog({ initialActorId, initialActorLabel }: { initialActorId?: number; initialActorLabel?: string } = {}) {
   const [kind, setKind] = useState<Kind>("all");
-  const [actorId, setActorId] = useState<number | undefined>(undefined);
+  const [actorId, setActorId] = useState<number | undefined>(initialActorId);
+  useEffect(() => { setActorId(initialActorId); }, [initialActorId]);
   const [days, setDays] = useState(7);
   const [open, setOpen] = useState<number | null>(null);
   const q = trpc.admin.activityLog.useQuery({ kind, actorId, days, limit: 1000 });
@@ -59,6 +60,7 @@ export function ActivityLog() {
         </select>
         <select value={actorId ?? ""} onChange={(e) => setActorId(e.target.value ? Number(e.target.value) : undefined)} className={select}>
           <option value="">Todas as pessoas</option>
+          {actorId && !people.some(([id]) => id === actorId) && <option value={actorId}>{initialActorLabel ?? `#${actorId}`}</option>}
           {people.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={select}>
@@ -133,6 +135,39 @@ export function ActivityLog() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** Últimos registros em lista compacta (Visão Geral do painel). */
+export function RecentActivity({ onSeeAll }: { onSeeAll: () => void }) {
+  const q = trpc.admin.activityLog.useQuery({ kind: "all", days: 7, limit: 12 }, { refetchInterval: 30_000 });
+  const rows = q.data ?? [];
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900">
+      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <p className="text-sm font-semibold text-white">Atividade recente <span className="font-normal text-zinc-500">· quem acessou e o que mudou</span></p>
+        <button onClick={onSeeAll} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">Ver todos os registros</button>
+      </div>
+      {q.isLoading ? <div className="py-8 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-zinc-500" /></div>
+        : !rows.length ? <p className="py-8 text-center text-xs text-zinc-500">Nenhum registro nos últimos 7 dias.</p>
+        : (
+          <ul className="divide-y divide-zinc-800">
+            {rows.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 px-4 py-2.5 text-xs">
+                <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full", r.kind === "access" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300")}>
+                  {r.kind === "access" ? <LogIn className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-zinc-100">{r.actor?.name || r.actor?.email || "—"}</span>
+                  <span className="text-zinc-400"> · {r.label}</span>
+                  {summary(r.details) && <span className="block truncate text-[11px] text-zinc-500">{summary(r.details)}</span>}
+                </span>
+                <span className="shrink-0 tabular-nums text-zinc-500">{when(r.at)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
     </div>
   );
 }

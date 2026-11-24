@@ -107,6 +107,19 @@ export const adminRouter = router({
       return { success: true };
     }),
 
+  /** Define uma senha nova para o usuário e encerra as sessões abertas dele. */
+  setUserPassword: ownerProcedure
+    .input(z.object({ id: z.number(), password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres.").max(200) }))
+    .mutation(async ({ input, ctx }) => {
+      const target = await db.getUserById(input.id);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+      await db.updateUserPassword(input.id, await hashPassword(input.password));
+      const actorId = ctx.actualUser?.id ?? ctx.user.id;
+      if (input.id !== actorId) await db.bumpUserTokenVersion(input.id); // derruba as sessões abertas dele
+      await db.recordAudit({ action: "admin.set_password", actorUserId: actorId, targetUserId: input.id, ip: ctx.req.ip ?? null });
+      return { success: true };
+    }),
+
   deleteUser: ownerProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
