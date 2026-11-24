@@ -9,6 +9,7 @@ import { requireCompanyAccess, getUserCompany } from "./_core/companyAccess";
 import { agentsRouter } from "./agents/router";
 import { ctaRouter } from "./ctaRouter";
 import { motionRouter } from "./motionRouter";
+import { historyRouter } from "./historyRouter";
 import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
 import { assertPublicHttpUrl } from "./_core/ssrfGuard";
@@ -5740,6 +5741,7 @@ export const appRouter = router({
   agents: agentsRouter,
   ctas: ctaRouter,
   motion: motionRouter,
+  history: historyRouter,
   team: teamRouter,
   contentApproval: contentApprovalRouter,
   reels: reelsRouter,
