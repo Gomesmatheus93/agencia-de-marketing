@@ -6,21 +6,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Clapperboard, Download, GalleryHorizontal, History, Image as ImageIcon, Layers, Loader2, Megaphone, Pencil, Play, Search, X } from "lucide-react";
+import { Clapperboard, Download, Images, GalleryHorizontal, History, Image as ImageIcon, Layers, Loader2, Megaphone, Pencil, Play, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 // Histórico: todas as artes criadas na plataforma, num só lugar.
 
-type Kind = "todos" | "carrossel" | "post" | "stories" | "video";
+type Kind = "todos" | "carrossel" | "post" | "stories" | "video" | "galeria";
 const KINDS: Array<{ id: Kind; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "todos", label: "Tudo", icon: Layers },
   { id: "carrossel", label: "Carrosséis", icon: GalleryHorizontal },
   { id: "post", label: "Posts", icon: ImageIcon },
   { id: "stories", label: "Stories", icon: Layers },
   { id: "video", label: "Vídeos motion", icon: Clapperboard },
+  { id: "galeria", label: "Todas as imagens (antigas e versões)", icon: Images },
 ];
-const KIND_LABEL: Record<string, string> = { carrossel: "Carrossel", post: "Post", stories: "Stories", video: "Vídeo" };
+const KIND_LABEL: Record<string, string> = { carrossel: "Carrossel", post: "Post", stories: "Stories", video: "Vídeo", imagem: "Imagem" };
 const ASPECT: Record<string, string> = { story_9x16: "aspect-[9/16]", feed_1x1: "aspect-square", landscape_16x9: "aspect-video", feed_4x5: "aspect-[4/5]" };
 const PAGE = 48;
 
@@ -52,6 +53,7 @@ export default function HistoryPage() {
   const entries = list.data?.entries ?? [];
   const months = useMemo(lastMonths, []);
   const total = counts.data ? counts.data.carrossel + counts.data.post + counts.data.stories + counts.data.video : null;
+  const [zoom, setZoom] = useState<{ title: string; url: string } | null>(null);
 
   // Agrupa por dia de criação.
   const groups = useMemo(() => {
@@ -71,7 +73,7 @@ export default function HistoryPage() {
             <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary"><History className="mr-1.5 h-3 w-3" />Histórico</Badge>
             <h1 className="text-3xl font-bold tracking-tight">Todas as artes criadas</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Carrosséis, posts, stories e vídeos motion feitos na plataforma{total !== null ? ` (${total} no total)` : ""}, da mais nova para a mais antiga. Clique para ver, editar ou baixar.
+              Carrosséis, posts, stories e vídeos motion feitos na plataforma{total !== null ? ` (${total} no total)` : ""}, da mais nova para a mais antiga. Em "Todas as imagens" ficam também as artes antigas e cada versão anterior das edições. Clique para ver, editar ou baixar.
             </p>
           </header>
 
@@ -109,9 +111,9 @@ export default function HistoryPage() {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                 {items.map((e) => (
                   <button key={e.key} type="button"
-                    onClick={() => (e.motionId && e.videoUrl ? setPlaying({ id: e.motionId, title: e.title, videoUrl: e.videoUrl, posterUrl: e.posterUrl }) : e.threadId && setViewing(e.threadId))}
+                    onClick={() => (e.motionId && e.videoUrl ? setPlaying({ id: e.motionId, title: e.title, videoUrl: e.videoUrl, posterUrl: e.posterUrl }) : e.threadId ? setViewing(e.threadId) : e.images[0] && setZoom({ title: e.title, url: e.images[0] }))}
                     className="group flex flex-col overflow-hidden rounded-xl border bg-card text-left transition hover:border-primary/50 hover:shadow-md">
-                    <span className={cn("relative block overflow-hidden bg-muted", e.kind === "video" ? (ASPECT[e.format ?? ""] ?? "aspect-[9/16]") : e.kind === "stories" ? "aspect-[9/16]" : "aspect-[4/5]")}>
+                    <span className={cn("relative block overflow-hidden bg-muted", e.kind === "video" || e.kind === "imagem" ? (ASPECT[e.format ?? ""] ?? "aspect-[4/5]") : e.kind === "stories" ? "aspect-[9/16]" : "aspect-[4/5]")}>
                       {e.images[0] ? <img src={e.images[0]} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-[1.03]" /> : null}
                       {e.kind === "video" && <span className="absolute inset-0 flex items-center justify-center"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55"><Play className="h-5 w-5 fill-white text-white" /></span></span>}
                       <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">{KIND_LABEL[e.kind]}</span>
@@ -134,6 +136,13 @@ export default function HistoryPage() {
         </div>
       </main>
 
+      <Dialog open={zoom !== null} onOpenChange={(o) => { if (!o) setZoom(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle className="text-base">{zoom?.title}</DialogTitle></DialogHeader>
+          {zoom && <img src={zoom.url} alt={zoom.title} className="max-h-[75vh] w-full rounded-lg object-contain" />}
+          {zoom && <Button variant="outline" size="sm" className="gap-1.5 self-start" asChild><a href={zoom.url} target="_blank" rel="noopener noreferrer" download><Download className="h-4 w-4" />Baixar imagem</a></Button>}
+        </DialogContent>
+      </Dialog>
       {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} onSaved={() => void list.refetch()} />}
       <Dialog open={playing !== null} onOpenChange={(o) => { if (!o) setPlaying(null); }}>
         <DialogContent className="max-w-sm">

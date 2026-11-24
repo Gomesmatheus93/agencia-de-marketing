@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, ilike, inArray, lt, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { agentThreads, motionVideos } from "../drizzle/schema";
+import { agentThreads, generatedImages, motionVideos } from "../drizzle/schema";
 import { protectedProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
 
@@ -8,11 +8,11 @@ import { getDb } from "./db";
 // vídeos motion), da mais nova para a mais antiga, com filtro por tipo, mês e busca.
 
 const ART_AGENTS = { carrossel: "Carrossel", legendas: "Post", stories: "Stories" } as const;
-type Kind = "todos" | "carrossel" | "post" | "stories" | "video";
+type Kind = "todos" | "carrossel" | "post" | "stories" | "video" | "galeria";
 
 export type HistoryEntry = {
   key: string;
-  kind: "carrossel" | "post" | "stories" | "video";
+  kind: "carrossel" | "post" | "stories" | "video" | "imagem";
   title: string;
   createdAt: Date;
   updatedAt: Date;
@@ -36,7 +36,7 @@ function monthRange(month: string | undefined) {
 export const historyRouter = router({
   list: protectedProcedure
     .input(z.object({
-      kind: z.enum(["todos", "carrossel", "post", "stories", "video"]).default("todos"),
+      kind: z.enum(["todos", "carrossel", "post", "stories", "video", "galeria"]).default("todos"),
       month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
       search: z.string().trim().max(100).optional(),
       limit: z.number().int().min(1).max(120).default(48),
@@ -52,6 +52,20 @@ export const historyRouter = router({
       const take = input.offset + input.limit + 1;
 
       const entries: HistoryEntry[] = [];
+      // Galeria: todas as imagens salvas na conta (artes antigas, versões anteriores de cada edição, cópias).
+      if (want === "galeria") {
+        const where: SQL[] = [eq(generatedImages.userId, ctx.user.id)];
+        if (range) where.push(gte(generatedImages.createdAt, range.start), lt(generatedImages.createdAt, range.end));
+        if (like) where.push(ilike(generatedImages.prompt, like));
+        const rows = await db.select().from(generatedImages).where(and(...where)).orderBy(desc(generatedImages.createdAt)).limit(input.limit + 1).offset(input.offset);
+        const page = rows.slice(0, input.limit).map((g): HistoryEntry => ({
+          key: `g${g.id}`, kind: "imagem", title: g.prompt, createdAt: g.createdAt, updatedAt: g.createdAt,
+          images: [g.imageUrl], total: 1, threadId: null, motionId: null, videoUrl: null, posterUrl: null,
+          format: (g.height ?? 0) > (g.width ?? 0) * 1.5 ? "story_9x16" : (g.height ?? 0) === (g.width ?? 0) ? "feed_1x1" : (g.width ?? 0) > (g.height ?? 0) ? "landscape_16x9" : "feed_4x5",
+          fromCta: g.prompt.startsWith("CTA:"), planDate: null,
+        }));
+        return { entries: page, hasMore: rows.length > input.limit };
+      }
       if (want !== "video") {
         const slugs = want === "todos" ? Object.keys(ART_AGENTS) : [want === "post" ? "legendas" : want];
         const where: SQL[] = [eq(agentThreads.userId, ctx.user.id), eq(agentThreads.mode, "task"), inArray(agentThreads.agentSlug, slugs)];
@@ -92,12 +106,13 @@ export const historyRouter = router({
   /** Quantas artes existem por tipo (para os filtros). */
   counts: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
-    if (!db) return { carrossel: 0, post: 0, stories: 0, video: 0 };
+    if (!db) return { carrossel: 0, post: 0, stories: 0, video: 0, galeria: 0 };
     const rows = await db.select({ slug: agentThreads.agentSlug, result: agentThreads.result }).from(agentThreads)
       .where(and(eq(agentThreads.userId, ctx.user.id), eq(agentThreads.mode, "task"), inArray(agentThreads.agentSlug, Object.keys(ART_AGENTS))));
     const has = (r: any) => Boolean(r?.slides?.length || r?.frames?.length || r?.imageUrl);
     const n = (slug: string) => rows.filter((x) => x.slug === slug && has(x.result)).length;
     const videos = await db.select({ id: motionVideos.id }).from(motionVideos).where(and(eq(motionVideos.userId, ctx.user.id), eq(motionVideos.status, "pronto")));
-    return { carrossel: n("carrossel"), post: n("legendas"), stories: n("stories"), video: videos.length };
+    const gallery = await db.select({ id: generatedImages.id }).from(generatedImages).where(eq(generatedImages.userId, ctx.user.id));
+    return { carrossel: n("carrossel"), post: n("legendas"), stories: n("stories"), video: videos.length, galeria: gallery.length };
   }),
 });
