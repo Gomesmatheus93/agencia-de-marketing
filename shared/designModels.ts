@@ -3,7 +3,7 @@
  * (server/agents/skills/alle-design/referencias.md). As prévias ficam em
  * client/public/modelos/<id>.webp e são geradas por scripts/build-model-previews.mts.
  */
-export type DesignModelGroup = "dados" | "explicar" | "objecoes" | "dicas" | "emocao" | "engajamento" | "noticias" | "blackfriday";
+export type DesignModelGroup = "branco" | "dados" | "explicar" | "objecoes" | "dicas" | "emocao" | "engajamento" | "noticias" | "blackfriday";
 
 export type DesignModel = {
   id: string;
@@ -13,6 +13,7 @@ export type DesignModel = {
 };
 
 export const DESIGN_MODEL_GROUPS: Record<DesignModelGroup, string> = {
+  branco: "Fundo branco (novos)",
   dados: "Dados e economia",
   explicar: "Explicar e ensinar",
   objecoes: "Objeções e mitos",
@@ -24,6 +25,9 @@ export const DESIGN_MODEL_GROUPS: Record<DesignModelGroup, string> = {
 };
 
 export const DESIGN_MODELS: DesignModel[] = [
+  { id: "M38", name: "Vitrine com pessoa (fundo branco)", group: "branco", summary: "Fundo branco da Alle: logo no topo, título, a Ane saindo do card roxo e o texto embaixo." },
+  { id: "M39", name: "Card de número (fundo branco)", group: "branco", summary: "Fundo branco com forma em L no canto, card roxo com sombra e número gigante, selo \"leia a legenda\" e chamada espaçada." },
+  { id: "M40", name: "Manchete com objeto (fundo branco)", group: "branco", summary: "Manchete em 3 níveis com destaque em faixa e sublinhado, selo \"leia a legenda\" e um objeto ilustrado embaixo." },
   { id: "M01", name: "Número gigante", group: "dados", summary: "Um número ocupa metade da arte, com a frase que dá sentido a ele." },
   { id: "M10", name: "Simulação de economia", group: "dados", summary: "Card com a conta de exemplo e a economia em 1 mês, 1 ano e 5 anos." },
   { id: "M11", name: "Mapa com destaque", group: "dados", summary: "Mapa do Brasil com a região que importa em laranja." },
@@ -42,9 +46,6 @@ export const DESIGN_MODELS: DesignModel[] = [
   { id: "M20", name: "Grade de ícones", group: "dicas", summary: "Cards com ícones e rótulos curtos numa grade." },
   { id: "M15", name: "Foto com recorte curvo", group: "emocao", summary: "Foto em arco e moldura de linha laranja ao redor do título." },
   { id: "M17", name: "Card de data", group: "emocao", summary: "Cor chapada e uma frase grande, minimalista." },
-  { id: "M39", name: "Card de número (fundo branco)", group: "dados", summary: "Fundo branco com forma em L no canto, card roxo com sombra e número gigante, selo \"leia a legenda\" e chamada espaçada." },
-  { id: "M40", name: "Manchete com objeto (fundo branco)", group: "dados", summary: "Manchete em 3 níveis com destaque em faixa e sublinhado, selo \"leia a legenda\" e um objeto ilustrado embaixo." },
-  { id: "M38", name: "Vitrine com pessoa (fundo branco)", group: "emocao", summary: "Fundo branco da Alle: logo no topo, título, a Ane saindo do card roxo e o texto embaixo." },
   { id: "M32", name: "Foto escura com moldura de linha", group: "emocao", summary: "Carrossel em fotos escuras com uma linha branca que passa de um slide para o outro." },
   { id: "M26", name: "Jogo / escolha", group: "engajamento", summary: "\"Escolha 1 letra e 1 número\" sobre uma grade de cards." },
   { id: "M27", name: "Notícia em formato portal", group: "noticias", summary: "Foto, chip de categoria e manchete em faixa branca." },
