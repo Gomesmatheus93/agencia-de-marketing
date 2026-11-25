@@ -129,8 +129,13 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Barra lateral recolhida (só ícones) no computador; a escolha fica no navegador.
+  // Sem escolha salva, começa recolhida em telas estreitas (iPad deitado, notebook pequeno).
   const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem("sidebar_collapsed") === "1"; } catch { return false; }
+    try {
+      const saved = localStorage.getItem("sidebar_collapsed");
+      if (saved !== null) return saved === "1";
+    } catch { /* sem storage */ }
+    return typeof window !== "undefined" && window.innerWidth < 1280;
   });
   const toggleCollapsed = () => setCollapsed((c) => {
     try { localStorage.setItem("sidebar_collapsed", c ? "0" : "1"); } catch { /* sem storage */ }

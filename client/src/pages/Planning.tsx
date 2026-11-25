@@ -173,7 +173,7 @@ export default function Planning() {
           </header>
 
           {!isLimited && <Card>
-            <CardContent className="grid gap-4 p-5 md:grid-cols-[repeat(4,minmax(0,170px))_1fr_auto] md:items-end">
+            <CardContent className="grid gap-4 p-5 sm:grid-cols-2 sm:items-end lg:grid-cols-4 2xl:grid-cols-[repeat(4,minmax(0,170px))_1fr_auto]">
               <label className="space-y-1.5 text-sm"><span className="font-medium">Começa em</span><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Período</span>
                 <select value={period} onChange={(e) => setPeriod(e.target.value as "semana" | "mes")} className="h-9 w-full rounded-md border bg-background px-2">
@@ -186,10 +186,10 @@ export default function Planning() {
                 </select>
               </label>
               <label className="space-y-1.5 text-sm"><span className="font-medium">Posts por semana</span><Input type="number" min={1} max={14} value={postsPerWeek} onChange={(e) => setPostsPerWeek(Number(e.target.value))} /></label>
-              <label className="space-y-1.5 text-sm"><span className="font-medium">Observações para o agente</span>
+              <label className="space-y-1.5 text-sm sm:col-span-2 lg:col-span-3 2xl:col-span-1"><span className="font-medium">Observações para o agente</span>
                 <Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: quarta-feira, post collab com @allpfit; evitar falar de preço" className="min-h-9" />
               </label>
-              <Button className="gap-2" disabled={t.running || t.starting} onClick={() => t.start({ startDate, period, postsPerWeek, goal, notes: notes || undefined })}>
+              <Button className="gap-2 sm:col-span-2 lg:col-span-1" disabled={t.running || t.starting} onClick={() => t.start({ startDate, period, postsPerWeek, goal, notes: notes || undefined })}>
                 {t.starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Gerar planejamento
               </Button>
             </CardContent>

@@ -209,21 +209,21 @@ export default function MotionEditorPage() {
       {/* Barra superior */}
       <header className="flex items-center gap-3 border-b border-white/10 px-4 py-2.5">
         <Button size="sm" variant="ghost" className="gap-1.5 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => { if (!dirty || confirm("Sair sem salvar?")) navigate("/dashboard/motion"); }}><ArrowLeft className="h-4 w-4" />Motion</Button>
-        <Input value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} className="h-8 max-w-md border-white/10 bg-white/5 text-sm text-white" />
-        <span className="text-xs text-white/40">{fmt?.label}</span>
-        <div className="ml-auto flex items-center gap-1">
+        <Input value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} className="h-8 min-w-0 max-w-md border-white/10 bg-white/5 text-sm text-white" />
+        <span className="hidden text-xs text-white/40 lg:inline">{fmt?.label}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <Button size="sm" variant="ghost" className="h-8 px-2 text-white/80 hover:bg-white/10" title="Desfazer (Ctrl+Z)" disabled={!past.length} onClick={undo}><Undo2 className="h-4 w-4" /></Button>
           <Button size="sm" variant="ghost" className="h-8 px-2 text-white/80 hover:bg-white/10" title="Refazer (Ctrl+Shift+Z)" disabled={!future.length} onClick={redo}><Redo2 className="h-4 w-4" /></Button>
           <Button size="sm" variant="ghost" className="h-8 gap-1 px-2 text-white/80 hover:bg-white/10" title="Roteiro em código" onClick={() => setShowCode(true)}><Code2 className="h-4 w-4" /></Button>
           <Button size="sm" className="ml-2 h-8 gap-1.5" disabled={save.isPending} onClick={() => save.mutate({ id, title, caption: caption || null, spec })}>
-            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salvar e gerar vídeo
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}<span className="hidden lg:inline">Salvar e gerar vídeo</span><span className="lg:hidden">Salvar</span>
           </Button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         {/* Biblioteca */}
-        <aside className={cn(panel, "flex w-60 shrink-0 flex-col overflow-hidden")}>
+        <aside className={cn(panel, "flex w-44 shrink-0 flex-col overflow-hidden lg:w-60")}>
           <div className="flex border-b border-white/10 text-xs">
             {(["elementos", "ane"] as const).map((tab) => (
               <button key={tab} onClick={() => setLeftTab(tab)} className={cn("flex-1 py-2.5 font-medium", leftTab === tab ? "border-b-2 border-[#ff7300] text-white" : "text-white/50")}>{tab === "elementos" ? "Elementos" : "Fotos da Ane"}</button>
@@ -256,10 +256,10 @@ export default function MotionEditorPage() {
 
         {/* Prévia */}
         <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3">
-          <div className="relative flex min-h-0 flex-1 items-center justify-center">
-            <div className="relative h-full" style={{ aspectRatio: `${W}/${H}`, maxWidth: "100%" }}>
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center [container-type:size]">
+            <div className="relative" style={{ aspectRatio: `${W}/${H}`, width: `min(100cqw, calc(100cqh * ${W} / ${H}))` }}>
               <div ref={stageRef} onPointerDown={onStageDown} onPointerMove={onStageMove} onPointerUp={onStageUp}
-                className="h-full w-full cursor-pointer overflow-hidden rounded-lg shadow-2xl ring-1 ring-white/10 [&_[data-layer]]:cursor-move" />
+                className="h-full w-full cursor-pointer touch-none overflow-hidden rounded-lg shadow-2xl ring-1 ring-white/10 [&_[data-layer]]:cursor-move" />
               {box && <div className="pointer-events-none absolute border-2 border-[#ff7300]" style={{ left: box.left - 2, top: box.top - 2, width: box.width + 4, height: box.height + 4 }} />}
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function MotionEditorPage() {
         </main>
 
         {/* Propriedades */}
-        <aside className={cn(panel, "w-80 shrink-0 overflow-y-auto p-4")}>
+        <aside className={cn(panel, "w-64 shrink-0 overflow-y-auto p-4 lg:w-80")}>
           {layer ? (
             <LayerProps layer={layer} sceneDur={scene!.duration} photos={photos} W={W}
               onChange={editLayer}
@@ -369,7 +369,7 @@ function Timeline({ spec, starts, total, t, pps, sceneIdx, layerIdx, onSeek, onS
           {/* Régua */}
           <div className="sticky top-0 z-20 flex h-7 border-b border-white/10 bg-[#17161b]">
             <div className="sticky left-0 z-10 shrink-0 bg-[#17161b]" style={{ width: LABEL }} />
-            <div className="relative flex-1 cursor-col-resize" onPointerDown={seekDrag}>
+            <div className="relative flex-1 cursor-col-resize touch-none" onPointerDown={seekDrag}>
               {ticks.map((x) => <span key={x} className="absolute top-0 h-full border-l border-white/15 pl-1 text-[10px] text-white/40" style={{ left: x * pps }}>{Number.isInteger(x) ? `${x}s` : ""}</span>)}
             </div>
           </div>
@@ -383,7 +383,7 @@ function Timeline({ spec, starts, total, t, pps, sceneIdx, layerIdx, onSeek, onS
                   className={cn("absolute top-1.5 flex h-9 items-center overflow-hidden rounded-md border px-2 text-xs", i === sceneIdx ? "border-[#ff7300] bg-[#5a16a8]" : "border-white/10 bg-[#3d0b80]/70 hover:bg-[#3d0b80]")}
                   style={{ left: starts[i] * pps + 1, width: sc.duration * pps - 2 }}>
                   <span className="truncate">{i + 1}. {sc.name || "cena"} · {sc.duration.toFixed(1)}s</span>
-                  <span title="Arraste para mudar a duração" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-white/20 hover:bg-[#ff7300]"
+                  <span title="Arraste para mudar a duração" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize touch-none bg-white/20 hover:bg-[#ff7300] [@media(pointer:coarse)]:w-4"
                     onPointerDown={(e) => { const d0 = sc.duration; startDrag(e, (dt) => live((s) => { s.scenes[i].duration = Math.max(0.5, round(d0 + dt)); })); }} />
                 </div>
               ))}
@@ -425,14 +425,14 @@ function Timeline({ spec, starts, total, t, pps, sceneIdx, layerIdx, onSeek, onS
                   <div className="absolute inset-y-0 bg-black/30" style={{ left: 0, width: s0 * pps }} />
                   <div className="absolute inset-y-0 bg-black/30" style={{ left: (s0 + scene.duration) * pps, right: 0 }} />
                   <div onPointerDown={(e) => { onSelectLayer(sceneIdx, k); const st = start, en = end; startDrag(e, (dt) => { const len = en - st; const ns = Math.max(0, Math.min(scene.duration - len, st + dt)); setStart(ns); if (en < scene.duration - 0.04) setEnd(ns + len); }); }}
-                    className={cn("absolute top-1.5 h-7 cursor-grab overflow-hidden rounded-md border text-[11px] active:cursor-grabbing", l.hidden && "opacity-40",
+                    className={cn("absolute top-1.5 h-7 cursor-grab touch-none overflow-hidden rounded-md border text-[11px] active:cursor-grabbing", l.hidden && "opacity-40",
                       selected ? "border-[#ff7300] bg-[#ff7300]/30" : "border-white/15 bg-[#7c00ae]/45 hover:bg-[#7c00ae]/60")}
                     style={{ left: (s0 + start) * pps, width: Math.max(8, (end - start) * pps) }}>
                     {inDur > 0 && <span className="absolute inset-y-0 left-0 bg-white/15" style={{ width: inDur * pps }} />}
                     {outDur > 0 && <span className="absolute inset-y-0 right-0 bg-black/30" style={{ width: outDur * pps }} />}
                     <span className="relative truncate px-2 leading-7">{l.in ? PRESETS.find((p) => p[0] === l.in!.preset)?.[1] : ""}{l.loop ? ` · ${LOOPS.find((p) => p[0] === l.loop!.kind)?.[1]}` : ""}</span>
-                    <span title="Quando entra" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize bg-white/25 hover:bg-[#ff7300]" onPointerDown={(e) => { onSelectLayer(sceneIdx, k); startDrag(e, (dt) => setStart(start + dt)); }} />
-                    <span title="Quando sai" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-white/25 hover:bg-[#ff7300]" onPointerDown={(e) => { onSelectLayer(sceneIdx, k); startDrag(e, (dt) => setEnd(end + dt)); }} />
+                    <span title="Quando entra" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize touch-none bg-white/25 hover:bg-[#ff7300] [@media(pointer:coarse)]:w-4" onPointerDown={(e) => { onSelectLayer(sceneIdx, k); startDrag(e, (dt) => setStart(start + dt)); }} />
+                    <span title="Quando sai" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize touch-none bg-white/25 hover:bg-[#ff7300] [@media(pointer:coarse)]:w-4" onPointerDown={(e) => { onSelectLayer(sceneIdx, k); startDrag(e, (dt) => setEnd(end + dt)); }} />
                   </div>
                 </div>
               </div>

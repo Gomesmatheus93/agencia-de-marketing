@@ -297,3 +297,16 @@
     }
   }
 }
+/* ── Tablets e celulares (iPad, iPhone, Android) ─────────────────────────── */
+/* Sem "passar o mouse": botões e ícones que só apareciam no hover ficam sempre visíveis. */
+@media (hover: none) {
+  .group-hover\:opacity-100 { opacity: 1 !important; }
+}
+/* Altura da tela que respeita a barra do Safari no iPad/iPhone (100vh passa do visível). */
+@supports (min-height: 100dvh) {
+  .min-h-screen { min-height: 100dvh; }
+}
+/* Toque sem o "flash" cinza do Safari e sem atraso de duplo toque. */
+@media (pointer: coarse) {
+  a, button, [role="button"], label, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+}

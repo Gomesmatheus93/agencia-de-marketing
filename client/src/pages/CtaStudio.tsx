@@ -127,8 +127,8 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
 
   return (
     <section className="space-y-4">
-      <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px_150px_auto_auto] md:items-center">
-        <label className="relative">
+      <Card><CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[1fr_180px_180px_150px_auto_auto] 2xl:items-center">
+        <label className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar frase, categoria, ângulo ou observação" className="pl-8" />
         </label>
