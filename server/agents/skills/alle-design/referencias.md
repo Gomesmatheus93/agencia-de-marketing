@@ -29,6 +29,7 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | emocionar, institucional, data comemorativa | M15, M17, M32 |
 | apresentar a Alle ou a oferta com a Ane (post limpo, fundo branco) | M38 |
 | o mesmo, em roxo, para contrastar com os posts brancos no perfil | M41 |
+| número grande / manchete com objeto, em roxo | M42, M43 |
 | destacar o desconto num número grande (fundo branco) | M39 |
 | manchete de oferta com um objeto ilustrado (fundo branco) | M40 |
 | dica rápida e salvável | M02, M13, M20 |
@@ -189,6 +190,14 @@ y 220–390, a Ane no centro saindo do card, 2 linhas de apoio em y 1110–1240)
 Neue branco com o destaque em laranja `#ff7300`, apoio em Montserrat branco com destaque em `#ffa040`. Nunca texto
 roxo-escuro aqui. **Collab:** `alle:fundo-roxo-sem-logo` com `alle:allpfit-branco` + "+" branco + `alle:logo-branco`
 lado a lado no topo.
+
+**M42 · Card de número (fundo roxo) e M43 · Manchete com objeto (fundo roxo).** As versões roxas do M39 e do M40,
+criadas em 25/11/2026 para alternar com os brancos no perfil (branco, roxo, branco…). Mesma estrutura dos brancos, com:
+degradê roxo-escuro e traçados claros do raio; forma em "L" **laranja**; logo **branco**; rodapé roxo-escuro; selo
+"LEIA A LEGENDA" em lilás claro. No **M42** o card do número é **branco** (contorno laranja deslocado), com o número em
+roxo `#7c00ae`, "Economize até" e a frase final em roxo-escuro, e a chamada espaçada de baixo em branco. No **M43** a
+manchete e as frases ficam em **branco**, o destaque em laranja, a faixa do desconto em laranja com texto branco e o
+objeto ilustrado igual. **Exemplos completos e editáveis: `skills/alle-design/modelos/M42.svg` e `M43.svg`.**
 
 **M39 · Card de número (fundo branco).** Mesma família do M38 (fundo branco, traçados discretos do raio da Alle e
 rodapé roxo com Instagram e WhatsApp), com esta estrutura: uma forma em "L" em degradê roxo (`#3d0b80` → `#7c00ae`)

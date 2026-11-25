@@ -333,6 +333,9 @@ ${logo("logo-branco", 420, 1210, 240)}`,
   // M39 e M40: o SVG de exemplo da skill (skills/alle-design/modelos/<id>.svg) é a própria prévia.
   M39: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M39.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
   M40: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M40.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
+  // M42 e M43: as versões roxas do M39 e do M40 (mesmo esquema: o SVG de exemplo é a prévia).
+  M42: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M42.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
+  M43: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M43.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
   M38: () => `<image href="alle:fundo-branco" x="0" y="0" width="${W}" height="${H}"/>
 <text x="540" y="285" font-family="Bebas Neue" font-size="118" fill="#3d0b80" text-anchor="middle">SUA CONTA DE LUZ MAIS LEVE</text>
 <text x="540" y="385" font-family="Bebas Neue" font-size="118" fill="${LAR_TXT}" text-anchor="middle">SEM OBRA E SEM PLACA</text>

@@ -27,6 +27,8 @@ export const DESIGN_MODEL_GROUPS: Record<DesignModelGroup, string> = {
 export const DESIGN_MODELS: DesignModel[] = [
   { id: "M38", name: "Vitrine com pessoa (fundo branco)", group: "branco", summary: "Fundo branco da Alle: logo no topo, título, a Ane saindo do card roxo e o texto embaixo." },
   { id: "M41", name: "Vitrine com pessoa (fundo roxo)", group: "branco", summary: "A versão roxa do M38, para contrastar com os posts brancos no perfil: logo branco, faixa laranja no topo, título branco e laranja e a Ane saindo do card laranja." },
+  { id: "M42", name: "Card de número (fundo roxo)", group: "branco", summary: "A versão roxa do M39: forma em L laranja, card branco com o número gigante em roxo, selo \"leia a legenda\" e chamada espaçada em branco." },
+  { id: "M43", name: "Manchete com objeto (fundo roxo)", group: "branco", summary: "A versão roxa do M40: manchete em branco com destaque laranja, faixa laranja no desconto e o objeto ilustrado embaixo." },
   { id: "M39", name: "Card de número (fundo branco)", group: "branco", summary: "Fundo branco com forma em L no canto, card roxo com sombra e número gigante, selo \"leia a legenda\" e chamada espaçada." },
   { id: "M40", name: "Manchete com objeto (fundo branco)", group: "branco", summary: "Manchete em 3 níveis com destaque em faixa e sublinhado, selo \"leia a legenda\" e um objeto ilustrado embaixo." },
   { id: "M01", name: "Número gigante", group: "dados", summary: "Um número ocupa metade da arte, com a frase que dá sentido a ele." },
