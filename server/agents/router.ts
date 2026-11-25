@@ -80,7 +80,7 @@ export const agentsRouter = router({
       const thread = await store.createThread(ctx.user.id, task.agentSlug, task.title(parsed.data), {
         input: { ...(parsed.data as Record<string, unknown>), ...(input.planLink ? { planLink: input.planLink } : {}) },
       });
-      const context = task.context ? await task.context(ctx.user.id) : null;
+      const context = task.context ? await task.context(ctx.user.id, parsed.data) : null;
       const brief = task.brief(parsed.data) + (context ? `\n\nDADOS DA CONTA:\n${context}` : "");
       await sendUserMessage(ctx.user.id, thread.id, brief);
       return { threadId: thread.id };

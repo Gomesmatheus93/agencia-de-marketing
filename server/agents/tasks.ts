@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DESIGN_MODEL_IDS, designModelById } from "../../shared/designModels";
-import { listCtaTexts } from "../ctaBank";
+import { ctaPriorityContext, listCtaTexts } from "../ctaBank";
 
 // Tarefas: o modo em que um agente roda a partir de uma tela da plataforma
 // (não do chat). A tela manda um `input`; o agente trabalha com as mesmas
@@ -15,8 +15,12 @@ export type TaskDefinition<I extends z.ZodTypeAny = z.ZodTypeAny, R extends z.Zo
   /** Mensagem que abre a tarefa (vai no histórico, não no prompt de sistema). */
   brief: (input: z.infer<I>) => string;
   /** Dados da conta anexados ao brief (ex.: a última auditoria para o planejamento). */
-  context?: (userId: number) => Promise<string | null>;
+  context?: (userId: number, input: z.infer<I>) => Promise<string | null>;
 };
+
+/** Banco de CTAs nas peças: priorizar as frases que ainda não foram usadas (pedido de 25/11/2026). */
+const CTA_RULE_PIECE = `- CTA DA PEÇA: escolha a chamada no BANCO DE CTAs DA EQUIPE (em DADOS DA CONTA), dando PRIORIDADE às NUNCA USADAS, na categoria do público da pauta. Use a frase com as mesmas palavras (pode quebrar linhas e destacar palavras), no slide/quadro final ou como chamada da arte. Só escreva uma CTA nova (skill alle-cta) se nenhuma do banco servir para a pauta. Diga em "assumptions" qual CTA do banco usou.`;
+const CTA_RULE_PLAN = `- CTAs: para cada pauta, escolha uma frase do BANCO DE CTAs DA EQUIPE (em DADOS DA CONTA), dando PRIORIDADE às NUNCA USADAS e sem repetir a mesma frase no plano. Pautas de aluno/collab Allp Fit usam a categoria "Parceria Allp Fit"; as do público geral, outra categoria (se não houver, deixe o CTA livre). Registre em "notes" da pauta: CTA do banco: "<frase>".`;
 
 const TASK_RULES = `Você está rodando como TAREFA disparada por uma tela da plataforma, não como conversa.
 - Não faça perguntas: ninguém vai responder até você terminar. Quando faltar um dado, use a suposição mais razoável e registre-a em "assumptions".
@@ -161,7 +165,7 @@ export async function planContext(userId: number): Promise<string | null> {
 
 export const planTask: TaskDefinition<typeof planInput, typeof planResult> = {
   agentSlug: "planejamento",
-  context: planContext,
+  context: async (userId) => [await planContext(userId), await ctaPriorityContext(userId)].filter(Boolean).join("\n\n") || null,
   input: planInput,
   result: planResult,
   title: (i) => `Plano ${i.period === "mes" ? "do mês" : "da semana"} a partir de ${i.startDate.split("-").reverse().join("/")} · foco ${i.goal}`,
@@ -175,6 +179,7 @@ TAREFA: planejamento de postagens do Instagram da Alle Energia.
 - Cada item precisa de um ângulo específico, não só um tema. Não repita o mesmo formato em dias seguidos. Use horários de Brasília pensando no público da Alle.
 - Considere datas comemorativas e sazonais do período no Brasil quando fizer sentido para a marca.
 - Grave o plano em plan.md (substitua o anterior) para os outros agentes lerem.
+${CTA_RULE_PLAN}
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE (obrigatório respeitar):\n${i.notes}` : ""}`,
 };
 
@@ -215,6 +220,7 @@ const carouselResult = z.object({
 
 export const carouselTask: TaskDefinition<typeof carouselInput, typeof carouselResult> = {
   agentSlug: "carrossel",
+  context: (userId) => ctaPriorityContext(userId),
   input: carouselInput,
   result: carouselResult,
   title: (i) => `Carrossel: ${i.topic.split("\n")[0].slice(0, 60)}`,
@@ -229,6 +235,7 @@ ${modelLine(i.model)}
 - Carregue a skill alle-design e desenhe cada slide com render_design, revisando cada PNG. Mantenha a unidade visual entre os slides.
 - Escreva a legenda pela skill ig-caption (Job B) e confira com run_script caption.
 - Em "slides", use em imageUrl exatamente a ARTE_URL de cada slide, na ordem.
+${CTA_RULE_PIECE}
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 };
 
@@ -259,6 +266,7 @@ const postResult = z.object({
 
 export const postTask: TaskDefinition<typeof postInput, typeof postResult> = {
   agentSlug: "legendas",
+  context: (userId, i) => (i.cta ? Promise.resolve(null) : ctaPriorityContext(userId)),
   input: postInput,
   result: postResult,
   title: (i) => `Post: ${i.topic.split("\n")[0].slice(0, 60)}`,
@@ -277,6 +285,7 @@ ${i.cta ? `\nCTA DA PEÇA (vem do banco de CTAs da equipe): "${i.cta}"
 - O resto da arte é apoio: no máximo uma linha curta e a ação (QR na recepção / falar com a Ane, conforme o público).
 - Se a frase for da parceria Allp Fit, use o layout de parceria da alle-design (logos Allp Fit + Alle) e as regras da parceria em estrategia.md.
 - A legenda desenvolve a frase e traz a ressalva quando houver percentual.` : ""}
+${i.cta ? "" : CTA_RULE_PIECE}
 ${i.variationOf ? `\nVARIAÇÃO: já existe uma arte com esta mesma frase. Faça uma composição claramente diferente (outro modelo de referencias.md, outra posição da Ane ou sem a Ane, outra cor de fundo dominante), mantendo a mesma mensagem.` : ""}
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 };
@@ -353,6 +362,7 @@ const storiesResult = z.object({
 
 export const storiesTask: TaskDefinition<typeof storiesInput, typeof storiesResult> = {
   agentSlug: "stories",
+  context: (userId) => ctaPriorityContext(userId),
   input: storiesInput,
   result: storiesResult,
   title: (i) => `Stories: ${i.topic.split("\n")[0].slice(0, 60)}`,
@@ -367,6 +377,7 @@ ${i.frames === 1
 - Carregue a skill alle-design e desenhe cada quadro com render_design no formato story_9x16 (texto entre y=250 e y=1600). Na abertura, prefira foto de pessoa ou mão (search_photos) e marque replaceWithRealMedia=true quando o ideal for a equipe gravar a cena real.
 - Figurinhas interativas são colocadas no app do Instagram: NÃO desenhe a figurinha. No quadro com figurinha, deixe livre a faixa de y=${STORY_STICKER_ZONE.top} a y=${STORY_STICKER_ZONE.bottom} (nada de texto ou elemento importante ali) e descreva a figurinha em "sticker".
 - Em imageUrl, use exatamente a ARTE_URL de cada quadro, na ordem.
+${CTA_RULE_PIECE}
 ${i.notes ? `\nOBSERVAÇÕES DA EQUIPE: ${i.notes}` : ""}`,
 };
 

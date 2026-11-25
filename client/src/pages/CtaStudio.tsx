@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
-  Bot, Check, Copy, Download, ImageIcon, Layers, Library, Loader2, Megaphone, Paintbrush, Pencil, Plus, Search, Sparkles, Star, Trash2, Wand2, X,
+  Bot, Check, CircleDot, Copy, Download, ImageIcon, LayoutGrid, Layers, Library, List, Loader2, Megaphone, Paintbrush, Pencil, Plus, Search, Sparkles, Star, Trash2, Wand2, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -92,7 +92,19 @@ export default function CtaStudio() {
 // ─── 1. Banco de CTAs ─────────────────────────────────────────────────────────
 
 type ArtPreview = { threadId: number; imageUrl: string | null; status: string; format: string };
-type CtaRow = { id: number; text: string; category: string; angle: string | null; notes: string | null; source: string; favorite: boolean; arts: number; artPreviews: ArtPreview[] };
+type CtaRow = { id: number; text: string; category: string; angle: string | null; notes: string | null; source: string; favorite: boolean; arts: number; artPreviews: ArtPreview[]; uses: number; lastUsedAt: string | null; usedIn: string[]; createdAt: string | Date };
+type Usage = "" | "nao-usadas" | "usadas";
+const ddmm = (d: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "");
+/** Nunca usadas primeiro; depois as usadas há mais tempo. */
+const byPriority = (a: CtaRow, b: CtaRow) =>
+  Number(a.uses > 0) - Number(b.uses > 0) || Number(b.favorite) - Number(a.favorite) || (a.lastUsedAt ?? "").localeCompare(b.lastUsedAt ?? "") || +new Date(b.createdAt) - +new Date(a.createdAt);
+
+/** Status de uso de uma frase no conteúdo (pautas, artes das pautas e posts). */
+function UsageBadge({ c }: { c: Pick<CtaRow, "uses" | "lastUsedAt" | "usedIn"> }) {
+  return c.uses > 0
+    ? <span title={c.usedIn.join("\n")} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"><Check className="h-3 w-3" />usada {c.uses}×{c.lastUsedAt ? ` · ${ddmm(c.lastUsedAt)}` : ""}</span>
+    : <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"><CircleDot className="h-3 w-3" />nunca usada</span>;
+}
 
 function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (id: number) => void; onChanged: () => void; onGoGenerate: () => void }) {
   const [search, setSearch] = useState("");
@@ -101,6 +113,8 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
   const [angle, setAngle] = useState("");
   const [source, setSource] = useState<"" | "manual" | "ia" | "equipe">("");
   const [onlyFav, setOnlyFav] = useState(false);
+  const [usage, setUsage] = useState<Usage>("");
+  const [view, setView] = useState<"lista" | "cartoes">("lista");
   const [editing, setEditing] = useState<CtaRow | "new" | null>(null);
   const [deleting, setDeleting] = useState<CtaRow | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
@@ -108,15 +122,17 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
 
   const facets = trpc.ctas.facets.useQuery();
   const list = trpc.ctas.list.useQuery({
-    search: debounced || undefined, category: category || undefined, angle: angle || undefined, source: source || undefined, favorite: onlyFav || undefined,
+    search: debounced || undefined, category: category || undefined, angle: angle || undefined, source: source || undefined, favorite: onlyFav || undefined, usage: usage || undefined,
   });
+  const all = trpc.ctas.list.useQuery();
+  const unusedTotal = (all.data ?? []).filter((c) => !c.uses).length;
   const update = trpc.ctas.update.useMutation({ onSuccess: onChanged, onError: (e) => toast.error(e.message) });
   const remove = trpc.ctas.remove.useMutation({
     onSuccess: () => { toast.success("CTA excluído"); setDeleting(null); onChanged(); },
     onError: (e) => toast.error(e.message),
   });
-  const rows = (list.data ?? []) as CtaRow[];
-  const filtering = Boolean(debounced || category || angle || source || onlyFav);
+  const rows = useMemo(() => [...((list.data ?? []) as CtaRow[])].sort(byPriority), [list.data]);
+  const filtering = Boolean(debounced || category || angle || source || onlyFav || usage);
 
   // Agrupa por categoria para a leitura ficar organizada.
   const groups = useMemo(() => {
@@ -127,6 +143,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
 
   return (
     <section className="space-y-4">
+      <QuickAdd categories={facets.data?.categories ?? []} onSaved={onChanged} onMore={() => setEditing("new")} />
       <Card><CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[1fr_180px_180px_150px_auto_auto] 2xl:items-center">
         <label className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -149,10 +166,44 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
         <Button size="sm" className="gap-1.5" onClick={() => setEditing("new")}><Plus className="h-4 w-4" />Novo CTA</Button>
       </CardContent></Card>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{list.isLoading ? "Carregando…" : `${rows.length} CTA${rows.length === 1 ? "" : "s"}${filtering ? " no filtro" : " no banco"}`}</span>
-        {filtering && <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => { setSearch(""); setCategory(""); setAngle(""); setSource(""); setOnlyFav(false); }}><X className="h-3.5 w-3.5" />limpar filtros</button>}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {([["", "Todas"], ["nao-usadas", `Nunca usadas${all.data ? ` (${unusedTotal})` : ""}`], ["usadas", "Já usadas"]] as Array<[Usage, string]>).map(([id, label]) => (
+          <button key={id || "todas"} onClick={() => setUsage(id)} className={cn("rounded-full border px-3 py-1 transition", usage === id ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:border-primary/40")}>{label}</button>
+        ))}
+        <span className="text-muted-foreground">{list.isLoading ? "Carregando…" : `${rows.length} CTA${rows.length === 1 ? "" : "s"}${filtering ? " no filtro" : " no banco"}`}</span>
+        {filtering && <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground" onClick={() => { setSearch(""); setCategory(""); setAngle(""); setSource(""); setOnlyFav(false); setUsage(""); }}><X className="h-3.5 w-3.5" />limpar filtros</button>}
+        <div className="ml-auto flex rounded-lg border p-0.5">
+          <button onClick={() => setView("lista")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs", view === "lista" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}><List className="h-3.5 w-3.5" />Lista</button>
+          <button onClick={() => setView("cartoes")} className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs", view === "cartoes" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}><LayoutGrid className="h-3.5 w-3.5" />Cartões com artes</button>
+        </div>
       </div>
+      <p className="-mt-2 text-xs text-muted-foreground">"Usada" conta quando a frase aparece numa pauta do planejamento, numa arte de pauta ou num post programado/publicado. Os agentes de criação usam primeiro as nunca usadas.</p>
+
+      {view === "lista" && rows.length > 0 && (
+        <Card className="overflow-hidden py-0"><ul className="divide-y">
+          {rows.map((c) => (
+            <li key={c.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-snug">{c.text}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <UsageBadge c={c} />
+                  <span>{c.category}{c.angle ? ` · ${c.angle}` : ""}</span>
+                  {c.arts > 0 && <button className="text-primary hover:underline" onClick={() => c.artPreviews[0] && setViewing(c.artPreviews[0].threadId)}>{c.arts} arte{c.arts > 1 ? "s" : ""}</button>}
+                  {c.uses > 0 && c.usedIn[0] && <span className="hidden md:inline">· {c.usedIn[0]}</span>}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button type="button" title={c.favorite ? "Tirar dos favoritos" : "Marcar como favorito"} onClick={() => update.mutate({ id: c.id, favorite: !c.favorite })}
+                  className={cn("rounded p-1.5 transition", c.favorite ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500")}><Star className={cn("h-4 w-4", c.favorite && "fill-current")} /></button>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => onCreateArt(c.id)}><Paintbrush className="h-3.5 w-3.5" />Criar arte</Button>
+                <Button size="sm" variant="ghost" className="h-8 px-2" title="Copiar" onClick={() => copy(c.text)}><Copy className="h-3.5 w-3.5" /></Button>
+                <Button size="sm" variant="ghost" className="h-8 px-2" title="Editar" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
+                <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
+            </li>
+          ))}
+        </ul></Card>
+      )}
 
       {!list.isLoading && !rows.length && (
         <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
@@ -165,7 +216,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
         </div>
       )}
 
-      {groups.map(([cat, items]) => (
+      {view === "cartoes" && groups.map(([cat, items]) => (
         <div key={cat} className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat} <span className="font-normal">· {items.length}</span></h2>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -184,6 +235,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <UsageBadge c={c} />
                     {c.angle && <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">{c.angle}</span>}
                     <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{SOURCE_LABEL[c.source] ?? c.source}</span>
                     {c.arts > 0 && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-400">{c.arts} arte{c.arts > 1 ? "s" : ""}</span>}
@@ -220,6 +272,33 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+/** Cadastro rápido no topo do banco: a frase, a categoria e pronto. */
+function QuickAdd({ categories, onSaved, onMore }: { categories: string[]; onSaved: () => void; onMore: () => void }) {
+  const [text, setText] = useState("");
+  const [category, setCategory] = useState("");
+  const cats = [...new Set([...categories, "Parceria Allp Fit", "Alle Energia"])];
+  const create = trpc.ctas.create.useMutation({
+    onSuccess: () => { toast.success("CTA cadastrado"); setText(""); onSaved(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const cat = category || cats[0] || "Parceria Allp Fit";
+  const ok = text.trim().length >= 3;
+  return (
+    <Card><CardContent className="space-y-2 p-4">
+      <p className="text-sm font-semibold">Colocar uma CTA nova</p>
+      <form className="grid gap-2 sm:grid-cols-[1fr_200px_auto_auto]" onSubmit={(e) => { e.preventDefault(); if (ok) create.mutate({ text: text.trim(), category: cat }); }}>
+        <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={300} placeholder="Escreva a frase. Ex.: Treino pesado, conta leve." />
+        <select value={cat} onChange={(e) => setCategory(e.target.value)} className={select} aria-label="Categoria">
+          {cats.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <Button type="submit" disabled={!ok || create.isPending} className="gap-1.5">{create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Adicionar</Button>
+        <Button type="button" variant="ghost" onClick={onMore}>Mais detalhes</Button>
+      </form>
+      {text.length > 90 && <p className="text-xs text-amber-600">{text.length} caracteres: longa para a arte.</p>}
+    </CardContent></Card>
   );
 }
 
@@ -451,8 +530,8 @@ function ArtSection({ selectedId, onSelect, onGoGenerate }: { selectedId: number
   });
   const filtered = (bank.data ?? [])
     .filter((c) => !pickerSearch.trim() || `${c.text} ${c.category} ${c.angle ?? ""}`.toLowerCase().includes(pickerSearch.trim().toLowerCase()))
-    // A frase escolhida fica no topo (ex.: vindo de "Salvar e criar arte").
-    .sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId));
+    // A frase escolhida fica no topo (ex.: vindo de "Salvar e criar arte"); depois as nunca usadas.
+    .sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId) || byPriority(a as CtaRow, b as CtaRow));
   const textById = useMemo(() => new Map((bank.data ?? []).map((c) => [c.id, c.text])), [bank.data]);
   const list = arts.data ?? [];
 
@@ -481,7 +560,7 @@ function ArtSection({ selectedId, onSelect, onGoGenerate }: { selectedId: number
                 {c.favorite && <Star className="mt-0.5 h-3 w-3 shrink-0 fill-amber-500 text-amber-500" />}
                 <span className="font-medium leading-snug">{c.text}</span>
               </span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">{c.category}{c.angle ? ` · ${c.angle}` : ""}{c.arts ? ` · ${c.arts} arte${c.arts > 1 ? "s" : ""}` : ""}</span>
+              <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground"><UsageBadge c={c} />{c.category}{c.angle ? ` · ${c.angle}` : ""}{c.arts ? ` · ${c.arts} arte${c.arts > 1 ? "s" : ""}` : ""}</span>
             </button>
           ))}
           {!filtered.length && <p className="py-6 text-center text-xs text-muted-foreground">Nenhum CTA encontrado.</p>}

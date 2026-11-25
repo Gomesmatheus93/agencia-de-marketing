@@ -46,6 +46,10 @@ Pedido da equipe em 25/11/2026: as artes não devem repetir sempre o fluxo "esca
 - O caminho para resgatar (QR na recepção, falar com a Ane) fica na legenda.
 - Varie o benefício de destaque entre as artes da mesma leva; não repita o mesmo apoio duas vezes seguidas.
 
+## Prioridade: frases ainda não usadas
+
+Pedido da equipe em 25/11/2026: ao escolher o CTA de uma peça ou de uma pauta, use primeiro as frases do banco que **nunca foram usadas** (a plataforma manda a lista em "BANCO DE CTAs DA EQUIPE", com as nunca usadas em cima). "Usada" = já apareceu numa pauta, numa arte de pauta ou num post programado/publicado. Não repita a mesma frase no mesmo plano. Só escreva uma frase nova quando nenhuma do banco servir para o público da pauta.
+
 ## Entrega
 
 Para cada sugestão: a frase, a categoria (use uma das categorias do banco quando servir), o ângulo em uma ou duas palavras minúsculas e, em "why", uma linha dizendo onde ela funciona melhor (ex.: "story com QR na recepção").

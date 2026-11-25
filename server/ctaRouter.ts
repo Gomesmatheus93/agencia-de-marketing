@@ -36,13 +36,18 @@ export const ctaRouter = router({
       angle: z.string().max(60).optional(),
       source: z.enum(["manual", "ia", "equipe"]).optional(),
       favorite: z.boolean().optional(),
+      // Uso no conteúdo (pautas, artes das pautas e posts): "nao-usadas" ou "usadas".
+      usage: z.enum(["nao-usadas", "usadas"]).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
-      const [rows, previews] = await Promise.all([bank.listCtas(ctx.user.id, input ?? {}), bank.ctaArtPreviews(ctx.user.id)]);
-      return rows.map((r) => {
-        const arts = previews.get(r.id) ?? [];
-        return { ...r, arts: arts.length, artPreviews: arts.slice(0, 4) };
-      });
+      const [rows, previews, usage] = await Promise.all([bank.listCtas(ctx.user.id, input ?? {}), bank.ctaArtPreviews(ctx.user.id), bank.ctaUsage(ctx.user.id)]);
+      return rows
+        .map((r) => {
+          const arts = previews.get(r.id) ?? [];
+          const u = usage.get(r.id) ?? { uses: 0, lastUsedAt: null, usedIn: [] };
+          return { ...r, arts: arts.length, artPreviews: arts.slice(0, 4), uses: u.uses, lastUsedAt: u.lastUsedAt, usedIn: u.usedIn };
+        })
+        .filter((r) => (input?.usage === "nao-usadas" ? r.uses === 0 : input?.usage === "usadas" ? r.uses > 0 : true));
     }),
 
   facets: protectedProcedure.query(({ ctx }) => bank.ctaFacets(ctx.user.id)),
