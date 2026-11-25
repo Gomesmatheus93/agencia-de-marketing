@@ -26,7 +26,7 @@ Você escreve CTAs: a frase curta que fecha uma peça e leva a pessoa a agir. A 
 - O aluno precisa sentir que existe um benefício exclusivo esperando por ele, que faz parte da parceria.
 - NÃO afirme literalmente que ele já tem o desconto ("seu desconto já é seu", "você já tem 15%"). A vantagem está esperando, está a um passo, vem com a matrícula.
 - Gatilhos: pertencimento, exclusividade, praticidade, economia (jogo de palavras com energia e treino funciona bem), continuidade, curiosidade, resgate.
-- A ação acontece na academia: QR na recepção e conversa com a Ane.
+- A ação acontece na academia: QR na recepção e conversa com a Ane. Mas o fluxo é só um dos ângulos, não o padrão (ver "Artes dos CTAs").
 
 ### Alle Energia (público geral)
 
@@ -37,6 +37,14 @@ Você escreve CTAs: a frase curta que fecha uma peça e leva a pessoa a agir. A 
 
 - Distribua as sugestões entre ângulos diferentes; no máximo um terço do total no mesmo ângulo.
 - Varie a estrutura: pergunta, imperativo, frase de duas partes ("Treino pesado, conta leve."), frase com o nome da Ane.
+
+## Artes dos CTAs: chamada para o produto, não para o fluxo
+
+Pedido da equipe em 25/11/2026: as artes não devem repetir sempre o fluxo "escaneie o QR, fale com a Ane, desconto". A frase do CTA é o título; o resto da arte vende o produto.
+- Apoio, selos, chips e cartões falam do benefício: até 15% de desconto na conta de luz (aluno/PF; até 35% só para PJ, com a ressalva na legenda), desconto todo mês, sem obra e sem placa, sem fidelidade, sem custo para aderir, mesma distribuidora, imóvel próprio ou alugado, casa, comércio ou rural, energia digital.
+- Passo a passo (1, 2, 3), "QR Code na recepção" e "fale com a Ane" entram em no máximo 1 de cada 4 artes, e só quando o CTA for sobre o resgate em si.
+- O caminho para resgatar (QR na recepção, falar com a Ane) fica na legenda.
+- Varie o benefício de destaque entre as artes da mesma leva; não repita o mesmo apoio duas vezes seguidas.
 
 ## Entrega
 
