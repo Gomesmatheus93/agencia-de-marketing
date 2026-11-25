@@ -24,11 +24,16 @@ ENV RAYON_NUM_THREADS=${BUILD_CPUS}
 ENV BUILD_MAX_PARALLEL_FILE_OPS=20
 # pnpm (flags do "pnpm install" abaixo): scripts de instalação em paralelo e downloads simultâneos.
 ENV BUILD_CPUS=${BUILD_CPUS}
+# As variáveis acima só diminuem pools de threads; o V8 (compilação e GC) ainda abre uma thread
+# por núcleo. A trava de verdade é o "limitado": prende o comando a BUILD_CPUS núcleos (taskset,
+# e o Node/esbuild/Rust passam a enxergar só esses núcleos) e baixa a prioridade (nice), para o
+# app no ar sempre ganhar a CPU durante o deploy.
+RUN printf '#!/bin/sh\nexec nice -n 15 taskset -c "0-$((${BUILD_CPUS:-2} - 1))" "$@"\n' > /usr/local/bin/limitado && chmod +x /usr/local/bin/limitado
 
 FROM build-limits AS deps
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --frozen-lockfile --child-concurrency=${BUILD_CPUS} --network-concurrency=8
+RUN limitado pnpm install --frozen-lockfile --child-concurrency=${BUILD_CPUS} --network-concurrency=8
 
 FROM deps AS build
 ARG VITE_APP_ID
@@ -40,13 +45,13 @@ ENV VITE_OAUTH_PORTAL_URL=$VITE_OAUTH_PORTAL_URL
 ENV VITE_ANALYTICS_ENDPOINT=$VITE_ANALYTICS_ENDPOINT
 ENV VITE_ANALYTICS_WEBSITE_ID=$VITE_ANALYTICS_WEBSITE_ID
 COPY . .
-RUN pnpm build
+RUN limitado pnpm build
 
-FROM build-limits AS prod-deps
+# Dependências de produção: tira as de desenvolvimento da instalação que já existe, em vez de
+# uma segunda instalação completa (que o BuildKit rodava ao mesmo tempo que a primeira).
+FROM deps AS prod-deps
 ENV NODE_ENV=production
-COPY package.json pnpm-lock.yaml ./
-COPY patches ./patches
-RUN pnpm install --frozen-lockfile --child-concurrency=${BUILD_CPUS} --network-concurrency=8
+RUN limitado pnpm prune --prod --ignore-scripts
 
 # A imagem final parte de "base", sem os limites do build: o app usa a máquina inteira.
 FROM base AS runner
