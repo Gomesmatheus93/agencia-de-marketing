@@ -32,8 +32,11 @@ const FIELD_LABEL: Record<string, string> = {
   audience: "Faixa laranja", qrTitle: "Chamada do QR", qrText: "Complemento do QR", footer: "Rodapé",
   headline3: "Título, linha 3", highlight: "Destaque laranja", stepsTitle: "Título dos passos",
   photo: "Foto da Ane",
+  // Designs de fundo branco (25/11/2026)
+  q1: "Pergunta 1", a1: "Resposta 1 (Sim/Não)", q2: "Pergunta 2", a2: "Resposta 2 (Sim/Não)", q3: "Pergunta 3", a3: "Resposta 3 (Sim/Não)",
+  howTo: "Como resgatar (texto)",
 };
-const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText"]);
+const LONG_FIELDS = new Set(["disclaimer", "chat3", "stubText", "howTo"]);
 
 /** Escolher o que gerar: quais materiais e para quais academias. */
 function GenerateDialog({ formats, units, pending, onClose, onGenerate }: {

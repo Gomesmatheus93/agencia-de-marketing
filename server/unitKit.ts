@@ -188,11 +188,12 @@ export function variantsOf(format: KitFormat): Variant[] {
       V("wb-passos", "Claro com passos (anterior)", "Os 3 passos numerados e o QR.", flagDraw(wbSteps)),
     ],
   }[format];
+  const branco = brancoVariants(format);
   switch (format) {
-    case "display": return [...novas, { id: "conversa", label: "Conversa com a Ane (nova)", note: "Balões de conversa, selo da oferta e a faixa roxa com o QR.", defaults: KIT_DEFAULTS.display, draw: chatSvg }, ...older];
-    case "banner": return [...novas, { id: "impacto", label: "Impacto (nova)", note: "Frase grande para ler de longe, QR gigante e a Ane com balão.", defaults: KIT_DEFAULTS.banner, draw: impactSvg }, ...older];
-    case "panfleto": return [...novas, { id: "vale", label: "Vale-desconto (nova)", note: "Cupom com picote e canhoto de resgate com o QR.", defaults: KIT_DEFAULTS.panfleto, draw: voucherSvg }, ...older];
-    default: return [...novas, { id: "bandeira", label: "Bandeira", note: "As duas faces da bandeira lado a lado no molde.", defaults: KIT_DEFAULTS.windbanner, draw: flagSvg }];
+    case "display": return [...branco, ...novas, { id: "conversa", label: "Conversa com a Ane (nova)", note: "Balões de conversa, selo da oferta e a faixa roxa com o QR.", defaults: KIT_DEFAULTS.display, draw: chatSvg }, ...older];
+    case "banner": return [...branco, ...novas, { id: "impacto", label: "Impacto (nova)", note: "Frase grande para ler de longe, QR gigante e a Ane com balão.", defaults: KIT_DEFAULTS.banner, draw: impactSvg }, ...older];
+    case "panfleto": return [...branco, ...novas, { id: "vale", label: "Vale-desconto (nova)", note: "Cupom com picote e canhoto de resgate com o QR.", defaults: KIT_DEFAULTS.panfleto, draw: voucherSvg }, ...older];
+    default: return [...branco, ...novas, { id: "bandeira", label: "Bandeira", note: "As duas faces da bandeira lado a lado no molde.", defaults: KIT_DEFAULTS.windbanner, draw: flagSvg }];
   }
 }
 
@@ -626,7 +627,7 @@ function sanitizeSvg(svg: string, format: KitFormat): string {
     .replace(/<(script|foreignObject|iframe|object|embed)\b[\s\S]*?<\/\1>/gi, "")
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
     .replace(/(\s(?:xlink:)?href\s*=\s*)(["'])(.*?)\2/gi, (m, a: string, q: string, v: string) =>
-      /^(alle:[a-z-]+|data:image\/(png|jpeg|webp|gif);|https:\/\/|#)/i.test(v.trim()) ? m : "");
+      /^(alle:[a-z0-9-]+|data:image\/(png|jpeg|webp|gif);|https:\/\/|#)/i.test(v.trim()) ? m : "");
   if (!slotsOf(out).length) throw new TRPCError({ code: "BAD_REQUEST", message: "O espaço do QR (“QR da academia”) precisa continuar na arte." });
   if (out.length > 6_000_000) throw new TRPCError({ code: "BAD_REQUEST", message: "Arte grande demais." });
   return out;
@@ -645,7 +646,7 @@ async function embedRemote(svg: string) {
   return svg;
 }
 
-const withAssets = (svg: string) => svg.replace(/href="(alle:[a-z-]+)"/g, (m, k: string) => (BRAND_ASSETS[k] ? `href="${BRAND_ASSETS[k]}"` : m));
+const withAssets = (svg: string) => svg.replace(/href="(alle:[a-z0-9-]+)"/g, (m, k: string) => (BRAND_ASSETS[k] ? `href="${BRAND_ASSETS[k]}"` : m));
 const renderSvg = (svg: string, width: number) =>
   Buffer.from(new Resvg(withAssets(svg), { fitTo: { mode: "width", value: width }, font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: "Montserrat" } }).render().asPng());
 
@@ -1154,7 +1155,7 @@ function flagOf(bg: string, inner: (x0: number, cx: number, H: number, id: strin
       const shape = `M${x0} ${H - 20} L${x0} 300 C${x0} 130 ${x0 + 100} 40 ${x0 + 235} 40 C${x0 + 370} 40 ${x0 + pw} 130 ${x0 + pw} 300 L${x0 + pw} ${H - 20} Z`;
       const r = inner(x0, x0 + pw / 2, H, `p${i}`);
       slots.push(r.slot); defs += r.defs ?? "";
-      return `<clipPath id="fc${i}"><path d="${shape}"/></clipPath><g clip-path="url(#fc${i})"><rect x="${x0}" y="0" width="${pw}" height="${H}" fill="${bg}"/>${r.svg}</g>${bg === "#FFF8F2" ? `<path d="${shape}" fill="none" stroke="#E6D3F5" stroke-width="4"/>` : ""}`;
+      return `<clipPath id="fc${i}"><path d="${shape}"/></clipPath><g clip-path="url(#fc${i})"><rect x="${x0}" y="0" width="${pw}" height="${H}" fill="${bg}"/>${r.svg}</g>${bg === "#FFF8F2" || bg === "#FFFFFF" ? `<path d="${shape}" fill="none" stroke="#E6D3F5" stroke-width="4"/>` : ""}`;
     });
     return { slots, svg: `${open(H, defs)}<rect width="${W}" height="${H}" fill="#ffffff"/>${panels.join("")}</svg>` };
   };
@@ -1423,3 +1424,226 @@ const wbHalf = (f: KitFields) => flagOf("#3A0057", (x0, cx, H) => {
   ${big}${T(cx, Z + 95, fit(f.headline3.toUpperCase(), 70, 420), 900, "#fff", f.headline3.toUpperCase(), "middle")}
   ${T(cx, H - 320, 30, 900, "#fff", f.qrLabel, "middle", 'letter-spacing="1"')}${q.svg}` };
 });
+
+// ── Fundo branco (25/11/2026): o mesmo estilo dos posts M38/M39/M40 ──────────
+// Branco com o contorno do raio bem discreto, títulos em Bebas Neue, logos Allp Fit + Alle,
+// a Ane sobre uma faixa roxa, benefícios do produto com ícones 3D e o rodapé roxo com
+// Instagram e WhatsApp. Cada design traz uma frase do banco de CTAs. Sem % (sem ressalva na peça).
+const B_TX = "#3d0b80", B_OR = "#ff7300", B_PU = "#7c00ae";
+/** Texto em Bebas Neue (sempre em maiúsculas). */
+const BB = (x: number, y: number, size: number, fill: string, text: string, anchor = "middle", extra = "") =>
+  `<text x="${x}" y="${y}" font-family="Bebas Neue" font-size="${size}" fill="${fill}" text-anchor="${anchor}" ${extra}>${esc(text.toUpperCase())}</text>`;
+/** Maior tamanho de Bebas Neue que cabe na largura. */
+const fitB = (t: string, max: number, maxW: number) => Math.min(max, Math.floor(maxW / Math.max(1, t.length * 0.42)));
+const ICONS_3D: Record<string, [number, number]> = {
+  calendario: [309, 346], escudo: [288, 330], cadeado: [261, 319], "saco-dinheiro": [309, 331], raio: [195, 347],
+  carteira: [335, 346], check: [272, 196], estrela: [303, 309], lampada: [261, 328], joinha: [366, 307], presente: [331, 323],
+};
+const icon3d = (name: string, cx: number, cy: number, h: number) => {
+  const [iw, ih] = ICONS_3D[name] ?? [300, 300];
+  const w = (h * iw) / ih;
+  return `<image href="alle:icone-${name}" x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"/>`;
+};
+const BRANCO_DEFS = `
+  <linearGradient id="bRoxo" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5A16A8"/><stop offset="1" stop-color="#7c00ae"/></linearGradient>
+  <linearGradient id="bCard" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5A16A8"/><stop offset=".5" stop-color="#7c00ae" stop-opacity=".85"/><stop offset="1" stop-color="#5A16A8"/></linearGradient>
+  <linearGradient id="bFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>
+  <radialGradient id="bBrilho" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff7300" stop-opacity=".18"/><stop offset="1" stop-color="#ff7300" stop-opacity="0"/></radialGradient>
+  <filter id="bSombra" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#3d0b80" flood-opacity=".16"/></filter>
+  <filter id="bContorno" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="2.6" result="g"/><feComposite in="g" in2="SourceAlpha" operator="out" result="l"/><feFlood flood-color="#B98AE0" flood-opacity="0.24"/><feComposite in2="l" operator="in"/></filter>`;
+const brancoOpen = (H: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${BRANCO_DEFS}</defs>`;
+/** Fundo branco com dois raios grandes só no contorno (o "traçado" do modelo M38). */
+const brancoFundo = (x0: number, w: number, H: number) =>
+  `<rect x="${x0}" y="0" width="${w}" height="${H}" fill="#ffffff"/>` +
+  `<image href="alle:raio-mono" x="${x0 - w * 0.24}" y="${H * 0.2}" width="${w * 0.76}" height="${w * 0.76 * 1.597}" filter="url(#bContorno)"/>` +
+  `<image href="alle:raio-mono" x="${x0 + w * 0.52}" y="${-H * 0.2}" width="${w * 0.65}" height="${w * 0.65 * 1.597}" filter="url(#bContorno)"/>`;
+/** Faixa roxa no topo, logos da parceria centralizados (s = escala). */
+const brancoTopo = (y = 82, s = 1) => {
+  const aw = 268 * s, ah = 58 * s, lw = 272 * s, lh = 80 * s, gap = 70 * s, x = (W - (aw + gap + lw)) / 2;
+  return `<rect x="46" y="-56" width="${W - 92}" height="96" rx="42" fill="url(#bRoxo)"/>` +
+    `<image href="alle:allpfit" x="${x}" y="${y + (lh - ah) / 2}" width="${aw}" height="${ah}"/>${T(x + aw + gap / 2, y + lh / 2 + 14 * s, 44 * s, 500, B_PU, "+", "middle")}<image href="alle:logo" x="${x + aw + gap}" y="${y}" width="${lw}" height="${lh}"/>`;
+};
+/** Rodapé roxo com @alleenergia e o WhatsApp (ícones brancos), como nos posts. */
+const brancoRodape = (H: number, h = 78) => {
+  const y = H - h, s = h / 78;
+  return `<rect x="0" y="${y}" width="${W}" height="${h}" fill="url(#bRoxo)"/><rect x="0" y="${y}" width="${W}" height="5" fill="${B_OR}"/>` +
+    `<g transform="translate(${W / 2 - 300 * s} ${y + 24 * s}) scale(${s})"><rect x="0" y="0" width="34" height="34" rx="11" fill="none" stroke="#fff" stroke-width="3.6"/><circle cx="17" cy="17" r="8.5" fill="none" stroke="#fff" stroke-width="3.6"/><circle cx="26" cy="8" r="2.6" fill="#fff"/>${T(48, 27, 28, 600, "#fff", "@alleenergia")}` +
+    `<g transform="translate(310 0)"><path d="M3 32 L0 35 L1 28 A17 17 0 1 1 7 32 Z" fill="none" stroke="#fff" stroke-width="3.4" stroke-linejoin="round"/><path d="M9 9 q-3 0 -3 4 q1 8 13 14 q4 1 5 -2 l1 -3 l-5 -3 l-3 2 q-5 -2 -7 -7 l2 -3 l-3 -5 z" fill="#fff"/>${T(46, 27, 28, 600, "#fff", "(12) 95369-7411")}</g></g>`;
+};
+/** Caixa laranja "ACESSO LIBERADO!" com a seta, como no post de 25/11. */
+const brancoSelo = (cx: number, y: number, text: string, size = 60) => {
+  const w = Math.max(320, text.length * size * 0.42 + 90), h = size * 1.65;
+  return `<g filter="url(#bSombra)"><rect x="${cx - w / 2}" y="${y}" width="${w}" height="${h}" rx="18" fill="${B_OR}"/></g>${BB(cx, y + size * 0.98, size, "#fff", text)}` +
+    `<path d="M${cx - 80} ${y + h - 18} H${cx + 80}" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M${cx + 70} ${y + h - 25} L${cx + 82} ${y + h - 18} L${cx + 70} ${y + h - 11}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+};
+/** Card branco do QR com a chamada em cima e o apoio embaixo. */
+const brancoQr = (x: number, y: number, size: number, label: string, sub: string, labelSize = 46) => {
+  const pad = 30, w = size + pad * 2, top = labelSize + 34, h = top + size + (sub ? 64 : pad);
+  return {
+    svg: `<g filter="url(#bSombra)"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="30" fill="#fff" stroke="#EADCF5" stroke-width="3"/></g>${BB(x + w / 2, y + labelSize + 12, labelSize, B_TX, label)}` +
+      `<rect x="${x + pad - 8}" y="${y + top - 8}" width="${size + 16}" height="${size + 16}" rx="14" fill="none" stroke="${B_OR}" stroke-width="5"/>${sub ? T(x + w / 2, y + h - 24, 24, 600, B_TX, sub, "middle") : ""}`,
+    slot: { x: x + pad, y: y + top, size }, w, h,
+  };
+};
+/** Cartão de benefício: ícone 3D e o texto embaixo (benefícios do produto, não o passo a passo). */
+const brancoBeneficio = (x: number, y: number, w: number, h: number, icon: string, text: string) => {
+  const lines = wrap(text, 14);
+  return `<g filter="url(#bSombra)"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="26" fill="#fff" stroke="#EADCF5" stroke-width="2"/></g>` +
+    `<circle cx="${x + w / 2}" cy="${y + h * 0.38}" r="${h * 0.26}" fill="#F6F0FC"/>${icon3d(icon, x + w / 2, y + h * 0.38, h * 0.36)}` +
+    lines.map((l, i) => T(x + w / 2, y + h * 0.78 + i * 30 - (lines.length - 1) * 15, 26, 800, B_TX, l, "middle")).join("");
+};
+const anePhoto = (f: KitFields, fallback: string) => (ANE_PHOTOS[f.photo ?? ""] ? f.photo : fallback);
+const aneImgB = (photo: string, x: number, bottom: number, h: number) => {
+  const p = ANE_PHOTOS[photo] ?? ANE_PHOTOS.ane, w = (h * p.w) / p.h;
+  return { svg: `<image href="alle:${photo}" x="${x}" y="${bottom - h}" width="${w}" height="${h}"/>`, w };
+};
+const benefitsOf = (f: KitFields) => [f.benefit1, f.benefit2, f.benefit3, f.benefit4].filter((b) => b && b.trim());
+const BENEFIT_ICONS = ["calendario", "escudo", "cadeado", "raio"];
+
+// Display · fundo branco: título do CTA, a Ane na faixa roxa, o QR num card e os benefícios com ícones 3D.
+const dispBranco: Draw = (H, f) => {
+  const band = { y: 820, h: 230 };
+  const ane = aneImgB(anePhoto(f, "ane"), 40, band.y + band.h, 560);
+  const qr = brancoQr(560, 520, 320, f.qrLabel, f.qrSub);
+  const bens = benefitsOf(f).slice(0, 3), bw = 270, gap = (W - 120 - bens.length * bw) / Math.max(1, bens.length - 1);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo()}
+  ${T(W / 2, 236, 30, 800, B_OR, f.eyebrow, "middle", 'letter-spacing="3"')}
+  ${BB(W / 2, 330, fitB(f.headline1, 100, 900), B_TX, f.headline1)}${BB(W / 2, 425, fitB(f.headline2, 100, 900), B_OR, f.headline2)}
+  <circle cx="300" cy="700" r="300" fill="url(#bBrilho)"/>
+  <rect x="40" y="${band.y}" width="${W - 80}" height="${band.h}" rx="44" fill="url(#bCard)"/><rect x="40" y="${band.y}" width="${W - 80}" height="${band.h}" rx="44" fill="url(#bFade)" opacity=".5"/>
+  ${ane.svg}${brancoSelo(300, band.y + band.h - 70, f.highlight, 54)}${qr.svg}
+  ${bens.map((b, i) => brancoBeneficio(60 + i * (bw + gap), 1110, bw, 200, BENEFIT_ICONS[i], b)).join("")}
+  ${brancoRodape(H)}</svg>` };
+};
+
+// Display · fundo branco 2: o QR grande no centro (lido de perto), a frase em cima e a Ane encostada na borda.
+const dispBranco2: Draw = (H, f) => {
+  const qr = brancoQr(W / 2 - 220, 480, 380, f.qrLabel, f.qrSub, 52);
+  const ane = aneImgB(anePhoto(f, "ane-oculos-2"), W - 330, 1120, 420);
+  const bens = benefitsOf(f).slice(0, 3);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo()}
+  ${BB(W / 2, 300, fitB(f.headline1, 100, 900), B_TX, f.headline1)}${BB(W / 2, 395, fitB(f.headline2, 100, 900), B_OR, f.headline2)}
+  ${T(W / 2, 450, 30, 700, B_TX, f.sub, "middle")}
+  <rect x="0" y="1000" width="${W}" height="${1120 - 1000}" fill="url(#bCard)"/>${qr.svg}${ane.svg}
+  ${icon3d("saco-dinheiro", 150, 560, 170)}${icon3d("estrela", 860, 520, 120)}
+  ${brancoSelo(230, 1010, f.highlight, 40)}
+  ${bens.map((b, i) => { const x = 60 + i * 300; return `<g filter="url(#bSombra)"><rect x="${x}" y="1170" width="280" height="96" rx="48" fill="#fff" stroke="#EADCF5" stroke-width="2"/></g>${icon3d(BENEFIT_ICONS[i], x + 52, 1218, 64)}${wrap(b, 13).map((l, j, all) => T(x + 96, 1226 - (all.length - 1) * 15 + j * 30, 25, 800, B_TX, l)).join("")}`; }).join("")}
+  ${brancoRodape(H)}</svg>` };
+};
+
+// Banner · fundo branco: lido de longe; a frase gigante, uma linha de apoio, o QR grande e a Ane.
+const banBranco: Draw = (H, f) => {
+  const band = { y: 900, h: 300 };
+  const ane = aneImgB(anePhoto(f, "ane-rabo"), W - 450, band.y + band.h, 500);
+  const qr = brancoQr(60, 700, 360, f.qrLabel, "", 56);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo(76, 1.15)}
+  ${BB(W / 2, 395, fitB(f.headline1, 210, 920), B_TX, f.headline1)}${BB(W / 2, 590, fitB(f.headline2, 220, 920), B_OR, f.headline2)}
+  ${T(W / 2, 655, Math.min(34, Math.floor(880 / Math.max(1, f.sub.length * 0.56))), 600, B_TX, f.sub, "middle")}
+  <rect x="40" y="${band.y}" width="${W - 80}" height="${band.h}" rx="50" fill="url(#bCard)"/>
+  ${ane.svg}${qr.svg}${brancoRodape(H, 90)}</svg>` };
+};
+
+// Banner · fundo branco 2: a frase em duas linhas, o QR gigante no centro e os ícones 3D em volta.
+const banBranco2: Draw = (H, f) => {
+  const qr = brancoQr(W / 2 - 230, 560, 400, f.qrLabel, "", 56);
+  const ane = aneImgB(anePhoto(f, "ane-sorrindo"), 10, H - 90, 470);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo(76, 1.15)}
+  ${BB(W / 2, 360, fitB(f.headline1, 180, 920), B_TX, f.headline1)}${BB(W / 2, 520, fitB(f.headline2, 180, 920), B_OR, f.headline2)}
+  <rect x="0" y="${H - 300}" width="${W}" height="210" fill="url(#bCard)"/>
+  ${icon3d("saco-dinheiro", 860, 760, 190)}${icon3d("raio", 880, 1010, 150)}${ane.svg}${qr.svg}
+  ${wrap(f.sub, 22).map((l, i, all) => T(W - 60, H - 190 - (all.length - 1) * 21 + i * 42, 34, 800, "#fff", l, "end")).join("")}${brancoRodape(H, 90)}</svg>` };
+};
+
+// Panfleto · fundo branco: o CTA, os benefícios do produto em cards com ícones 3D, a Ane e o QR.
+const panBranco: Draw = (H, f) => {
+  const bens = benefitsOf(f).slice(0, 4), cw = 255, ch = 210;
+  const cards = bens.map((b, i) => brancoBeneficio(60 + (i % 2) * (cw + 24), 560 + Math.floor(i / 2) * (ch + 24), cw, ch, BENEFIT_ICONS[i], b)).join("");
+  const ane = aneImgB(anePhoto(f, "ane-coque-2"), 545, 1010, 470);
+  const qr = brancoQr(60, 1030, 200, f.qrLabel, "", 36);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo()}
+  ${T(W / 2, 236, 30, 800, B_OR, f.eyebrow, "middle", 'letter-spacing="3"')}
+  ${BB(W / 2, 330, fitB(f.headline1, 96, 900), B_TX, f.headline1)}${BB(W / 2, 425, fitB(f.headline2, 110, 900), B_OR, f.headline2)}
+  ${T(W / 2, 485, Math.min(30, Math.floor(900 / Math.max(1, f.sub.length * 0.56))), 600, B_TX, f.sub, "middle")}
+  <circle cx="780" cy="820" r="280" fill="url(#bBrilho)"/>${cards}
+  <rect x="0" y="1010" width="${W}" height="${H - 78 - 1010}" fill="url(#bCard)"/>${ane.svg}${qr.svg}
+  ${T(400, 1160, 40, 800, "#fff", f.qrSub, "start")}${wrap(f.howTo ?? "", 34).map((l, i) => T(400, 1215 + i * 38, 28, 500, "#fff", l)).join("")}
+  ${brancoRodape(H)}</svg>` };
+};
+
+// Panfleto · fundo branco 2: perguntas rápidas sobre o produto (sem custo, sem obra, imóvel alugado), o QR e a Ane.
+const panBranco2: Draw = (H, f) => {
+  const faq = [[f.q1, f.a1], [f.q2, f.a2], [f.q3, f.a3]].filter(([q]) => q && q.trim());
+  const rows = faq.map(([q, a], i) => {
+    const y = 540 + i * 120;
+    return `<g filter="url(#bSombra)"><rect x="60" y="${y}" width="560" height="96" rx="30" fill="#fff" stroke="#EADCF5" stroke-width="2"/></g>${T(92, y + 59, Math.min(29, Math.floor(360 / Math.max(1, (q ?? "").length * 0.6))), 800, B_TX, q)}` +
+      `<rect x="${620 - 150}" y="${y + 20}" width="128" height="56" rx="28" fill="${a?.toUpperCase().startsWith("N") ? B_PU : "#22C55E"}"/>${T(620 - 86, y + 58, 28, 900, "#fff", (a ?? "").toUpperCase(), "middle")}`;
+  }).join("");
+  const ane = aneImgB(anePhoto(f, "ane-oculos-2"), W - 360, 1000, 400);
+  const qr = brancoQr(W / 2 - 150, 960, 200, f.qrLabel, f.qrSub, 36);
+  return { slots: [qr.slot], svg: `${brancoOpen(H)}${brancoFundo(0, W, H)}${brancoTopo()}
+  ${BB(W / 2, 310, fitB(f.headline1, 100, 900), B_TX, f.headline1)}${BB(W / 2, 410, fitB(f.headline2, 100, 900), B_OR, f.headline2)}
+  ${T(W / 2, 470, 30, 600, B_TX, f.sub, "middle")}${rows}
+  <rect x="0" y="930" width="${W}" height="140" fill="url(#bCard)"/>${ane.svg}${icon3d("lampada", 130, 980, 130)}${qr.svg}
+  ${brancoRodape(H)}</svg>` };
+};
+
+// Windbanner · fundo branco: logos grandes, a frase empilhada em palavras gigantes e o QR embaixo num bloco roxo.
+const wbBranco = (icon: string) => (f: KitFields) => flagOf("#FFFFFF", (x0, cx, H) => {
+  const q = qrSq(cx, H - 290, 220);
+  const words = `${f.headline1} ${f.headline2}`.toUpperCase().trim().split(/\s+/);
+  const n1 = f.headline1.trim().split(/\s+/).length;
+  const step = words.length > 4 ? 116 : 128;
+  const big = words.map((w, i) => BB(cx, 460 + i * step, fitB(w, 150, 400), i < n1 ? B_TX : B_OR, w)).join("");
+  const yEnd = 460 + (words.length - 1) * step;
+  return { slot: q.slot, defs: x0 < 100 ? BRANCO_DEFS : "", svg: `${brancoFundo(x0, 470, H)}
+  <image href="alle:allpfit" x="${cx - 150}" y="140" width="300" height="65"/><image href="alle:logo" x="${cx - 140}" y="225" width="280" height="82"/>
+  ${big}${yEnd + 180 < H - 400 ? icon3d(icon, cx, yEnd + 100, 120) : ""}
+  <rect x="${x0}" y="${H - 400}" width="470" height="400" fill="url(#bRoxo)"/><rect x="${x0}" y="${H - 400}" width="470" height="6" fill="${B_OR}"/>
+  ${BB(cx, H - 325, 46, "#fff", f.qrLabel)}${q.svg}` };
+});
+const wbBrancoDraw = (icon: string): Draw => (H, f) => wbBranco(icon)(f)(H, f);
+
+const BRANCO_BEN = { benefit1: "Desconto todo mês", benefit2: "Sem obra e sem placa", benefit3: "Sem fidelidade" };
+/** Os designs de fundo branco de cada material, cada um com uma frase do banco de CTAs. */
+function brancoVariants(format: KitFormat): Variant[] {
+  const B = (id: string, label: string, note: string, defaults: KitFields, draw: Draw): Variant => ({ id, label, note, defaults, draw });
+  switch (format) {
+    case "display": return [
+      B("disp-branco", "Fundo branco · Aproveite a vantagem", "Estilo dos posts M38: a frase do CTA, a Ane na faixa roxa, o QR num card e os benefícios com ícones 3D.", {
+        eyebrow: "ALUNO ALLP FIT,", headline1: "Aproveite a vantagem", headline2: "que vem com a sua matrícula.", highlight: "Acesso liberado!",
+        ...BRANCO_BEN, qrLabel: "Escaneie e aproveite", qrSub: "Desconto na sua conta de luz", photo: "ane",
+      }, dispBranco),
+      B("disp-branco-2", "Fundo branco · Sua matrícula vale mais", "Fundo branco com o QR grande no centro, a frase em cima e a Ane na borda.", {
+        headline1: "Sua matrícula vale", headline2: "mais do que você imagina.", sub: "Desconto na conta de luz para quem treina na Allp Fit.", highlight: "Benefício de aluno",
+        ...BRANCO_BEN, qrLabel: "Escaneie aqui", qrSub: "e conheça o seu benefício", photo: "ane-oculos-2",
+      }, dispBranco2),
+    ];
+    case "banner": return [
+      B("ban-branco", "Fundo branco · Treino pesado, conta leve", "Lido de longe: a frase gigante, uma linha de apoio, o QR grande e a Ane na faixa roxa.", {
+        headline1: "Treino pesado,", headline2: "conta leve.", sub: "Aproveite a vantagem que vem com a sua matrícula.", qrLabel: "Escaneie aqui", photo: "ane-rabo",
+      }, banBranco),
+      B("ban-branco-2", "Fundo branco · Quem treina aqui economiza", "A frase em duas linhas, o QR gigante no centro, ícones 3D e a Ane.", {
+        headline1: "Quem treina aqui", headline2: "economiza lá fora.", sub: "Desconto todo mês na conta de luz", qrLabel: "Escaneie e aproveite", photo: "ane-sorrindo",
+      }, banBranco2),
+    ];
+    case "panfleto": return [
+      B("pan-branco", "Fundo branco · Benefício garantido", "O CTA, os benefícios do produto em cards com ícones 3D, a Ane e o QR na faixa roxa.", {
+        eyebrow: "ALUNO ALLP FIT,", headline1: "Seu benefício já está garantido.", headline2: "Falta só resgatar!", sub: "Desconto na conta de luz, todo mês, para quem treina na Allp Fit.",
+        ...BRANCO_BEN, benefit4: "Mesma distribuidora", qrLabel: "Resgate aqui", qrSub: "Como resgatar", howTo: "Escaneie o QR Code e fale com a Ane no WhatsApp da Alle Energia.", photo: "ane-coque-2",
+      }, panBranco),
+      B("pan-branco-2", "Fundo branco · Conta de luz em forma", "Perguntas rápidas sobre o produto (tem custo? precisa de obra? vale para alugado?), o QR e a Ane.", {
+        headline1: "Sua conta de luz também", headline2: "pode entrar em forma.", sub: "O benefício de aluno que alivia a conta todo mês.",
+        q1: "Tem custo para aderir?", a1: "Não", q2: "Precisa de obra ou placa?", a2: "Não", q3: "Vale para imóvel alugado?", a3: "Sim",
+        qrLabel: "Escaneie aqui", qrSub: "e aproveite", photo: "ane-oculos-2",
+      }, panBranco2),
+    ];
+    default: return [
+      B("wb-branco", "Fundo branco · Treino pesado, conta leve", "Bandeira branca: logos grandes, a frase em palavras gigantes e o QR num bloco roxo embaixo.", {
+        headline1: "Treino pesado,", headline2: "conta leve.", qrLabel: "Escaneie aqui",
+      }, wbBrancoDraw("raio")),
+      B("wb-branco-2", "Fundo branco · Tem economia esperando", "Bandeira branca com “TEM / ECONOMIA / ESPERANDO / POR VOCÊ.” empilhado e o QR embaixo.", {
+        headline1: "Tem economia", headline2: "esperando por você.", qrLabel: "Escaneie aqui",
+      }, wbBrancoDraw("saco-dinheiro")),
+    ];
+  }
+}
