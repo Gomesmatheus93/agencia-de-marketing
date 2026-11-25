@@ -22,6 +22,10 @@ export const BRAND_ASSETS: Record<string, string> = {};
 for (const name of ["logo", "logo-branco", "logo-mono", "raio", "raio-branco", "raio-mono", "allpfit", "allpfit-branco", "allpfit-mono", "allpfit-roxo", "ane", "ane-solto", "ane-caneca", "ane-ombro", "ane-tablet", "logo-branco-limpo", "fundo-display", "ane-sorrindo", "ane-queixo", "ane-costas", "ane-rabo", "ane-ombro-2", "ane-solta", "ane-coque-2", "ane-oculos-2", "ane-tras", "fundo-branco", "fundo-branco-sem-logo", "ane-polo"]) {
   BRAND_ASSETS[`alle:${name}`] = `data:image/png;base64,${readFileSync(path.join(DESIGN_DIR, "assets", `${name}.png`)).toString("base64")}`;
 }
+// Ícones 3D (pacote 3dicons, licença CC0, estilo "gradient" nas cores da Alle): assets/icone-<nome>.png, href="alle:icone-<nome>".
+for (const file of readdirSync(path.join(DESIGN_DIR, "assets")).filter((f) => /^icone-[a-z-]+\.png$/.test(f))) {
+  BRAND_ASSETS[`alle:${file.slice(0, -4)}`] = `data:image/png;base64,${readFileSync(path.join(DESIGN_DIR, "assets", file)).toString("base64")}`;
+}
 
 const MAX_REMOTE_IMAGES = 8;
 const MAX_IMAGE_BYTES = 8_000_000;

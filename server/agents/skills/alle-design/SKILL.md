@@ -174,6 +174,29 @@ largura disponível ÷ (tamanho da fonte × 0,6) no peso 800, × 0,55 no 400,
 Entrelinha: 1,1 a 1,15× o tamanho no título; 1,35× no texto corrido.
 Escape `&` como `&amp;` e `<` como `&lt;` dentro do texto.
 
+## Ícones 3D (use no lugar de desenhos à mão)
+
+Para objetos e ícones, prefira os **ícones 3D da marca** a desenhar em SVG (pedido da equipe, 25/11/2026: "elementos
+mais bonitos, 3D, e não desenho"). São do pacote 3dicons (licença CC0), no estilo degradê rosa → laranja → roxo, que
+combina com a Alle. Use `<image href="alle:icone-<nome>" …/>` mantendo a proporção (largura = altura × w/h):
+
+| nome | w×h | | nome | w×h | | nome | w×h |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `lampada` | 328×322 | | `raio` | 195×347 | | `celular` | 261×328 |
+| `check` | 272×196 | | `conversa` | 327×297 | | `mensagem` | 312×301 |
+| `calendario` | 309×346 | | `relogio` | 287×350 | | `presente` | 331×323 |
+| `saco-dinheiro` | 309×331 | | `carteira` | 335×346 | | `cadeado` | 261×319 |
+| `escudo` | 288×330 | | `chave` | 297×204 | | `megafone` | 319×335 |
+| `foguete` | 282×287 | | `estrela` | 303×309 | | `alvo` | 362×297 |
+| `halter` | 349×271 | | `joinha` | 366×307 | | `coracao` | 326×324 |
+| `grafico` | 311×329 | | `documento` | 338×336 | | | |
+
+- Tamanho: até ~380 px de altura (o original tem 400 px); um ícone grande em destaque e 1 ou 2 menores
+  flutuando (girados ±10°) ficam bonitos. Uma sombra elíptica suave embaixo dá chão ao objeto.
+- Combina com: cartões de pergunta e resposta (ícone à esquerda), passo a passo (um ícone por passo), card do
+  número (ícone saindo da borda do card), ao lado da Ane.
+- Não use cifrão (`$`): o pacote só tem dólar; para dinheiro use `saco-dinheiro` ou `carteira`.
+
 ## Fotos
 
 Use `search_photos` para achar fotos (pessoas reais, casas, telhados com
