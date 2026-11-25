@@ -72,6 +72,8 @@ const BRAND_IMAGES = [
   { href: "alle:icone-saco-dinheiro", label: "Ícone 3D · saco dinheiro", w: 309, h: 331 },
   { href: "alle:fundo-branco", label: "Fundo branco da Alle (4:5, faixa, logo, traçados e card roxo)", w: 1080, h: 1350 },
   { href: "alle:fundo-branco-sem-logo", label: "Fundo branco da Alle sem o logo (para collab)", w: 1080, h: 1350 },
+  { href: "alle:fundo-roxo", label: "Fundo roxo da Alle (4:5, faixa laranja, logo branco, traçados e card laranja)", w: 1080, h: 1350 },
+  { href: "alle:fundo-roxo-sem-logo", label: "Fundo roxo da Alle sem o logo (para collab)", w: 1080, h: 1350 },
 ];
 const PALETTE = ["#7B2FBE", "#7c00ae", "#ff7300", "#F47B20", "#1E0A01", "#FFFFFF", "#FFF8F2", "#6A24A8"];
 const WEIGHTS = [["300", "Fina"], ["400", "Normal"], ["500", "Média"], ["600", "Semi"], ["700", "Negrito"], ["800", "Extra"], ["900", "Black"]] as const;

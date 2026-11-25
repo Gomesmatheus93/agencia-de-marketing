@@ -28,6 +28,7 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | mostrar dado, número ou economia | M01, M10, M11, M12, M23, M33 |
 | emocionar, institucional, data comemorativa | M15, M17, M32 |
 | apresentar a Alle ou a oferta com a Ane (post limpo, fundo branco) | M38 |
+| o mesmo, em roxo, para contrastar com os posts brancos no perfil | M41 |
 | destacar o desconto num número grande (fundo branco) | M39 |
 | manchete de oferta com um objeto ilustrado (fundo branco) | M40 |
 | dica rápida e salvável | M02, M13, M20 |
@@ -177,6 +178,17 @@ entre y 80 e 170). Aqui o texto escuro é o certo (fundo branco); não use nas a
 parceria com a Allp Fit, que usam o fundo roxo.
 *Referência: post enviado pela equipe em 24/11/2026 (estrutura de vitrine com pessoa e card), refeito com a
 identidade da Alle.*
+
+**M41 · Vitrine com pessoa (fundo roxo).** A versão roxa do M38, criada em 25/11/2026 para o feed não ficar todo branco:
+alterne M38/M39/M40 (brancos) com o M41 no perfil. Use o fundo pronto `alle:fundo-roxo` como primeira camada
+(`<image href="alle:fundo-roxo" x="0" y="0" width="1080" height="1350"/>`): degradê roxo-escuro com os mesmos traçados
+discretos do raio da Alle (em lilás claro), faixa **laranja** no topo, logo da Alle **branco** centralizado (y 80–177),
+card **laranja** no meio (x 50–1030, y 860–1080, para a Ane de camiseta roxa se destacar) e rodapé roxo-escuro com
+Instagram e WhatsApp. Editável: `skills/alle-design/fundo-roxo.svg`. A composição é a do M38 (título centralizado em
+y 220–390, a Ane no centro saindo do card, 2 linhas de apoio em y 1110–1240), mas **o texto é claro**: título em Bebas
+Neue branco com o destaque em laranja `#ff7300`, apoio em Montserrat branco com destaque em `#ffa040`. Nunca texto
+roxo-escuro aqui. **Collab:** `alle:fundo-roxo-sem-logo` com `alle:allpfit-branco` + "+" branco + `alle:logo-branco`
+lado a lado no topo.
 
 **M39 · Card de número (fundo branco).** Mesma família do M38 (fundo branco, traçados discretos do raio da Alle e
 rodapé roxo com Instagram e WhatsApp), com esta estrutura: uma forma em "L" em degradê roxo (`#3d0b80` → `#7c00ae`)

@@ -156,6 +156,10 @@ de marca d'água no fundo (pedido da equipe).
   `#7c00ae` ou laranja; aqui o fundo é branco, então texto escuro é o certo), **pessoa recortada no centro** saindo
   do card, com a cabeça logo abaixo do título (de y≈400 até y≈1080: ~680 px de altura, nunca cobrindo o título), **texto de apoio centralizado em y 1110–1240** e nada
   no rodapé. Não use nas artes da parceria com a Allp Fit (lá o padrão é o fundo roxo).
+- **Fundo roxo pronto (`alle:fundo-roxo`, modelo M41, criado em 25/11/2026):** a mesma estrutura do fundo branco em
+  roxo, para contrastar no perfil (alterne os posts brancos com ele). Faixa laranja no topo, logo branco, card laranja
+  no meio e rodapé roxo-escuro; texto por cima sempre branco com destaque laranja. Sem logo: `alle:fundo-roxo-sem-logo`.
+  Editável: `skills/alle-design/fundo-roxo.svg`. Detalhes em referencias.md (M41).
 
 Alterne roxo e laranja ao longo de um carrossel (ex.: capa roxa, miolo
 laranja/claro, CTA roxo) para dar ritmo sem perder a unidade.
