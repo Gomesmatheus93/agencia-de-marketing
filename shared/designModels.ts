@@ -42,6 +42,8 @@ export const DESIGN_MODELS: DesignModel[] = [
   { id: "M20", name: "Grade de ícones", group: "dicas", summary: "Cards com ícones e rótulos curtos numa grade." },
   { id: "M15", name: "Foto com recorte curvo", group: "emocao", summary: "Foto em arco e moldura de linha laranja ao redor do título." },
   { id: "M17", name: "Card de data", group: "emocao", summary: "Cor chapada e uma frase grande, minimalista." },
+  { id: "M39", name: "Card de número (fundo branco)", group: "dados", summary: "Fundo branco com forma em L no canto, card roxo com sombra e número gigante, selo \"leia a legenda\" e chamada espaçada." },
+  { id: "M40", name: "Manchete com objeto (fundo branco)", group: "dados", summary: "Manchete em 3 níveis com destaque em faixa e sublinhado, selo \"leia a legenda\" e um objeto ilustrado embaixo." },
   { id: "M38", name: "Vitrine com pessoa (fundo branco)", group: "emocao", summary: "Fundo branco da Alle: logo no topo, título, a Ane saindo do card roxo e o texto embaixo." },
   { id: "M32", name: "Foto escura com moldura de linha", group: "emocao", summary: "Carrossel em fotos escuras com uma linha branca que passa de um slide para o outro." },
   { id: "M26", name: "Jogo / escolha", group: "engajamento", summary: "\"Escolha 1 letra e 1 número\" sobre uma grade de cards." },

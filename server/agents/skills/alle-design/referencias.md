@@ -28,6 +28,8 @@ SKILL.md continuam valendo: zona segura, tamanhos mínimos, sem numeração "2/7
 | mostrar dado, número ou economia | M01, M10, M11, M12, M23, M33 |
 | emocionar, institucional, data comemorativa | M15, M17, M32 |
 | apresentar a Alle ou a oferta com a Ane (post limpo, fundo branco) | M38 |
+| destacar o desconto num número grande (fundo branco) | M39 |
+| manchete de oferta com um objeto ilustrado (fundo branco) | M40 |
 | dica rápida e salvável | M02, M13, M20 |
 | engajar (comentário, enquete, compartilhar) | M18, M26 |
 | Black Friday (campanha) | M34, M35, M36, M37 |
@@ -175,6 +177,28 @@ entre y 80 e 170). Aqui o texto escuro é o certo (fundo branco); não use nas a
 parceria com a Allp Fit, que usam o fundo roxo.
 *Referência: post enviado pela equipe em 24/11/2026 (estrutura de vitrine com pessoa e card), refeito com a
 identidade da Alle.*
+
+**M39 · Card de número (fundo branco).** Mesma família do M38 (fundo branco, traçados discretos do raio da Alle e
+rodapé roxo com Instagram e WhatsApp), com esta estrutura: uma forma em "L" em degradê roxo (`#3d0b80` → `#7c00ae`)
+entrando pelo canto superior esquerdo, com um recorte branco; os logos centralizados (Allp Fit + Alle em collab);
+um **card roxo-escuro `#3d0b80` arredondado (rx 52), com sombra e um contorno roxo fino deslocado para baixo e para
+a direita**; dentro dele, uma seta laranja subindo, "Economize até" em Montserrat 400 branco, o número gigante em
+Bebas Neue branco (~250 px), o complemento em Bebas Neue laranja em 2 linhas ao lado do número e uma frase final em
+Montserrat 800 branco sublinhada em laranja; abaixo do card, o selo "LEIA A LEGENDA" (retângulo só com contorno
+cinza-lilás) e, perto do rodapé, a chamada em Montserrat 700 roxo-escuro com letras bem espaçadas ("ESCANEIE O QR NA
+SUA UNIDADE"). **Exemplo completo e editável: `skills/alle-design/modelos/M39.svg`** (leia e adapte os textos).
+Percentual só "até 35%" (PJ) ou "até 15%" (PF), com a ressalva na legenda.
+*Referência: post de concorrente enviado pela equipe em 25/11/2026 (só a estrutura; identidade e textos da Alle).*
+
+**M40 · Manchete com objeto (fundo branco).** Mesma família do M38/M39: a forma em "L" entra pelo canto superior
+**direito**; os logos ficam à esquerda no topo; a manchete é centralizada em 3 níveis: (1) título em Bebas Neue
+roxo-escuro, (2) o destaque em Bebas Neue laranja, (3) uma linha em Montserrat 800 com a parte principal dentro de uma
+**faixa roxa `#7c00ae`** com texto branco ("até 35% de desconto") e o resto em roxo-escuro, e um fecho curto em
+Bebas Neue **sublinhado** ("TODOS OS MESES."); depois o selo "LEIA A LEGENDA" e, ocupando a metade de baixo, um
+**objeto ilustrado** ligado ao tema (no exemplo, a conta de luz inclinada com barras laranja subindo, a seta roxa e o
+raio da Alle). Desenhe o objeto em SVG, sem marca ou texto de terceiros. **Exemplo completo e editável:
+`skills/alle-design/modelos/M40.svg`.**
+*Referência: post de concorrente enviado pela equipe em 25/11/2026 (só a estrutura).*
 
 **M32 · Foto escura com moldura de linha (carrossel institucional).** Cada slide é uma foto que
 ocupa a arte inteira (mãos juntas, painéis solares ao pôr do sol, aperto de mão, prédio), com uma

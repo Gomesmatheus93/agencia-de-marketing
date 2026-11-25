@@ -330,6 +330,9 @@ ${t(["A economia da sua conta de luz"], 540, 1030, 42, 0, 400, "#FFF", 'text-anc
 ${t(["CHAME A ANE NO WHATSAPP"], 540, 1170, 34, 0, 900, LAR_TXT, 'text-anchor="middle" letter-spacing="2"')}
 ${logo("logo-branco", 420, 1210, 240)}`,
 
+  // M39 e M40: o SVG de exemplo da skill (skills/alle-design/modelos/<id>.svg) é a própria prévia.
+  M39: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M39.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
+  M40: () => fs.readFileSync(path.resolve(import.meta.dirname, "../server/agents/skills/alle-design/modelos/M40.svg"), "utf8").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, ""),
   M38: () => `<image href="alle:fundo-branco" x="0" y="0" width="${W}" height="${H}"/>
 <text x="540" y="285" font-family="Bebas Neue" font-size="118" fill="#3d0b80" text-anchor="middle">SUA CONTA DE LUZ MAIS LEVE</text>
 <text x="540" y="385" font-family="Bebas Neue" font-size="118" fill="${LAR_TXT}" text-anchor="middle">SEM OBRA E SEM PLACA</text>

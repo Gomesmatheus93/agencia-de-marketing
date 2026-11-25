@@ -214,7 +214,7 @@ equipe). Se a ordem importar (passo a passo, lista), use um selo pequeno
 ## Modelos de referência (leia antes de desenhar)
 
 Antes de desenhar qualquer post, carrossel ou capa, leia a biblioteca de modelos com
-`read_file("skills/alle-design/referencias.md")`. São 28 modelos (numerados de M01 a M38; alguns números foram excluídos) estudados das
+`read_file("skills/alle-design/referencias.md")`. São 30 modelos (numerados de M01 a M40; alguns números foram excluídos) estudados das
 referências do setor e já adaptados à identidade Alle: número gigante, linha contínua entre slides,
 documento anotado, mito ou verdade, prós e contras, simulação de economia, notícia no notebook etc.
 Escolha um modelo que combine com o objetivo do card, varie em relação à última peça e diga na

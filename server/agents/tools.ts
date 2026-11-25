@@ -41,7 +41,7 @@ export const AGENT_TOOLS: Tool[] = [
   {
     name: "read_file",
     description:
-      "Lê um arquivo da memória compartilhada (ex.: voice.md, plan.md) ou um arquivo de referência das skills, somente leitura, com o prefixo skills/ (ex.: skills/ig-reel/hooks.json, skills/ig-profile/rubric.json, skills/voice.template.md).",
+      "Lê um arquivo da memória compartilhada (ex.: voice.md, plan.md) ou um arquivo de referência das skills, somente leitura, com o prefixo skills/ (ex.: skills/ig-reel/hooks.json, skills/ig-profile/rubric.json, skills/voice.template.md, skills/alle-design/modelos/M39.svg).",
     input_schema: {
       type: "object",
       properties: { path: { type: "string" } },
@@ -182,7 +182,7 @@ function workspacePath(raw: string): string {
 function skillsPath(raw: string): string {
   const resolved = path.resolve(SKILLS_DIR, raw.replace(/^skills\//, ""));
   const rel = path.relative(SKILLS_DIR, resolved);
-  if (rel.startsWith("..") || path.isAbsolute(rel) || !/\.(md|json)$/.test(resolved)) {
+  if (rel.startsWith("..") || path.isAbsolute(rel) || !/\.(md|json|svg)$/.test(resolved)) {
     throw new ToolError(`Arquivo de skill inválido: ${raw}`);
   }
   return resolved;
