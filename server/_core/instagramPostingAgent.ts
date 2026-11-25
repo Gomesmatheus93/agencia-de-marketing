@@ -638,6 +638,29 @@ export async function publishInstagramCarouselWithAgent(
   };
 }
 
+/** Story a partir de uma URL pública (imagem ou vídeo MP4), usado pelo agendador e pelo Motion. */
+export async function publishInstagramStoryFromUrl(input: {
+  userId: number;
+  url: string;
+  kind: "image" | "video";
+}): Promise<{ success: true; mediaId: string; containerId: string }> {
+  const config = await getRequiredMetaConfig(input.userId);
+  if (!/^https?:\/\//i.test(input.url)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "URL do story inválida para publicação no Instagram." });
+  }
+  const publicUrl = await getMetaFetchableStorageUrl(input.url);
+  const containerId = await postToGraph(
+    "media",
+    input.kind === "video" ? { video_url: publicUrl, media_type: "STORIES" } : { image_url: publicUrl, media_type: "STORIES" },
+    config
+  );
+  // Vídeo demora mais para o Instagram processar.
+  if (input.kind === "video") await waitForContainerReady(containerId, config, 30, 5000);
+  else await waitForContainerReady(containerId, config);
+  const mediaId = await postToGraph("media_publish", { creation_id: containerId }, config);
+  return { success: true, mediaId, containerId };
+}
+
 export async function publishInstagramStory(input: {
   userId: number;
   imageDataUrl: string;

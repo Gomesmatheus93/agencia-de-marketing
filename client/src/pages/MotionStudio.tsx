@@ -5,9 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MotionPublishDialog } from "@/components/motion/MotionPublishDialog";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Bot, Clapperboard, Copy, Download, FileJson, Loader2, Pencil, RefreshCw, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Bot, Clapperboard, Copy, Download, FileJson, Loader2, Pencil, RefreshCw, Sparkles, Trash2, Wand2 , Send} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -39,6 +40,9 @@ export default function MotionStudio() {
   const [percent, setPercent] = useState(15);
   const [music, setMusic] = useState("mixkit-801");
   const [pasting, setPasting] = useState(false);
+  const [publishing, setPublishing] = useState<{ id: number; title: string; caption: string | null; format: string } | null>(null);
+  const pubs = trpc.motion.publications.useQuery();
+  const cancelPub = trpc.motion.cancelPublication.useMutation({ onSuccess: () => { toast.success("Programação cancelada"); void pubs.refetch(); }, onError: (e) => toast.error(e.message) });
 
   const refresh = () => void utils.motion.list.invalidate();
   const fromTemplate = trpc.motion.fromTemplate.useMutation({ onSuccess: () => { toast.success("Vídeo na fila de renderização"); refresh(); }, onError: (e) => toast.error(e.message) });
@@ -140,8 +144,16 @@ export default function MotionStudio() {
                         <p className="text-[11px] text-muted-foreground">
                           {v.origin === "claude" ? "Claude" : `modelo ${v.origin}`}{v.seconds ? ` · ${v.seconds}s` : ""}{v.ctaId && ctaText.get(v.ctaId) ? ` · CTA` : ""} · {new Date(v.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </p>
+                        {(pubs.data ?? []).filter((p) => p.motionId === v.id).slice(0, 4).map((p) => (
+                          <div key={p.postId} className={cn("flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px]", p.status === "published" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : p.status === "failed" ? "bg-red-500/10 text-red-700 dark:text-red-400" : "bg-primary/10 text-primary")} title={p.error ?? undefined}>
+                            <span className="font-semibold">{p.target === "feed" ? "Feed" : "Story"}</span>
+                            <span>{p.status === "published" ? `publicado ${p.publishedAt ? new Date(p.publishedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}` : p.status === "failed" ? "falhou" : `programado ${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}`}</span>
+                            {p.status === "scheduled" && <button className="ml-auto hover:underline" onClick={() => { if (confirm("Cancelar esta programação?")) cancelPub.mutate({ postId: p.postId }); }}>cancelar</button>}
+                          </div>
+                        ))}
                         <div className="flex flex-wrap gap-1.5">
                           <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => navigate(`/dashboard/motion/${v.id}`)}><Pencil className="h-3.5 w-3.5" />Editar</Button>
+                          {v.status === "pronto" && <Button size="sm" variant="outline" className="h-7 gap-1 border-primary/40 text-xs text-primary" onClick={() => setPublishing({ id: v.id, title: v.title, caption: v.caption, format: v.format })}><Send className="h-3.5 w-3.5" />Publicar</Button>}
                           {v.videoUrl && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" asChild><a href={v.videoUrl} target="_blank" rel="noopener noreferrer" download><Download className="h-3.5 w-3.5" />MP4</a></Button>}
                           {v.status === "falhou" && <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => rerender.mutate({ id: v.id })}><RefreshCw className="h-3.5 w-3.5" />Tentar de novo</Button>}
                           <Button size="sm" variant="ghost" className="h-7 px-2" title="Duplicar" onClick={() => duplicate.mutate({ id: v.id })}><Copy className="h-3.5 w-3.5" /></Button>
@@ -157,6 +169,7 @@ export default function MotionStudio() {
         </div>
       </main>
             {pasting && <PasteSpec onClose={() => setPasting(false)} onSaved={refresh} />}
+      {publishing && <MotionPublishDialog video={publishing} onClose={() => setPublishing(null)} onDone={() => void pubs.refetch()} />}
     </AppLayout>
   );
 }

@@ -4,6 +4,7 @@ import { collaboratorsFromMetadata } from "./instagramCollaborators";
 import {
   publishInstagramCarouselWithAgent,
   publishInstagramReelsPost,
+  publishInstagramStoryFromUrl,
   type InstagramPostingInput,
   type InstagramPostingSlide,
 } from "./instagramPostingAgent";
@@ -54,12 +55,33 @@ function parseScheduledCarouselPayload(metadata?: string | null): ScheduledInsta
 }
 
 
+/** metadata {"kind":"instagram_story"} marca o post como story. */
+function parseStoryPayload(metadata?: string | null): { kind: "instagram_story"; motionId?: number } | undefined {
+  if (!metadata?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(metadata) as { kind?: string; motionId?: number };
+    return parsed.kind === "instagram_story" ? { kind: "instagram_story", motionId: parsed.motionId } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function publishInstagramSocialPost(post: SocialPost) {
   if (post.channel !== "instagram") {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "Este publicador so aceita posts do Instagram.",
     });
+  }
+
+  // Story (imagem ou vídeo), por exemplo um vídeo da aba Motion publicado no story.
+  const story = parseStoryPayload(post.metadata);
+  if (story) {
+    const url = post.imageUrl?.trim();
+    if (!url) throw new TRPCError({ code: "BAD_REQUEST", message: "Story sem imagem ou vídeo." });
+    const isVideo = VIDEO_URL_RE.test(url);
+    const result = await publishInstagramStoryFromUrl({ userId: post.userId, url, kind: isVideo ? "video" : "image" });
+    return { result: { ...result, slideUrls: [url] }, publicImageUrl: isVideo ? undefined : url };
   }
 
   const carouselPayload = parseScheduledCarouselPayload(post.metadata);
