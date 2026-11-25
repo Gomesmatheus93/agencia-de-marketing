@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { useViewerAccess } from "@/_core/hooks/useLimitedAccess";
 import { cn } from "@/lib/utils";
 import { Clapperboard, Download, Images, GalleryHorizontal, History, Image as ImageIcon, Layers, Loader2, Megaphone, Pencil, Play, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +39,7 @@ function lastMonths() {
 
 export default function HistoryPage() {
   const [, navigate] = useLocation();
+  const isViewer = useViewerAccess();
   const [kind, setKind] = useState<Kind>("todos");
   const [month, setMonth] = useState("");
   const [search, setSearch] = useState("");
@@ -151,7 +153,7 @@ export default function HistoryPage() {
           {playing && (
             <div className="flex justify-between gap-2">
               <Button variant="outline" size="sm" className="gap-1.5" asChild><a href={playing.videoUrl} target="_blank" rel="noopener noreferrer" download><Download className="h-4 w-4" />Baixar MP4</a></Button>
-              <Button size="sm" className="gap-1.5" onClick={() => navigate(`/dashboard/motion/${playing.id}`)}><Pencil className="h-4 w-4" />Editar vídeo</Button>
+              {!isViewer && <Button size="sm" className="gap-1.5" onClick={() => navigate(`/dashboard/motion/${playing.id}`)}><Pencil className="h-4 w-4" />Editar vídeo</Button>}
             </div>
           )}
         </DialogContent>

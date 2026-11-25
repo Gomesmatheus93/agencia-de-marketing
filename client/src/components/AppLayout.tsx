@@ -58,6 +58,9 @@ import UpgradeModal from "@/components/UpgradeModal";
 // Conta restrita (accountType "limited"): só o Dashboard (e o próprio perfil); as artes liberadas abrem nele.
 const LIMITED_MODULES = new Set(["dashboard"]);
 const LIMITED_PATHS = new Set(["/dashboard", "/dashboard/perfil", "/dashboard/security"]);
+// Visualizador (accountType "viewer", desde 25/11/2026): só olhar os posts.
+const VIEWER_MODULES = new Set(["dashboard", "planning", "calendar", "historico"]);
+const VIEWER_PATHS = new Set(["/dashboard", "/dashboard/planejamento", "/dashboard/calendar", "/dashboard/historico"]);
 
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
@@ -140,8 +143,13 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   const ThemeToggleIcon = isDarkTheme ? Sun : Moon;
 
   // Conta restrita: só Dashboard, Planejamento e Calendário (a trava de verdade fica no servidor).
-  const isLimitedAccount = (user as { accountType?: string } | null)?.accountType === "limited";
-  const navItems = NAV_ITEMS_CONFIG.filter((item) => !isLimitedAccount || LIMITED_MODULES.has(item.id)).map((item) => ({
+  const accountType = (user as { accountType?: string } | null)?.accountType;
+  const isViewerAccount = accountType === "viewer";
+  // Conta restrita e visualizador usam o mesmo filtro de telas, cada um com a sua lista.
+  const isLimitedAccount = accountType === "limited" || isViewerAccount;
+  const allowedModules = isViewerAccount ? VIEWER_MODULES : LIMITED_MODULES;
+  const allowedPaths = isViewerAccount ? VIEWER_PATHS : LIMITED_PATHS;
+  const navItems = NAV_ITEMS_CONFIG.filter((item) => !isLimitedAccount || allowedModules.has(item.id)).map((item) => ({
     ...item,
     label: t(item.labelKey),
     description: t(item.descKey),
@@ -175,8 +183,8 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   }, [isUnitAccount, navigate]);
 
   useEffect(() => {
-    if (isLimitedAccount && !LIMITED_PATHS.has(location)) navigate("/dashboard");
-  }, [isLimitedAccount, location, navigate]);
+    if (isLimitedAccount && !allowedPaths.has(location)) navigate("/dashboard");
+  }, [isLimitedAccount, allowedPaths, location, navigate]);
 
   if (loading) {
     return (
@@ -195,7 +203,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
   }
 
   if (!isAuthenticated || isUnitAccount) return null;
-  if (isLimitedAccount && !LIMITED_PATHS.has(location)) return null;
+  if (isLimitedAccount && !allowedPaths.has(location)) return null;
 
   const userInitials = user?.name
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -459,6 +467,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52 glass-card border-border/50">
+            {!isViewerAccount && <>
             <DropdownMenuItem onClick={() => navigate("/dashboard/perfil")} className="gap-2">
               <UserRound className="w-4 h-4" />
               Meu perfil
@@ -472,6 +481,7 @@ export default function AppLayout({ children, activeModule }: AppLayoutProps) {
               Segurança
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            </>}
             <DropdownMenuItem
               onClick={() => logoutMutation.mutate()}
               className="gap-2 text-destructive focus:text-destructive"

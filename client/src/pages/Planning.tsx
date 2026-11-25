@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
+import { useLimitedAccess, useViewerAccess } from "@/_core/hooks/useLimitedAccess";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Bot, CalendarCheck, CalendarRange, Check, GripVertical, Handshake, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles } from "lucide-react";
@@ -69,6 +69,8 @@ export default function Planning() {
   const t = useAgentTask<Plan>("planejamento");
   // Conta restrita: só vê e edita a pauta (sem gerar, refazer, criar arte ou enviar ao calendário).
   const isLimited = useLimitedAccess();
+  // Visualizador: nem editar nem mover pauta.
+  const isViewer = useViewerAccess();
   const [startDate, setStartDate] = useState(nextMonday);
   const [period, setPeriod] = useState<"semana" | "mes">("semana");
   const [postsPerWeek, setPostsPerWeek] = useState(5);
@@ -256,7 +258,7 @@ export default function Planning() {
                     key={day}
                     onDragOver={(e) => { e.preventDefault(); setOverDay(day); }}
                     onDragLeave={() => setOverDay((d) => (d === day ? null : d))}
-                    onDrop={(e) => { e.preventDefault(); if (dragging !== null) moveTo(dragging, day); setDragging(null); setOverDay(null); }}
+                    onDrop={(e) => { e.preventDefault(); if (dragging !== null && !isViewer) moveTo(dragging, day); setDragging(null); setOverDay(null); }}
                     className={cn("min-h-[140px] rounded-2xl border bg-card/60 p-2.5 transition-colors", overDay === day && dragging !== null && "border-primary bg-primary/5")}
                   >
                     <p className="mb-2 text-xs font-semibold capitalize text-muted-foreground">{fmtDay(day)}</p>
@@ -264,7 +266,7 @@ export default function Planning() {
                       {(byDay.get(day) ?? []).map(({ item, index }) => (
                         <div
                           key={index}
-                          draggable
+                          draggable={!isViewer}
                           onDragStart={(e) => { setDragging(index); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); }}
                           onDragEnd={() => { setDragging(null); setOverDay(null); }}
                           className={cn("cursor-grab rounded-xl border bg-background p-2.5 text-xs shadow-sm active:cursor-grabbing", selected.has(index) && "ring-2 ring-primary", dragging === index && "opacity-40")}
@@ -315,7 +317,7 @@ export default function Planning() {
                             {item.notes && <p className="mt-1"><b>Obs.:</b> {item.notes}</p>}
                           </details>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : (
+                            {sent.has(index) ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check className="h-3 w-3" />no calendário</span> : isViewer ? null : (
                               <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setEditing({ index, item: { ...item } })}><Pencil className="h-3 w-3" />editar</button>
                             )}
                             {!sent.has(index) && !isLimited && (

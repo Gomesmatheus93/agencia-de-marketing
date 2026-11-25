@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { initialsOf } from "@/pages/Profile";
 import { usePlan } from "@/_core/hooks/usePlan";
-import { useLimitedAccess } from "@/_core/hooks/useLimitedAccess";
+import { useLimitedAccess, useViewerAccess } from "@/_core/hooks/useLimitedAccess";
 import { ArtViewer } from "@/components/agents/ArtViewer";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -115,7 +115,9 @@ export default function OperationalDashboard() {
   const profile = trpc.analytics.getProfile.useQuery(undefined, { ...live, enabled: connected, retry: 1 });
   const insights = trpc.analytics.getInsights.useQuery({ days: Math.max(7, daysSoFar) }, { ...live, enabled: connected, retry: 1 });
   const media = trpc.analytics.getMedia.useQuery({ limit: 25 }, { ...live, staleTime: 10 * 60_000, enabled: connected, retry: 1 });
-  const inbox = trpc.inbox.conversations.useQuery(undefined, { ...live, enabled: connected, retry: 1 });
+  // Visualizador não vê o Direct (o servidor também bloqueia).
+  const isViewer = useViewerAccess();
+  const inbox = trpc.inbox.conversations.useQuery(undefined, { ...live, enabled: connected && !isViewer, retry: 1 });
 
   const firstName = user?.name?.split(" ")[0] || "Usuário";
   const hour = now.getHours();

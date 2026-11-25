@@ -97,14 +97,38 @@ export function isLimitedPathAllowed(path: string) {
   return LIMITED_ALLOWED_PATHS.has(path) || path.startsWith("profile.") || path.startsWith("auth.twoFactor.");
 }
 
+// Conta "visualizador" (funcionário de uma conta principal, pedido de 25/11/2026):
+// só olhar os posts no Dashboard, Planejamento, Calendário e Histórico. Nada de
+// criar, editar, excluir, publicar ou enviar: a única mutation liberada é sair.
+// Lista fechada de consultas: rota nova fica bloqueada até alguém liberar aqui.
+const VIEWER_ALLOWED_QUERIES = new Set([
+  "auth.me", "auth.trialStatus", "artStudio.myAccess",
+  // Dashboard (sem o Direct).
+  "dashboard.period", "agents.recent",
+  "analytics.getInsights", "analytics.getInstagramConnectionStatus", "analytics.getMedia", "analytics.getProfile",
+  // Planejamento e as artes de cada pauta.
+  "agents.tasks", "agents.task", "agents.planOutputs",
+  // Calendário.
+  "editorialPlan.getByMonth", "posts.getAll", "brandKit.get",
+  // Histórico.
+  "history.counts", "history.list",
+]);
+const VIEWER_ALLOWED_MUTATIONS = new Set(["auth.logout", "auth.logoutAllDevices"]);
+export function isViewerPathAllowed(path: string, type: string) {
+  return type === "query" ? VIEWER_ALLOWED_QUERIES.has(path) : VIEWER_ALLOWED_MUTATIONS.has(path);
+}
+
 const requireUser = t.middleware(async opts => {
-  const { ctx, next, path } = opts;
+  const { ctx, next, path, type } = opts;
 
   if (!ctx.user || !ctx.actualUser) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
   if (ctx.actualUser.accountType === "unit" && !isUnitPathAllowed(path)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Esta conta de unidade só tem acesso ao portal da unidade." });
+  }
+  if (ctx.actualUser.accountType === "viewer" && !isViewerPathAllowed(path, type)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Este acesso é só para visualizar os posts." });
   }
   if (ctx.actualUser.accountType === "limited") {
     if (!isLimitedPathAllowed(path)) {

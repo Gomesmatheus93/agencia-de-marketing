@@ -249,7 +249,7 @@ async function startServer() {
     async (req, res) => {
       try {
         const user = await sdk.authenticateRequest(req);
-        if (user.accountType === "unit") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
+        if (user.accountType === "unit" || user.accountType === "viewer") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
         const contentType = (req.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
         // Conta restrita só envia imagem (trocar foto ao editar uma arte).
         if (user.accountType === "limited" && !contentType.startsWith("image/")) { res.status(403).json({ error: "Este acesso só envia imagens." }); return; }
@@ -275,7 +275,7 @@ async function startServer() {
   app.post("/api/request-presigned-upload", express.json(), async (req, res) => {
     try {
       const user = await sdk.authenticateRequest(req);
-      if (user.accountType === "unit" || user.accountType === "limited") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
+      if (user.accountType === "unit" || user.accountType === "limited" || user.accountType === "viewer") { res.status(403).json({ error: "Este acesso não envia arquivos." }); return; }
       const contentType = (typeof req.body?.contentType === "string" ? req.body.contentType : "application/octet-stream").split(";")[0].trim();
       const MIME_TO_EXT: Record<string, string> = {
         "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
