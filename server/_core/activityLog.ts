@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, like, not, or, type SQL } from "drizzle-orm";
-import { auditLog } from "../../drizzle/schema";
+import { agentThreads, auditLog } from "../../drizzle/schema";
 import * as db from "../db";
+import * as store from "../agents/store";
 
 // Registros de acesso e de alterações para o painel do super admin.
 // Acessos: login.*, sso.login e logout. Alterações: "change" (gravado por
@@ -25,6 +26,8 @@ const ACTION_LABEL: Record<string, string> = {
   "admin.deactivate": "Desativou uma conta",
   "admin.delete_user": "Excluiu um usuário",
   "admin.set_password": "Trocou a senha de um usuário",
+  "password.reset_requested": "Pediu para redefinir a senha",
+  "password.reset": "Redefiniu a senha pelo e-mail",
   "unit.plan.view": "Abriu o plano da semana da unidade",
   "unit.plan.download": "Baixou uma arte do plano da unidade",
   "unit.plan.posted": "Marcou um post da unidade como publicado",
@@ -79,6 +82,9 @@ const PATH_LABEL: Record<string, string> = {
   "motion.rerender": "Renderizou de novo um vídeo motion",
   "motion.duplicate": "Duplicou um vídeo motion",
   "motion.remove": "Excluiu um vídeo motion",
+  "motion.publish": "Publicou ou programou um vídeo motion no Instagram",
+  "motion.cancelPublication": "Cancelou a programação de um vídeo motion",
+  "agents.publishOutput": "Publicou ou programou uma arte no Instagram",
 };
 
 export function actionLabel(action: string, path?: string) {
@@ -108,8 +114,17 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
     if (u) people.set(id, { name: u.name ?? null, email: u.email ?? null });
   }));
 
+  // Título da arte ou do plano em que mexeram (no lugar de só "#238").
+  const threadIds = [...new Set(rows.map((r) => Number(((r.metadata ?? {}) as { input?: { threadId?: unknown } }).input?.threadId)).filter((n) => Number.isInteger(n) && n > 0))];
+  const titles = new Map<number, string>();
+  if (threadIds.length) {
+    const ts = await c.select({ id: agentThreads.id, title: agentThreads.title, result: agentThreads.result }).from(agentThreads).where(inArray(agentThreads.id, threadIds));
+    for (const t of ts) titles.set(t.id, String((t.result as { title?: unknown } | null)?.title ?? t.title));
+  }
+
   return rows.map((r) => {
-    const meta = (r.metadata ?? {}) as { path?: string; input?: unknown } & Record<string, unknown>;
+    const meta = (r.metadata ?? {}) as { path?: string; input?: unknown; change?: unknown } & Record<string, unknown>;
+    const threadId = Number((meta.input as { threadId?: unknown } | undefined)?.threadId);
     return {
       id: r.id,
       at: r.createdAt,
@@ -124,6 +139,64 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
       ip: r.ip,
       userAgent: r.userAgent,
       details: meta.path ? meta.input ?? null : r.metadata ?? null,
+      artTitle: titles.get(threadId) ?? null,
+      hasChange: Boolean(meta.change),
     };
   });
+}
+
+type ArtImage = { url: string; label: string; target: { kind: "slide" | "frame" | "post"; index: number }; previousUrl: string | null };
+
+/** Todas as artes de uma tarefa (slides, quadros ou o post), com a versão anterior guardada de cada uma. */
+function artImages(agentSlug: string, result: Record<string, any> | null): ArtImage[] {
+  if (!result) return [];
+  if (Array.isArray(result.slides)) return result.slides.filter((s: any) => s?.imageUrl).map((s: any, i: number) => ({ url: s.imageUrl, label: `Slide ${i + 1}`, target: { kind: "slide" as const, index: i }, previousUrl: s.previous?.imageUrl ?? null }));
+  if (Array.isArray(result.frames)) return result.frames.filter((f: any) => f?.imageUrl).map((f: any, i: number) => ({ url: f.imageUrl, label: `Story ${i + 1}`, target: { kind: "frame" as const, index: i }, previousUrl: f.previous?.imageUrl ?? null }));
+  if (typeof result.imageUrl === "string") return [{ url: result.imageUrl, label: agentSlug === "legendas" ? "Post" : "Arte", target: { kind: "post", index: 0 }, previousUrl: result.previous?.imageUrl ?? null }];
+  return [];
+}
+
+/**
+ * Detalhe de um registro: o que mudou (antes e depois, quando a rota anotou) e
+ * como a arte, a legenda ou a pauta estão agora.
+ */
+export async function activityDetail(id: number) {
+  const c = await db.getDb();
+  if (!c) return null;
+  const [row] = await c.select().from(auditLog).where(eq(auditLog.id, id)).limit(1);
+  if (!row) return null;
+  const meta = (row.metadata ?? {}) as { path?: string; input?: Record<string, any>; change?: Record<string, unknown> };
+  const input = meta.input ?? {};
+  const threadId = Number(input.threadId);
+  const ownerId = row.targetUserId ?? row.actorUserId;
+
+  let art: null | { threadId: number; title: string; agentSlug: string; images: ArtImage[]; caption: string | null; hashtags: string[]; focus: { kind: string; index: number } | null } = null;
+  let planItem: null | { index: number; item: Record<string, unknown> | null; arts: Array<{ threadId: number; title: string; images: string[] }> } = null;
+
+  if (Number.isInteger(threadId) && ownerId) {
+    const thread = await store.getThread(ownerId, threadId);
+    if (thread) {
+      const result = (thread.result ?? null) as Record<string, any> | null;
+      if (thread.agentSlug === "planejamento") {
+        const index = Number(input.index);
+        if (Number.isInteger(index)) {
+          const outputs = await store.listPlanOutputs(ownerId, threadId);
+          planItem = {
+            index,
+            item: result?.items?.[index] ?? null,
+            arts: outputs.filter((t) => (t.taskInput as { planLink?: { index?: number } } | null)?.planLink?.index === index)
+              .map((t) => ({ threadId: t.id, title: String((t.result as any)?.title ?? t.title), images: artImages(t.agentSlug, t.result as any).map((i) => i.url).slice(0, 10) })),
+          };
+        }
+      } else {
+        const target = input.target && typeof input.target === "object" ? { kind: String(input.target.kind), index: Number(input.target.index ?? 0) } : null;
+        art = {
+          threadId, title: String(result?.title ?? thread.title), agentSlug: thread.agentSlug,
+          images: artImages(thread.agentSlug, result), caption: typeof result?.caption === "string" ? result.caption : null,
+          hashtags: Array.isArray(result?.hashtags) ? result.hashtags : [], focus: target,
+        };
+      }
+    }
+  }
+  return { id: row.id, path: meta.path ?? null, change: meta.change ?? null, art, planItem, deleted: Number.isInteger(threadId) && !art && !planItem };
 }

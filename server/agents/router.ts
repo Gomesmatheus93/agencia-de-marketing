@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { createPendingCommentAutomation, scheduledCommentAutomationSchema } from "../_core/scheduledCommentAutomation";
 import { collaboratorsSchema } from "../_core/instagramCollaborators";
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { noteAuditChange, protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import { AGENTS, getAgent } from "./registry";
 import { regeneratePlanItem, sendUserMessage } from "./runtime";
@@ -10,7 +10,7 @@ import { TASKS, planItemSchema, type PlanResult } from "./tasks";
 import * as store from "./store";
 import { persistGeneratedImage } from "../_core/imageGeneration";
 import { DESIGN_FORMATS, DesignError, renderDesign } from "./design/render";
-import { findSvgForImage, formatOf } from "./design/edit";
+import { findSvgForImage, formatOf, svgChangeSummary } from "./design/edit";
 import { editForReels } from "./video/reelsEdit";
 import { getHeyGenSubtitle } from "../_core/heyGenAvatarAgent";
 import { buildScheduledInstagramCarouselMetadata, publishInstagramSocialPost } from "../_core/instagramSocialPostPublisher";
@@ -234,6 +234,12 @@ export const agentsRouter = router({
       if (thread.agentSlug !== "planejamento" || !plan?.items[input.index]) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pauta não encontrada." });
       }
+      const old = plan.items[input.index] as Record<string, unknown>;
+      const next = input.item as Record<string, unknown>;
+      const fields = [...new Set([...Object.keys(old), ...Object.keys(next)])]
+        .filter((k) => JSON.stringify(old[k] ?? null) !== JSON.stringify(next[k] ?? null))
+        .map((k) => ({ field: k, before: old[k] ?? null, after: next[k] ?? null }));
+      noteAuditChange(ctx, "agents.updatePlanItem", { kind: "plan", title: next.title ?? old.title, date: next.date ?? old.date, fields });
       const items = plan.items.map((it, i) => (i === input.index ? input.item : it));
       await store.setThreadResult(thread.id, { ...plan, items });
       return { ok: true };
@@ -282,6 +288,7 @@ export const agentsRouter = router({
       const { url } = await persistGeneratedImage(png.toString("base64"), "png");
       const { width, height } = DESIGN_FORMATS[format];
       await db.saveImage(ctx.user.id, `${thread.title.slice(0, 200)} (editada)`, url, undefined, width, height);
+      noteAuditChange(ctx, "agents.saveArt", { kind: "art", target: input.target, beforeUrl: node.imageUrl, afterUrl: url, ...svgChangeSummary(svg, input.svg) });
       node.previous = { imageUrl: node.imageUrl, svg };
       node.imageUrl = url;
       node.svg = input.svg;
@@ -298,6 +305,7 @@ export const agentsRouter = router({
       node.imageUrl = node.previous.imageUrl;
       node.svg = node.previous.svg;
       node.previous = current.svg ? current : undefined;
+      noteAuditChange(ctx, "agents.undoArtEdit", { kind: "art", undo: true, target: input.target, beforeUrl: current.imageUrl, afterUrl: node.imageUrl, ...(current.svg && node.svg ? svgChangeSummary(current.svg, node.svg) : {}) });
       await store.setThreadResult(thread.id, result);
       return { imageUrl: node.imageUrl };
     }),
@@ -309,6 +317,7 @@ export const agentsRouter = router({
       const thread = await ownThread(ctx.user.id, input.threadId);
       const result = thread.result as Record<string, any> | null;
       if (!result || typeof result.caption !== "string") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta tarefa não tem legenda." });
+      noteAuditChange(ctx, "agents.editCaption", { kind: "caption", before: result.caption, after: input.caption, hashtagsBefore: result.hashtags ?? [], hashtagsAfter: input.hashtags });
       await store.setThreadResult(thread.id, { ...result, caption: input.caption, hashtags: input.hashtags });
       return { ok: true };
     }),

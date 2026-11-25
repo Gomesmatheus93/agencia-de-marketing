@@ -5,7 +5,7 @@ import * as db from "../db";
 import { hashPassword } from "./password";
 import { nanoid } from "nanoid";
 import { storagePut } from "../storage";
-import { listActivity } from "./activityLog";
+import { activityDetail, listActivity } from "./activityLog";
 
 function extensionFromMimeType(mimeType: string): string {
   const map: Record<string, string> = {
@@ -75,6 +75,11 @@ export const adminRouter = router({
       limit: z.number().int().min(1).max(2000).default(500),
     }))
     .query(({ input }) => listActivity(input)),
+
+  /** Detalhe de um registro: antes e depois e como a arte está agora. */
+  activityDetail: ownerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(({ input }) => activityDetail(input.id)),
 
   setUserRole: ownerProcedure
     .input(z.object({ id: z.number(), role: z.enum(["user", "admin"]) }))

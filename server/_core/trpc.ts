@@ -151,9 +151,20 @@ function summarize(v: unknown, depth = 0): unknown {
   }
   return String(v);
 }
+// O "antes e depois" de uma alteração, anotado pela própria rota (que é quem
+// sabe o estado anterior) e gravado junto no registro pelo auditChanges.
+const auditNotes = new WeakMap<object, Map<string, Record<string, unknown>>>();
+export function noteAuditChange(ctx: { req: object }, path: string, change: Record<string, unknown>) {
+  const notes = auditNotes.get(ctx.req) ?? new Map<string, Record<string, unknown>>();
+  notes.set(path, change);
+  auditNotes.set(ctx.req, notes);
+}
+
 const auditChanges = t.middleware(async ({ ctx, next, path, type, getRawInput }) => {
   const result = await next();
   if (type === "mutation" && result.ok && ctx.actualUser && !AUDIT_SKIP.some((re) => re.test(path))) {
+    const change = auditNotes.get(ctx.req)?.get(path);
+    auditNotes.get(ctx.req)?.delete(path);
     const input = await getRawInput().catch(() => undefined);
     const obj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const ref = obj.threadId ?? obj.id ?? obj.postId ?? obj.memberId ?? null;
@@ -165,7 +176,7 @@ const auditChanges = t.middleware(async ({ ctx, next, path, type, getRawInput })
       targetId: ref == null ? null : String(ref).slice(0, 64),
       ip: ctx.req.ip ?? null,
       userAgent: String(ctx.req.headers?.["user-agent"] ?? "").slice(0, 255) || null,
-      metadata: { path, input: summarize(input) as Record<string, unknown> },
+      metadata: { path, input: summarize(input) as Record<string, unknown>, ...(change ? { change } : {}) },
     });
   }
   return result;
