@@ -180,18 +180,19 @@ identidade da Alle.*
 
 **M39 · Card de número (fundo branco).** Mesma família do M38 (fundo branco, traçados discretos do raio da Alle e
 rodapé roxo com Instagram e WhatsApp), com esta estrutura: uma forma em "L" em degradê roxo (`#3d0b80` → `#7c00ae`)
-entrando pelo canto superior esquerdo, com um recorte branco; os logos centralizados (Allp Fit + Alle em collab);
+entrando pelo canto superior esquerdo, com um recorte branco; o logo da Alle centralizado (os logos da parceria
+Allp Fit + Alle só quando a equipe pedir);
 um **card roxo-escuro `#3d0b80` arredondado (rx 52), com sombra e um contorno roxo fino deslocado para baixo e para
 a direita**; dentro dele, uma seta laranja subindo, "Economize até" em Montserrat 400 branco, o número gigante em
 Bebas Neue branco (~250 px), o complemento em Bebas Neue laranja em 2 linhas ao lado do número e uma frase final em
 Montserrat 800 branco sublinhada em laranja; abaixo do card, o selo "LEIA A LEGENDA" (retângulo só com contorno
-cinza-lilás) e, perto do rodapé, a chamada em Montserrat 700 roxo-escuro com letras bem espaçadas ("ESCANEIE O QR NA
-SUA UNIDADE"). **Exemplo completo e editável: `skills/alle-design/modelos/M39.svg`** (leia e adapte os textos).
+cinza-lilás) e, perto do rodapé, a chamada em Montserrat 700 roxo-escuro com letras bem espaçadas ("FALE COM A ANE
+NO WHATSAPP"). **Exemplo completo e editável: `skills/alle-design/modelos/M39.svg`** (leia e adapte os textos).
 Percentual só "até 35%" (PJ) ou "até 15%" (PF), com a ressalva na legenda.
 *Referência: post de concorrente enviado pela equipe em 25/11/2026 (só a estrutura; identidade e textos da Alle).*
 
 **M40 · Manchete com objeto (fundo branco).** Mesma família do M38/M39: a forma em "L" entra pelo canto superior
-**direito**; os logos ficam à esquerda no topo; a manchete é centralizada em 3 níveis: (1) título em Bebas Neue
+**direito**; o logo da Alle fica à esquerda no topo (parceria só quando a equipe pedir); a manchete é centralizada em 3 níveis: (1) título em Bebas Neue
 roxo-escuro, (2) o destaque em Bebas Neue laranja, (3) uma linha em Montserrat 800 com a parte principal dentro de uma
 **faixa roxa `#7c00ae`** com texto branco ("até 35% de desconto") e o resto em roxo-escuro, e um fecho curto em
 Bebas Neue **sublinhado** ("TODOS OS MESES."); depois o selo "LEIA A LEGENDA" e, ocupando a metade de baixo, um

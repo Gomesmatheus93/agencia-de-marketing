@@ -14,11 +14,11 @@
 <path d="M1080 0 H790 V200 L1080 330 Z" fill="url(#canto)"/>
 <path d="M890 0 H980 V100 L890 66 Z" fill="#FFFFFF"/>
 <!-- logos -->
-<image href="alle:allpfit" x="80" y="112" width="232" height="50"/><text x="330" y="153" font-family="Montserrat" font-size="40" font-weight="500" fill="#7c00ae">+</text><image href="alle:logo" x="384" y="103" width="235" height="69"/>
+<image href="alle:logo" x="80" y="96" width="300" height="88"/>
 <!-- manchete em 3 níveis -->
-<text x="540" y="320" font-family="Bebas Neue" font-size="96" fill="#3d0b80" text-anchor="middle">SEU ACESSO À ALLE ENERGIA</text>
-<text x="540" y="425" font-family="Bebas Neue" font-size="112" fill="#ff7300" text-anchor="middle">É GRÁTIS!</text>
-<text x="540" y="492" font-family="Montserrat" font-size="38" font-weight="800" fill="#3d0b80" text-anchor="middle">Pela parceria, você garante</text>
+<text x="540" y="320" font-family="Bebas Neue" font-size="84" fill="#3d0b80" text-anchor="middle">PAGUE MENOS NA CONTA DE LUZ</text>
+<text x="540" y="425" font-family="Bebas Neue" font-size="104" fill="#ff7300" text-anchor="middle">SEM OBRA E SEM PLACA!</text>
+<text x="540" y="492" font-family="Montserrat" font-size="38" font-weight="800" fill="#3d0b80" text-anchor="middle">Com a Alle Energia, você garante</text>
 <rect x="148" y="510" width="430" height="58" rx="8" fill="#7c00ae"/>
 <text x="363" y="551" font-family="Montserrat" font-size="38" font-weight="800" fill="#FFFFFF" text-anchor="middle">até 35% de desconto</text>
 <text x="592" y="551" font-family="Montserrat" font-size="38" font-weight="800" fill="#3d0b80">na conta de luz!</text>

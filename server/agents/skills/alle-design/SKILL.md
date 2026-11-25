@@ -221,7 +221,14 @@ Escolha um modelo que combine com o objetivo do card, varie em relação à últ
 entrega qual modelo usou. Se o usuário pedir "outro modelo" ou "outra opção", escolha um modelo
 diferente da tabela, não só outra cor.
 
-## Layout da parceria com a Allp Fit (padrão da equipe)
+## Logo padrão: só a Alle (regra da equipe, 25/11/2026)
+
+Toda arte usa **apenas o logo da Alle Energia**. Os logos da parceria (Allp Fit + Alle) e o layout da
+parceria abaixo entram **somente quando a equipe pedir** (no pedido, na pauta ou nas observações), por exemplo
+num post em collab com a @allpfit ou nas artes das academias. Na dúvida, só a Alle, e o texto fala com o público
+geral da Alle, não com "aluno Allp Fit".
+
+## Layout da parceria com a Allp Fit (quando a equipe pedir)
 
 Todo post, capa ou arte que fala da parceria Alle + Allp Fit segue o estilo do
 post real em collab com a @allpfit:
