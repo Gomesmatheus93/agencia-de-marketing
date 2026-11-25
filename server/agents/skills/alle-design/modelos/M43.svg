@@ -17,8 +17,7 @@
 <image href="alle:raio-mono" x="-260" y="230" width="820" height="1309" filter="url(#contorno)"/>
 <image href="alle:raio-mono" x="520" y="-300" width="700" height="1117" filter="url(#contorno)"/>
 <!-- forma em L (canto superior direito) -->
-<path d="M1080 0 H790 V200 L1080 330 Z" fill="url(#cantoLaranja)"/>
-<path d="M890 0 H980 V100 L890 66 Z" fill="url(#roxoBg)"/>
+<!-- canto: a parte de baixo do raio da Alle --><g transform="translate(1080 0) scale(-1 1)"><mask id="raioCantoD" maskUnits="userSpaceOnUse" x="-100" y="-400" width="700" height="900"><image href="alle:raio-mono" x="-55" y="-325" width="400" height="638"/></mask><rect x="-100" y="-400" width="700" height="900" fill="url(#cantoLaranja)" mask="url(#raioCantoD)" opacity=".88"/></g>
 <!-- logos -->
 <image href="alle:logo-branco" x="80" y="96" width="300" height="88"/>
 <!-- manchete em 3 níveis -->

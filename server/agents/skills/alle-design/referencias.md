@@ -193,15 +193,17 @@ lado a lado no topo.
 
 **M42 · Card de número (fundo roxo) e M43 · Manchete com objeto (fundo roxo).** As versões roxas do M39 e do M40,
 criadas em 25/11/2026 para alternar com os brancos no perfil (branco, roxo, branco…). Mesma estrutura dos brancos, com:
-degradê roxo-escuro e traçados claros do raio; forma em "L" **laranja**; logo **branco**; rodapé roxo-escuro; selo
+degradê roxo-escuro e traçados claros do raio; a parte de baixo do raio da Alle no canto em **laranja**; logo **branco**; rodapé roxo-escuro; selo
 "LEIA A LEGENDA" em lilás claro. No **M42** o card do número é **branco** (contorno laranja deslocado), com o número em
 roxo `#7c00ae`, "Economize até" e a frase final em roxo-escuro, e a chamada espaçada de baixo em branco. No **M43** a
 manchete e as frases ficam em **branco**, o destaque em laranja, a faixa do desconto em laranja com texto branco e o
 objeto ilustrado igual. **Exemplos completos e editáveis: `skills/alle-design/modelos/M42.svg` e `M43.svg`.**
 
 **M39 · Card de número (fundo branco).** Mesma família do M38 (fundo branco, traçados discretos do raio da Alle e
-rodapé roxo com Instagram e WhatsApp), com esta estrutura: uma forma em "L" em degradê roxo (`#3d0b80` → `#7c00ae`)
-entrando pelo canto superior esquerdo, com um recorte branco; o logo da Alle centralizado (os logos da parceria
+rodapé roxo com Instagram e WhatsApp), com esta estrutura: a **parte de baixo do raio da Alle** em degradê roxo
+(`#3d0b80` → `#7c00ae`, opacidade ~0,88) entrando pelo canto superior esquerdo (a parte de cima do raio fica fora da
+arte; é o `alle:raio-mono` usado como máscara: copie o bloco "canto" do M39.svg; desde 25/11/2026 ele substitui a antiga
+forma em "L" com recorte, a pedido da equipe); o logo da Alle centralizado (os logos da parceria
 Allp Fit + Alle só quando a equipe pedir);
 um **card roxo-escuro `#3d0b80` arredondado (rx 52), com sombra e um contorno roxo fino deslocado para baixo e para
 a direita**; dentro dele, uma seta laranja subindo, "Economize até" em Montserrat 400 branco, o número gigante em
@@ -212,8 +214,8 @@ NO WHATSAPP"). **Exemplo completo e editável: `skills/alle-design/modelos/M39.s
 Percentual só "até 35%" (PJ) ou "até 15%" (PF), com a ressalva na legenda.
 *Referência: post de concorrente enviado pela equipe em 25/11/2026 (só a estrutura; identidade e textos da Alle).*
 
-**M40 · Manchete com objeto (fundo branco).** Mesma família do M38/M39: a forma em "L" entra pelo canto superior
-**direito**; o logo da Alle fica à esquerda no topo (parceria só quando a equipe pedir); a manchete é centralizada em 3 níveis: (1) título em Bebas Neue
+**M40 · Manchete com objeto (fundo branco).** Mesma família do M38/M39: a parte de baixo do raio entra pelo canto superior
+**direito** (espelhada; bloco "canto" do M40.svg); o logo da Alle fica à esquerda no topo (parceria só quando a equipe pedir); a manchete é centralizada em 3 níveis: (1) título em Bebas Neue
 roxo-escuro, (2) o destaque em Bebas Neue laranja, (3) uma linha em Montserrat 800 com a parte principal dentro de uma
 **faixa roxa `#7c00ae`** com texto branco ("até 35% de desconto") e o resto em roxo-escuro, e um fecho curto em
 Bebas Neue **sublinhado** ("TODOS OS MESES."); depois o selo "LEIA A LEGENDA" e, ocupando a metade de baixo, um

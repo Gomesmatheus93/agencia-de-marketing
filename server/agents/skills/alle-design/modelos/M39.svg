@@ -11,8 +11,7 @@
 <image href="alle:raio-mono" x="-260" y="230" width="820" height="1309" filter="url(#contorno)"/>
 <image href="alle:raio-mono" x="520" y="-300" width="700" height="1117" filter="url(#contorno)"/>
 <!-- forma em L (canto superior esquerdo) -->
-<path d="M0 0 H330 V300 L0 520 Z" fill="url(#canto)"/>
-<path d="M150 0 H250 V120 L150 170 Z" fill="#FFFFFF"/>
+<!-- canto: a parte de baixo do raio da Alle --><mask id="raioCantoE" maskUnits="userSpaceOnUse" x="-100" y="-400" width="700" height="900"><image href="alle:raio-mono" x="-55" y="-325" width="400" height="638"/></mask><rect x="-100" y="-400" width="700" height="900" fill="url(#canto)" mask="url(#raioCantoE)" opacity=".88"/>
 <!-- logos -->
 <image href="alle:logo" x="375" y="210" width="330" height="97"/>
 <!-- card do número: contorno deslocado + card com sombra -->
