@@ -202,10 +202,11 @@ export function isConfiguredPublicStorageUrl(assetUrl: string) {
 
     if (provider === "aws") {
       const config = getAwsStorageConfig();
+      // Com domínio próprio (AWS_PUBLIC_BASE_URL, ex.: arquivos.alleenergia.com), os links antigos
+      // direto do S3 continuam valendo: as artes já salvas guardam o endereço da AWS.
       if (config.publicBaseUrl) {
         const publicBaseUrl = new URL(ensureTrailingSlash(config.publicBaseUrl));
-        return parsed.origin === publicBaseUrl.origin &&
-          parsed.pathname.startsWith(publicBaseUrl.pathname);
+        if (parsed.origin === publicBaseUrl.origin && parsed.pathname.startsWith(publicBaseUrl.pathname)) return true;
       }
 
       return parsed.hostname === `${config.bucket}.s3.${config.region}.amazonaws.com`;
