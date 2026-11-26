@@ -5456,14 +5456,20 @@ export const appRouter = router({
         const userAgent = ctx.req.headers["user-agent"] ?? null;
         const emailHash = blindIndex(input.email);
 
+        // Para os registros: a conta em que a senha foi errada (se existir) ou o e-mail digitado
+        // parcialmente escondido (se não existir), para o admin saber quem tentou entrar.
+        const tried = await db.getUserByEmail(input.email);
+        const [local = "", domain = ""] = input.email.toLowerCase().split("@");
+        const emailMasked = `${local.slice(0, 2)}•••@${domain}`;
+        const failMeta = { emailHash, ...(tried ? {} : { emailMasked }) };
         if (await isLoginLocked(emailHash, ip)) {
-          await db.recordAudit({ action: "login.locked", ip, userAgent, metadata: { emailHash } });
+          await db.recordAudit({ action: "login.locked", targetUserId: tried?.id ?? null, ip, userAgent, metadata: failMeta });
           throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: LOGIN_LOCK_MESSAGE });
         }
 
         const fail = async () => {
           await registerLoginFailure(emailHash, ip);
-          await db.recordAudit({ action: "login.failed", ip, userAgent, metadata: { emailHash } });
+          await db.recordAudit({ action: "login.failed", targetUserId: tried?.id ?? null, ip, userAgent, metadata: failMeta });
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha incorretos" });
         };
 

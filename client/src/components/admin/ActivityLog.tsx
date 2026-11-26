@@ -49,6 +49,8 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
   const people = useMemo(() => {
     const m = new Map<number, string>();
     for (const r of rows) if (r.actorId && r.actor) m.set(r.actorId, r.actor.name || r.actor.email || `#${r.actorId}`);
+    // Quem só aparece em tentativas de senha errada também entra no filtro.
+    for (const r of rows) if (r.attempted?.userId && !m.has(r.attempted.userId)) m.set(r.attempted.userId, r.attempted.name || r.attempted.email || `#${r.attempted.userId}`);
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
@@ -112,14 +114,20 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
                     <td className="px-3 py-2 text-zinc-500">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</td>
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums text-zinc-300">{when(r.at)}</td>
                     <td className="px-3 py-2">
-                      <div className="text-zinc-100">{r.actor?.name || "—"}</div>
+                      {!r.actor && r.attempted ? (
+                        <>
+                          <div className="text-zinc-100">{r.attempted.known ? (r.attempted.name || r.attempted.email) : "E-mail não cadastrado"}</div>
+                          <div className="text-[11px] text-zinc-500">{r.attempted.known ? r.attempted.email : (r.attempted.email ?? "e-mail não gravado")}</div>
+                          <div className="text-[10px] text-red-300/80">{r.attempted.known ? "tentativa nesta conta" : "tentativa com e-mail inexistente"}</div>
+                        </>
+                      ) : <div className="text-zinc-100">{r.actor?.name || "—"}</div>}
                       <div className="text-[11px] text-zinc-500">{r.actor?.email ?? (r.actorId ? `#${r.actorId}` : "")}</div>
                     </td>
                     <td className="px-3 py-2">
                       <span className={cn("inline-flex items-center gap-1.5", r.kind === "access" ? "text-sky-300" : "text-amber-300")}>
                         {r.kind === "access" ? <LogIn className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}{r.label}
                       </span>
-                      {r.target && <div className="text-[11px] text-zinc-500">na conta {r.target.name || r.target.email}</div>}
+                      {r.target && !r.attempted && <div className="text-[11px] text-zinc-500">na conta {r.target.name || r.target.email}</div>}
                     </td>
                     <td className="max-w-[320px] px-3 py-2 text-zinc-400" title={[r.artTitle, summary(r.details)].filter(Boolean).join(" · ")}>
                       {r.artTitle && <div className="truncate text-zinc-200">{r.artTitle}</div>}

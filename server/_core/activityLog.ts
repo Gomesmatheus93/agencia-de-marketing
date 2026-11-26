@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, like, not, or, sql, type SQL } from "drizzle-orm";
-import { agentThreads, auditLog } from "../../drizzle/schema";
+import { agentThreads, auditLog, users } from "../../drizzle/schema";
 import * as db from "../db";
 import * as store from "../agents/store";
 import { deviceLabel } from "./deviceContext";
@@ -11,6 +11,8 @@ import { deviceLabel } from "./deviceContext";
 const ACCESS_ACTIONS = ["login.success", "login.2fa_success", "sso.login", "logout", "login.failed", "login.locked", "login.2fa_challenge", "login.2fa_locked",
   // Abrir e baixar materiais das unidades também é acesso (não muda nada).
   "unit.plan.view", "unit.plan.download", "unit.material.view", "unit.material.download"];
+
+const FAIL_ACTIONS = ["login.failed", "login.locked"];
 
 const ACTION_LABEL: Record<string, string> = {
   "login.success": "Entrou na plataforma",
@@ -98,7 +100,12 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
   if (!c) return [];
   const since = new Date(Date.now() - opts.days * 86_400_000);
   const where: SQL[] = [gte(auditLog.createdAt, since)];
-  if (opts.actorId) where.push(eq(auditLog.actorUserId, opts.actorId));
+  if (opts.actorId) {
+    // A pessoa: o que ela fez e as tentativas de senha errada na conta dela.
+    const [u] = await c.select({ emailHash: users.emailHash }).from(users).where(eq(users.id, opts.actorId)).limit(1);
+    const tentativas = and(inArray(auditLog.action, FAIL_ACTIONS), or(eq(auditLog.targetUserId, opts.actorId), u?.emailHash ? sql`${auditLog.metadata}->>'emailHash' = ${u.emailHash}` : sql`false`));
+    where.push(or(eq(auditLog.actorUserId, opts.actorId), tentativas)!);
+  }
   if (opts.deviceId) where.push(sql`${auditLog.metadata}->>'deviceId' = ${opts.deviceId}`);
   if (opts.kind === "access") where.push(inArray(auditLog.action, ACCESS_ACTIONS));
   if (opts.kind === "change") {
@@ -108,8 +115,15 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
   }
   const rows = await c.select().from(auditLog).where(and(...where)).orderBy(desc(auditLog.createdAt)).limit(opts.limit);
 
+  // Senha errada: a conta em que tentaram entrar. Os registros novos já trazem targetUserId;
+  // nos antigos, acha pela "impressão" cifrada do e-mail digitado (metadata.emailHash).
+  const failHashes = [...new Set(rows.filter((r) => FAIL_ACTIONS.includes(r.action) && !r.targetUserId).map((r) => (r.metadata as { emailHash?: string } | null)?.emailHash).filter((h): h is string => Boolean(h)))];
+  const byHash = new Map<string, number>();
+  if (failHashes.length) for (const u of await c.select({ id: users.id, h: users.emailHash }).from(users).where(inArray(users.emailHash, failHashes))) if (u.h) byHash.set(u.h, u.id);
+  const triedId = (r: (typeof rows)[number]) => FAIL_ACTIONS.includes(r.action) ? (r.targetUserId ?? byHash.get(String((r.metadata as { emailHash?: string } | null)?.emailHash ?? "")) ?? null) : null;
+
   // Nome e e-mail de quem fez e da conta afetada (ficam cifrados no banco).
-  const ids = [...new Set(rows.flatMap((r) => [r.actorUserId, r.targetUserId]).filter((x): x is number => typeof x === "number"))];
+  const ids = [...new Set(rows.flatMap((r) => [r.actorUserId, r.targetUserId, triedId(r)]).filter((x): x is number => typeof x === "number"))];
   const people = new Map<number, { name: string | null; email: string | null }>();
   await Promise.all(ids.map(async (id) => {
     const u = await db.getUserById(id);
@@ -156,6 +170,13 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
       deviceId,
       device: deviceId ? deviceLabel(deviceId) : null,
       newDevice: Boolean(deviceId && r.actorUserId && firstSeen.get(`${r.actorUserId}:${deviceId}`) === r.id),
+      // Senha errada / login bloqueado: a conta em que tentaram entrar, ou o e-mail digitado (escondido) se não existe.
+      attempted: (() => {
+        if (!FAIL_ACTIONS.includes(r.action)) return null;
+        const id = triedId(r);
+        if (id) return { known: true as const, userId: id, name: people.get(id)?.name ?? null, email: people.get(id)?.email ?? null };
+        return { known: false as const, userId: null, name: null, email: (r.metadata as { emailMasked?: string } | null)?.emailMasked ?? null };
+      })(),
       hasChange: Boolean(meta.change),
     };
   });
