@@ -63,7 +63,7 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
           <Input placeholder="Senha (mín. 8 caracteres)" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <Button
             className="w-full"
-            disabled={createMutation.isPending || !name || !email || password.length < 6}
+            disabled={createMutation.isPending || !name || !email || password.length < 8}
             onClick={() => createMutation.mutate({ name, email, password })}
           >
             {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Adicionar"}
