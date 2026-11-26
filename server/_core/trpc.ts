@@ -112,6 +112,8 @@ const VIEWER_ALLOWED_QUERIES = new Set([
   "editorialPlan.getByMonth", "posts.getAll", "brandKit.get",
   // Histórico.
   "history.counts", "history.list",
+  // CTAs (desde 26/11/2026): ver o banco de frases e as artes de cada uma.
+  "ctas.list", "ctas.facets", "ctas.arts",
 ]);
 const VIEWER_ALLOWED_MUTATIONS = new Set(["auth.logout", "auth.logoutAllDevices"]);
 export function isViewerPathAllowed(path: string, type: string) {

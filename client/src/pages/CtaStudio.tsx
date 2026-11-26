@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { useViewerAccess } from "@/_core/hooks/useLimitedAccess";
 import { cn } from "@/lib/utils";
 import {
   Bot, Check, CircleDot, Copy, Download, ImageIcon, LayoutGrid, Layers, Library, List, Loader2, Megaphone, Paintbrush, Pencil, Plus, Search, Sparkles, Star, Trash2, Wand2, X,
@@ -38,6 +39,8 @@ function copy(text: string) {
 
 export default function CtaStudio() {
   const [section, setSection] = useState<Section>("banco");
+  // Visualizador (ex.: Flávio): só o banco, sem cadastrar, editar, gerar ou criar arte.
+  const isViewer = useViewerAccess();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const utils = trpc.useUtils();
   const refreshBank = () => { void utils.ctas.list.invalidate(); void utils.ctas.facets.invalidate(); };
@@ -62,7 +65,7 @@ export default function CtaStudio() {
             </p>
           </header>
 
-          <nav className="grid gap-2 sm:grid-cols-3" role="tablist">
+          {!isViewer && <nav className="grid gap-2 sm:grid-cols-3" role="tablist">
             {SECTIONS.map(({ id, label, desc, icon: Icon }, i) => (
               <button
                 key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
@@ -78,11 +81,11 @@ export default function CtaStudio() {
                 </span>
               </button>
             ))}
-          </nav>
+          </nav>}
 
           {section === "banco" && <BankSection onCreateArt={goCreateArt} onChanged={refreshBank} onGoGenerate={() => setSection("gerar")} />}
-          {section === "gerar" && <GenerateSection onSaved={refreshBank} onCreateArt={goCreateArt} />}
-          {section === "arte" && <ArtSection selectedId={selectedId} onSelect={setSelectedId} onGoGenerate={() => setSection("gerar")} />}
+          {section === "gerar" && !isViewer && <GenerateSection onSaved={refreshBank} onCreateArt={goCreateArt} />}
+          {section === "arte" && !isViewer && <ArtSection selectedId={selectedId} onSelect={setSelectedId} onGoGenerate={() => setSection("gerar")} />}
         </div>
       </main>
     </AppLayout>
@@ -114,6 +117,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
   const [source, setSource] = useState<"" | "manual" | "ia" | "equipe">("");
   const [onlyFav, setOnlyFav] = useState(false);
   const [usage, setUsage] = useState<Usage>("");
+  const readOnly = useViewerAccess();
   const [view, setView] = useState<"lista" | "cartoes">("lista");
   const [editing, setEditing] = useState<CtaRow | "new" | null>(null);
   const [deleting, setDeleting] = useState<CtaRow | null>(null);
@@ -143,7 +147,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
 
   return (
     <section className="space-y-4">
-      <QuickAdd categories={facets.data?.categories ?? []} onSaved={onChanged} onMore={() => setEditing("new")} />
+      {!readOnly && <QuickAdd categories={facets.data?.categories ?? []} onSaved={onChanged} onMore={() => setEditing("new")} />}
       <Card><CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[1fr_180px_180px_150px_auto_auto] 2xl:items-center">
         <label className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -163,7 +167,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
         <Button variant={onlyFav ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setOnlyFav((v) => !v)}>
           <Star className={cn("h-4 w-4", onlyFav && "fill-current")} />Favoritas
         </Button>
-        <Button size="sm" className="gap-1.5" onClick={() => setEditing("new")}><Plus className="h-4 w-4" />Novo CTA</Button>
+        {!readOnly && <Button size="sm" className="gap-1.5" onClick={() => setEditing("new")}><Plus className="h-4 w-4" />Novo CTA</Button>}
       </CardContent></Card>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -193,12 +197,14 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {readOnly ? (c.favorite && <Star className="mx-1.5 h-4 w-4 fill-amber-500 text-amber-500" aria-label="Favorita" />) : (
                 <button type="button" title={c.favorite ? "Tirar dos favoritos" : "Marcar como favorito"} onClick={() => update.mutate({ id: c.id, favorite: !c.favorite })}
-                  className={cn("rounded p-1.5 transition", c.favorite ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500")}><Star className={cn("h-4 w-4", c.favorite && "fill-current")} /></button>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => onCreateArt(c.id)}><Paintbrush className="h-3.5 w-3.5" />Criar arte</Button>
+                  className={cn("rounded p-1.5 transition", c.favorite ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500")}><Star className={cn("h-4 w-4", c.favorite && "fill-current")} /></button>)}
+                {readOnly && c.artPreviews[0] && <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setViewing(c.artPreviews[0].threadId)}><ImageIcon className="h-3.5 w-3.5" />Ver arte</Button>}
+                {!readOnly && <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => onCreateArt(c.id)}><Paintbrush className="h-3.5 w-3.5" />Criar arte</Button>}
                 <Button size="sm" variant="ghost" className="h-8 px-2" title="Copiar" onClick={() => copy(c.text)}><Copy className="h-3.5 w-3.5" /></Button>
-                <Button size="sm" variant="ghost" className="h-8 px-2" title="Editar" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                {!readOnly && <Button size="sm" variant="ghost" className="h-8 px-2" title="Editar" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>}
+                {!readOnly && <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5" /></Button>}
               </div>
             </li>
           ))}
@@ -209,10 +215,10 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
         <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
           <Megaphone className="mx-auto mb-3 h-8 w-8 text-primary/60" />
           {filtering ? "Nenhum CTA nesse filtro." : "O banco ainda está vazio."}
-          <div className="mt-4 flex justify-center gap-2">
+          {!readOnly && <div className="mt-4 flex justify-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setEditing("new")}><Plus className="mr-1.5 h-4 w-4" />Cadastrar</Button>
             <Button size="sm" onClick={onGoGenerate}><Wand2 className="mr-1.5 h-4 w-4" />Gerar com IA</Button>
-          </div>
+          </div>}
         </div>
       )}
 
@@ -227,8 +233,8 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
                   <div className="flex items-start gap-2">
                     <p className="flex-1 text-[15px] font-semibold leading-snug">{c.text}</p>
                     <button
-                      type="button" title={c.favorite ? "Tirar dos favoritos" : "Marcar como favorito"}
-                      onClick={() => update.mutate({ id: c.id, favorite: !c.favorite })}
+                      type="button" title={c.favorite ? "Tirar dos favoritos" : "Marcar como favorito"} disabled={readOnly}
+                      onClick={() => !readOnly && update.mutate({ id: c.id, favorite: !c.favorite })}
                       className={cn("rounded p-1 transition", c.favorite ? "text-amber-500" : "text-muted-foreground/40 hover:text-amber-500")}
                     >
                       <Star className={cn("h-4 w-4", c.favorite && "fill-current")} />
@@ -243,10 +249,10 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
                   </div>
                   {c.notes && <p className="text-xs leading-relaxed text-muted-foreground">{c.notes}</p>}
                   <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-                    <Button size="sm" className="h-8 gap-1.5" onClick={() => onCreateArt(c.id)}><Paintbrush className="h-3.5 w-3.5" />Criar arte</Button>
+                    {!readOnly && <Button size="sm" className="h-8 gap-1.5" onClick={() => onCreateArt(c.id)}><Paintbrush className="h-3.5 w-3.5" />Criar arte</Button>}
                     <Button size="sm" variant="ghost" className="h-8 px-2" title="Copiar" onClick={() => copy(c.text)}><Copy className="h-3.5 w-3.5" /></Button>
-                    <Button size="sm" variant="ghost" className="h-8 px-2" title="Editar" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button size="sm" variant="ghost" className="ml-auto h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    {!readOnly && <Button size="sm" variant="ghost" className="h-8 px-2" title="Editar" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>}
+                    {!readOnly && <Button size="sm" variant="ghost" className="ml-auto h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir" onClick={() => setDeleting(c)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                   </div>
                 </CardContent>
               </Card>
@@ -256,7 +262,7 @@ function BankSection({ onCreateArt, onChanged, onGoGenerate }: { onCreateArt: (i
       ))}
 
       {viewing !== null && <ArtViewer threadId={viewing} onClose={() => setViewing(null)} onSaved={onChanged} />}
-      {editing && <CtaEditor cta={editing === "new" ? null : editing} categories={facets.data?.categories ?? []} angles={facets.data?.angles ?? []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} />}
+      {editing && !readOnly && <CtaEditor cta={editing === "new" ? null : editing} categories={facets.data?.categories ?? []} angles={facets.data?.angles ?? []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} />}
 
       <Dialog open={deleting !== null} onOpenChange={(o) => { if (!o) setDeleting(null); }}>
         <DialogContent className="max-w-md">

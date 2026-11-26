@@ -59,8 +59,8 @@ import UpgradeModal from "@/components/UpgradeModal";
 const LIMITED_MODULES = new Set(["dashboard"]);
 const LIMITED_PATHS = new Set(["/dashboard", "/dashboard/perfil", "/dashboard/security"]);
 // Visualizador (accountType "viewer", desde 25/11/2026): só olhar os posts.
-const VIEWER_MODULES = new Set(["dashboard", "planning", "calendar", "historico"]);
-const VIEWER_PATHS = new Set(["/dashboard", "/dashboard/planejamento", "/dashboard/calendar", "/dashboard/historico"]);
+const VIEWER_MODULES = new Set(["dashboard", "planning", "calendar", "historico", "ctas"]);
+const VIEWER_PATHS = new Set(["/dashboard", "/dashboard/planejamento", "/dashboard/calendar", "/dashboard/historico", "/dashboard/ctas"]);
 
 const NAV_ITEMS_CONFIG = [
   { id: "dashboard", icon: LayoutDashboard, path: "/dashboard", color: "from-alle-purple to-alle-purple-light", labelKey: "dashboard" as const, descKey: "dashboardDesc" as const, group: null },
