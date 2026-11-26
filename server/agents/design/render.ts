@@ -1,4 +1,5 @@
 import { Resvg } from "@resvg/resvg-js";
+import { safeFetch } from "../../_core/ssrfGuard";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -33,7 +34,8 @@ const MAX_IMAGE_BYTES = 8_000_000;
 export class DesignError extends Error {}
 
 async function fetchAsDataUri(url: string): Promise<string> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  // URL vem do SVG (agente ou editor de artes): nada de endereço interno nem redirecionamento às cegas.
+  const res = await safeFetch(url, { signal: AbortSignal.timeout(20_000) }).catch((e: Error) => { throw new DesignError(`Imagem inacessível: ${url} (${e.message})`); });
   const type = res.headers.get("content-type")?.split(";")[0] ?? "";
   if (!res.ok || !/^image\/(jpeg|png|webp|gif)$/.test(type)) throw new DesignError(`Imagem inacessível: ${url} (${res.status} ${type})`);
   const bytes = Buffer.from(await res.arrayBuffer());

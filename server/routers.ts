@@ -12,7 +12,7 @@ import { motionRouter } from "./motionRouter";
 import { historyRouter } from "./historyRouter";
 import { aiProcedure, authedProcedure, protectedProcedure, publicProcedure, publicRateLimitedProcedure, publicContentProcedure, router } from "./_core/trpc";
 import { ENV } from "./_core/env";
-import { assertPublicHttpUrl } from "./_core/ssrfGuard";
+import { assertPublicHttpUrl, safeFetch } from "./_core/ssrfGuard";
 import { invokeLLM } from "./_core/llm";
 import { generateImage, reformatImageToTarget, type ImageStyle, type ImageSize } from "./_core/imageGeneration";
 import {
@@ -2954,7 +2954,7 @@ Retorne APENAS JSON válido:
           }
           try {
             assertPublicHttpUrl(url);
-            const res = await fetch(url, {
+            const res = await safeFetch(url, {
               headers: { "User-Agent": "AlleEnergia/1.0 carousel-persist" },
               signal: AbortSignal.timeout(12_000),
             });
@@ -3660,7 +3660,7 @@ const teamRouter = router({
     .input(z.object({
       name: z.string().min(2).max(100),
       email: z.string().email(),
-      password: z.string().min(6),
+      password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres."),
     }))
     .mutation(async ({ ctx, input }) => {
       requireTeamOwner(ctx.actualUser.companyOwnerId);
@@ -5420,7 +5420,7 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(2).max(100),
         email: z.string().email(),
-        password: z.string().min(6),
+        password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres."),
       }))
       .mutation(async ({ ctx, input }) => {
         // Check if open registration is enabled (default: open)

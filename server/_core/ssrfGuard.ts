@@ -5,8 +5,11 @@
 // bracketed IPv6 hostnames (WHATWG URL always returns "[::1]", never "::1"),
 // IPv6 unique-local/link-local ranges, and IPv4-mapped IPv6 addresses.
 
+import { lookup } from "node:dns/promises";
+
 function isPrivateIpv4(a: number, b: number): boolean {
   if (a === 10) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT (100.64.0.0/10)
   if (a === 127) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
@@ -61,4 +64,27 @@ export function assertPublicHttpUrl(url: string): URL {
     throw new Error("URL aponta para um host interno/privado, não permitido.");
   }
   return parsed;
+}
+
+/**
+ * fetch para URL vinda do usuário, à prova de SSRF (teste de segurança de 26/11/2026):
+ * além do nome, confere para quais IPs o domínio aponta (um domínio público pode apontar
+ * para 127.0.0.1 ou para o metadado da nuvem) e não segue redirecionamento às cegas:
+ * cada destino passa pela mesma checagem, no máximo `maxRedirects` vezes.
+ */
+export async function safeFetch(url: string, init: RequestInit = {}, maxRedirects = 3): Promise<Response> {
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    const parsed = assertPublicHttpUrl(current);
+    const host = parsed.hostname.replace(/^\[|\]$/g, "");
+    const addrs = await lookup(host, { all: true, verbatim: true }).catch(() => { throw new Error("Não consegui resolver o endereço da URL."); });
+    if (!addrs.length || addrs.some((a) => isPrivateOrLinkLocalHost(a.address))) {
+      throw new Error("URL aponta para um host interno/privado, não permitido.");
+    }
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return res;
+    if (hop >= maxRedirects) throw new Error("Redirecionamentos demais.");
+    current = new URL(location, current).toString();
+  }
 }

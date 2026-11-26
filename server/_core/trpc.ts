@@ -7,6 +7,14 @@ import { recordAudit } from "../db";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  // Sem stack trace nas respostas de erro fora do desenvolvimento local: ele mostrava
+  // caminhos internos e versões das bibliotecas a qualquer visitante (teste de 26/11/2026).
+  isDev: process.env.NODE_ENV === "development",
+  errorFormatter({ shape }) {
+    if (process.env.NODE_ENV === "development") return shape;
+    const { stack: _stack, ...data } = shape.data as typeof shape.data & { stack?: string };
+    return { ...shape, data };
+  },
 });
 
 export const router = t.router;

@@ -29,7 +29,7 @@ import { notifyInboxActivity } from "../inboxRouter";
 import { sdk } from "./sdk";
 import { storagePut, getMetaFetchableStorageUrl, getPresignedUploadUrl, buildAwsPublicUrl, ensureS3CorsConfigured } from "../storage";
 import * as db from "../db";
-import { isPrivateOrLinkLocalHost } from "./ssrfGuard";
+import { isPrivateOrLinkLocalHost, safeFetch } from "./ssrfGuard";
 
 // Comparação em tempo constante do X-Api-Key contra N8N_SECRET, evitando
 // timing attacks que uma comparação `!==` simples permitiria.
@@ -149,7 +149,8 @@ async function startServer() {
       await database.execute(sql`SELECT 1`);
       res.status(200).json({ status: "ok" });
     } catch (error) {
-      res.status(503).json({ status: "error", message: (error as Error).message });
+      console.error("[health] banco indisponível:", (error as Error).message);
+      res.status(503).json({ status: "error" });
     }
   });
   // Fontes e arquivos da marca usados nas artes, para o editor visual desenhar
@@ -173,7 +174,7 @@ async function startServer() {
       }
       // For S3 private objects, generate a presigned URL so the proxy can fetch them
       const fetchUrl = await getMetaFetchableStorageUrl(url);
-      const upstream = await fetch(fetchUrl, {
+      const upstream = await safeFetch(fetchUrl, {
         headers: { "User-Agent": "AlleEnergia/1.0 render-proxy", Accept: "image/*" },
         signal: AbortSignal.timeout(15_000),
       });
@@ -204,7 +205,7 @@ async function startServer() {
       }
       const fetchUrl = await getMetaFetchableStorageUrl(url);
       const rangeHeader = req.headers.range;
-      const upstream = await fetch(fetchUrl, {
+      const upstream = await safeFetch(fetchUrl, {
         headers: {
           "User-Agent": "AlleEnergia/1.0 video-proxy",
           ...(rangeHeader ? { Range: rangeHeader } : {}),

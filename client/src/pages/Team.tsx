@@ -60,7 +60,7 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
         <div className="space-y-3">
           <Input placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
           <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input placeholder="Senha (mín. 6 caracteres)" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input placeholder="Senha (mín. 8 caracteres)" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <Button
             className="w-full"
             disabled={createMutation.isPending || !name || !email || password.length < 6}

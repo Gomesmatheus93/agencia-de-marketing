@@ -5,7 +5,7 @@ import type { CarouselAgentSlide } from "./carouselAgent";
 import type { CarouselSlideData } from "../../drizzle/schema";
 import { storagePut, isConfiguredPublicStorageUrl } from "../storage";
 import { generateImage } from "./imageGeneration";
-import { assertPublicHttpUrl } from "./ssrfGuard";
+import { assertPublicHttpUrl, safeFetch } from "./ssrfGuard";
 
 type PersistCarouselAssetsInput = {
   userId: number;
@@ -156,7 +156,7 @@ async function readRemoteAsset(assetUrl: string): Promise<StorageAsset | undefin
   }
   assertPublicHttpUrl(assetUrl);
 
-  const response = await fetch(assetUrl, {
+  const response = await safeFetch(assetUrl, {
     signal: AbortSignal.timeout(10_000),
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AlleEnergiaBot/1.0)",

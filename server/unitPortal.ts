@@ -48,7 +48,13 @@ function shouldLogView(key: string) {
  */
 async function accessibleUnits(me: User) {
   const c = await conn();
-  if (me.accountType !== "unit" || me.allUnits) {
+  // Contas que não são de academia: só o admin (equipe da Alle) vê o portal como prévia.
+  // Antes qualquer conta logada (até um cadastro novo) via todas as academias (teste de segurança de 26/11/2026).
+  if (me.accountType !== "unit") {
+    if (me.role !== "admin") return [];
+    return c.select().from(units).where(eq(units.active, true)).orderBy(units.name);
+  }
+  if (me.allUnits) {
     return c.select().from(units).where(eq(units.active, true)).orderBy(units.name);
   }
   const links = await c.select({ unitId: userUnits.unitId }).from(userUnits).where(eq(userUnits.userId, me.id));
