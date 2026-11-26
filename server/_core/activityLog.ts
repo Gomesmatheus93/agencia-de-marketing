@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, inArray, like, not, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, not, or, sql, type SQL } from "drizzle-orm";
 import { agentThreads, auditLog } from "../../drizzle/schema";
 import * as db from "../db";
 import * as store from "../agents/store";
+import { deviceLabel } from "./deviceContext";
 
 // Registros de acesso e de alterações para o painel do super admin.
 // Acessos: login.*, sso.login e logout. Alterações: "change" (gravado por
@@ -92,12 +93,13 @@ export function actionLabel(action: string, path?: string) {
   return ACTION_LABEL[action] ?? action.replace(/^unit\./, "Unidades: ");
 }
 
-export async function listActivity(opts: { kind: "all" | "access" | "change"; actorId?: number; days: number; limit: number }) {
+export async function listActivity(opts: { kind: "all" | "access" | "change"; actorId?: number; deviceId?: string; days: number; limit: number }) {
   const c = await db.getDb();
   if (!c) return [];
   const since = new Date(Date.now() - opts.days * 86_400_000);
   const where: SQL[] = [gte(auditLog.createdAt, since)];
   if (opts.actorId) where.push(eq(auditLog.actorUserId, opts.actorId));
+  if (opts.deviceId) where.push(sql`${auditLog.metadata}->>'deviceId' = ${opts.deviceId}`);
   if (opts.kind === "access") where.push(inArray(auditLog.action, ACCESS_ACTIONS));
   if (opts.kind === "change") {
     where.push(not(inArray(auditLog.action, ACCESS_ACTIONS)));
@@ -122,8 +124,19 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
     for (const t of ts) titles.set(t.id, String((t.result as { title?: unknown } | null)?.title ?? t.title));
   }
 
+  // Primeiro registro de cada pessoa em cada aparelho (para o selo "aparelho novo").
+  const devices = [...new Set(rows.map((r) => (r.metadata as { deviceId?: string } | null)?.deviceId).filter((d): d is string => Boolean(d)))];
+  const firstSeen = new Map<string, number>();
+  if (devices.length) {
+    const fs = await c.select({ actor: auditLog.actorUserId, device: sql<string>`${auditLog.metadata}->>'deviceId'`, first: sql<number>`min(${auditLog.id})` })
+      .from(auditLog).where(inArray(sql`${auditLog.metadata}->>'deviceId'`, devices))
+      .groupBy(auditLog.actorUserId, sql`${auditLog.metadata}->>'deviceId'`);
+    for (const f of fs) firstSeen.set(`${f.actor}:${f.device}`, Number(f.first));
+  }
+
   return rows.map((r) => {
-    const meta = (r.metadata ?? {}) as { path?: string; input?: unknown; change?: unknown } & Record<string, unknown>;
+    const meta = (r.metadata ?? {}) as { path?: string; input?: unknown; change?: unknown; deviceId?: string } & Record<string, unknown>;
+    const deviceId = typeof meta.deviceId === "string" ? meta.deviceId : null;
     const threadId = Number((meta.input as { threadId?: unknown } | undefined)?.threadId);
     return {
       id: r.id,
@@ -140,6 +153,9 @@ export async function listActivity(opts: { kind: "all" | "access" | "change"; ac
       userAgent: r.userAgent,
       details: meta.path ? meta.input ?? null : r.metadata ?? null,
       artTitle: titles.get(threadId) ?? null,
+      deviceId,
+      device: deviceId ? deviceLabel(deviceId) : null,
+      newDevice: Boolean(deviceId && r.actorUserId && firstSeen.get(`${r.actorUserId}:${deviceId}`) === r.id),
       hasChange: Boolean(meta.change),
     };
   });

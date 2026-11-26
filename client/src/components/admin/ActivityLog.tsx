@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { ArrowRight, ChevronDown, ChevronRight, ExternalLink, Loader2, LogIn, Pencil, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronRight, ExternalLink, Loader2, LogIn, Monitor, Pencil, RefreshCw, Sparkles, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
 type Kind = "all" | "access" | "change";
@@ -12,7 +12,7 @@ function when(d: Date | string) {
 }
 
 /** Navegador e sistema de forma curta, a partir do user-agent. */
-function device(ua: string | null) {
+function deviceOf(ua: string | null) {
   if (!ua) return "";
   const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
   const os = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
@@ -40,7 +40,9 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
   useEffect(() => { setActorId(initialActorId); }, [initialActorId]);
   const [days, setDays] = useState(7);
   const [open, setOpen] = useState<number | null>(null);
-  const q = trpc.admin.activityLog.useQuery({ kind, actorId, days, limit: 1000 });
+  // Filtro por aparelho (ID do navegador, no lugar do endereço MAC que a internet não mostra).
+  const [device, setDevice] = useState<{ id: string; label: string } | null>(null);
+  const q = trpc.admin.activityLog.useQuery({ kind, actorId, deviceId: device?.id, days, limit: 1000 });
   const rows = q.data ?? [];
 
   // Pessoas que aparecem no período (para o filtro), sem depender da lista inteira de usuários.
@@ -69,13 +71,18 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
           <option value={30}>Últimos 30 dias</option>
           <option value={90}>Últimos 90 dias</option>
         </select>
+        {device && (
+          <button onClick={() => setDevice(null)} className="flex h-8 items-center gap-1.5 rounded-lg border border-sky-700 bg-sky-500/15 px-3 text-xs text-sky-200 hover:bg-sky-500/25">
+            <Monitor className="h-3.5 w-3.5" />Aparelho {device.label}<X className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button onClick={() => q.refetch()} className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs text-zinc-200 hover:bg-zinc-700">
           <RefreshCw className={cn("h-3.5 w-3.5", q.isFetching && "animate-spin")} />Atualizar
         </button>
       </div>
       <p className="text-xs text-zinc-500">
         {rows.length >= 1000 ? "Mostrando os 1000 registros mais recentes. " : `${rows.length} registro(s). `}
-        Alterações são gravadas a partir do deploy de 23/11/2026; acessos já vinham sendo gravados antes.
+        Alterações são gravadas a partir do deploy de 23/11/2026; acessos já vinham sendo gravados antes. O aparelho (código de cada navegador, já que o endereço MAC não chega pela internet) é gravado desde 26/11/2026; clique nele para ver tudo o que saiu do mesmo aparelho.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800">
@@ -118,7 +125,16 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
                       {r.artTitle && <div className="truncate text-zinc-200">{r.artTitle}</div>}
                       <div className="truncate">{summary(r.details) || (!r.artTitle && r.ref ? `#${r.ref}` : "")}{r.hasChange && <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">antes e depois</span>}</div>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-[11px] text-zinc-500">{[r.ip, device(r.userAgent)].filter(Boolean).join(" · ")}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-[11px] text-zinc-500">
+                      <div>{[r.ip, deviceOf(r.userAgent)].filter(Boolean).join(" · ")}</div>
+                      {r.deviceId && (
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <button title="Ver tudo deste aparelho" onClick={(e) => { e.stopPropagation(); setDevice({ id: r.deviceId!, label: r.device! }); }}
+                            className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-zinc-300 hover:bg-zinc-700"><Monitor className="h-3 w-3" />Aparelho {r.device}</button>
+                          {r.newDevice && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-300">aparelho novo</span>}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                   {expanded && (
                     <tr className="bg-zinc-900/40">
@@ -137,6 +153,7 @@ export function ActivityLog({ initialActorId, initialActorLabel }: { initialActo
                             <div className="mt-2 space-y-1">
                               {r.path && <p>Rota: <span className="font-mono text-zinc-300">{r.path}</span>{r.ref ? <> · item <span className="font-mono text-zinc-300">#{r.ref}</span></> : null}</p>}
                               {r.userAgent && <p className="break-all">Navegador: {r.userAgent}</p>}
+                              {r.deviceId && <p>Aparelho: <span className="font-mono text-zinc-300">{r.deviceId}</span></p>}
                               {r.details != null && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-zinc-950 p-3 font-mono text-zinc-300">{JSON.stringify(r.details, null, 2)}</pre>}
                             </div>
                           </details>

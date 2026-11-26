@@ -1,4 +1,5 @@
 import { eq, desc, asc, and, or, isNull, lte, gte, sql, count, inArray } from "drizzle-orm";
+import { currentDeviceId } from "./_core/deviceContext";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { SQL } from "drizzle-orm";
 import postgres from "postgres";
@@ -447,9 +448,12 @@ export async function recordAudit(entry: Omit<InsertAuditLog, "id" | "createdAt"
   try {
     const db = await getDb();
     if (!db) return;
+    // ID do aparelho da requisição (cookie alle_device), junto com o IP e o navegador.
+    const deviceId = currentDeviceId();
     await db.insert(auditLog).values({
       ...entry,
       userAgent: entry.userAgent ? String(entry.userAgent).slice(0, 255) : null,
+      metadata: deviceId && !(entry.metadata as Record<string, unknown> | null | undefined)?.deviceId ? { ...(entry.metadata ?? {}), deviceId } : entry.metadata,
     });
   } catch (e) {
     console.warn("[audit] falha ao registrar:", String(e).slice(0, 200));

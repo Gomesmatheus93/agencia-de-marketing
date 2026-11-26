@@ -21,7 +21,7 @@ import { handleAggregatorWebhook, buildDigestTextMessage } from "./aggregatorWeb
 import { serveStatic, setupVite } from "./vite";
 import { validateRequiredEnv, ENV } from "./env";
 import { assertCryptoKeys } from "./crypto";
-import { securityHeaders, csrfCookieSetter, csrfGuard, permissionsPolicy, landingCsp } from "./httpSecurity";
+import { securityHeaders, csrfCookieSetter, csrfGuard, deviceIdCookie, permissionsPolicy, landingCsp } from "./httpSecurity";
 import { handleIncomingDm, resolveShortLink } from "../dmAutoReply";
 import { SsoError, loginWithAlleToken } from "./alleSso";
 import { buildUnitKitZip } from "../unitPortal";
@@ -122,6 +122,7 @@ async function startServer() {
   app.use(landingCsp());
   // Cookie CSRF legível pelo cliente (double-submit).
   app.use(csrfCookieSetter());
+  app.use(deviceIdCookie());
   app.use(permissionsPolicy());
   // Respostas da API não vão para cache (dados da conta). Os proxies de mídia
   // definem o próprio Cache-Control depois; fontes e logos da marca ficam fora.

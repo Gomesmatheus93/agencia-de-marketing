@@ -71,6 +71,7 @@ export const adminRouter = router({
     .input(z.object({
       kind: z.enum(["all", "access", "change"]).default("all"),
       actorId: z.number().int().positive().optional(),
+      deviceId: z.string().regex(/^[a-f0-9]{16}$/).optional(),
       days: z.number().int().min(1).max(365).default(30),
       limit: z.number().int().min(1).max(2000).default(500),
     }))

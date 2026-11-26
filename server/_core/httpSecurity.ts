@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { parse as parseCookieHeader } from "cookie";
 import { getSessionCookieOptions } from "./cookies";
 import { ENV } from "./env";
+import { DEVICE_COOKIE_NAME, DEVICE_ID_RE, runWithDevice } from "./deviceContext";
 
 export const CSRF_COOKIE_NAME = "app_csrf";
 const CSRF_HEADER = "x-csrf-token";
@@ -99,6 +100,21 @@ function readCookie(req: Request, name: string): string | undefined {
 }
 
 /** Garante que todo cliente tenha um cookie CSRF legível (não-httpOnly). */
+/**
+ * ID do aparelho: cookie httpOnly com um código aleatório por navegador (2 anos), disponível
+ * durante a requisição para os registros de acesso e alteração (deviceContext.ts).
+ */
+export function deviceIdCookie(): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    let id = readCookie(req, DEVICE_COOKIE_NAME);
+    if (!id || !DEVICE_ID_RE.test(id)) {
+      id = randomBytes(8).toString("hex");
+      res.cookie(DEVICE_COOKIE_NAME, id, { ...getSessionCookieOptions(req), httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 730 });
+    }
+    runWithDevice(id, next);
+  };
+}
+
 export function csrfCookieSetter(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!readCookie(req, CSRF_COOKIE_NAME)) {
